@@ -1,2 +1,0 @@
-[console_scripts]
-best-engine-ai-helper = best_engine_ai_helper.cli:main
