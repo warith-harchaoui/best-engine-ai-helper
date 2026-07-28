@@ -1,0 +1,359 @@
+# Bundled hardware chip lookup table. Hand-maintained; updated by `hardware update`.
+#
+# ollama_usable_gb = memory_gb minus OS + driver reservation.
+# The 80% safety headroom in score.py applies on top of this value.
+# Multiple entries per chip name cover different memory tier options.
+#
+# Sources: apple-specs (Apple product pages), techpowerup (GPU-Specs database).
+
+# Apple Silicon — unified memory pools
+- chip: "Apple M1"
+  vendor: apple
+  memory_gb: 8
+  ollama_usable_gb: 7
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M1"
+  vendor: apple
+  memory_gb: 16
+  ollama_usable_gb: 14
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M1 Pro"
+  vendor: apple
+  memory_gb: 16
+  ollama_usable_gb: 14
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M1 Pro"
+  vendor: apple
+  memory_gb: 32
+  ollama_usable_gb: 29
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M1 Max"
+  vendor: apple
+  memory_gb: 32
+  ollama_usable_gb: 29
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M1 Max"
+  vendor: apple
+  memory_gb: 64
+  ollama_usable_gb: 58
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M1 Ultra"
+  vendor: apple
+  memory_gb: 64
+  ollama_usable_gb: 58
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M1 Ultra"
+  vendor: apple
+  memory_gb: 128
+  ollama_usable_gb: 116
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M2"
+  vendor: apple
+  memory_gb: 8
+  ollama_usable_gb: 7
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M2"
+  vendor: apple
+  memory_gb: 16
+  ollama_usable_gb: 14
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M2"
+  vendor: apple
+  memory_gb: 24
+  ollama_usable_gb: 22
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M2 Pro"
+  vendor: apple
+  memory_gb: 16
+  ollama_usable_gb: 14
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M2 Pro"
+  vendor: apple
+  memory_gb: 32
+  ollama_usable_gb: 29
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M2 Max"
+  vendor: apple
+  memory_gb: 32
+  ollama_usable_gb: 29
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M2 Max"
+  vendor: apple
+  memory_gb: 64
+  ollama_usable_gb: 58
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M2 Max"
+  vendor: apple
+  memory_gb: 96
+  ollama_usable_gb: 90
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M2 Ultra"
+  vendor: apple
+  memory_gb: 64
+  ollama_usable_gb: 58
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M2 Ultra"
+  vendor: apple
+  memory_gb: 192
+  ollama_usable_gb: 178
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M3"
+  vendor: apple
+  memory_gb: 8
+  ollama_usable_gb: 7
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M3"
+  vendor: apple
+  memory_gb: 16
+  ollama_usable_gb: 14
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M3"
+  vendor: apple
+  memory_gb: 24
+  ollama_usable_gb: 22
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M3 Pro"
+  vendor: apple
+  memory_gb: 18
+  ollama_usable_gb: 16
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M3 Pro"
+  vendor: apple
+  memory_gb: 36
+  ollama_usable_gb: 33
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M3 Max"
+  vendor: apple
+  memory_gb: 36
+  ollama_usable_gb: 33
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M3 Max"
+  vendor: apple
+  memory_gb: 48
+  ollama_usable_gb: 44
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M3 Max"
+  vendor: apple
+  memory_gb: 64
+  ollama_usable_gb: 58
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M3 Max"
+  vendor: apple
+  memory_gb: 128
+  ollama_usable_gb: 118
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M3 Ultra"
+  vendor: apple
+  memory_gb: 96
+  ollama_usable_gb: 90
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M3 Ultra"
+  vendor: apple
+  memory_gb: 192
+  ollama_usable_gb: 178
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M4"
+  vendor: apple
+  memory_gb: 16
+  ollama_usable_gb: 14
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M4"
+  vendor: apple
+  memory_gb: 24
+  ollama_usable_gb: 22
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M4"
+  vendor: apple
+  memory_gb: 32
+  ollama_usable_gb: 29
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M4 Pro"
+  vendor: apple
+  memory_gb: 24
+  ollama_usable_gb: 22
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M4 Pro"
+  vendor: apple
+  memory_gb: 48
+  ollama_usable_gb: 44
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M4 Pro"
+  vendor: apple
+  memory_gb: 64
+  ollama_usable_gb: 58
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M4 Max"
+  vendor: apple
+  memory_gb: 36
+  ollama_usable_gb: 33
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M4 Max"
+  vendor: apple
+  memory_gb: 64
+  ollama_usable_gb: 58
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M4 Max"
+  vendor: apple
+  memory_gb: 128
+  ollama_usable_gb: 118
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M4 Ultra"
+  vendor: apple
+  memory_gb: 96
+  ollama_usable_gb: 90
+  source: apple-specs
+  fetched_at: null
+
+- chip: "Apple M4 Ultra"
+  vendor: apple
+  memory_gb: 192
+  ollama_usable_gb: 178
+  source: apple-specs
+  fetched_at: null
+
+# NVIDIA discrete GPUs
+- chip: "NVIDIA GeForce RTX 3060"
+  vendor: nvidia
+  memory_gb: 12
+  ollama_usable_gb: 11
+  source: techpowerup
+  fetched_at: null
+
+- chip: "NVIDIA GeForce RTX 3080"
+  vendor: nvidia
+  memory_gb: 10
+  ollama_usable_gb: 9
+  source: techpowerup
+  fetched_at: null
+
+- chip: "NVIDIA GeForce RTX 3090"
+  vendor: nvidia
+  memory_gb: 24
+  ollama_usable_gb: 22
+  source: techpowerup
+  fetched_at: null
+
+- chip: "NVIDIA GeForce RTX 4060"
+  vendor: nvidia
+  memory_gb: 8
+  ollama_usable_gb: 7
+  source: techpowerup
+  fetched_at: null
+
+- chip: "NVIDIA GeForce RTX 4070"
+  vendor: nvidia
+  memory_gb: 12
+  ollama_usable_gb: 11
+  source: techpowerup
+  fetched_at: null
+
+- chip: "NVIDIA GeForce RTX 4080"
+  vendor: nvidia
+  memory_gb: 16
+  ollama_usable_gb: 15
+  source: techpowerup
+  fetched_at: null
+
+- chip: "NVIDIA GeForce RTX 4090"
+  vendor: nvidia
+  memory_gb: 24
+  ollama_usable_gb: 22
+  source: techpowerup
+  fetched_at: null
+
+- chip: "NVIDIA A100"
+  vendor: nvidia
+  memory_gb: 40
+  ollama_usable_gb: 38
+  source: techpowerup
+  fetched_at: null
+
+- chip: "NVIDIA A100"
+  vendor: nvidia
+  memory_gb: 80
+  ollama_usable_gb: 76
+  source: techpowerup
+  fetched_at: null
+
+- chip: "NVIDIA H100"
+  vendor: nvidia
+  memory_gb: 80
+  ollama_usable_gb: 76
+  source: techpowerup
+  fetched_at: null

@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "best-engine-ai-helper"
+version = "0.1.0"
+description = "Pick and pull the best local LLM/VLM for the current hardware."
+authors = [{name = "Warith Harchaoui", email = "warith.harchaoui@gmail.com"}]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.1",
+    "psutil>=5.9",
+    "pyyaml>=6.0",
+    "requests>=2.31",
+]
+
+[project.scripts]
+best-engine-ai-helper = "best_engine_ai_helper.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["best_engine_ai_helper*"]
+
+[tool.setuptools.package-data]
+"*" = ["models.yaml", "hardware.yaml"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
