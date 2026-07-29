@@ -20,6 +20,17 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+# Maps an application keyword to an ordered list of benchmark keys to try.
+# The first non-null value found in a catalog entry is used as the score.
+_APP_BENCH_PRIORITY: dict[str, list[str]] = {
+    "code":       ["code", "general"],
+    "math":       ["math", "general"],
+    "ocr":        ["ocr", "vision", "general"],
+    "vision":     ["vision", "general"],
+    "chat":       ["general"],
+    "generalist": ["general"],
+}
+
 
 def effective_budget(hw: dict[str, float | None], headroom: float = 0.80) -> float:
     """
@@ -62,12 +73,18 @@ def effective_budget(hw: dict[str, float | None], headroom: float = 0.80) -> flo
     return round(available * headroom, 3)
 
 
-def _benchmark_score(entry: dict[str, Any], kind: Literal["llm", "vlm"]) -> float:
+def _benchmark_score(
+    entry: dict[str, Any],
+    kind: Literal["llm", "vlm"],
+    application: str | None = None,
+) -> float:
     """
     Extract the relevant benchmark score for ranking.
 
-    VLMs are ranked by vision score; LLMs by general score. Falls back to 0
-    when the score is missing so models with absent benchmarks rank last.
+    When *application* is given it is looked up in ``_APP_BENCH_PRIORITY`` and
+    the first non-null benchmark in that priority list is used.  When absent
+    (or unknown) the legacy rule applies: vision score for VLMs, general for
+    LLMs.  Falls back to 0 when no matching score is found.
 
     Parameters
     ----------
@@ -75,6 +92,9 @@ def _benchmark_score(entry: dict[str, Any], kind: Literal["llm", "vlm"]) -> floa
         A catalog entry dict.
     kind : {'llm', 'vlm'}
         The inference kind being selected.
+    application : str or None
+        Optional use-case keyword (e.g. ``"code"``, ``"math"``, ``"ocr"``).
+        ``None`` or ``"generalist"`` use the default kind-based rule.
 
     Returns
     -------
@@ -82,8 +102,18 @@ def _benchmark_score(entry: dict[str, Any], kind: Literal["llm", "vlm"]) -> floa
         Benchmark score, or 0.0 if absent.
     """
     benchmarks = entry.get("benchmarks") or {}
+
+    if application:
+        priority = _APP_BENCH_PRIORITY.get(application.lower())
+        if priority:
+            for key in priority:
+                val = benchmarks.get(key)
+                if val is not None:
+                    return float(val)
+            return 0.0
+
+    # Default: vision axis for VLMs, general for LLMs
     if kind == "vlm":
-        # Vision score is the primary axis for VLMs; fall back to general
         score = benchmarks.get("vision") or benchmarks.get("general") or 0
     else:
         score = benchmarks.get("general") or 0
@@ -95,6 +125,7 @@ def select(
     catalog: list[dict[str, Any]],
     kind: Literal["llm", "vlm"],
     headroom: float = 0.80,
+    application: str | None = None,
 ) -> dict[str, Any]:
     """
     Pick the best-scoring model that fits in available memory.
@@ -105,7 +136,8 @@ def select(
 
     Selection order:
     1. Filter: keep entries whose ``ram_gb`` fits within the effective budget.
-    2. Rank: sort by benchmark score (vision for VLM, general for LLM).
+    2. Rank: sort by benchmark score (application-specific if given, else
+       vision for VLM or general for LLM).
     3. Last resort: if nothing fits, return the smallest model in the catalog
        rather than raising; the caller decides whether to warn the user.
 
@@ -119,6 +151,10 @@ def select(
         The type of model to select.
     headroom : float
         Safety margin applied to available memory. Default 0.80.
+    application : str or None
+        Optional use-case keyword (``"code"``, ``"math"``, ``"ocr"``,
+        ``"vision"``, ``"chat"``, ``"generalist"``).  Selects the benchmark
+        axis used for scoring.  ``None`` uses the default kind-based rule.
 
     Returns
     -------
@@ -158,8 +194,7 @@ def select(
     fitting = [e for e in candidates if float(e.get("ram_gb", 0)) <= budget]
 
     if fitting:
-        # Pick highest benchmark score among models that fit
-        return max(fitting, key=lambda e: _benchmark_score(e, kind))
+        return max(fitting, key=lambda e: _benchmark_score(e, kind, application))
 
     # Nothing fits: return the smallest model as a last resort so the caller
     # can surface a useful warning rather than crashing entirely
@@ -171,6 +206,7 @@ def rank(
     catalog: list[dict[str, Any]],
     kind: Literal["llm", "vlm"],
     headroom: float = 0.80,
+    application: str | None = None,
 ) -> list[dict[str, Any]]:
     """
     Return all candidates sorted by benchmark score, annotated with fit status.
@@ -189,6 +225,10 @@ def rank(
         The inference kind to filter and rank by.
     headroom : float
         Safety margin. Default 0.80.
+    application : str or None
+        Optional use-case keyword (``"code"``, ``"math"``, ``"ocr"``,
+        ``"vision"``, ``"chat"``, ``"generalist"``).  Drives which benchmark
+        column is used for ranking.
 
     Returns
     -------
@@ -212,11 +252,10 @@ def rank(
 
     budget = effective_budget(hw, headroom=headroom)
 
-    # Annotate with fit status before sorting so the flag travels with the entry
     annotated = []
     for entry in candidates:
         copy = dict(entry)
         copy["_fits"] = float(entry.get("ram_gb", 0)) <= budget
         annotated.append(copy)
 
-    return sorted(annotated, key=lambda e: _benchmark_score(e, kind), reverse=True)
+    return sorted(annotated, key=lambda e: _benchmark_score(e, kind, application), reverse=True)

@@ -102,6 +102,9 @@ def detect_cmd(as_json: bool) -> None:
 # recommend
 # ---------------------------------------------------------------------------
 
+_VALID_APPLICATIONS = ["code", "math", "ocr", "vision", "chat", "generalist"]
+
+
 @main.command("recommend")
 @click.option(
     "--kind",
@@ -117,7 +120,18 @@ def detect_cmd(as_json: bool) -> None:
     show_default=True,
     help="Safety headroom fraction (0-1) applied to available memory.",
 )
-def recommend_cmd(kind: str, headroom: float) -> None:
+@click.option(
+    "--application",
+    type=click.Choice(_VALID_APPLICATIONS),
+    default=None,
+    show_default=False,
+    help=(
+        "Target use-case: code, math, ocr, vision, chat, generalist. "
+        "Selects the benchmark axis used for ranking. "
+        "Omit for the default kind-based rule (vision for VLM, general for LLM)."
+    ),
+)
+def recommend_cmd(kind: str, headroom: float, application: str | None) -> None:
     """Print ranked model candidates for this hardware (dry run, no pull)."""
     hw = _detect.available_memory()
     entries = _catalog.load_catalog()
@@ -125,8 +139,12 @@ def recommend_cmd(kind: str, headroom: float) -> None:
     kinds: list[str] = ["llm", "vlm"] if kind == "both" else [kind]
 
     for k in kinds:
-        ranked = _score.rank(hw, entries, kind=k, headroom=headroom)  # type: ignore[arg-type]
-        click.echo(f"\n=== {k.upper()} candidates ===")
+        ranked = _score.rank(hw, entries, kind=k, headroom=headroom, application=application)  # type: ignore[arg-type]
+        header = f"\n=== {k.upper()} candidates"
+        if application:
+            header += f" [{application}]"
+        header += " ==="
+        click.echo(header)
         rows = []
         for e in ranked:
             rows.append({
@@ -223,7 +241,14 @@ def hardware_update() -> None:
               help="Do not remove failed models after a gate failure.")
 @click.option("--vllm", is_flag=True, default=False,
               help="Print the vLLM serve command for the HuggingFace model instead of pulling.")
-def pull_cmd(keep_failed: bool, vllm: bool) -> None:
+@click.option(
+    "--application",
+    type=click.Choice(_VALID_APPLICATIONS),
+    default=None,
+    show_default=False,
+    help="Target use-case (code, math, ocr, vision, chat, generalist). Biases model selection.",
+)
+def pull_cmd(keep_failed: bool, vllm: bool, application: str | None) -> None:
     """Pull the best model and run Ralph validation gates.
 
     Detects hardware, ranks candidates, pulls the top model, runs both the
@@ -240,7 +265,7 @@ def pull_cmd(keep_failed: bool, vllm: bool) -> None:
     entries = _catalog.load_catalog()
 
     # Rank VLM candidates; the best VLM also covers text tasks
-    ranked = _score.rank(hw, entries, kind="vlm")
+    ranked = _score.rank(hw, entries, kind="vlm", application=application)
     fitting = [e for e in ranked if e.get("_fits")]
     if not fitting:
         click.echo("No model fits in available memory. Trying the smallest anyway.", err=True)
