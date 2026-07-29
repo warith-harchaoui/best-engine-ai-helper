@@ -7,7 +7,7 @@ name = "best-engine-ai-helper"
 version = "0.1.0"
 description = "Pick and pull the best local LLM/VLM for the current hardware."
 authors = [{name = "Warith Harchaoui", email = "warith.harchaoui@gmail.com"}]
-license = {text = "MIT"}
+license = {text = "BSD-3-Clause"}
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

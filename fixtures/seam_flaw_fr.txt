@@ -1,0 +1,6 @@
+Le catalogue de modèles est mis à jour automatiquement depuis quatre sources
+externes. Chaque source est consultée dans un ordre de priorité défini,
+et les entrées les plus récentes écrasent les entrées correspondantes du cache.
+
+Par ailleurs, la mémoire unifiée des puces Apple Silicon permet à Ollama
+d'utiliser la totalité du pool disponible sans partage avec un GPU discret.

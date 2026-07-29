@@ -135,18 +135,32 @@ def test_stub_commands_exit_nonzero(runner: CliRunner, args: list[str]) -> None:
 
 
 @pytest.mark.parametrize("args", [
-    ["pull"],
-    ["validate"],
-    ["env"],
     ["catalog", "update"],
     ["hardware", "update"],
 ])
 def test_stub_commands_print_not_yet_implemented(
     runner: CliRunner, args: list[str]
 ) -> None:
+    """catalog update and hardware update remain Phase 0b stubs."""
     result = runner.invoke(main, args)
-    # The message goes to stderr; CliRunner mixes streams by default
     combined = (result.output or "") + (result.stderr if hasattr(result, "stderr") else "")
     assert "not yet implemented" in combined.lower() or "phase 0b" in combined.lower(), (
         f"Stub {args} should say 'not yet implemented', got: {combined!r}"
     )
+
+
+def test_env_missing_reports_gracefully(runner: CliRunner) -> None:
+    """env command reports that env.sh is missing when pull has not been run."""
+    result = runner.invoke(main, ["env"])
+    combined = (result.output or "") + (result.stderr if hasattr(result, "stderr") else "")
+    # Either env.sh not found or BEST_LLM_TEXT not set; both are acceptable messages
+    assert "env.sh" in combined.lower() or "best_llm" in combined.lower(), (
+        f"env command should report missing env.sh or unconfigured model, got: {combined!r}"
+    )
+
+
+def test_validate_missing_env_reports_gracefully(runner: CliRunner) -> None:
+    """validate command reports missing configuration when env.sh is absent."""
+    result = runner.invoke(main, ["validate"])
+    combined = (result.output or "") + (result.stderr if hasattr(result, "stderr") else "")
+    assert combined.strip(), "validate should produce output even with no model configured"

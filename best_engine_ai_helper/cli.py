@@ -24,6 +24,7 @@ Warith Harchaoui <warith.harchaoui@gmail.com>
 from __future__ import annotations
 
 import json
+import os
 import sys
 
 import click
@@ -214,27 +215,129 @@ def hardware_update() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Phase 0b stubs
+# Phase 0b — pull, validate, env (fully implemented)
 # ---------------------------------------------------------------------------
 
 @main.command("pull")
-@click.option("--keep-failed", is_flag=True, default=False, help="Do not remove failed models.")
-@click.option("--vllm", is_flag=True, default=False, help="Print vLLM serve command instead.")
+@click.option("--keep-failed", is_flag=True, default=False,
+              help="Do not remove failed models after a gate failure.")
+@click.option("--vllm", is_flag=True, default=False,
+              help="Print the vLLM serve command for the HuggingFace model instead of pulling.")
 def pull_cmd(keep_failed: bool, vllm: bool) -> None:
-    """[Phase 0b] Pull the best model and run Ralph validation gates."""
-    click.echo("pull: not yet implemented (Phase 0b).", err=True)
+    """Pull the best model and run Ralph validation gates.
+
+    Detects hardware, ranks candidates, pulls the top model, runs both the
+    VLM gate (validate_vlm) and the prose gate (validate_llm). If both pass,
+    writes ~/.best-engine-ai-helper/env.sh and exits. If either fails, removes
+    the model (unless --keep-failed) and tries the next candidate.
+    """
+    from . import llm as _llm
+    from . import pull as _pull
+    from . import validate_llm as _validate_llm
+    from . import validate_vlm as _validate_vlm
+
+    hw = _detect.available_memory()
+    entries = _catalog.load_catalog()
+
+    # Rank VLM candidates; the best VLM also covers text tasks
+    ranked = _score.rank(hw, entries, kind="vlm")
+    fitting = [e for e in ranked if e.get("_fits")]
+    if not fitting:
+        click.echo("No model fits in available memory. Trying the smallest anyway.", err=True)
+        fitting = ranked[:1]
+
+    for candidate in fitting:
+        tag = candidate["id"]
+        hf_id = candidate.get("vllm_id")
+
+        if vllm:
+            # Print the vLLM serve command for the user to run manually
+            click.echo(f"vllm serve {hf_id or tag} --port 8000")
+            sys.exit(0)
+
+        click.echo(f"Pulling {tag} ...")
+        ok = _pull.ollama_pull(tag)
+        if not ok:
+            click.echo(f"ollama pull {tag} failed. Skipping.", err=True)
+            continue
+
+        click.echo(f"Running VLM gate on {tag} ...")
+        vlm_ok = _validate_vlm.validate(_llm.chat)
+        click.echo(f"Running prose gate on {tag} ...")
+        llm_ok = _validate_llm.validate(_llm.chat)
+
+        if vlm_ok and llm_ok:
+            # Both gates passed: write env.sh and exit successfully
+            env_path = _pull.write_env(
+                text_model=tag,
+                vision_model=tag,
+                backend=os.environ.get("SPREZZATURE_LLM_BACKEND", "ollama"),
+                base_url=os.environ.get("SPREZZATURE_LLM_BASE_URL", "http://localhost:11434"),
+            )
+            click.echo(f"Both gates passed. Config written to {env_path}")
+            click.echo(f"Source it: source {env_path}")
+            sys.exit(0)
+        else:
+            click.echo(
+                f"{tag} failed: VLM={'pass' if vlm_ok else 'FAIL'}, "
+                f"prose={'pass' if llm_ok else 'FAIL'}",
+                err=True,
+            )
+            if not keep_failed:
+                click.echo(f"Removing {tag} ...", err=True)
+                _pull.ollama_rm(tag)
+
+    click.echo("No candidate passed both gates.", err=True)
     sys.exit(1)
 
 
 @main.command("validate")
 def validate_cmd() -> None:
-    """[Phase 0b] Run Ralph gates on the already-configured model."""
-    click.echo("validate: not yet implemented (Phase 0b).", err=True)
-    sys.exit(1)
+    """Run Ralph gates on the already-configured model.
+
+    Reads BEST_LLM_TEXT / BEST_LLM_VISION from the environment (sourced from
+    env.sh) and validates both gates. Useful after a manual ollama pull or
+    after an OS update changes GPU availability.
+    """
+    from . import llm as _llm
+    from . import validate_llm as _validate_llm
+    from . import validate_vlm as _validate_vlm
+
+    text_model = os.environ.get("BEST_LLM_TEXT", os.environ.get("SPREZZATURE_LLM_TEXT", ""))
+    if not text_model:
+        click.echo(
+            "BEST_LLM_TEXT is not set. Run `pull` first or source env.sh.",
+            err=True,
+        )
+        sys.exit(1)
+
+    click.echo(f"Validating {text_model} ...")
+    vlm_ok = _validate_vlm.validate(_llm.chat)
+    llm_ok = _validate_llm.validate(_llm.chat)
+
+    click.echo(f"VLM gate: {'pass' if vlm_ok else 'FAIL'}")
+    click.echo(f"Prose gate: {'pass' if llm_ok else 'FAIL'}")
+
+    if not (vlm_ok and llm_ok):
+        sys.exit(1)
 
 
 @main.command("env")
 def env_cmd() -> None:
-    """[Phase 0b] Print the env block ready for ~/.zshrc or sourcing."""
-    click.echo("env: not yet implemented (Phase 0b).", err=True)
-    sys.exit(1)
+    """Print the env block ready for ~/.zshrc or sourcing.
+
+    Reads the written env.sh from ~/.best-engine-ai-helper/env.sh and prints
+    it to stdout. If the file does not exist, suggests running pull first.
+    """
+    from pathlib import Path
+
+    env_path = Path.home() / ".best-engine-ai-helper" / "env.sh"
+    if not env_path.exists():
+        click.echo(
+            "env.sh not found. Run `best-engine-ai-helper pull` first.",
+            err=True,
+        )
+        sys.exit(1)
+
+    # Print the env block for the user to inspect or pipe to a shell
+    click.echo(env_path.read_text(encoding="utf-8"), nl=False)

@@ -1,0 +1,3 @@
+The model selected by the algorithm — which scored highest on vision benchmarks
+— is pulled first and validated against both Ralph gates before any other candidate
+is considered.

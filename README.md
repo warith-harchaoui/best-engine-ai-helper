@@ -82,4 +82,4 @@ Projects that consume the selected model source this file or read the companion 
 
 ## License
 
-MIT. Copyright 2026 Warith Harchaoui.
+[BSD-3-Clause](LICENSE). Copyright 2026 Warith Harchaoui.
