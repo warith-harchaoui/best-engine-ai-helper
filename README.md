@@ -45,7 +45,7 @@ best-engine-ai-helper catalog show
 best-engine-ai-helper hardware show
 ```
 
-See [EXAMPLES.md](EXAMPLES.md) for runnable recipes with expected output.
+See [EXAMPLES.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXAMPLES.md) for runnable recipes with expected output.
 
 ## How selection works
 
@@ -118,4 +118,4 @@ Projects that consume the selected model source this file or read the companion 
 
 ## License
 
-[BSD-3-Clause](LICENSE). Copyright 2026 Warith Harchaoui.
+[BSD-3-Clause](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/LICENSE). Copyright 2026 Warith Harchaoui.
