@@ -72,6 +72,25 @@ best-engine-ai-helper recommend --headroom 0.5
 
 ---
 
+## report
+
+Recommend the best engine(s) for a task and write both a Markdown report and a
+JSON file. The task can be a vague phrase; vision words add a VLM.
+
+```sh
+best-engine-ai-helper report \
+    --task "retail product descriptions and image-quality checks" \
+    --out engine
+# wrote engine.md and engine.json
+```
+
+The report states, for each needed kind, the chosen model with its memory fit
+and estimated tokens/s, a lighter/faster alternative when one is close, the full
+ranked candidate table, and the sourced rationale. Print JSON instead of
+Markdown with `--format json` (omit `--out` to only print).
+
+---
+
 ## catalog show
 
 Print the full merged model catalog (bundled seed plus any local cache updates).
@@ -115,19 +134,39 @@ print(best_vlm["id"])        # e.g. 'qwen3-vl:72b' on a 96 GB machine
 print(best_vlm["ram_gb"])    # e.g. 52.0
 
 best_llm = select(hw, catalog, kind="llm")
-print(best_llm["id"])        # e.g. 'qwen3:72b-q8_0' on a 96 GB machine
+print(best_llm["id"])        # e.g. 'qwen3:72b-q4_k_m' on a 96 GB machine
+```
+
+The full recommendation algorithm (memory + compute + task) is one call:
+
+```python
+from best_engine_ai_helper import recommend_engines, to_markdown
+from best_engine_ai_helper.detect import available_memory, compute_profile
+from best_engine_ai_helper.catalog import load_catalog
+
+report = recommend_engines(
+    available_memory(),
+    load_catalog(),
+    task="product descriptions and image-quality checks",
+    compute=compute_profile(),
+)
+print(report["recommendations"]["vlm"]["chosen"]["id"])   # best VLM
+print(to_markdown(report))                                # human-readable report
 ```
 
 ---
 
-## Phase 0b commands (not yet available)
-
-The following commands are planned for Phase 0b:
+## pull, validate, env
 
 ```sh
 best-engine-ai-helper pull            # pull the best model; run Ralph gates
 best-engine-ai-helper validate        # re-run Ralph gates on the current model
 best-engine-ai-helper env             # print env block for ~/.zshrc
-best-engine-ai-helper catalog update  # refresh catalog from 4 external sources
-best-engine-ai-helper hardware update # refresh hardware table from TechPowerUp
+```
+
+Still stubs (print a notice):
+
+```sh
+best-engine-ai-helper catalog update  # refresh catalog from external sources
+best-engine-ai-helper hardware update # refresh hardware table
 ```

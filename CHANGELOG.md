@@ -2,6 +2,42 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
+## [0.2.0] — 2026-07-30
+
+Hardware-aware recommendation that weighs memory, accelerator, and compute, and
+emits a justifiable report in Markdown and JSON.
+
+### Added
+
+- `recommend.py`: the end-to-end algorithm. Takes a hardware description, the
+  benchmark catalog, and a (possibly vague, free-text) task, and returns the
+  best engine per needed kind (LLM/VLM), each justified by task fit, memory fit,
+  and estimated throughput. `parse_task` maps a phrase to a benchmark axis and
+  the model kinds it needs. `to_markdown` / `write_report` render the result;
+  the report round-trips through JSON.
+- `report` CLI command: `--task "…" --out <stem> [--format md|json]` writes
+  `<stem>.md` and `<stem>.json`.
+- `detect.compute_profile()` and `detect.chip_name()`: accelerator kind and
+  Apple-Silicon memory bandwidth (published specs), used for the throughput
+  estimate.
+- `score.estimated_tokens_per_second()`: bandwidth-bound decode-speed estimate.
+
+### Changed
+
+- **Memory budget model.** `effective_budget` now applies the Apple Metal
+  GPU-usable cap (~66% ≤36 GB, ~75% >36 GB of unified memory) instead of
+  treating the whole pool as usable, then a default `headroom` of 0.85 (was a
+  flat 0.80 of everything) for the OS, workload, and KV growth. This stops the
+  tool from steering toward RAM-maxing models that leave no room to work.
+- Reliability: model-call timeout is now bounded and configurable via
+  `SPREZZATURE_LLM_TIMEOUT` (default 120s, was a fixed 600s), so validation
+  terminates predictably on a light model.
+
+### Fixed
+
+- Stale CLI test that treated the implemented `pull` / `validate` commands as
+  stubs and hung the suite by driving the live model loop.
+
 ## [0.1.0] — 2026-07-28
 
 First release. Phase 0a: pure Python, no model download required.

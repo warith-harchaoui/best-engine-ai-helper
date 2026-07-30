@@ -32,12 +32,43 @@ _APP_BENCH_PRIORITY: dict[str, list[str]] = {
 }
 
 
-def effective_budget(hw: dict[str, float | None], headroom: float = 0.80) -> float:
-    """
-    Compute the effective RAM budget for model loading.
+# Fraction of an Apple Silicon unified-memory pool the GPU (Metal) may use
+# before allocations spill to CPU and inference slows sharply. macOS sets this
+# recommendedMaxWorkingSetSize at ~66% for pools of 36 GB or less and ~75%
+# above that. Treating the *whole* pool as usable (the old behaviour) over-
+# promises: it steers you to a model that technically loads but leaves no room
+# for the OS, your own application, or KV-cache growth. Source: apple-specs /
+# Metal working-set docs; see references/CODING.md.
+_APPLE_GPU_FRACTION_SMALL = 0.66
+_APPLE_GPU_FRACTION_LARGE = 0.75
+_APPLE_SMALL_POOL_GB = 36.0
 
-    Applies the safety headroom to the highest-priority memory pool detected
-    on the current machine.
+# Discrete-GPU VRAM is almost entirely usable; leave a small margin for the
+# driver context. CPU-only inference is bounded by system RAM, but you never
+# want to hand all of it to a model, so treat half as the working budget.
+_DISCRETE_VRAM_FRACTION = 0.92
+_CPU_RAM_FRACTION = 0.5
+
+# Real-world decode throughput as a fraction of the memory-bandwidth ceiling.
+# Token generation reads the active model once per token, so the ceiling is
+# bandwidth / model-bytes; attention over the KV cache, kernel launches, and
+# sampling pull the achieved rate down to roughly 50-80%. 0.65 is a mid,
+# deliberately conservative point. Source: llama.cpp / MLX community benchmarks;
+# see references/CODING.md.
+_DECODE_EFFICIENCY = 0.65
+
+
+def effective_budget(hw: dict[str, float | None], headroom: float = 0.85) -> float:
+    """
+    Compute the memory budget (GB) a model may occupy at run time.
+
+    The budget is the accelerator's usable memory pool, scaled by an extra
+    ``headroom`` margin left for the operating system, your own application, and
+    KV-cache growth as context fills. On Apple Silicon the usable pool is *not*
+    the whole unified memory: Metal caps GPU allocations at about 66% of the
+    pool at or below 36 GB and about 75% above it, beyond which inference spills
+    to CPU. Compare a catalog entry's ``ram_gb`` (already a peak-inference
+    estimate, weights plus a moderate KV cache) against this budget.
 
     Parameters
     ----------
@@ -45,8 +76,8 @@ def effective_budget(hw: dict[str, float | None], headroom: float = 0.80) -> flo
         Output of :func:`detect.available_memory`. Expected keys:
         ``unified_gb``, ``vram_gb``, ``ram_gb``.
     headroom : float
-        Fraction of the available pool to treat as usable. Defaults to 0.80,
-        leaving 20% as a safety margin for OS overhead and peak spikes.
+        Extra safety fraction applied on top of the accelerator cap, reserving
+        room for the OS, the caller's workload, and KV growth. Default 0.85.
 
     Returns
     -------
@@ -56,21 +87,59 @@ def effective_budget(hw: dict[str, float | None], headroom: float = 0.80) -> flo
     Examples
     --------
     >>> effective_budget({'unified_gb': 96.0, 'vram_gb': None, 'ram_gb': 96.0})
-    76.8
+    61.2
     >>> effective_budget({'unified_gb': None, 'vram_gb': 24.0, 'ram_gb': 64.0})
-    19.2
+    18.768
     """
     if hw.get("unified_gb"):
-        # Apple Silicon: entire unified pool is available to Ollama
-        available = float(hw["unified_gb"])  # type: ignore[arg-type]
+        pool = float(hw["unified_gb"])  # type: ignore[arg-type]
+        cap = (
+            _APPLE_GPU_FRACTION_LARGE
+            if pool > _APPLE_SMALL_POOL_GB
+            else _APPLE_GPU_FRACTION_SMALL
+        )
+        available = pool * cap
     elif hw.get("vram_gb"):
-        # Discrete GPU: VRAM is the inference budget
-        available = float(hw["vram_gb"])  # type: ignore[arg-type]
+        available = float(hw["vram_gb"]) * _DISCRETE_VRAM_FRACTION  # type: ignore[arg-type]
     else:
-        # CPU-only: use half of system RAM as a conservative estimate
-        available = float(hw.get("ram_gb") or 8.0) * 0.5
+        available = float(hw.get("ram_gb") or 8.0) * _CPU_RAM_FRACTION
 
     return round(available * headroom, 3)
+
+
+def estimated_tokens_per_second(
+    entry: dict[str, Any], bandwidth_gbs: float | None
+) -> float | None:
+    """
+    Estimate local decode throughput (tokens/s) for a model on this machine.
+
+    Token generation is memory-bandwidth bound: each new token requires reading
+    the model's active weights from memory once, so the ceiling is
+    ``bandwidth / model_bytes``. The estimate derates that ceiling by
+    :data:`_DECODE_EFFICIENCY` to reflect KV-cache reads, kernel overhead, and
+    sampling. It describes steady-state generation, not the compute-bound
+    prefill of a long prompt.
+
+    Parameters
+    ----------
+    entry : dict[str, Any]
+        Catalog entry; uses ``ram_gb`` as the active-model size proxy.
+    bandwidth_gbs : float or None
+        Memory bandwidth in GB/s from :func:`detect.compute_profile`. When None
+        (unknown hardware) the estimate is not computable and None is returned.
+
+    Returns
+    -------
+    float or None
+        Estimated tokens/s, rounded to one decimal, or None when bandwidth or
+        model size is unavailable.
+    """
+    if not bandwidth_gbs:
+        return None
+    ram = float(entry.get("ram_gb", 0) or 0)
+    if ram <= 0:
+        return None
+    return round(bandwidth_gbs / ram * _DECODE_EFFICIENCY, 1)
 
 
 def _benchmark_score(
@@ -124,7 +193,7 @@ def select(
     hw: dict[str, float | None],
     catalog: list[dict[str, Any]],
     kind: Literal["llm", "vlm"],
-    headroom: float = 0.80,
+    headroom: float = 0.85,
     application: str | None = None,
 ) -> dict[str, Any]:
     """
@@ -150,7 +219,7 @@ def select(
     kind : {'llm', 'vlm'}
         The type of model to select.
     headroom : float
-        Safety margin applied to available memory. Default 0.80.
+        Extra safety on top of the accelerator cap. Default 0.85.
     application : str or None
         Optional use-case keyword (``"code"``, ``"math"``, ``"ocr"``,
         ``"vision"``, ``"chat"``, ``"generalist"``).  Selects the benchmark
@@ -205,7 +274,7 @@ def rank(
     hw: dict[str, float | None],
     catalog: list[dict[str, Any]],
     kind: Literal["llm", "vlm"],
-    headroom: float = 0.80,
+    headroom: float = 0.85,
     application: str | None = None,
 ) -> list[dict[str, Any]]:
     """
@@ -224,7 +293,7 @@ def rank(
     kind : {'llm', 'vlm'}
         The inference kind to filter and rank by.
     headroom : float
-        Safety margin. Default 0.80.
+        Extra safety on top of the accelerator cap. Default 0.85.
     application : str or None
         Optional use-case keyword (``"code"``, ``"math"``, ``"ocr"``,
         ``"vision"``, ``"chat"``, ``"generalist"``).  Drives which benchmark

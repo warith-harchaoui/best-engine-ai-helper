@@ -35,6 +35,9 @@ best-engine-ai-helper detect
 # See which models would be selected (no download)
 best-engine-ai-helper recommend
 
+# Recommend the best engine(s) for a task, as a report (Markdown + JSON)
+best-engine-ai-helper report --task "product descriptions and image-quality checks" --out engine
+
 # Browse the full catalog
 best-engine-ai-helper catalog show
 
@@ -46,16 +49,49 @@ See [EXAMPLES.md](EXAMPLES.md) for runnable recipes with expected output.
 
 ## How selection works
 
-Available memory is determined by the highest-priority probe that succeeds:
+Selection weighs three factors, each made explicit in the `report` output so the
+recommendation is reproducible and can be argued with.
 
-1. Apple Silicon unified memory (`system_profiler SPHardwareDataType`)
-2. NVIDIA VRAM summed across all GPUs (`nvidia-smi`)
-3. AMD VRAM (`rocm-smi`)
-4. Half of system RAM as a conservative CPU-only estimate
+### 1. Memory fit (will it run on the accelerator?)
 
-A model fits when its estimated peak inference RAM is at most 80% of the available pool (the headroom leaves room for OS overhead and KV cache spikes). Among all fitting models, the highest benchmark score wins: vision score for VLM selection, general score for LLM selection.
+Available memory comes from the highest-priority probe that succeeds: Apple
+Silicon unified memory (`system_profiler`), NVIDIA VRAM (`nvidia-smi`), AMD VRAM
+(`rocm-smi`), else half of system RAM as a conservative CPU-only estimate.
 
-When nothing fits, the tool selects the smallest model in the catalog and prints a warning; the user can then decide to free memory or accept the constraint.
+The usable budget is **not** the whole pool. On Apple Silicon, Metal caps GPU
+allocations at about **66%** of unified memory at or below 36 GB and about
+**75%** above it (`recommendedMaxWorkingSetSize`); past that, work spills to the
+CPU and slows sharply. An extra safety `headroom` (default **0.85**) is applied
+on top, reserving room for the OS, your own application, and KV-cache growth as
+context fills. A catalog entry's `ram_gb` is already a peak-inference estimate
+(weights plus a moderate KV cache; roughly weights ÷ 0.7, since weights are only
+about 70% of runtime memory and can approach 2× at long context). A model fits
+when that `ram_gb` is at most the budget.
+
+### 2. Task fit (is it good at the job?)
+
+A task — even a vague phrase like *"retail descriptions and image-quality
+checks"* — maps to a benchmark axis (`generalist`, `code`, `math`, `ocr`,
+`vision`) and to the model kinds it needs (text ⇒ LLM, anything visual ⇒ VLM).
+Among fitting models, the highest benchmark on that axis wins.
+
+### 3. Throughput (how fast will it generate?)
+
+Token generation is **memory-bandwidth bound**: each token reads the active
+model from memory once, so the ceiling is `bandwidth ÷ model-size`, derated to
+about 65% for KV-cache reads and overhead. `report` estimates tokens/s per
+candidate from the chip's memory bandwidth, and offers a lighter, faster
+alternative when one is nearly as strong. Bigger is not automatically better: a
+72B model that technically fits may run at a few tokens/s, while an 8–14B model
+leaves headroom and runs several times faster.
+
+When nothing fits, the tool falls back to the smallest model and says so.
+
+**Sources.** Apple Metal working-set cap (Apple developer docs / apple-specs);
+inference-memory breakdown weights + KV (15–20%) + overhead (5–10%) (local-LLM
+sizing guides); bandwidth-bound decode `tok/s ≈ bandwidth ÷ active-bytes × 0.5–0.8`
+(llama.cpp / MLX community benchmarks). The exact ratios live as documented
+constants in `score.py`.
 
 ## Model catalog
 

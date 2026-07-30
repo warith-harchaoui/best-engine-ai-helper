@@ -33,6 +33,9 @@ from . import catalog as _catalog
 from . import detect as _detect
 from . import hardware as _hardware
 from . import score as _score
+from .recommend import recommend as _recommend_engines
+from .recommend import to_markdown as _report_markdown
+from .recommend import write_report as _write_report
 
 # ---------------------------------------------------------------------------
 # Formatting helpers
@@ -116,7 +119,7 @@ _VALID_APPLICATIONS = ["code", "math", "ocr", "vision", "chat", "generalist"]
 @click.option(
     "--headroom",
     type=float,
-    default=0.80,
+    default=0.85,
     show_default=True,
     help="Safety headroom fraction (0-1) applied to available memory.",
 )
@@ -161,6 +164,55 @@ def recommend_cmd(kind: str, headroom: float, application: str | None) -> None:
         click.echo(_fmt_table(rows, ["id", "ram_gb", "score", "fits", "notes"]))
 
     click.echo()
+
+
+@main.command("report")
+@click.option(
+    "--task",
+    type=str,
+    default=None,
+    help=(
+        "Free-text task, e.g. \"retail product descriptions and image-quality "
+        "checks\". Vision words add a VLM; code/math/ocr words pick the axis. "
+        "Omit for a general text assistant."
+    ),
+)
+@click.option(
+    "--headroom",
+    type=float,
+    default=0.85,
+    show_default=True,
+    help="Memory safety fraction on top of the accelerator cap.",
+)
+@click.option(
+    "--out",
+    type=str,
+    default=None,
+    help="Path stem to write <stem>.md and <stem>.json. Omit to only print.",
+)
+@click.option(
+    "--format",
+    "fmt",
+    type=click.Choice(["md", "json"]),
+    default="md",
+    show_default=True,
+    help="What to print to stdout.",
+)
+def report_cmd(task: str | None, headroom: float, out: str | None, fmt: str) -> None:
+    """Recommend the best engine(s) for this hardware and task; emit MD + JSON."""
+    hw = _detect.available_memory()
+    compute = _detect.compute_profile()
+    entries = _catalog.load_catalog()
+    rep = _recommend_engines(hw, entries, task=task, headroom=headroom, compute=compute)
+
+    if out:
+        md_path, json_path = _write_report(rep, out)
+        click.echo(f"wrote {md_path} and {json_path}", err=True)
+
+    if fmt == "json":
+        click.echo(json.dumps(rep, indent=2))
+    else:
+        click.echo(_report_markdown(rep))
 
 
 # ---------------------------------------------------------------------------

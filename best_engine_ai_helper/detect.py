@@ -185,6 +185,81 @@ def _apple_unified_gb() -> float | None:
     return None
 
 
+def chip_name() -> str | None:
+    """Return the Apple Silicon chip name (e.g. ``"Apple M2 Max"``), or None.
+
+    Read from ``system_profiler`` on macOS; None on other platforms or when the
+    chip line is absent.
+    """
+    if platform_name() != "darwin":
+        return None
+    out = _run(["system_profiler", "SPHardwareDataType"])
+    for line in out.splitlines():
+        if "Chip:" in line:
+            return line.partition("Chip:")[2].strip() or None
+    return None
+
+
+# Apple Silicon unified-memory bandwidth in GB/s, by chip, from Apple's
+# published specifications. Bandwidth is the dominant factor in local decode
+# speed (token generation is memory-bandwidth bound: see references/CODING.md),
+# so it, not raw core count, is what the throughput estimate keys on. Values
+# are the per-chip figures Apple lists; higher-binned variants of the same
+# name share the ceiling closely enough for planning. Source: apple-specs.
+_APPLE_BANDWIDTH_GBS: dict[str, float] = {
+    "M1 Ultra": 800.0, "M1 Max": 400.0, "M1 Pro": 200.0, "M1": 68.0,
+    "M2 Ultra": 800.0, "M2 Max": 400.0, "M2 Pro": 200.0, "M2": 100.0,
+    "M3 Ultra": 800.0, "M3 Max": 300.0, "M3 Pro": 150.0, "M3": 100.0,
+    "M4 Max": 546.0, "M4 Pro": 273.0, "M4": 120.0,
+}
+
+
+def _apple_bandwidth_gbs(chip: str | None) -> float | None:
+    """Look up unified-memory bandwidth for an Apple chip name.
+
+    Matches the most specific chip label first (``M2 Max`` before ``M2``) so a
+    Pro/Max/Ultra variant is not mistaken for the base chip.
+    """
+    if not chip:
+        return None
+    for label in sorted(_APPLE_BANDWIDTH_GBS, key=len, reverse=True):
+        if label in chip:
+            return _APPLE_BANDWIDTH_GBS[label]
+    return None
+
+
+def compute_profile() -> dict[str, Any]:
+    """Describe the machine's inference accelerator and memory bandwidth.
+
+    Returns a dict with:
+
+    - ``accelerator``: ``"gpu-metal"`` (Apple Silicon), ``"gpu-cuda"`` (NVIDIA),
+      ``"gpu-rocm"`` (AMD), or ``"cpu"`` (no discrete accelerator detected).
+    - ``chip``: the chip / GPU name when known, else None.
+    - ``bandwidth_gbs``: memory bandwidth in GB/s when known, else None. This is
+      the ceiling on decode throughput; token generation reads the whole active
+      model from memory once per token, so tokens/s scales with it.
+
+    Bandwidth is only tabulated for Apple Silicon here (published specs);
+    discrete-GPU bandwidth is left None because VRAM size, not bandwidth, is the
+    binding constraint the catalog already models, and the figure varies by
+    exact board. Callers treat a None bandwidth as "throughput not estimated".
+    """
+    vendor = chip_vendor()
+    if vendor == "apple":
+        chip = chip_name()
+        return {
+            "accelerator": "gpu-metal",
+            "chip": chip,
+            "bandwidth_gbs": _apple_bandwidth_gbs(chip),
+        }
+    if vendor == "nvidia":
+        return {"accelerator": "gpu-cuda", "chip": None, "bandwidth_gbs": None}
+    if vendor == "amd":
+        return {"accelerator": "gpu-rocm", "chip": None, "bandwidth_gbs": None}
+    return {"accelerator": "cpu", "chip": None, "bandwidth_gbs": None}
+
+
 def _nvidia_vram_gb() -> float | None:
     """
     Sum VRAM across all visible NVIDIA GPUs using nvidia-smi.

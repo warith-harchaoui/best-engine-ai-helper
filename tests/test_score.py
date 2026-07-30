@@ -49,25 +49,27 @@ ALL_MODELS = [SMALL_LLM, SMALL_VLM, MID_LLM, MID_VLM, LARGE_LLM, LARGE_VLM]
 
 def test_effective_budget_uses_unified_first() -> None:
     hw = {"unified_gb": 96.0, "vram_gb": 24.0, "ram_gb": 96.0}
-    # Unified takes priority; 96 * 0.80 = 76.8
-    assert score.effective_budget(hw) == pytest.approx(76.8)
+    # Unified takes priority; >36 GB so Metal cap 0.75, then headroom 0.85:
+    # 96 * 0.75 * 0.85 = 61.2
+    assert score.effective_budget(hw) == pytest.approx(61.2)
 
 
 def test_effective_budget_falls_back_to_vram() -> None:
     hw = {"unified_gb": None, "vram_gb": 24.0, "ram_gb": 64.0}
-    # No unified; VRAM is the inference budget: 24 * 0.80 = 19.2
-    assert score.effective_budget(hw) == pytest.approx(19.2)
+    # No unified; VRAM budget: 24 * 0.92 * 0.85 = 18.768
+    assert score.effective_budget(hw) == pytest.approx(18.768)
 
 
 def test_effective_budget_falls_back_to_half_ram() -> None:
     hw = {"unified_gb": None, "vram_gb": None, "ram_gb": 32.0}
-    # CPU-only: half of RAM, then headroom: 16 * 0.80 = 12.8
-    assert score.effective_budget(hw) == pytest.approx(12.8)
+    # CPU-only: half of RAM, then headroom: 32 * 0.5 * 0.85 = 13.6
+    assert score.effective_budget(hw) == pytest.approx(13.6)
 
 
 def test_effective_budget_custom_headroom() -> None:
     hw = {"unified_gb": 64.0, "vram_gb": None, "ram_gb": 64.0}
-    assert score.effective_budget(hw, headroom=0.90) == pytest.approx(57.6)
+    # >36 GB so cap 0.75; 64 * 0.75 * 0.90 = 43.2
+    assert score.effective_budget(hw, headroom=0.90) == pytest.approx(43.2)
 
 
 # ---------------------------------------------------------------------------
@@ -75,15 +77,15 @@ def test_effective_budget_custom_headroom() -> None:
 # ---------------------------------------------------------------------------
 
 def test_select_vlm_picks_best_vision_that_fits() -> None:
-    # 16 GB unified: budget = 12.8 GB; large-vlm (52 GB) does not fit
-    hw = {"unified_gb": 16.0, "vram_gb": None, "ram_gb": 16.0}
+    # 24 GB unified: budget = 24 * 0.66 * 0.85 = 13.46 GB; large-vlm (52) no fit
+    hw = {"unified_gb": 24.0, "vram_gb": None, "ram_gb": 24.0}
     result = score.select(hw, ALL_MODELS, kind="vlm")
     # mid-vlm (9.0 GB, vision 80) fits and beats small-vlm (3.5 GB, vision 70)
     assert result["id"] == "mid-vlm"
 
 
 def test_select_vlm_on_large_machine_picks_top() -> None:
-    # 96 GB: budget = 76.8 GB; all models fit
+    # 96 GB: budget = 61.2 GB; large-vlm (52) fits and wins
     hw = {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}
     result = score.select(hw, ALL_MODELS, kind="vlm")
     assert result["id"] == "large-vlm"
@@ -102,8 +104,8 @@ def test_select_vlm_last_resort_when_nothing_fits() -> None:
 # ---------------------------------------------------------------------------
 
 def test_select_llm_picks_by_general_score() -> None:
-    # 16 GB budget = 12.8 GB; large-llm (48 GB) and large-vlm (52 GB) don't fit
-    hw = {"unified_gb": 16.0, "vram_gb": None, "ram_gb": 16.0}
+    # 24 GB budget = 13.46 GB; large-llm (48) and large-vlm (52) don't fit
+    hw = {"unified_gb": 24.0, "vram_gb": None, "ram_gb": 24.0}
     result = score.select(hw, ALL_MODELS, kind="llm")
     # mid-llm (10.5 GB, general 78) beats mid-vlm (9.0 GB, general 75)
     # and small-llm (2.2 GB, general 62) and small-vlm (3.5 GB, general 65)
@@ -152,3 +154,21 @@ def test_rank_first_entry_matches_select() -> None:
     # First fitting entry should match
     fitting = [r for r in ranked if r["_fits"]]
     assert fitting[0]["id"] == selected["id"]
+
+
+# ---------------------------------------------------------------------------
+# estimated_tokens_per_second
+# ---------------------------------------------------------------------------
+
+def test_tps_scales_inverse_with_size() -> None:
+    # tok/s = bandwidth / ram * 0.65; smaller model → faster
+    fast = score.estimated_tokens_per_second({"ram_gb": 8.0}, 400.0)
+    slow = score.estimated_tokens_per_second({"ram_gb": 52.0}, 400.0)
+    assert fast is not None and slow is not None
+    assert fast > slow
+    assert score.estimated_tokens_per_second({"ram_gb": 10.0}, 400.0) == pytest.approx(26.0)
+
+
+def test_tps_none_without_bandwidth() -> None:
+    assert score.estimated_tokens_per_second({"ram_gb": 8.0}, None) is None
+    assert score.estimated_tokens_per_second({"ram_gb": 0}, 400.0) is None
