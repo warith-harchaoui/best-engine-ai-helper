@@ -73,6 +73,20 @@ def _api_key() -> str:
     return os.environ.get("SPREZZATURE_LLM_API_KEY", "")
 
 
+def _timeout() -> float:
+    """Per-request timeout in seconds (``SPREZZATURE_LLM_TIMEOUT``, default 120).
+
+    A light local model answers a validation prompt in seconds; a bounded
+    timeout keeps ``validate`` / ``pull`` from stalling forever on a model that
+    is too heavy for the machine or a daemon that never responds. Set it higher
+    only when you knowingly run a large model on modest hardware.
+    """
+    try:
+        return float(os.environ.get("SPREZZATURE_LLM_TIMEOUT", "120"))
+    except ValueError:
+        return 120.0
+
+
 def _resolve_model(model: str | None, images: list[bytes] | None) -> str:
     """
     Pick the correct model tag for a request.
@@ -162,7 +176,7 @@ def _chat_ollama(
 
     url = f"{_base_url()}/api/generate"
     try:
-        resp = requests.post(url, json=payload, timeout=600)
+        resp = requests.post(url, json=payload, timeout=_timeout())
         resp.raise_for_status()
     except requests.RequestException as exc:
         raise RuntimeError(f"Ollama request to {url} failed: {exc}") from exc
@@ -254,7 +268,7 @@ def _chat_openai(
         headers["Authorization"] = f"Bearer {key}"
 
     try:
-        resp = requests.post(url, json=payload, headers=headers, timeout=600)
+        resp = requests.post(url, json=payload, headers=headers, timeout=_timeout())
         resp.raise_for_status()
     except requests.RequestException as exc:
         raise RuntimeError(f"OpenAI-compat request to {url} failed: {exc}") from exc

@@ -117,12 +117,13 @@ def test_hardware_show_contains_apple_m2_max(runner: CliRunner) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Phase 0b stubs — must exit non-zero and print a message
+# Remaining stubs — must exit non-zero and print a message.
+# `pull` and `validate` are implemented (Phase 0b) and drive a live model
+# loop; they are covered by their own graceful-degradation tests below, not
+# here, so this list must never invoke them.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("args", [
-    ["pull"],
-    ["validate"],
     ["env"],
     ["catalog", "update"],
     ["hardware", "update"],
