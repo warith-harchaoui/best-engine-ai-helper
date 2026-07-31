@@ -51,7 +51,7 @@ _STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 app = FastAPI(
     title="Best Engine AI Helper",
-    description="Detect this machine's hardware and recommend the best local LLM/VLM engine(s) for a task.",
+    description="Detect this machine's hardware and recommend the best local LLM/VLM engine(s).",
 )
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
