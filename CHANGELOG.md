@@ -4,6 +4,8 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-07-31
+
 ### Added
 
 - Depend on `os-helper` (`>=1.5.0`) and route all logging through it. Library

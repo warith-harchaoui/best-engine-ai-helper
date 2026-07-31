@@ -77,6 +77,6 @@ __all__ = [
     "DEFAULT_VISION_MODEL",
 ]
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __author__ = "Warith Harchaoui"
 __email__ = "warith.harchaoui@gmail.com"
