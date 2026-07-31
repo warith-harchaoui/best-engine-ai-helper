@@ -20,6 +20,8 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+import os_helper as osh
+
 # Maps an application keyword to an ordered list of benchmark keys to try.
 # The first non-null value found in a catalog entry is used as the score.
 _APP_BENCH_PRIORITY: dict[str, list[str]] = {
@@ -245,6 +247,7 @@ def select(
     True
     """
     if not catalog:
+        osh.error("Catalog is empty; cannot select a model.")
         raise ValueError("Catalog is empty; cannot select a model.")
 
     # VLMs can answer text-only queries, so they count as valid LLM candidates too
@@ -267,7 +270,12 @@ def select(
 
     # Nothing fits: return the smallest model as a last resort so the caller
     # can surface a useful warning rather than crashing entirely
-    return min(candidates, key=lambda e: float(e.get("ram_gb", 0)))
+    smallest = min(candidates, key=lambda e: float(e.get("ram_gb", 0)))
+    osh.warning(
+        f"No {kind} model fits the {budget:.1f} GB budget; "
+        f"falling back to smallest: {smallest.get('id')}"
+    )
+    return smallest
 
 
 def rank(

@@ -23,6 +23,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import os_helper as osh
 import yaml
 
 _PACKAGE_ROOT = Path(__file__).resolve().parent.parent
@@ -46,9 +47,13 @@ def _load_yaml_file(path: Path) -> list[dict[str, Any]]:
     list[dict[str, Any]]
         Parsed entries, or [] if the file is missing or empty.
     """
+    if not osh.file_exists(str(path)):
+        osh.debug(f"Hardware YAML absent, treating as empty:\n\t{path}")
+        return []
     try:
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
+    except yaml.YAMLError as exc:
+        osh.warning(f"Malformed hardware YAML, ignoring:\n\t{path}\n\t{exc}")
         return []
     return list(raw) if raw else []
 
@@ -82,6 +87,7 @@ def load_hardware(hardware_path: Path | None = None) -> list[dict[str, Any]]:
     """
     seed_path = hardware_path if hardware_path is not None else _SEED_PATH
     seed = _load_yaml_file(seed_path)
+    osh.info(f"Loaded {len(seed)} hardware entry(ies) from seed:\n\t{seed_path}")
 
     # Composite key: chip name + memory tier (multiple tiers per chip are common)
     def _key(e: dict[str, Any]) -> tuple[str, float]:
@@ -141,5 +147,7 @@ def lookup_chip(chip_name: str, hardware: list[dict[str, Any]]) -> dict[str, Any
         # Substring match lets 'M2 Max' match 'Apple M2 Max' without
         # requiring the caller to know the exact prefix
         if needle in entry.get("chip", "").lower():
+            osh.debug(f"Chip '{chip_name}' matched entry '{entry.get('chip')}'")
             return entry
+    osh.warning(f"Chip not found in hardware table:\n\t{chip_name}")
     return None

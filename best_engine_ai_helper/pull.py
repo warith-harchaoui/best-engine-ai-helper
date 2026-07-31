@@ -19,6 +19,8 @@ import sys
 from pathlib import Path
 from typing import IO
 
+import os_helper as osh
+
 # User-writable runtime directory; created on first run by write_env
 _USER_DIR = Path.home() / ".best-engine-ai-helper"
 
@@ -62,6 +64,7 @@ def ollama_pull(tag: str, *, timeout: int = 600, out: IO[str] | None = None) -> 
     True
     """
     sink = out or sys.stdout
+    osh.info(f"Pulling model via ollama:\n\t{tag}")
     # stderr=subprocess.STDOUT merges the two streams so progress lines appear
     try:
         proc = subprocess.Popen(
@@ -71,6 +74,7 @@ def ollama_pull(tag: str, *, timeout: int = 600, out: IO[str] | None = None) -> 
             text=True,
         )
     except FileNotFoundError as exc:
+        osh.error("ollama binary not found. Install from https://ollama.com")
         raise FileNotFoundError(
             "ollama binary not found. Install from https://ollama.com"
         ) from exc
@@ -82,7 +86,12 @@ def ollama_pull(tag: str, *, timeout: int = 600, out: IO[str] | None = None) -> 
         sink.flush()
 
     proc.wait(timeout=timeout)
-    return proc.returncode == 0
+    ok = proc.returncode == 0
+    if ok:
+        osh.info(f"Pull succeeded:\n\t{tag}")
+    else:
+        osh.error(f"Pull failed (exit {proc.returncode}):\n\t{tag}")
+    return ok
 
 
 def ollama_rm(tag: str) -> bool:
@@ -108,12 +117,16 @@ def ollama_rm(tag: str) -> bool:
     >>> True  # placeholder
     True
     """
+    osh.info(f"Removing model via ollama:\n\t{tag}")
     result = subprocess.run(
         ["ollama", "rm", tag],
         capture_output=True,
         text=True,
     )
-    return result.returncode == 0
+    ok = result.returncode == 0
+    if not ok:
+        osh.warning(f"Removal failed (exit {result.returncode}):\n\t{tag}")
+    return ok
 
 
 def write_env(
@@ -160,7 +173,7 @@ def write_env(
     'env.sh'
     """
     target = user_dir if user_dir is not None else _USER_DIR
-    target.mkdir(parents=True, exist_ok=True)
+    osh.make_directory(str(target))
 
     env_sh_path = target / _ENV_SH
     config_path = target / _CONFIG_JSON
@@ -174,6 +187,7 @@ def write_env(
         f"export BEST_LLM_BASE_URL={base_url}\n"
     )
     env_sh_path.write_text(env_content, encoding="utf-8")
+    osh.info(f"Wrote shell env file:\n\t{env_sh_path}")
 
     # JSON format for scripts that prefer structured config over shell sourcing
     config = {
@@ -183,5 +197,6 @@ def write_env(
         "BEST_LLM_BASE_URL": base_url,
     }
     config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+    osh.info(f"Wrote JSON config file:\n\t{config_path}")
 
     return env_sh_path

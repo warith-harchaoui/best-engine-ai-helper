@@ -23,6 +23,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+import os_helper as osh
+
 # ---------------------------------------------------------------------------
 # Reference fixtures with deliberate charter violations
 # ---------------------------------------------------------------------------
@@ -93,6 +95,8 @@ def validate(llm_chat: Callable[..., Any]) -> bool:
     """
     from . import ralph
 
+    osh.info("Running LLM prose-loop gate (em dash + French seam fixtures)")
+
     # Test 1: em dash in English fixture
     fixed_en = ralph.prose_loop(
         DASH_EN,
@@ -102,6 +106,7 @@ def validate(llm_chat: Callable[..., Any]) -> bool:
     )
     # The em dash character should not survive after fixing
     if "—" in fixed_en:
+        osh.warning("LLM gate FAILED: em dash survived the English fixture")
         return False
 
     # Test 2: "Par ailleurs" seam in French fixture
@@ -113,6 +118,8 @@ def validate(llm_chat: Callable[..., Any]) -> bool:
     )
     # The banned transition must not survive in either paragraph
     if "par ailleurs" in fixed_fr.lower():
+        osh.warning("LLM gate FAILED: 'Par ailleurs' survived the French fixture")
         return False
 
+    osh.info("LLM prose-loop gate PASSED")
     return True

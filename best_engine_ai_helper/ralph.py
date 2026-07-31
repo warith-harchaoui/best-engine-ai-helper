@@ -24,6 +24,8 @@ import json
 from collections.abc import Callable
 from typing import Any
 
+import os_helper as osh
+
 # ---------------------------------------------------------------------------
 # Prompts used by the eyeball and prose variants
 # ---------------------------------------------------------------------------
@@ -207,8 +209,11 @@ def ralph_loop(
         if on_iteration is not None:
             on_iteration(i, source, artifact, critique, vdict)
 
+        osh.info(f"Ralph iteration {i + 1}/{max_iters}: ship={vdict.get('ship')}")
+
         # Stop when the verdict says ship — the artifact is good enough
         if vdict.get("ship"):
+            osh.info(f"Ralph converged (ship) after {i + 1} iteration(s)")
             return source, history
 
         # Step 4: apply the fix to the source
@@ -216,11 +221,13 @@ def ralph_loop(
 
         # Guard: if the fix is a no-op the loop would spin; stop early
         if new_source == source:
+            osh.info(f"Ralph stopped early: fix was a no-op at iteration {i + 1}")
             return source, history
 
         source = new_source
 
     # Budget exhausted: return whatever we have
+    osh.warning(f"Ralph budget exhausted after {max_iters} iteration(s) without shipping")
     return source, history
 
 
@@ -315,6 +322,7 @@ def eyeball_loop(
             return json.loads(str(raw))
         except json.JSONDecodeError:
             # Malformed verdict: treat as "do not ship" so the loop continues
+            osh.warning("Eyeball verdict was not valid JSON; treating as do-not-ship")
             return {"ship": False, "blocking": ["verdict parse failure"], "score": 0.0}
 
     return ralph_loop(
@@ -400,6 +408,7 @@ def prose_loop(
         # Nothing to check at a paragraph seam when there is only one paragraph
         return text
 
+    osh.info(f"Prose loop over {len(paras)} paragraph(s), up to {max_passes} pass(es)")
     for _pass in range(max_passes):
         changed = False
         # Slide an overlapping window over every adjacent pair
@@ -451,6 +460,7 @@ def prose_loop(
 
         # A full pass with no changes means the text has converged
         if not changed:
+            osh.info(f"Prose loop converged after pass {_pass + 1}")
             break
 
     return "\n\n".join(paras)

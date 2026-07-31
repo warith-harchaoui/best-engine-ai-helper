@@ -22,6 +22,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import os_helper as osh
 import yaml
 
 # Root of the installed package; models.yaml sits next to pyproject.toml
@@ -94,12 +95,17 @@ def _load_yaml_file(path: Path) -> list[dict[str, Any]]:
     list[dict[str, Any]]
         Parsed entries, or [] if the file is absent or empty.
     """
+    if not osh.file_exists(str(path)):
+        osh.debug(f"YAML file absent, treating as empty:\n\t{path}")
+        return []
     try:
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
+    except yaml.YAMLError as exc:
+        osh.warning(f"Malformed YAML, ignoring:\n\t{path}\n\t{exc}")
         return []
     # yaml.safe_load returns None for empty files
     if raw is None:
+        osh.debug(f"YAML file empty, treating as empty:\n\t{path}")
         return []
     return list(raw)
 
@@ -142,13 +148,18 @@ def load_catalog(catalog_path: Path | None = None) -> list[dict[str, Any]]:
     # Start with the bundled seed; this must exist
     seed = _load_yaml_file(seed_path)
     if not seed and catalog_path is not None:
+        osh.error(f"Catalog not found:\n\t{seed_path}")
         raise FileNotFoundError(f"Catalog not found: {seed_path}")
+    osh.info(f"Loaded {len(seed)} model(s) from seed catalog:\n\t{seed_path}")
 
     # Build a lookup by id so cache entries can overwrite in O(1)
     merged: dict[str, dict[str, Any]] = {e["id"]: e for e in seed}
 
     # Overlay user cache entries; absent cache is silently ignored
-    for entry in _load_yaml_file(_CACHE_PATH):
+    cache_entries = _load_yaml_file(_CACHE_PATH)
+    if cache_entries:
+        osh.info(f"Overlaying {len(cache_entries)} cached entry(ies):\n\t{_CACHE_PATH}")
+    for entry in cache_entries:
         merged[entry["id"]] = entry
 
     # Preserve seed ordering; append cache-only entries at the end

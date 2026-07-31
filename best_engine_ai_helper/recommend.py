@@ -31,6 +31,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import os_helper as osh
+
 from .score import effective_budget, estimated_tokens_per_second, rank
 
 # Keyword -> benchmark axis. The task text is scanned for these; the first axis
@@ -137,6 +139,10 @@ def recommend(
     bandwidth = compute.get("bandwidth_gbs")
     budget = effective_budget(hw, headroom=headroom)
     parsed = parse_task(task)
+    osh.info(
+        f"Recommending for task axis '{parsed['application']}' "
+        f"(kinds: {', '.join(parsed['kinds'])}); memory budget {budget:.1f} GB"
+    )
 
     picks: dict[str, Any] = {}
     for kind in parsed["kinds"]:
@@ -145,6 +151,13 @@ def recommend(
         rows = [_candidate_row(e, budget, bandwidth, axis) for e in ranked]
         fitting = [r for r in rows if r["fits"]]
         chosen = fitting[0] if fitting else (rows[0] if rows else None)
+        if chosen is None:
+            osh.warning(f"No candidate found for kind '{kind}' on axis '{axis}'")
+        else:
+            osh.info(
+                f"Chosen {kind} on axis '{axis}': {chosen['id']} "
+                f"({chosen['ram_gb']:.1f} GB, {'fits' if chosen['fits'] else 'over budget'})"
+            )
         # Lightest model within 3 benchmark points of the chosen one: the
         # "good enough but leaner / faster" alternative worth surfacing.
         lighter = None
@@ -263,6 +276,8 @@ def write_report(report: dict[str, Any], stem: str | Path) -> tuple[Path, Path]:
     stem = Path(stem)
     md_path = stem.with_suffix(".md")
     json_path = stem.with_suffix(".json")
+    osh.make_directory(str(md_path.parent))
     md_path.write_text(to_markdown(report), encoding="utf-8")
     json_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    osh.info(f"Wrote recommendation report:\n\t{md_path}\n\t{json_path}")
     return md_path, json_path

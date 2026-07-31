@@ -47,6 +47,8 @@ import json
 import os
 from typing import Any
 
+import os_helper as osh
+
 # ---------------------------------------------------------------------------
 # Environment resolution
 # ---------------------------------------------------------------------------
@@ -198,10 +200,12 @@ def _chat_ollama(
         resp = requests.post(url, json=payload, timeout=_timeout())
         resp.raise_for_status()
     except requests.RequestException as exc:
+        osh.error(f"Ollama request failed:\n\t{url}\n\t{exc}")
         raise RuntimeError(f"Ollama request to {url} failed: {exc}") from exc
 
     data = resp.json()
     if "response" not in data:
+        osh.error(f"Ollama response missing 'response' field: {data!r}")
         raise RuntimeError(f"Ollama response missing 'response' field: {data!r}")
     return data["response"]
 
@@ -290,12 +294,14 @@ def _chat_openai(
         resp = requests.post(url, json=payload, headers=headers, timeout=_timeout())
         resp.raise_for_status()
     except requests.RequestException as exc:
+        osh.error(f"OpenAI-compat request failed:\n\t{url}\n\t{exc}")
         raise RuntimeError(f"OpenAI-compat request to {url} failed: {exc}") from exc
 
     data = resp.json()
     try:
         return data["choices"][0]["message"]["content"]
     except (KeyError, IndexError) as exc:
+        osh.error(f"Malformed completion response: {data!r}")
         raise RuntimeError(f"Malformed completion response: {data!r}") from exc
 
 
@@ -467,6 +473,10 @@ def chat(
     # json_schema presence is the signal to request JSON output
     json_mode = json_schema is not None
     backend = _backend()
+    osh.info(
+        f"chat via {backend}: model={resolved_model}, "
+        f"images={len(images) if images else 0}, json={json_mode}"
+    )
 
     if backend == "ollama":
         raw = _chat_ollama(
@@ -496,6 +506,7 @@ def chat(
             temperature=temperature,
         )
     else:
+        osh.error(f"Unknown SPREZZATURE_LLM_BACKEND: {backend!r}")
         raise ValueError(
             f"Unknown SPREZZATURE_LLM_BACKEND: {backend!r}. "
             "Valid values: 'ollama', 'openai', 'langchain'."
@@ -507,6 +518,7 @@ def chat(
             return json.loads(raw)
         except json.JSONDecodeError:
             # Return raw string rather than crashing; caller can inspect
+            osh.warning("Requested JSON mode but response was not valid JSON; returning raw text")
             return raw
 
     return raw
@@ -548,6 +560,7 @@ def embed(text: str) -> list[float]:
 
     backend = _backend()
     if backend != "ollama":
+        osh.error(f"embed() unsupported on backend {backend!r} (ollama only)")
         raise NotImplementedError(
             f"embed() is only supported with the 'ollama' backend; "
             f"current backend is {backend!r}."
@@ -562,9 +575,11 @@ def embed(text: str) -> list[float]:
         resp = requests.post(url, json=payload, timeout=120)
         resp.raise_for_status()
     except requests.RequestException as exc:
+        osh.error(f"Ollama embed request failed:\n\t{url}\n\t{exc}")
         raise RuntimeError(f"Ollama embed request to {url} failed: {exc}") from exc
 
     data = resp.json()
     if "embedding" not in data:
+        osh.error(f"Ollama embed response missing 'embedding' field: {data!r}")
         raise RuntimeError(f"Ollama embed response missing 'embedding' field: {data!r}")
     return list(data["embedding"])

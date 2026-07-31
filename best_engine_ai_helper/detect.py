@@ -21,6 +21,8 @@ import subprocess
 import sys
 from typing import Any
 
+import os_helper as osh
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
@@ -53,9 +55,10 @@ def _run(cmd: list[str], **kwargs: Any) -> str:
             **kwargs,
         )
         return result.stdout
-    except (FileNotFoundError, subprocess.CalledProcessError, OSError):
+    except (FileNotFoundError, subprocess.CalledProcessError, OSError) as exc:
         # FileNotFoundError: binary not on PATH
         # CalledProcessError: binary exists but returned non-zero
+        osh.debug(f"Probe command unavailable/failed: {cmd[0]} ({exc})")
         return ""
 
 
@@ -142,22 +145,27 @@ def chip_vendor() -> str:
         # system_profiler reliably reports the Apple Silicon chip name
         out = _run(["system_profiler", "SPHardwareDataType"])
         if "Apple M" in out or "Apple A" in out:
+            osh.debug("Detected compute vendor: apple")
             return "apple"
 
     # Try NVIDIA — works on Linux and Windows
     if _run(["nvidia-smi", "-L"]):
+        osh.debug("Detected compute vendor: nvidia")
         return "nvidia"
 
     # AMD ROCm stack
     if _run(["rocm-smi", "--showid"]):
+        osh.debug("Detected compute vendor: amd")
         return "amd"
 
     # Intel Arc / integrated GPU (future-proofing)
     if plat == "linux":
         lspci = _run(["lspci"])
         if "Intel" in lspci and "VGA" in lspci:
+            osh.debug("Detected compute vendor: intel")
             return "intel"
 
+    osh.debug("No accelerator detected; falling back to cpu")
     return "cpu"
 
 
@@ -365,6 +373,10 @@ def available_memory() -> dict[str, float | None]:
         if vram_gb is None:
             vram_gb = _amd_vram_gb()
 
+    osh.info(
+        f"Memory detected — unified: {unified_gb} GB, "
+        f"vram: {vram_gb} GB, ram: {ram_gb:.1f} GB"
+    )
     return {
         "unified_gb": unified_gb,
         "vram_gb": vram_gb,

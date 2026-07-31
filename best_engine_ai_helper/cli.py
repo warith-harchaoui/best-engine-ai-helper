@@ -24,10 +24,12 @@ Warith Harchaoui <warith.harchaoui@gmail.com>
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 
 import click
+import os_helper as osh
 
 from . import catalog as _catalog
 from . import detect as _detect
@@ -79,8 +81,20 @@ def _fmt_table(rows: list[dict], columns: list[str]) -> str:
 
 @click.group()
 @click.version_option(package_name="best-engine-ai-helper")
-def main() -> None:
+@click.option(
+    "-v",
+    "--verbose",
+    count=True,
+    help="Increase log verbosity: -v shows info, -vv also shows debug. "
+    "Warnings and errors are always shown.",
+)
+def main(verbose: int) -> None:
     """Pick and pull the best local LLM/VLM for the current hardware."""
+    # Configure the os_helper logger so library osh.info/debug calls surface on
+    # demand. Logs go to stderr so command stdout (JSON, tables) stays clean and
+    # pipeable. Default keeps only warnings and errors; -v adds info, -vv debug.
+    level = {0: logging.WARNING, 1: logging.INFO}.get(verbose, logging.DEBUG)
+    osh.init_logging(level=level, stdout=False)
 
 
 # ---------------------------------------------------------------------------

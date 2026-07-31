@@ -25,6 +25,8 @@ import io
 from collections.abc import Callable
 from typing import Any
 
+import os_helper as osh
+
 # ---------------------------------------------------------------------------
 # Reference fixture
 # ---------------------------------------------------------------------------
@@ -149,6 +151,7 @@ def validate(llm_chat: Callable[..., Any]) -> bool:
     >>> validate(mock_chat)
     True
     """
+    osh.info("Running VLM eyeball gate against the reference fixture")
     png = _make_fixture_png()
 
     # Step 1: ask the VLM to critique the fixture
@@ -176,6 +179,12 @@ def validate(llm_chat: Callable[..., Any]) -> bool:
         try:
             verdict = json.loads(str(raw))
         except Exception:
+            osh.warning("VLM gate FAILED: verdict was not valid JSON")
             return False
 
-    return bool(verdict.get("pass", False))
+    passed = bool(verdict.get("pass", False))
+    if passed:
+        osh.info(f"VLM gate PASSED: {verdict.get('reason', '')}")
+    else:
+        osh.warning(f"VLM gate FAILED: {verdict.get('reason', 'no defect identified')}")
+    return passed

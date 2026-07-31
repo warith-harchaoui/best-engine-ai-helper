@@ -2,6 +2,21 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
+## [Unreleased]
+
+### Added
+
+- Depend on `os-helper` (`>=1.5.0`) and route all logging through it. Library
+  modules now emit `osh.info` at their seams (catalog / hardware load, memory
+  detection, recommendation picks, model pull/remove, Ralph iterations, chat
+  dispatch) and `osh.warning` / `osh.error` on the failure paths (malformed
+  YAML/JSON config, unknown chip, no model fitting the budget, failed inference
+  requests, gate failures). `info` / `debug` are off by default and surface with
+  the new `-v` / `-vv` flag on the CLI; warnings and errors always show.
+- File management goes through `os-helper` helpers: `osh.file_exists` for the
+  config / catalog presence checks and `osh.make_directory` in place of ad-hoc
+  `Path.mkdir(parents=True, exist_ok=True)`.
+
 ## [0.3.0] — 2026-07-31
 
 Make the chosen model tags trivially consumable by downstream suite packages,

@@ -30,6 +30,8 @@ import json
 import os
 from typing import Any
 
+import os_helper as osh
+
 # Reuse the single source of truth for the runtime directory and the config
 # file name, so this resolver and the writer (``pull.write_env``) can never
 # disagree about where the selection lives.
@@ -66,13 +68,15 @@ def load_config() -> dict[str, Any]:
     path = _USER_DIR / _CONFIG_JSON
     # Missing file == "no selection yet": the overwhelmingly common path in CI
     # and on a fresh machine. Return empty rather than raising.
-    if not path.is_file():
+    if not osh.file_exists(str(path)):
+        osh.debug(f"No persisted selection yet:\n\t{path}")
         return {}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    except (OSError, ValueError) as exc:
         # Unreadable or malformed: degrade to "no selection" so the caller
         # falls through to its default instead of crashing on a bad file.
+        osh.warning(f"Unreadable/malformed config, ignoring:\n\t{path}\n\t{exc}")
         return {}
     # Guard the shape: only a JSON object carries the string values we expect.
     return data if isinstance(data, dict) else {}
@@ -101,14 +105,17 @@ def _resolve(keys: tuple[str, ...], default: str, config: dict[str, Any] | None)
     for key in keys:
         value = os.environ.get(key)
         if value:
+            osh.debug(f"Model tag from env {key}: {value}")
             return value
     # 2. Otherwise consult the persisted selection from the last `pull`.
     cfg = load_config() if config is None else config
     for key in keys:
         value = cfg.get(key)
         if isinstance(value, str) and value:
+            osh.debug(f"Model tag from config {key}: {value}")
             return value
     # 3. Nothing decided anywhere: hand back the safe built-in default.
+    osh.debug(f"No selection found, using default: {default}")
     return default
 
 
