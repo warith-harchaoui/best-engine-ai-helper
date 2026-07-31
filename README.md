@@ -97,7 +97,7 @@ constants in `score.py`.
 
 The bundled seed catalog (`models.yaml`) covers 13 models from the Qwen 3, Qwen 2.5, and Gemma 3 families, from 3B to 72B parameters, across Q4_K_M and Q8_0 quantizations. The catalog tracks on-disk size, estimated peak RAM, and benchmark scores from the Open LLM Leaderboard v2 and the OpenVLM Leaderboard.
 
-`catalog update` (Phase 0b) refreshes the cache from four external sources: the Ollama registry API, the HuggingFace Hub API, the Open LLM Leaderboard v2 dataset, and the OpenVLM Leaderboard dataset. The bundled seed is never modified by the refresh.
+`catalog update` (Phase 0b) refreshes the cache from external sources: the Ollama registry API, the HuggingFace Hub API, the Open LLM Leaderboard v2 dataset, the OpenVLM Leaderboard dataset, and the [ApXML LLM directory](https://apxml.com/models?modelType=open_weight) (open-weight models with VRAM/compute needs and coding benchmarks, consulted regularly). The bundled seed is never modified by the refresh.
 
 ## Hardware table
 

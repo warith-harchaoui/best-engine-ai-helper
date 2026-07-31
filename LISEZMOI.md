@@ -94,7 +94,7 @@ avertissement.
 | `detect` | Affiche le matériel détecté au format JSON |
 | `recommend` | Classe les candidats pour ce matériel (sans téléchargement) |
 | `catalog show` | Affiche le catalogue de modèles fusionné |
-| `catalog update` | Rafraîchit le cache depuis quatre sources externes |
+| `catalog update` | Rafraîchit le cache depuis des sources de leaderboards externes |
 | `hardware show` | Affiche la table des puces matérielles connues |
 | `hardware update` | Rafraîchit le cache matériel depuis TechPowerUp et Ollama |
 | `pull` | Télécharge le meilleur modèle et exécute les contrôles Ralph |

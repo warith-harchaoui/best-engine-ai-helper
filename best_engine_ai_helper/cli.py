@@ -13,7 +13,7 @@ Phase 0b stubs (print a notice; implemented in the next phase):
   pull            Pull the best model and run Ralph validation gates.
   validate        Run Ralph gates on the already-configured model.
   env             Print the env block for ~/.zshrc or sourcing.
-  catalog update  Refresh the catalog cache from four external sources.
+  catalog update  Refresh the catalog cache from external leaderboard sources.
   hardware update Refresh the hardware cache from TechPowerUp and Ollama.
 
 Author
@@ -247,7 +247,7 @@ def catalog_show() -> None:
 
 @catalog_group.command("update")
 def catalog_update() -> None:
-    """[Phase 0b] Refresh the catalog cache from four external sources."""
+    """[Phase 0b] Refresh the catalog cache from external leaderboard sources."""
     click.echo("catalog update: not yet implemented (Phase 0b).", err=True)
     sys.exit(1)
 

@@ -2,6 +2,14 @@
 # Auto-refresh (catalog update) adds entries to
 # ~/.best-engine-ai-helper/catalog_cache.yaml without modifying this file.
 #
+# External sources to consult when curating entries / benchmark scores:
+#   - Open LLM Leaderboard v2 (general, math) — huggingface.co/spaces/open-llm-leaderboard
+#   - OpenVLM Leaderboard (vision, ocr)
+#   - Ollama registry API (pull tags, sizes)
+#   - HuggingFace Hub API (vllm_id, sizes)
+#   - ApXML LLM directory (open-weight, VRAM/compute needs, coding benchmarks):
+#     https://apxml.com/models?modelType=open_weight  (check regularly)
+#
 # Fields:
 #   id          Ollama pull tag (name:tag)
 #   kind        llm | vlm  (VLM implies text capability too)
