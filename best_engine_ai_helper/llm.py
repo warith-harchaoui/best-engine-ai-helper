@@ -24,10 +24,13 @@ SPREZZATURE_LLM_BACKEND
     ``ollama`` | ``openai`` | ``langchain``. Defaults to ``ollama``.
 SPREZZATURE_LLM_BASE_URL
     Base URL of the server. Defaults to ``http://localhost:11434``.
-SPREZZATURE_LLM_TEXT
-    Model tag for text-only prompts. Defaults to ``qwen3-vl:8b``.
-SPREZZATURE_LLM_VISION
-    Model tag for prompts that include images. Defaults to ``qwen3-vl:8b``.
+BEST_LLM_TEXT (legacy alias: SPREZZATURE_LLM_TEXT)
+    Model tag for text-only prompts. When unset, falls back to the selection
+    persisted by ``pull`` in ``~/.best-engine-ai-helper/config.json``, then to
+    the ``qwen3-vl:8b`` default. Resolved by :func:`config.text_model`.
+BEST_LLM_VISION (legacy alias: SPREZZATURE_LLM_VISION)
+    Model tag for prompts that include images. Same precedence as the text
+    model; resolved by :func:`config.vision_model`.
 SPREZZATURE_LLM_API_KEY
     API key for servers that require one. Empty string by default (most local
     servers do not require authentication).
@@ -59,13 +62,29 @@ def _base_url() -> str:
 
 
 def _text_model() -> str:
-    """Return the configured text model tag."""
-    return os.environ.get("SPREZZATURE_LLM_TEXT", "qwen3-vl:8b")
+    """Return the configured text model tag.
+
+    Delegates to :func:`config.text_model`, so the transport honours the same
+    precedence as every other consumer — ``BEST_LLM_TEXT`` (or the legacy
+    ``SPREZZATURE_LLM_TEXT``) env, then the ``config.json`` written by
+    ``pull``, then the built-in default. This closes the old gap where the
+    transport read only ``SPREZZATURE_LLM_TEXT`` and ignored a fresh `pull`
+    selection persisted under ``BEST_LLM_TEXT``.
+    """
+    from .config import text_model
+
+    return text_model()
 
 
 def _vision_model() -> str:
-    """Return the configured vision model tag."""
-    return os.environ.get("SPREZZATURE_LLM_VISION", "qwen3-vl:8b")
+    """Return the configured vision model tag.
+
+    Mirror of :func:`_text_model` for image prompts; delegates to
+    :func:`config.vision_model`.
+    """
+    from .config import vision_model
+
+    return vision_model()
 
 
 def _api_key() -> str:

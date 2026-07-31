@@ -2,6 +2,28 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
+## [0.3.0] — 2026-07-31
+
+Make the chosen model tags trivially consumable by downstream suite packages,
+so model selection lives here (its rightful home) rather than being hard-coded
+in each consumer.
+
+### Added
+
+- `config.py`: cheap, deterministic resolvers `text_model()` / `vision_model()`
+  / `resolved_models()` / `load_config()`. Precedence is env override
+  (`BEST_LLM_TEXT` / `BEST_LLM_VISION`, with the legacy `SPREZZATURE_LLM_*`
+  spellings accepted) → the selection persisted by `pull` in
+  `~/.best-engine-ai-helper/config.json` → a safe built-in default
+  (`qwen3-vl:8b`). They never probe hardware and never raise, so they are safe
+  to call at import time, in CI, and in tests. Exported from the package root.
+
+### Changed
+
+- `llm.py` transport now resolves its model tags through `config`, closing the
+  gap where it read only `SPREZZATURE_LLM_*` and ignored a fresh `pull`
+  selection persisted under `BEST_LLM_*`.
+
 ## [0.2.0] — 2026-07-30
 
 Hardware-aware recommendation that weighs memory, accelerator, and compute, and

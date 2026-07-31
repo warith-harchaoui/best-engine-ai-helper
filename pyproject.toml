@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "best-engine-ai-helper"
-version = "0.2.0"
+version = "0.3.0"
 description = "Pick and pull the best local LLM/VLM for the current hardware."
 authors = [{name = "Warith Harchaoui", email = "warith.harchaoui@gmail.com"}]
 license = {text = "BSD-3-Clause"}
