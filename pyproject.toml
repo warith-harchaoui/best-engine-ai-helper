@@ -18,6 +18,13 @@ dependencies = [
     "requests>=2.31",
 ]
 
+[project.optional-dependencies]
+# FastAPI HTTP surface + minimal browser GUI (best_engine_ai_helper.api / .gui).
+api = [
+    "fastapi>=0.111,<1",
+    "uvicorn>=0.30,<1",
+]
+
 [project.scripts]
 best-engine-ai-helper = "best_engine_ai_helper.cli:main"
 
@@ -27,6 +34,7 @@ include = ["best_engine_ai_helper*"]
 
 [tool.setuptools.package-data]
 "*" = ["models.yaml", "hardware.yaml"]
+"best_engine_ai_helper" = ["static/**"]
 
 [tool.ruff]
 line-length = 100

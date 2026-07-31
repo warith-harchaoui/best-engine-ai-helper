@@ -413,6 +413,25 @@ def validate_cmd() -> None:
         sys.exit(1)
 
 
+@main.command("gui")
+@click.option("--host", default="127.0.0.1", show_default=True, help="Bind address.")
+@click.option("--port", default=8000, show_default=True, help="Bind port.")
+def gui_cmd(host: str, port: int) -> None:
+    """Launch the minimal browser GUI (hardware + task -> best engine)."""
+    try:
+        import uvicorn
+    except ImportError:
+        click.echo(
+            "The GUI requires the [api] extra. Install with: "
+            "pip install 'best-engine-ai-helper[api]'",
+            err=True,
+        )
+        sys.exit(1)
+
+    click.echo(f"Serving GUI at http://{host}:{port}/gui")
+    uvicorn.run("best_engine_ai_helper.api:app", host=host, port=port)
+
+
 @main.command("env")
 def env_cmd() -> None:
     """Print the env block ready for ~/.zshrc or sourcing.
