@@ -160,9 +160,11 @@ def _extract_json_object(text: str, anchor: str) -> dict[str, Any] | None:
             if depth == 0:
                 # Whole object captured; a malformed slice is treated as "no data".
                 try:
-                    return json.loads(text[start : j + 1])
+                    parsed = json.loads(text[start : j + 1])
                 except json.JSONDecodeError:
                     return None
+                # Guard against a non-object slice sneaking through the anchor.
+                return parsed if isinstance(parsed, dict) else None
     return None
 
 
