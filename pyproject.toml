@@ -54,4 +54,7 @@ strict = true
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+# Collect the unit suite AND the docstring Examples: the coding standard puts a
+# runnable Example on every function, so `--doctest-modules` keeps them honest.
+testpaths = ["best_engine_ai_helper", "tests"]
+addopts = "--doctest-modules"

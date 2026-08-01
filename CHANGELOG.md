@@ -40,6 +40,11 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Changed
 
+- Docstring `Examples` are now gated: `pytest` collects them via
+  `--doctest-modules` (configured in `pyproject.toml`), so a drifted example
+  fails CI. Fixed three that had drifted (`score.select`, `score.rank` used
+  names not in scope; `validate_llm.validate` asserted a pass its stub model
+  could not produce).
 - Documentation pass over every Markdown file: brought the prose into line with
   the project's writing charter (removed em/en-dash asides), corrected stale
   facts (the `catalog update` / `hardware update` commands, the four selection
