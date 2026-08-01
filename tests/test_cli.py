@@ -2,16 +2,19 @@
 Tests for best_engine_ai_helper.cli.
 
 Uses Click's CliRunner so no subprocess spawning is needed and the working
-directory is irrelevant. Phase 0b stubs are verified to exit with a non-zero
-code and print a useful message to stderr.
+directory is irrelevant. The refresh commands (`catalog update`,
+`hardware update`) are exercised with their network / detection layer patched
+so the tests stay offline and never touch the real user cache.
 """
 
 from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 
 import pytest
+import yaml
 from click.testing import CliRunner
 
 from best_engine_ai_helper.cli import main
@@ -118,37 +121,95 @@ def test_hardware_show_contains_apple_m2_max(runner: CliRunner) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Remaining stubs — must exit non-zero and print a message.
-# `pull` and `validate` are implemented (Phase 0b) and drive a live model
-# loop; they are covered by their own graceful-degradation tests below, not
-# here, so this list must never invoke them.
+# catalog update / hardware update — refresh the user caches.
+# The network fetch (catalog) and live detection (hardware) are patched so the
+# tests run offline and write only into a tmp cache, never the real ~/.best-*.
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("args", [
-    ["env"],
-    ["catalog", "update"],
-    ["hardware", "update"],
-])
-def test_stub_commands_exit_nonzero(runner: CliRunner, args: list[str]) -> None:
-    result = runner.invoke(main, args)
-    assert result.exit_code != 0, (
-        f"Stub command {args} should exit non-zero; got {result.exit_code}"
-    )
-
-
-@pytest.mark.parametrize("args", [
-    ["catalog", "update"],
-    ["hardware", "update"],
-])
-def test_stub_commands_print_not_yet_implemented(
-    runner: CliRunner, args: list[str]
+def test_catalog_update_writes_cache(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """catalog update and hardware update remain Phase 0b stubs."""
-    result = runner.invoke(main, args)
-    combined = (result.output or "") + (result.stderr if hasattr(result, "stderr") else "")
-    assert "not yet implemented" in combined.lower() or "phase 0b" in combined.lower(), (
-        f"Stub {args} should say 'not yet implemented', got: {combined!r}"
-    )
+    """catalog update fetches specs, normalizes them, and writes the cache."""
+    from best_engine_ai_helper import catalog
+    from best_engine_ai_helper.sources import apxml
+
+    fake_specs = [{
+        "slug": "qwen3-8b",
+        "name": "Qwen3 8B",
+        "kind": "llm",
+        "size_b": 8.0,
+        "ram_gb": 6.0,
+        "vllm_id": "Qwen/Qwen3-8B",
+        "context_length": 32768,
+        "license": "apache-2.0",
+        "url": "https://apxml.com/models/qwen3-8b",
+    }]
+    monkeypatch.setattr(apxml, "fetch_open_weight_models", lambda **kw: fake_specs)
+    cache = tmp_path / "catalog_cache.yaml"
+    monkeypatch.setattr(catalog, "_CACHE_PATH", cache)
+
+    result = runner.invoke(main, ["catalog", "update"])
+    assert result.exit_code == 0, result.output
+    assert cache.exists()
+    written = yaml.safe_load(cache.read_text(encoding="utf-8"))
+    assert written[0]["id"] == "qwen3-8b"
+    assert written[0]["source"] == "apxml"
+
+
+def test_catalog_update_empty_feed_exits_nonzero(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An empty feed leaves the cache untouched and reports failure."""
+    from best_engine_ai_helper import catalog
+    from best_engine_ai_helper.sources import apxml
+
+    monkeypatch.setattr(apxml, "fetch_open_weight_models", lambda **kw: [])
+    cache = tmp_path / "catalog_cache.yaml"
+    monkeypatch.setattr(catalog, "_CACHE_PATH", cache)
+
+    result = runner.invoke(main, ["catalog", "update"])
+    assert result.exit_code != 0
+    assert not cache.exists()
+
+
+def test_hardware_update_records_machine(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """hardware update writes the detected machine into the cache."""
+    from best_engine_ai_helper import hardware
+
+    entry = {
+        "chip": "Apple M2 Max",
+        "vendor": "apple",
+        "memory_gb": 32.0,
+        "ollama_usable_gb": 28.0,
+        "source": "detected",
+        "fetched_at": "2026-08-01",
+    }
+    monkeypatch.setattr(hardware, "detect_local_entry", lambda *a, **k: entry)
+    cache = tmp_path / "hardware_cache.yaml"
+    monkeypatch.setattr(hardware, "_HW_CACHE_PATH", cache)
+
+    result = runner.invoke(main, ["hardware", "update"])
+    assert result.exit_code == 0, result.output
+    assert cache.exists()
+    written = yaml.safe_load(cache.read_text(encoding="utf-8"))
+    assert written[0]["chip"] == "Apple M2 Max"
+
+
+def test_hardware_update_no_memory_exits_nonzero(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """When detection finds nothing usable, the cache stays untouched."""
+    from best_engine_ai_helper import hardware
+
+    monkeypatch.setattr(hardware, "detect_local_entry", lambda *a, **k: None)
+    cache = tmp_path / "hardware_cache.yaml"
+    monkeypatch.setattr(hardware, "_HW_CACHE_PATH", cache)
+
+    result = runner.invoke(main, ["hardware", "update"])
+    assert result.exit_code != 0
+    assert not cache.exists()
 
 
 def test_env_missing_reports_gracefully(runner: CliRunner) -> None:

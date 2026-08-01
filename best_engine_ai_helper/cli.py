@@ -3,22 +3,20 @@ cli — Click command-line interface for best-engine-ai-helper.
 
 Entry point: `best-engine-ai-helper` (registered in pyproject.toml).
 
-Phase 0a commands (fully implemented):
+Commands:
   detect          Print detected hardware as JSON.
   recommend       Print ranked model candidates for this hardware.
   catalog show    Print the merged model catalog as a table.
+  catalog update  Refresh the catalog cache from the ApXML model directory.
   hardware show   Print the merged hardware chip table.
-
-Phase 0b stubs (print a notice; implemented in the next phase):
+  hardware update Record this machine's chip and memory into the cache.
   pull            Pull the best model and run Ralph validation gates.
   validate        Run Ralph gates on the already-configured model.
   env             Print the env block for ~/.zshrc or sourcing.
-  catalog update  Refresh the catalog cache from external leaderboard sources.
-  hardware update Refresh the hardware cache from TechPowerUp and Ollama.
 
 Author
 ------
-Warith Harchaoui <warith.harchaoui@gmail.com>
+Warith Harchaoui <warith.harchaoui@deraison.ai>
 """
 
 from __future__ import annotations
@@ -27,6 +25,7 @@ import json
 import logging
 import os
 import sys
+from typing import Any
 
 import click
 import os_helper as osh
@@ -43,7 +42,7 @@ from .recommend import write_report as _write_report
 # Formatting helpers
 # ---------------------------------------------------------------------------
 
-def _fmt_table(rows: list[dict], columns: list[str]) -> str:
+def _fmt_table(rows: list[dict[str, Any]], columns: list[str]) -> str:
     """
     Format a list of dicts as a plain-text table with aligned columns.
 
@@ -260,10 +259,40 @@ def catalog_show() -> None:
 
 
 @catalog_group.command("update")
-def catalog_update() -> None:
-    """[Phase 0b] Refresh the catalog cache from external leaderboard sources."""
-    click.echo("catalog update: not yet implemented (Phase 0b).", err=True)
-    sys.exit(1)
+@click.option(
+    "--limit", type=int, default=None,
+    help="Fetch at most N models (handy for a quick refresh or a smoke test).",
+)
+@click.option(
+    "--timeout", type=float, default=30.0, show_default=True,
+    help="Per-request network timeout, in seconds.",
+)
+def catalog_update(limit: int | None, timeout: float) -> None:
+    """Refresh the catalog cache from the ApXML open-weight model directory.
+
+    Fetched specs are normalized to catalog entries and merged into
+    ``~/.best-engine-ai-helper/catalog_cache.yaml`` by id; the bundled seed is
+    never modified. ApXML supplies specs and memory-fit figures but no numeric
+    benchmarks, so refreshed entries carry null scores until a scored source
+    fills them.
+    """
+    from .sources import apxml
+
+    click.echo("Fetching open-weight models from ApXML…", err=True)
+    try:
+        specs = apxml.fetch_open_weight_models(timeout=timeout, limit=limit)
+    except Exception as exc:  # network / parse failures should not traceback
+        osh.error(f"catalog update failed:\n\t{exc}")
+        click.echo(f"catalog update failed: {exc}", err=True)
+        sys.exit(1)
+
+    entries = _catalog.normalize_apxml_specs(specs)
+    if not entries:
+        click.echo("No usable models returned from ApXML; cache unchanged.", err=True)
+        sys.exit(1)
+
+    path = _catalog.write_cache(entries)
+    click.echo(f"Updated catalog cache with {len(entries)} model(s):\n\t{path}")
 
 
 # ---------------------------------------------------------------------------
@@ -293,9 +322,25 @@ def hardware_show() -> None:
 
 @hardware_group.command("update")
 def hardware_update() -> None:
-    """[Phase 0b] Refresh the hardware cache from TechPowerUp and Ollama pages."""
-    click.echo("hardware update: not yet implemented (Phase 0b).", err=True)
-    sys.exit(1)
+    """Record this machine's chip and memory into the hardware cache.
+
+    There is no public specs API covering every GPU and Apple Silicon chip, so a
+    refresh captures ground truth for the machine it runs on: the detected chip,
+    its memory pool, and the Ollama-usable share after the OS reservation. The
+    row is upserted into ``~/.best-engine-ai-helper/hardware_cache.yaml`` (keyed
+    on chip + memory tier); the bundled seed is never modified.
+    """
+    entry = _hardware.detect_local_entry()
+    if entry is None:
+        click.echo("Could not detect usable memory; hardware cache unchanged.", err=True)
+        sys.exit(1)
+
+    path = _hardware.write_cache([entry])
+    click.echo(
+        f"Recorded this machine into the hardware cache:\n"
+        f"\t{entry['chip']} — {entry['memory_gb']} GB "
+        f"({entry['ollama_usable_gb']} GB usable)\n\t{path}"
+    )
 
 
 # ---------------------------------------------------------------------------

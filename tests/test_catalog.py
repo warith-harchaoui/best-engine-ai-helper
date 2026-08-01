@@ -138,3 +138,67 @@ def test_estimate_ram_unknown_quant_uses_default() -> None:
     # Unknown quant should use the 1.15 default overhead
     result = catalog.estimate_ram(10.0, "UNKNOWN_QUANT")
     assert result == pytest.approx(11.5, rel=1e-3)
+
+
+# ---------------------------------------------------------------------------
+# normalize_apxml_spec / write_cache — `catalog update` refresh path
+# ---------------------------------------------------------------------------
+
+def _apxml_spec() -> dict:
+    return {
+        "slug": "qwen3-8b",
+        "name": "Qwen3 8B",
+        "kind": "llm",
+        "size_b": 8.0,
+        "ram_gb": 6.0,
+        "vllm_id": "Qwen/Qwen3-8B",
+        "context_length": 32768,
+        "license": "apache-2.0",
+        "url": "https://apxml.com/models/qwen3-8b",
+    }
+
+
+def test_normalize_apxml_spec_maps_core_fields() -> None:
+    entry = catalog.normalize_apxml_spec(_apxml_spec(), "2026-08-01")
+    assert entry is not None
+    assert entry["id"] == "qwen3-8b"
+    assert entry["kind"] == "llm"
+    assert entry["ram_gb"] == 6.0
+    assert entry["quant"] == "Q4_K_M"
+    assert entry["source"] == "apxml"
+    assert entry["fetched_at"] == "2026-08-01"
+    # disk_gb is the Q4 VRAM figure with the quant overhead divided back out.
+    assert entry["disk_gb"] == pytest.approx(6.0 / 1.12, rel=1e-3)
+    # ApXML carries no numeric benchmarks, so every axis stays null.
+    assert all(v is None for v in entry["benchmarks"].values())
+
+
+def test_normalize_apxml_spec_without_slug_is_dropped() -> None:
+    assert catalog.normalize_apxml_spec({"name": "no slug"}, "2026-08-01") is None
+
+
+def test_normalize_apxml_specs_filters_unusable() -> None:
+    specs = [_apxml_spec(), {"name": "no slug"}]
+    entries = catalog.normalize_apxml_specs(specs, fetched_at="2026-08-01")
+    assert [e["id"] for e in entries] == ["qwen3-8b"]
+
+
+def test_write_cache_creates_and_merges(tmp_path: Path) -> None:
+    cache = tmp_path / "catalog_cache.yaml"
+    first = catalog.normalize_apxml_specs([_apxml_spec()], fetched_at="2026-08-01")
+    catalog.write_cache(first, cache_path=cache)
+
+    # A second refresh with the same id overwrites, and a new id appends.
+    spec_b = _apxml_spec()
+    spec_b["slug"] = "gemma3-4b"
+    updated = _apxml_spec()
+    updated["ram_gb"] = 7.0
+    entries = catalog.normalize_apxml_specs([updated, spec_b], fetched_at="2026-08-02")
+    catalog.write_cache(entries, cache_path=cache)
+
+    import yaml
+
+    data = yaml.safe_load(cache.read_text(encoding="utf-8"))
+    by_id = {e["id"]: e for e in data}
+    assert set(by_id) == {"qwen3-8b", "gemma3-4b"}
+    assert by_id["qwen3-8b"]["ram_gb"] == 7.0  # overwritten, not duplicated

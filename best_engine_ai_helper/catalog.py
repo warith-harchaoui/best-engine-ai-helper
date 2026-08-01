@@ -14,11 +14,12 @@ have a usable catalog and updates never lose hand-curated data.
 
 Author
 ------
-Warith Harchaoui <warith.harchaoui@gmail.com>
+Warith Harchaoui <warith.harchaoui@deraison.ai>
 """
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,10 @@ _SEED_PATH = _PACKAGE_ROOT / "models.yaml"
 # User-writable runtime directory; created on first run
 _USER_DIR = Path.home() / ".best-engine-ai-helper"
 _CACHE_PATH = _USER_DIR / "catalog_cache.yaml"
+
+# Public alias so callers (the CLI, tests) can name the cache without reaching
+# into a private attribute.
+CACHE_PATH = _CACHE_PATH
 
 # Quant-specific overhead factors for estimating peak inference RAM.
 # Values are empirically derived: KV cache at 4K context adds ~10-20%
@@ -173,3 +178,140 @@ def load_catalog(catalog_path: Path | None = None) -> list[dict[str, Any]]:
             result.append(entry)
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Cache refresh (`catalog update`)
+# ---------------------------------------------------------------------------
+
+# The default quant we pull, and the quant whose VRAM ApXML's headline figure
+# mirrors, so disk_gb is estimated back out of ram_gb through its overhead.
+_REFRESH_QUANT = "Q4_K_M"
+
+# Empty benchmark block: ApXML's static pages carry specs and memory-fit
+# figures but no numeric leaderboard scores, so refreshed entries rank at the
+# bottom until a scored source fills these axes.
+_EMPTY_BENCHMARKS: dict[str, float | None] = {
+    "general": None,
+    "vision": None,
+    "ocr": None,
+    "code": None,
+    "math": None,
+}
+
+
+def _today() -> str:
+    """Return today's date as an ISO 8601 string (UTC), for the ``fetched_at`` stamp."""
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def normalize_apxml_spec(spec: dict[str, Any], fetched_at: str) -> dict[str, Any] | None:
+    """
+    Map one ApXML spec dict onto a catalog entry.
+
+    The ApXML adapter (:mod:`best_engine_ai_helper.sources.apxml`) yields spec
+    and memory-fit metadata but no numeric benchmarks, so the ``benchmarks``
+    block is left null. ``disk_gb`` is estimated from the Q4 VRAM figure by
+    dividing out the quant overhead — the inverse of :func:`estimate_ram`.
+
+    Parameters
+    ----------
+    spec : dict[str, Any]
+        A normalized spec as returned by ``apxml.parse_model_page``.
+    fetched_at : str
+        ISO 8601 date recorded on the entry as its refresh timestamp.
+
+    Returns
+    -------
+    dict[str, Any] or None
+        A catalog entry, or None when the spec lacks the ``slug`` needed to key
+        it (such an entry could never be merged or pulled).
+    """
+    slug = spec.get("slug")
+    if not slug:
+        osh.debug(f"ApXML spec without a slug, skipping:\n\t{spec.get('name')!r}")
+        return None
+
+    ram_gb = spec.get("ram_gb")
+    # Invert estimate_ram: disk ≈ ram / overhead. Estimate only, like the seed.
+    disk_gb = (
+        round(float(ram_gb) / _QUANT_OVERHEAD[_REFRESH_QUANT], 2)
+        if ram_gb is not None
+        else None
+    )
+
+    return {
+        "id": slug,
+        "kind": spec.get("kind", "llm"),
+        "size_b": spec.get("size_b"),
+        "quant": _REFRESH_QUANT,
+        "disk_gb": disk_gb,
+        "ram_gb": ram_gb,
+        "benchmarks": dict(_EMPTY_BENCHMARKS),
+        "vllm_id": spec.get("vllm_id"),
+        "context_length": spec.get("context_length"),
+        "license": spec.get("license"),
+        "url": spec.get("url"),
+        "source": "apxml",
+        "fetched_at": fetched_at,
+    }
+
+
+def normalize_apxml_specs(
+    specs: list[dict[str, Any]], fetched_at: str | None = None
+) -> list[dict[str, Any]]:
+    """
+    Normalize a batch of ApXML specs into catalog entries, dropping unusable ones.
+
+    Parameters
+    ----------
+    specs : list[dict[str, Any]]
+        Specs as returned by ``apxml.fetch_open_weight_models``.
+    fetched_at : str or None
+        Refresh timestamp for every entry; defaults to today (UTC).
+
+    Returns
+    -------
+    list[dict[str, Any]]
+        Catalog entries, in input order, minus specs with no slug.
+    """
+    stamp = fetched_at or _today()
+    entries = [normalize_apxml_spec(spec, stamp) for spec in specs]
+    return [e for e in entries if e is not None]
+
+
+def write_cache(
+    entries: list[dict[str, Any]], cache_path: Path | None = None
+) -> Path:
+    """
+    Merge ``entries`` into the user catalog cache by ``id`` and write it to disk.
+
+    Existing cache entries are preserved; an incoming entry whose ``id`` matches
+    one already cached overwrites it, so a refresh is idempotent and never loses
+    previously cached models. The bundled seed is untouched.
+
+    Parameters
+    ----------
+    entries : list[dict[str, Any]]
+        Catalog entries to add or update, e.g. from :func:`normalize_apxml_specs`.
+    cache_path : Path or None
+        Destination cache file. Defaults to :data:`CACHE_PATH`; override in tests.
+
+    Returns
+    -------
+    Path
+        The path written.
+    """
+    path = cache_path if cache_path is not None else _CACHE_PATH
+
+    merged: dict[str, dict[str, Any]] = {e["id"]: e for e in _load_yaml_file(path)}
+    for entry in entries:
+        merged[entry["id"]] = entry
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        yaml.safe_dump(list(merged.values()), sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+    osh.info(f"Wrote {len(merged)} cached model(s):\n\t{path}")
+    return path

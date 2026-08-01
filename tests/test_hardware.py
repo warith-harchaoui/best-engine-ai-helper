@@ -105,3 +105,86 @@ def test_lookup_chip_finds_nvidia_rtx_4090() -> None:
     assert entry is not None
     assert entry["vendor"] == "nvidia"
     assert float(entry["memory_gb"]) == 24.0
+
+
+# ---------------------------------------------------------------------------
+# detect_local_entry / write_cache — `hardware update` refresh path
+# ---------------------------------------------------------------------------
+
+def test_detect_local_entry_apple(monkeypatch) -> None:
+    from best_engine_ai_helper import detect
+
+    monkeypatch.setattr(detect, "chip_vendor", lambda: "apple")
+    monkeypatch.setattr(
+        detect, "compute_profile",
+        lambda: {"accelerator": "gpu-metal", "chip": "Apple M2 Max", "bandwidth_gbs": 400},
+    )
+    monkeypatch.setattr(
+        detect, "available_memory",
+        lambda: {"unified_gb": 32.0, "vram_gb": None, "ram_gb": 32.0},
+    )
+    entry = hardware.detect_local_entry(fetched_at="2026-08-01")
+    assert entry is not None
+    assert entry["chip"] == "Apple M2 Max"
+    assert entry["vendor"] == "apple"
+    assert entry["memory_gb"] == 32.0
+    # 12.5% OS reservation: 32 * 0.875 = 28.
+    assert entry["ollama_usable_gb"] == 28.0
+    assert entry["source"] == "detected"
+
+
+def test_detect_local_entry_gpu_without_name(monkeypatch) -> None:
+    from best_engine_ai_helper import detect
+
+    monkeypatch.setattr(detect, "chip_vendor", lambda: "nvidia")
+    monkeypatch.setattr(
+        detect, "compute_profile",
+        lambda: {"accelerator": "gpu-cuda", "chip": None, "bandwidth_gbs": None},
+    )
+    monkeypatch.setattr(
+        detect, "available_memory",
+        lambda: {"unified_gb": None, "vram_gb": 24.0, "ram_gb": 64.0},
+    )
+    entry = hardware.detect_local_entry(fetched_at="2026-08-01")
+    assert entry is not None
+    # No chip name exposed -> a vendor/accelerator label, and VRAM is the budget.
+    assert "NVIDIA" in entry["chip"]
+    assert entry["memory_gb"] == 24.0
+
+
+def test_detect_local_entry_no_memory_returns_none(monkeypatch) -> None:
+    from best_engine_ai_helper import detect
+
+    monkeypatch.setattr(detect, "chip_vendor", lambda: "cpu")
+    monkeypatch.setattr(
+        detect, "compute_profile",
+        lambda: {"accelerator": "cpu", "chip": None, "bandwidth_gbs": None},
+    )
+    monkeypatch.setattr(
+        detect, "available_memory",
+        lambda: {"unified_gb": None, "vram_gb": None, "ram_gb": 0.0},
+    )
+    assert hardware.detect_local_entry(fetched_at="2026-08-01") is None
+
+
+def test_hardware_write_cache_merges_by_chip_and_tier(tmp_path) -> None:
+    from pathlib import Path
+
+    import yaml
+
+    cache = Path(tmp_path) / "hardware_cache.yaml"
+    a = {
+        "chip": "Apple M2 Max", "vendor": "apple", "memory_gb": 32.0,
+        "ollama_usable_gb": 28.0, "source": "detected", "fetched_at": "2026-08-01",
+    }
+    hardware.write_cache([a], cache_path=cache)
+
+    # Same chip + tier overwrites; a different tier appends.
+    a2 = dict(a, ollama_usable_gb=29.0, fetched_at="2026-08-02")
+    b = dict(a, memory_gb=96.0, ollama_usable_gb=84.0)
+    hardware.write_cache([a2, b], cache_path=cache)
+
+    data = yaml.safe_load(cache.read_text(encoding="utf-8"))
+    tiers = {(e["chip"], e["memory_gb"]): e for e in data}
+    assert set(tiers) == {("Apple M2 Max", 32.0), ("Apple M2 Max", 96.0)}
+    assert tiers[("Apple M2 Max", 32.0)]["ollama_usable_gb"] == 29.0
