@@ -1,4 +1,4 @@
-# TRIGGERS — best-engine-ai-helper
+# TRIGGERS: best-engine-ai-helper
 
 Exhaustive catalogue of what `best-engine-ai-helper` can do and the natural-language
 phrasings that should invoke it, whether you call it directly or drive it as a Claude /
@@ -19,7 +19,7 @@ environment so that other tools (Ollama, vLLM, sprezzature-local) can.
 | Browse the full model catalog | `best-engine-ai-helper catalog show` | `catalog.load_catalog()` |
 | Browse the hardware chip table | `best-engine-ai-helper hardware show` | `hardware.load_hardware()` |
 | Pull the best model and validate | `best-engine-ai-helper pull` | `pull.ollama_pull(tag)` |
-| Validate the current model | `best-engine-ai-helper validate` | `validate_vlm.run_gate()` + `validate_llm.run_gate()` |
+| Validate the current model | `best-engine-ai-helper validate` | `validate_vlm.validate()` + `validate_llm.validate()` |
 | Print the env block | `best-engine-ai-helper env` | `pull.write_env(...)` |
 | Refresh the model catalog | `best-engine-ai-helper catalog update` | `apxml.fetch_open_weight_models()` + `catalog.write_cache(...)` |
 | Refresh the hardware table | `best-engine-ai-helper hardware update` | `hardware.detect_local_entry()` + `hardware.write_cache(...)` |

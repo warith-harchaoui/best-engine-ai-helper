@@ -18,8 +18,8 @@ All notable changes to best-engine-ai-helper are documented here.
   chip + memory tier. (There is no public specs API spanning every GPU / Apple
   chip, so a refresh captures ground truth for the current machine rather than
   scraping a third-party site.)
-- English variant of the GUI: the page is now bilingual — French by default,
-  English at `/gui?lang=en` — with a header link to switch. Both are rendered
+- English variant of the GUI: the page is now bilingual (French by default,
+  English at `/gui?lang=en`), with a header link to switch. Both are rendered
   from one template plus a per-language strings table (`render_gui`); the JSON
   API stays language-neutral.
 - GUI mirrors the structured-output ranking: the candidate table gains a
@@ -27,7 +27,7 @@ All notable changes to best-engine-ai-helper are documented here.
   structured JSON output. A `/gui?task=...` deep link pre-fills the box and
   runs the recommendation on load, so a result is shareable by URL.
 - Minimal browser GUI: `best-engine-ai-helper gui` (needs the new `[api]`
-  extra: `fastapi` + `uvicorn`) serves a single-page app at `/gui` — the
+  extra: `fastapi` + `uvicorn`) serves a single-page app at `/gui`: the
   hardware snapshot `detect` prints, plus a task-description box that returns
   the same recommendation as `report`, in the browser. `api.py` exposes it as
   `GET /api/system` and `POST /api/recommend`; `gui.py` is the page (vanilla
@@ -40,6 +40,15 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Changed
 
+- Documentation pass over every Markdown file: brought the prose into line with
+  the project's writing charter (removed em/en-dash asides), corrected stale
+  facts (the `catalog update` / `hardware update` commands, the four selection
+  factors including structured-output, the `gemma3:12b` vision default, the
+  `pip install -e ".[api]" -r requirements-dev.txt` install, the `validate`
+  entry points), brought LISEZMOI to parity with README, and refreshed the
+  sample `recommend` / `select` outputs to match the current ranking. Populated
+  the `references/WRITING.md`, `references/ECRITURE.md`, and `references/CODING.md`
+  local copies from their canonical gists.
 - Rationalized the test suite per the project's testing philosophy: fewer,
   richer tests (≈138 → 81) at **higher** coverage (74% → 93%). Collapsed
   one-assertion micro-tests into scenario and table-style tests, mirrored the
@@ -51,6 +60,11 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Fixed
 
+- `score.select` ignored the structured-output flag, so the library's `select`
+  returned a different (structured-incapable) model than `recommend` / `report`
+  / the GUI, which rank structured-capable models first. `select` now applies
+  the same priority, restoring the documented `rank(...)[0] == select(...)`
+  invariant.
 - AMD VRAM detection: `_amd_vram_gb` split the rocm-smi line on the *first*
   colon, so the real `GPU[0] : VRAM Total Memory (B): <bytes>` format left the
   label text where the number was expected and detection silently returned
@@ -63,7 +77,7 @@ All notable changes to best-engine-ai-helper are documented here.
   `cli._fmt_table` its `dict[str, Any]` argument, typed the LangChain message
   list, and dropped `type: ignore` comments that no longer apply.
 
-## [0.4.0] — 2026-07-31
+## [0.4.0] - 2026-07-31
 
 ### Added
 
@@ -78,7 +92,7 @@ All notable changes to best-engine-ai-helper are documented here.
   config / catalog presence checks and `osh.make_directory` in place of ad-hoc
   `Path.mkdir(parents=True, exist_ok=True)`.
 
-## [0.3.0] — 2026-07-31
+## [0.3.0] - 2026-07-31
 
 Make the chosen model tags trivially consumable by downstream suite packages,
 so model selection lives here (its rightful home) rather than being hard-coded
@@ -100,7 +114,7 @@ in each consumer.
   gap where it read only `SPREZZATURE_LLM_*` and ignored a fresh `pull`
   selection persisted under `BEST_LLM_*`.
 
-## [0.2.0] — 2026-07-30
+## [0.2.0] - 2026-07-30
 
 Hardware-aware recommendation that weighs memory, accelerator, and compute, and
 emits a justifiable report in Markdown and JSON.
@@ -136,7 +150,7 @@ emits a justifiable report in Markdown and JSON.
 - Stale CLI test that treated the implemented `pull` / `validate` commands as
   stubs and hung the suite by driving the live model loop.
 
-## [0.1.0] — 2026-07-28
+## [0.1.0] - 2026-07-28
 
 First release. Phase 0a: pure Python, no model download required.
 

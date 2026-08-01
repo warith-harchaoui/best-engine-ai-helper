@@ -32,8 +32,8 @@ téléchargés. Deux cas, en toute franchise :
    mais optionnelle : le catalogue intégré suffit pour un usage courant.
 
 Une GUI minimale dans le navigateur (`best-engine-ai-helper gui`) couvre la moitié en
-lecture seule de ce flux — caractéristiques matérielles et recommandation de moteur à
-partir d'une tâche — sans passer par le terminal. La page est bilingue : français par
+lecture seule de ce flux (les caractéristiques matérielles, et la recommandation de moteur
+à partir d'une tâche) sans passer par le terminal. La page est bilingue : français par
 défaut, anglais via `/gui?lang=en`, avec un lien d'en-tête pour basculer. Voir
 [GUI.md](GUI.md) (en anglais).
 
@@ -50,7 +50,7 @@ défaut, anglais via `/gui?lang=en`, avec un lien d'en-tête pour basculer. Voir
 
 Le paquet est en Python pur (Python 3.10+). Les seuls éléments spécifiques à
 la plateforme sont **Python lui-même** et le runtime **Ollama** optionnel
-(nécessaire uniquement pour `pull` / `validate` / `env` — pas pour `detect`,
+(nécessaire uniquement pour `pull` / `validate` / `env`, pas pour `detect`,
 `recommend`, `report` ni la GUI). Choisissez votre OS ci-dessous.
 
 Partout, `[api]` ajoute l'extra de la GUI navigateur (`fastapi` + `uvicorn`).
@@ -68,12 +68,12 @@ source .venv/bin/activate
 pip install --upgrade pip
 pip install 'best-engine-ai-helper[api]'
 
-# 3. Optionnel — Ollama, uniquement si vous utiliserez `pull`
+# 3. Optionnel : Ollama, uniquement si vous utiliserez `pull`
 brew install ollama          # puis : ollama serve
 ```
 
 La détection matérielle utilise `system_profiler` intégré (mémoire unifiée
-Apple Silicon) — rien d'autre à installer.
+Apple Silicon) : rien d'autre à installer.
 
 ### 🐧 Ubuntu / Debian
 
@@ -88,7 +88,7 @@ source .venv/bin/activate
 pip install --upgrade pip
 pip install 'best-engine-ai-helper[api]'
 
-# 3. Optionnel — Ollama, uniquement si vous utiliserez `pull`
+# 3. Optionnel : Ollama, uniquement si vous utiliserez `pull`
 curl -fsSL https://ollama.com/install.sh | sh   # puis : ollama serve
 ```
 
@@ -108,12 +108,12 @@ py -m venv .venv
 python -m pip install --upgrade pip
 pip install "best-engine-ai-helper[api]"
 
-# 3. Optionnel — Ollama, uniquement si vous utiliserez `pull`
+# 3. Optionnel : Ollama, uniquement si vous utiliserez `pull`
 winget install Ollama.Ollama
 ```
 
 La VRAM NVIDIA est détectée via `nvidia-smi` (installé avec le pilote). Notez
-les guillemets doubles autour de `"...[api]"` — PowerShell les exige, les
+les guillemets doubles autour de `"...[api]"` : PowerShell les exige, les
 guillemets simples ne se comportent pas pareil.
 
 ### Depuis les sources (tout OS)
@@ -140,6 +140,9 @@ best-engine-ai-helper detect
 # Voir quels modèles seraient sélectionnés (sans téléchargement)
 best-engine-ai-helper recommend
 
+# Recommander le(s) meilleur(s) moteur(s) pour une tâche, en rapport (Markdown + JSON)
+best-engine-ai-helper report --task "fiches produit et contrôle qualité des photos" --out engine
+
 # Parcourir le catalogue complet
 best-engine-ai-helper catalog show
 
@@ -157,8 +160,9 @@ Voir [EXAMPLES.md](EXAMPLES.md) pour des recettes complètes avec exemples de so
 
 `best-engine-ai-helper gui` sert une GUI mono-page (FastAPI + JS natif, sans étape de
 build) sur `http://127.0.0.1:8000/gui` : les mêmes caractéristiques système que `detect`,
-et une zone de texte pour la tâche qui renvoie la même recommandation que `report` — sans
-terminal.
+et une zone de texte pour la tâche qui renvoie la même recommandation que `report`, sans
+terminal. La page est bilingue (français par défaut, anglais sur `/gui?lang=en`), avec un
+lien d'en-tête pour basculer.
 
 ![Résultats de recommandation](assets/screenshots/gui-recommendation.png)
 
@@ -167,20 +171,46 @@ d'icônes (favicon / touch-icon) est généré à partir de `assets/logo.png`.
 
 ## Comment fonctionne la sélection
 
-La mémoire disponible est déterminée par la première sonde qui réussit :
+La sélection pèse quatre facteurs, tous rendus explicites dans la sortie de `report` pour
+que la recommandation soit reproductible et discutable.
 
-1. Mémoire unifiée Apple Silicon (`system_profiler SPHardwareDataType`)
-2. Mémoire vidéo NVIDIA cumulée sur tous les GPU (`nvidia-smi`)
-3. Mémoire vidéo AMD (`rocm-smi`)
-4. La moitié de la RAM système comme estimation conservative pour un fonctionnement sur CPU
+### 1. Capacité de sortie structurée
 
-Un modèle est retenu quand son pic d'utilisation mémoire estimé représente au plus 80 % du
-pool disponible (la marge laisse de la place pour les réserves du système et les pics du
-cache KV). Parmi les modèles retenus, le score de benchmark le plus élevé l'emporte : score
-vision pour la sélection d'un VLM, score général pour un LLM.
+La suite AI-Helpers fait passer chaque tâche par un schéma JSON (analyse d'intention,
+propositions d'édition, critique visuelle). Certains modèles open-weight n'honorent pas la
+sortie structurée contrainte par grammaire d'Ollama et renvoient une réponse vide (la
+famille Qwen3-VL, vérifié sur `qwen3-vl:8b`). Un modèle marqué `structured_output: false`
+dans le catalogue n'est jamais choisi automatiquement, quel que soit son score brut ; il
+reste plus bas dans le classement pour qu'une tâche sans schéma puisse le retrouver. Les
+entrées sans ce marqueur sont supposées capables.
 
-Quand aucun modèle ne tient, l'outil sélectionne le plus petit du catalogue et affiche un
-avertissement.
+### 2. Adéquation mémoire
+
+La mémoire disponible vient de la première sonde qui réussit : mémoire unifiée Apple Silicon
+(`system_profiler`), mémoire vidéo NVIDIA (`nvidia-smi`), mémoire vidéo AMD (`rocm-smi`),
+sinon la moitié de la RAM système comme estimation conservative sur CPU. Le budget utilisable
+n'est pas tout le pool : sur Apple Silicon, Metal plafonne l'allocation GPU à environ 66 %
+de la mémoire unifiée jusqu'à 36 Go et environ 75 % au-delà (`recommendedMaxWorkingSetSize`),
+puis une marge de sécurité `headroom` (par défaut 0,85) s'applique par-dessus. Un modèle
+tient quand son `ram_gb` (pic d'inférence estimé) reste au plus égal à ce budget.
+
+### 3. Adéquation à la tâche
+
+Une tâche, même une phrase vague comme « fiches produit et contrôle qualité des photos »,
+se traduit en un axe de benchmark (`generalist`, `code`, `math`, `ocr`, `vision`) et en
+types de modèles nécessaires (du texte implique un LLM, tout visuel implique un VLM). Parmi
+les modèles qui tiennent, le meilleur score sur cet axe l'emporte.
+
+### 4. Débit
+
+La génération est bornée par la bande passante mémoire : chaque jeton lit une fois le modèle
+actif en mémoire, donc le plafond est `bande passante ÷ taille`, réduit à environ 65 % pour
+le cache KV et les surcoûts. `report` estime les jetons/s par candidat et propose une
+alternative plus légère et plus rapide quand elle est presque aussi forte. Plus gros n'est
+pas toujours mieux : un modèle 72B qui tient tout juste peut tourner à quelques jetons/s,
+là où un modèle 8-14B laisse de la marge et va plusieurs fois plus vite.
+
+Quand aucun modèle ne tient, l'outil sélectionne le plus petit du catalogue et le signale.
 
 ## Commandes disponibles
 
@@ -200,11 +230,14 @@ avertissement.
 
 ## Intégration avec les projets en aval
 
-Après `best-engine-ai-helper pull`, le fichier `~/.best-engine-ai-helper/env.sh` contient :
+Après `best-engine-ai-helper pull`, le fichier `~/.best-engine-ai-helper/env.sh` contient
+les tags du modèle retenu. `pull` choisit un seul modèle qui passe les deux contrôles de
+qualité et pointe les emplacements texte et vision dessus, donc les deux tags coïncident
+(le tag exact dépend de votre matériel) :
 
 ```sh
-export BEST_LLM_TEXT=qwen3-vl:72b
-export BEST_LLM_VISION=qwen3-vl:72b
+export BEST_LLM_TEXT=gemma3:12b
+export BEST_LLM_VISION=gemma3:12b
 export BEST_LLM_BACKEND=ollama
 export BEST_LLM_BASE_URL=http://localhost:11434
 ```

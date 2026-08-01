@@ -2,7 +2,7 @@
 
 One runnable recipe per public CLI command. All examples assume
 `best-engine-ai-helper` is installed and Ollama is running locally on port
-11434 (only required for Phase 0b commands).
+11434 (only required for the `pull`, `validate`, and `env` commands).
 
 ---
 
@@ -44,19 +44,21 @@ best-engine-ai-helper recommend
 On an M2 Max 96 GB machine the output looks like:
 
 ```
-=== LLM candidates ===
-id                 ram_gb  score  fits  notes
------------------  ------  -----  ----  ----------------------------------------
-qwen3:72b-q8_0    78      89     yes   72B at Q8; needs 96 GB unified.
-qwen3:72b-q4_k_m  48      87     yes   Top text-only; needs 64 GB unified or VRA
-...
-
 === VLM candidates ===
-id                 ram_gb  score  fits  notes
------------------  ------  -----  ----  ----------------------------------------
-qwen3-vl:72b       52      91     yes   Best local VLM; needs 64 GB unified or VR
+id            ram_gb  score  fits  notes
+------------  ------  -----  ----  ----------------------------------------
+gemma3:12b    9.2     78     yes   Google Gemma 3 12B multimodal. Reliable
+qwen3-vl:72b  52      91     yes   Highest raw vision benchmarks, but Qwen3
+qwen3-vl:32b  24      87     yes   Large VLM; needs 32 GB VRAM. Qwen3-VL: u
 ...
 ```
+
+Note the ordering: `gemma3:12b` (score 78) sits above `qwen3-vl:72b` (score 91)
+because the Qwen3-VL family cannot honour Ollama structured output, so it is
+never chosen for the suite's schema-driven tasks however high its raw score.
+The `fits` column marks whether a model's peak-inference RAM sits inside the
+budget: on this machine `qwen3:72b-q8_0` (78 GB) shows `NO` against the 61.2 GB
+budget, while everything smaller shows `yes`.
 
 To see only VLM candidates:
 
@@ -64,7 +66,7 @@ To see only VLM candidates:
 best-engine-ai-helper recommend --kind vlm
 ```
 
-To use a tighter safety margin (50% instead of 80%):
+To use a tighter safety margin (0.5 instead of the default 0.85):
 
 ```sh
 best-engine-ai-helper recommend --headroom 0.5
@@ -130,12 +132,16 @@ hw = available_memory()
 catalog = load_catalog()
 
 best_vlm = select(hw, catalog, kind="vlm")
-print(best_vlm["id"])        # e.g. 'qwen3-vl:72b' on a 96 GB machine
-print(best_vlm["ram_gb"])    # e.g. 52.0
+print(best_vlm["id"])        # e.g. 'gemma3:12b' on a 96 GB machine
+print(best_vlm["ram_gb"])    # e.g. 9.2
 
 best_llm = select(hw, catalog, kind="llm")
 print(best_llm["id"])        # e.g. 'qwen3:72b-q4_k_m' on a 96 GB machine
 ```
+
+`select` and the `recommend` / `report` output agree on the winner: both put
+structured-output-capable models first, then rank by benchmark score within the
+memory budget.
 
 The full recommendation algorithm (memory + compute + task) is one call:
 

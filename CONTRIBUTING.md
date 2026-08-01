@@ -25,13 +25,18 @@ Every Python file follows the mandate in [CODING.md](CODING.md):
 4. No bare `print(...)` in library code; use `click.echo` or `sys.stderr.write` in the CLI layer.
 5. `EXAMPLES.md` stays runnable: every recipe is tested in CI.
 
-Run the checks before opening a pull request:
+Run the same checks CI runs before opening a pull request:
 
 ```sh
-pip install -e ".[dev]"
-ruff check best_engine_ai_helper/ tests/
-python -m pytest tests/ -x -q
+pip install -e ".[api]" -r requirements-dev.txt
+python -m pip check                                  # dependency set is coherent
+ruff check .                                         # style + import order
+mypy best_engine_ai_helper                           # types
+python -m pytest -q --cov=best_engine_ai_helper --cov-fail-under=90
 ```
+
+CI runs this matrix on Python 3.10, 3.11, and 3.12; a failing check or a
+coverage drop below the floor blocks the merge.
 
 ## Writing standards
 

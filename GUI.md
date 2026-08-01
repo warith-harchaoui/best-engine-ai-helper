@@ -1,22 +1,22 @@
-# GUI — Best Engine AI Helper
+# GUI: Best Engine AI Helper
 
 A minimal single-page GUI, served by a small FastAPI app, for the two things
 you'd otherwise run `detect` and `report` for: seeing this machine's hardware,
-and getting the best local engine(s) for a task description — without leaving
+and getting the best local engine(s) for a task description, without leaving
 the browser.
 
 Keeps the AI Helpers suite's house style: **vanilla JS + Tailwind (CDN), no
 build step, no framework, no npm.** The GUI is a thin client over the same
-library calls the CLI uses — `detect.available_memory()`,
+library calls the CLI uses (`detect.available_memory()`,
 `detect.compute_profile()`, `score.effective_budget()`, and
-`recommend.recommend()` — so its numbers always match `best-engine-ai-helper
+`recommend.recommend()`), so its numbers always match `best-engine-ai-helper
 detect` / `report` run at the same moment.
 
 **Look and feel** matches the [sprezzature-figures
 gallery](https://harchaoui.org/warith/sprezzature/figures.html): Roboto /
 Roboto Serif / Roboto Mono, the `#007aff` brand blue, a neutral gray scale,
 and the same sticky-header / bordered-section rhythm. Light and dark both
-ship — the 🌞/🌙 toggle in the header persists to `localStorage` and defaults
+ship; the 🌞/🌙 toggle in the header persists to `localStorage` and defaults
 to the OS preference, matching `[data-color-scheme]` on `<html>`, resolved
 before first paint so there's no flash.
 
@@ -41,11 +41,11 @@ uvicorn best_engine_ai_helper.api:app --port 8000
 
 ## Language
 
-The page is bilingual — **French by default, English at `/gui?lang=en`** — with
+The page is bilingual (**French by default, English at `/gui?lang=en`**), with
 a header link (`EN` / `FR`) that switches between them. Both are rendered from a
 single template plus a per-language strings table by `gui.render_gui(lang)`; an
 unknown `?lang=` falls back to French rather than erroring. The JSON API is
-language-neutral, so only the labels differ — the numbers are identical.
+language-neutral, so only the labels differ; the numbers are identical.
 
 ## What it shows
 
@@ -53,7 +53,7 @@ language-neutral, so only the labels differ — the numbers are identical.
 
 Platform, vendor / chip, accelerator, memory bandwidth, and the usable memory
 budget (`effective_budget`, after the Apple Metal GPU-usable cap and the safety
-headroom — see the README's "How selection works"). A **Refresh** button
+headroom; see the README's "How selection works"). A **Refresh** button
 re-probes the machine without reloading the page, useful right after plugging in
 an eGPU or closing memory-heavy apps.
 
@@ -61,7 +61,7 @@ an eGPU or closing memory-heavy apps.
 
 ### 2. Describe the task → best engine(s)
 
-Type a free-text task — the same kind of phrase `report --task "..."` takes —
+Type a free-text task (the same kind of phrase `report --task "..."` takes)
 and the page shows, per model kind the task needs (LLM for text, VLM when
 anything visual is mentioned): the detected keywords and benchmark axis, the
 chosen model with its RAM footprint / benchmark score / estimated tokens per
@@ -80,7 +80,7 @@ tool, or `curl`):
 
 | Method | Path | Body | Returns |
 |--------|------|------|---------|
-| `GET`  | `/api/system` | — | hardware + compute profile + `memory_budget_gb` |
+| `GET`  | `/api/system` | (none) | hardware + compute profile + `memory_budget_gb` |
 | `POST` | `/api/recommend` | `{"task": str \| null, "headroom": float}` | the same report `recommend()` / `report` produce, as JSON |
 
 ```sh
@@ -99,8 +99,8 @@ OpenAPI schema.
 
 `assets/logo.png` (the engraved glove) is the source of every icon the page
 serves: `favicon.ico`, 16/32 px favicons, `apple-touch-icon.png`, and the two
-Android/PWA sizes referenced from `site.webmanifest`. All are generated —
-never hand-edited — by `scripts/generate_icons.py`, which composites the logo
+Android/PWA sizes referenced from `site.webmanifest`. All are generated,
+never hand-edited, by `scripts/generate_icons.py`, which composites the logo
 onto the suite's cream background (`#f7f3ea`) so it reads on light and dark
 browser chrome alike. Re-run it whenever `assets/logo.png` changes:
 
