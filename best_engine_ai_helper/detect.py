@@ -12,7 +12,7 @@ estimate of what a model loader can actually use.
 
 Author
 ------
-Warith Harchaoui <warith.harchaoui@gmail.com>
+Warith Harchaoui <warith.harchaoui@deraison.ai>
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ def _run(cmd: list[str], **kwargs: Any) -> str:
         Decoded stdout, or '' on error.
     """
     try:
-        result = subprocess.run(
+        result: subprocess.CompletedProcess[str] = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
@@ -325,7 +325,7 @@ def _ram_gb_psutil() -> float:
     """
     import psutil  # always available as a declared dependency
 
-    return psutil.virtual_memory().total / (1024 ** 3)
+    return float(psutil.virtual_memory().total) / (1024 ** 3)
 
 
 def available_memory() -> dict[str, float | None]:

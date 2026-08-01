@@ -15,7 +15,7 @@ budget, and no-op guard are implemented once.
 
 Author
 ------
-Warith Harchaoui <warith.harchaoui@gmail.com>
+Warith Harchaoui <warith.harchaoui@deraison.ai>
 """
 
 from __future__ import annotations
@@ -319,7 +319,8 @@ def eyeball_loop(
         if isinstance(raw, dict):
             return raw
         try:
-            return json.loads(str(raw))
+            parsed: dict[str, Any] = json.loads(str(raw))
+            return parsed
         except json.JSONDecodeError:
             # Malformed verdict: treat as "do not ship" so the loop continues
             osh.warning("Eyeball verdict was not valid JSON; treating as do-not-ship")
@@ -332,7 +333,7 @@ def eyeball_loop(
         apply_fix=apply_fix,
         verdict=verdict,
         max_iters=max_iters,
-        on_iteration=on_iteration,  # type: ignore[arg-type]
+        on_iteration=on_iteration,
     )
 
 

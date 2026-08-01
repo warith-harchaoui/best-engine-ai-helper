@@ -27,7 +27,7 @@ SPREZZATURE_LLM_BASE_URL
 BEST_LLM_TEXT (legacy alias: SPREZZATURE_LLM_TEXT)
     Model tag for text-only prompts. When unset, falls back to the selection
     persisted by ``pull`` in ``~/.best-engine-ai-helper/config.json``, then to
-    the ``qwen3-vl:8b`` default. Resolved by :func:`config.text_model`.
+    the ``qwen3:8b`` default. Resolved by :func:`config.text_model`.
 BEST_LLM_VISION (legacy alias: SPREZZATURE_LLM_VISION)
     Model tag for prompts that include images. Same precedence as the text
     model; resolved by :func:`config.vision_model`.
@@ -37,7 +37,7 @@ SPREZZATURE_LLM_API_KEY
 
 Author
 ------
-Warith Harchaoui <warith.harchaoui@gmail.com>
+Warith Harchaoui <warith.harchaoui@deraison.ai>
 """
 
 from __future__ import annotations
@@ -145,7 +145,7 @@ def _chat_ollama(
     *,
     system: str | None,
     images: list[bytes] | None,
-    json_mode: bool,
+    json_schema: dict[str, Any] | None,
     model: str,
     temperature: float,
 ) -> str:
@@ -160,10 +160,14 @@ def _chat_ollama(
         Optional system prompt prepended to the conversation.
     images : list[bytes] or None
         Raw PNG/JPEG bytes; encoded to base64 before sending.
-    json_mode : bool
-        When True, instructs Ollama to return valid JSON via ``format: "json"``.
+    json_schema : dict or None
+        When provided, passed as Ollama's ``format`` so generation is
+        grammar-constrained to that JSON Schema (structured outputs, Ollama
+        0.5+). This is stronger than the old ``format: "json"`` free-JSON mode:
+        the response is guaranteed to match the schema's shape, not merely be
+        valid JSON of an arbitrary shape.
     model : str
-        Ollama model tag, e.g. ``"qwen3-vl:8b"``.
+        Ollama model tag, e.g. ``"qwen3:8b"``.
     temperature : float
         Sampling temperature.
 
@@ -191,9 +195,10 @@ def _chat_ollama(
     if images:
         # Ollama expects a list of base64-encoded strings, not raw bytes
         payload["images"] = [base64.b64encode(img).decode() for img in images]
-    if json_mode:
-        # Constrain output to JSON; Ollama validates the response before returning
-        payload["format"] = "json"
+    if json_schema is not None:
+        # Pass the schema itself so Ollama constrains generation to match it
+        # (structured outputs), not just "some JSON".
+        payload["format"] = json_schema
 
     url = f"{_base_url()}/api/generate"
     try:
@@ -207,7 +212,7 @@ def _chat_ollama(
     if "response" not in data:
         osh.error(f"Ollama response missing 'response' field: {data!r}")
         raise RuntimeError(f"Ollama response missing 'response' field: {data!r}")
-    return data["response"]
+    return str(data["response"])
 
 
 # ---------------------------------------------------------------------------
@@ -219,7 +224,7 @@ def _chat_openai(
     *,
     system: str | None,
     images: list[bytes] | None,
-    json_mode: bool,
+    json_schema: dict[str, Any] | None,
     model: str,
     temperature: float,
 ) -> str:
@@ -238,10 +243,13 @@ def _chat_openai(
         Optional system message.
     images : list[bytes] or None
         Raw image bytes; encoded as data URIs in the ``image_url`` content part.
-    json_mode : bool
-        When True, sets ``response_format`` to ``{"type": "json_object"}``.
+    json_schema : dict or None
+        When provided, sets ``response_format`` to a ``json_schema`` object so
+        servers that support it (vLLM, recent llama.cpp, OpenAI) constrain the
+        output to the schema. Servers that only understand ``json_object`` still
+        get a JSON-mode request via the same field's fallback shape.
     model : str
-        Model ID, e.g. ``"qwen3-vl:8b"`` or a HuggingFace model path.
+        Model ID, e.g. ``"qwen3:8b"`` or a HuggingFace model path.
     temperature : float
         Sampling temperature.
 
@@ -281,8 +289,13 @@ def _chat_openai(
         "messages": messages,
         "temperature": temperature,
     }
-    if json_mode:
-        payload["response_format"] = {"type": "json_object"}
+    if json_schema is not None:
+        # Prefer structured json_schema; a server that only knows json_object
+        # will ignore the extra "json_schema" key and still return JSON.
+        payload["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {"name": "response", "schema": json_schema, "strict": True},
+        }
 
     url = f"{_base_url()}/v1/chat/completions"
     headers: dict[str, str] = {"Content-Type": "application/json"}
@@ -299,7 +312,7 @@ def _chat_openai(
 
     data = resp.json()
     try:
-        return data["choices"][0]["message"]["content"]
+        return str(data["choices"][0]["message"]["content"])
     except (KeyError, IndexError) as exc:
         osh.error(f"Malformed completion response: {data!r}")
         raise RuntimeError(f"Malformed completion response: {data!r}") from exc
@@ -314,7 +327,7 @@ def _chat_langchain(
     *,
     system: str | None,
     images: list[bytes] | None,
-    json_mode: bool,
+    json_schema: dict[str, Any] | None,
     model: str,
     temperature: float,
 ) -> str:
@@ -359,7 +372,7 @@ def _chat_langchain(
     # Decide which LangChain wrapper to use based on the server URL
     if "11434" in base or "localhost" in base:
         try:
-            from langchain_ollama import ChatOllama  # type: ignore[import-untyped]
+            from langchain_ollama import ChatOllama
             llm = ChatOllama(model=model, temperature=temperature, base_url=base)
         except ImportError as exc:
             raise ImportError(
@@ -368,7 +381,7 @@ def _chat_langchain(
             ) from exc
     else:
         try:
-            from langchain_openai import ChatOpenAI  # type: ignore[import-untyped]
+            from langchain_openai import ChatOpenAI
             llm = ChatOpenAI(
                 model=model,
                 temperature=temperature,
@@ -381,9 +394,9 @@ def _chat_langchain(
                 "Run: pip install langchain-openai"
             ) from exc
 
-    from langchain_core.messages import HumanMessage, SystemMessage  # type: ignore[import-untyped]
+    from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
-    msgs = []
+    msgs: list[BaseMessage] = []
     if system:
         msgs.append(SystemMessage(content=system))
 
@@ -394,9 +407,13 @@ def _chat_langchain(
             "Use the 'ollama' or 'openai' backend for vision prompts."
         )
 
-    if json_mode:
-        # Append a JSON instruction to the system prompt as a portable fallback
-        hint = "Respond ONLY with valid JSON. No prose, no markdown fences."
+    if json_schema is not None:
+        # Portable fallback across LangChain versions: instruct via the system
+        # prompt and show the exact schema the JSON must satisfy.
+        hint = (
+            "Respond ONLY with valid JSON matching this JSON Schema. "
+            "No prose, no markdown fences.\n" + json.dumps(json_schema)
+        )
         msgs.append(SystemMessage(content=hint))
 
     msgs.append(HumanMessage(content=prompt))
@@ -437,9 +454,11 @@ def chat(
         unless ``model`` is specified explicitly. The Ollama backend encodes
         images as base64; the OpenAI backend uses data URI content parts.
     json_schema : dict or None
-        When provided, the model is instructed to return valid JSON. The schema
-        is not yet enforced structurally (both Ollama and the OpenAI-compat
-        spec use best-effort JSON mode); use it as a strong hint.
+        When provided, the response is constrained to this JSON Schema. The
+        Ollama backend passes it as ``format`` (grammar-constrained structured
+        output) and the OpenAI backend as a ``json_schema`` response format, so
+        the returned JSON matches the schema's shape -- not merely valid JSON of
+        some arbitrary shape.
     model : str or None
         Override the model tag. Defaults to ``SPREZZATURE_LLM_VISION`` when
         images are present, or ``SPREZZATURE_LLM_TEXT`` otherwise.
@@ -470,7 +489,7 @@ def chat(
     >>> #     result = chat("Describe the chart.", images=[f.read()])
     """
     resolved_model = _resolve_model(model, images)
-    # json_schema presence is the signal to request JSON output
+    # json_schema presence is the signal to request structured JSON output
     json_mode = json_schema is not None
     backend = _backend()
     osh.info(
@@ -483,7 +502,7 @@ def chat(
             prompt,
             system=system,
             images=images,
-            json_mode=json_mode,
+            json_schema=json_schema,
             model=resolved_model,
             temperature=temperature,
         )
@@ -492,7 +511,7 @@ def chat(
             prompt,
             system=system,
             images=images,
-            json_mode=json_mode,
+            json_schema=json_schema,
             model=resolved_model,
             temperature=temperature,
         )
@@ -501,7 +520,7 @@ def chat(
             prompt,
             system=system,
             images=images,
-            json_mode=json_mode,
+            json_schema=json_schema,
             model=resolved_model,
             temperature=temperature,
         )
@@ -515,7 +534,8 @@ def chat(
     # Parse JSON when requested; fall back to raw string on parse failure
     if json_mode:
         try:
-            return json.loads(raw)
+            parsed: dict[str, Any] = json.loads(raw)
+            return parsed
         except json.JSONDecodeError:
             # Return raw string rather than crashing; caller can inspect
             osh.warning("Requested JSON mode but response was not valid JSON; returning raw text")

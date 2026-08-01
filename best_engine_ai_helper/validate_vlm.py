@@ -16,7 +16,7 @@ one is considered functional for the sprezzature visual-critique workflow.
 
 Author
 ------
-Warith Harchaoui <warith.harchaoui@gmail.com>
+Warith Harchaoui <warith.harchaoui@deraison.ai>
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ def _make_fixture_png() -> bytes:
         If Pillow is not installed. Install with ``pip install Pillow``.
     """
     try:
-        from PIL import Image, ImageDraw  # type: ignore[import-untyped]
+        from PIL import Image, ImageDraw
     except ImportError as exc:
         raise ImportError(
             "Pillow is required for validate_vlm. Run: pip install Pillow"
