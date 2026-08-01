@@ -87,11 +87,10 @@ def validate(llm_chat: Callable[..., Any]) -> bool:
 
     Examples
     --------
-    >>> def mock_chat(p, **kw):
-    ...     # Simulate a model that replaces em dashes and Par ailleurs
-    ...     return '{"needs_fix": false, "reasons": []}'
-    >>> validate(mock_chat)
-    True
+    >>> def stubborn_model(p, **kw):
+    ...     return {"needs_fix": False, "reasons": []}  # claims nothing needs fixing
+    >>> validate(stubborn_model)  # the seeded violations survive, so the gate fails
+    False
     """
     from . import ralph
 

@@ -242,12 +242,11 @@ def select(
 
     Examples
     --------
-    >>> import catalog, detect
-    >>> hw = detect.available_memory()
-    >>> entries = catalog.load_catalog()
-    >>> best = select(hw, entries, kind='vlm')
-    >>> best['kind'] == 'vlm'
-    True
+    >>> hw = {'unified_gb': 96.0, 'vram_gb': None, 'ram_gb': 96.0}
+    >>> catalog = [{'id': 'v', 'kind': 'vlm', 'ram_gb': 9.0,
+    ...             'benchmarks': {'vision': 80}}]
+    >>> select(hw, catalog, kind='vlm')['id']
+    'v'
     """
     if not catalog:
         osh.error("Catalog is empty; cannot select a model.")
@@ -326,9 +325,9 @@ def rank(
 
     Examples
     --------
-    >>> ranked = rank({'unified_gb': 96.0, 'vram_gb': None, 'ram_gb': 96.0},
-    ...               load_catalog(), 'vlm')
-    >>> ranked[0]['_fits']
+    >>> catalog = [{'id': 'v', 'kind': 'vlm', 'ram_gb': 9.0,
+    ...             'benchmarks': {'vision': 80}}]
+    >>> rank({'unified_gb': 96.0, 'vram_gb': None, 'ram_gb': 96.0}, catalog, 'vlm')[0]['_fits']
     True
     """
     if kind == "vlm":
