@@ -60,6 +60,11 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Fixed
 
+- `recommend`'s "lighter alternative" was chosen by score proximity alone, so
+  under a structured-capable pick it could suggest a lighter but
+  structured-incapable model (e.g. a Qwen3-VL) that silently fails the suite's
+  schema-driven tasks. The alternative is now required to be at least as
+  structured-output-capable as the chosen model.
 - `score.select` ignored the structured-output flag, so the library's `select`
   returned a different (structured-incapable) model than `recommend` / `report`
   / the GUI, which rank structured-capable models first. `select` now applies

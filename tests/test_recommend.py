@@ -49,6 +49,23 @@ def test_recommend_report_is_coherent_and_json_serializable() -> None:
     json.loads(json.dumps(rep))  # the whole report round-trips through JSON
 
 
+def test_lighter_alternative_is_not_less_structured_capable() -> None:
+    # A structured-incapable model that is lighter and scores within 3 points of
+    # the chosen (structured-capable) model must NOT be offered as the leaner
+    # alternative: following it would fail the suite's schema-driven tasks.
+    catalog = [
+        {"id": "cap-vlm", "kind": "vlm", "ram_gb": 9.0,
+         "benchmarks": {"general": 77, "vision": 78}, "structured_output": True},
+        {"id": "incap-vlm", "kind": "vlm", "ram_gb": 6.8,
+         "benchmarks": {"general": 79, "vision": 80}, "structured_output": False},
+    ]
+    rep = recommend.recommend(_HW, catalog, task="image quality", compute=_COMPUTE)
+    block = rep["recommendations"]["vlm"]
+    assert block["chosen"]["id"] == "cap-vlm"  # structured-capable wins the slot
+    # The lighter, higher-scoring but structured-incapable model is not suggested.
+    assert block["lighter_alternative"] is None
+
+
 def test_recommend_throughput_needs_compute() -> None:
     # Without a compute profile there is no bandwidth, so tok/s is not estimated.
     rep = recommend.recommend(_HW, _CATALOG, task="write copy")

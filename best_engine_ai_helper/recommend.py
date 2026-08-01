@@ -172,10 +172,17 @@ def recommend(
                     "Pull a structured-capable model or free up memory for one."
                 )
         # Lightest model within 3 benchmark points of the chosen one: the
-        # "good enough but leaner / faster" alternative worth surfacing.
+        # "good enough but leaner / faster" alternative worth surfacing. It must
+        # not be less structured-output-capable than the chosen model, otherwise
+        # the "leaner" pick would silently fail the suite's schema-driven tasks
+        # (e.g. suggesting a Qwen3-VL under a structured-capable chosen).
         lighter = None
         if chosen:
-            near = [r for r in fitting if r["score"] >= chosen["score"] - 3]
+            near = [
+                r for r in fitting
+                if r["score"] >= chosen["score"] - 3
+                and (r["structured_output"] or not chosen["structured_output"])
+            ]
             if near:
                 lighter = min(near, key=lambda r: r["ram_gb"])
                 if lighter["id"] == chosen["id"]:
