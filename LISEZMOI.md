@@ -46,16 +46,87 @@ partir d'une tâche — sans passer par le terminal. Voir [GUI.md](GUI.md) (en a
 
 ## Installation
 
+Le paquet est en Python pur (Python 3.10+). Les seuls éléments spécifiques à
+la plateforme sont **Python lui-même** et le runtime **Ollama** optionnel
+(nécessaire uniquement pour `pull` / `validate` / `env` — pas pour `detect`,
+`recommend`, `report` ni la GUI). Choisissez votre OS ci-dessous.
+
+Partout, `[api]` ajoute l'extra de la GUI navigateur (`fastapi` + `uvicorn`).
+Retirez-le (`pip install best-engine-ai-helper`) si vous ne voulez que la CLI.
+
+### 🍎 macOS
+
 ```sh
-pip install best-engine-ai-helper
+# 1. Python 3.10+ (ignorez si déjà présent : python3 --version)
+brew install python
+
+# 2. Installer dans un environnement virtuel isolé (recommandé)
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install 'best-engine-ai-helper[api]'
+
+# 3. Optionnel — Ollama, uniquement si vous utiliserez `pull`
+brew install ollama          # puis : ollama serve
 ```
 
-Depuis les sources :
+La détection matérielle utilise `system_profiler` intégré (mémoire unifiée
+Apple Silicon) — rien d'autre à installer.
+
+### 🐧 Ubuntu / Debian
+
+```sh
+# 1. Python 3.10+ avec le support venv
+sudo apt update
+sudo apt install -y python3 python3-venv python3-pip
+
+# 2. Installer dans un environnement virtuel isolé (recommandé)
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install 'best-engine-ai-helper[api]'
+
+# 3. Optionnel — Ollama, uniquement si vous utiliserez `pull`
+curl -fsSL https://ollama.com/install.sh | sh   # puis : ollama serve
+```
+
+La détection GPU est automatique quand les outils du fabricant sont dans le
+`PATH` : `nvidia-smi` (fourni avec le pilote NVIDIA) pour la VRAM NVIDIA,
+`rocm-smi` (pile ROCm) pour AMD. Sans GPU, l'outil retombe sur la RAM système.
+
+### 🪟 Windows (PowerShell)
+
+```powershell
+# 1. Python 3.10+ (ignorez si déjà présent : py --version)
+winget install Python.Python.3.12
+
+# 2. Installer dans un environnement virtuel isolé (recommandé)
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install "best-engine-ai-helper[api]"
+
+# 3. Optionnel — Ollama, uniquement si vous utiliserez `pull`
+winget install Ollama.Ollama
+```
+
+La VRAM NVIDIA est détectée via `nvidia-smi` (installé avec le pilote). Notez
+les guillemets doubles autour de `"...[api]"` — PowerShell les exige, les
+guillemets simples ne se comportent pas pareil.
+
+### Depuis les sources (tout OS)
 
 ```sh
 git clone https://github.com/warith-harchaoui/best-engine-ai-helper
 cd best-engine-ai-helper
-pip install -e .
+pip install -e '.[api]'          # Windows PowerShell : pip install -e ".[api]"
+```
+
+### Vérifier l'installation
+
+```sh
+best-engine-ai-helper --version
+best-engine-ai-helper detect     # affiche le matériel de la machine en JSON
 ```
 
 ## Démarrage rapide
