@@ -31,12 +31,18 @@ téléchargés. Deux cas, en toute franchise :
    fonctionne hors ligne. La mise à jour du catalogue (`catalog update`) est également en ligne,
    mais optionnelle : le catalogue intégré suffit pour un usage courant.
 
+Une GUI minimale dans le navigateur (`best-engine-ai-helper gui`) couvre la moitié en
+lecture seule de ce flux — caractéristiques matérielles et recommandation de moteur à
+partir d'une tâche — sans passer par le terminal. Voir [GUI.md](GUI.md) (en anglais).
+
 ## Prérequis
 
 - Python 3.10 ou ultérieur
 - [Ollama](https://ollama.com) (nécessaire uniquement pour `pull`, `validate` et `env` ; pas
-  requis pour `detect` et `recommend`)
+  requis pour `detect`, `recommend` ou `report`)
 - psutil, PyYAML, click, requests (installés automatiquement)
+- Optionnel : `fastapi` + `uvicorn` pour la GUI navigateur
+  (`pip install 'best-engine-ai-helper[api]'`)
 
 ## Installation
 
@@ -66,9 +72,25 @@ best-engine-ai-helper catalog show
 
 # Parcourir la table des puces matérielles
 best-engine-ai-helper hardware show
+
+# Lancer la GUI navigateur (nécessite l'extra [api])
+best-engine-ai-helper gui
 ```
 
-Voir [EXAMPLES.md](EXAMPLES.md) pour des recettes complètes avec exemples de sortie.
+Voir [EXAMPLES.md](EXAMPLES.md) pour des recettes complètes avec exemples de sortie, et
+[GUI.md](GUI.md) pour la GUI navigateur.
+
+## GUI
+
+`best-engine-ai-helper gui` sert une GUI mono-page (FastAPI + JS natif, sans étape de
+build) sur `http://127.0.0.1:8000/gui` : les mêmes caractéristiques système que `detect`,
+et une zone de texte pour la tâche qui renvoie la même recommandation que `report` — sans
+terminal.
+
+![Résultats de recommandation](assets/screenshots/gui-recommendation.png)
+
+Voir [GUI.md](GUI.md) pour le détail complet, l'API JSON sous-jacente, et comment le jeu
+d'icônes (favicon / touch-icon) est généré à partir de `assets/logo.png`.
 
 ## Comment fonctionne la sélection
 
@@ -93,6 +115,7 @@ avertissement.
 |----------|-------------|
 | `detect` | Affiche le matériel détecté au format JSON |
 | `recommend` | Classe les candidats pour ce matériel (sans téléchargement) |
+| `report` | Recommande le(s) meilleur(s) moteur(s) pour une tâche (Markdown + JSON) |
 | `catalog show` | Affiche le catalogue de modèles fusionné |
 | `catalog update` | Rafraîchit le cache depuis des sources de leaderboards externes |
 | `hardware show` | Affiche la table des puces matérielles connues |
@@ -100,6 +123,7 @@ avertissement.
 | `pull` | Télécharge le meilleur modèle et exécute les contrôles Ralph |
 | `validate` | Exécute les contrôles Ralph sur le modèle actuellement configuré |
 | `env` | Affiche le bloc d'exports shell prêt pour `~/.zshrc` |
+| `gui` | Lance la GUI navigateur (nécessite l'extra `[api]`) |
 
 ## Intégration avec les projets en aval
 

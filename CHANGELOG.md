@@ -4,6 +4,20 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Minimal browser GUI: `best-engine-ai-helper gui` (needs the new `[api]`
+  extra: `fastapi` + `uvicorn`) serves a single-page app at `/gui` — the
+  hardware snapshot `detect` prints, plus a task-description box that returns
+  the same recommendation as `report`, in the browser. `api.py` exposes it as
+  `GET /api/system` and `POST /api/recommend`; `gui.py` is the page (vanilla
+  JS + Tailwind CDN, no build step, matching the AI Helpers suite's house
+  style). See `GUI.md`.
+- `scripts/generate_icons.py` + `best_engine_ai_helper/static/`: favicon,
+  apple-touch-icon, and Android/PWA icons generated from `assets/logo.png`,
+  composited onto the suite's cream background so the engraved-glove mark
+  reads on both light and dark browser chrome.
+
 ## [0.4.0] — 2026-07-31
 
 ### Added

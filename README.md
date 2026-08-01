@@ -4,13 +4,14 @@ Pick and pull the best local large language model (LLM) or vision-language model
 
 The tool detects available memory (Apple Silicon unified pool, NVIDIA VRAM, or system RAM), consults a bundled model catalog, and selects the highest-scoring model that fits within a configurable safety headroom. After selection, it pulls the model via Ollama, runs two quality gates (the Ralph Loop for prose and the Ralph Eyeball Loop for vision), and writes an environment file that downstream projects source to find the chosen model.
 
-Phase 0a (this release) covers detection, catalog, scoring, and the CLI skeleton. Phase 0b adds the pull, validate, and env commands.
+A minimal browser GUI (`best-engine-ai-helper gui`) covers the read-only half of this — hardware snapshot and task → engine recommendation — without the CLI. See [GUI.md](GUI.md).
 
 ## Requirements
 
 - Python 3.10 or later
-- [Ollama](https://ollama.com) (Phase 0b only; not needed for `detect` and `recommend`)
+- [Ollama](https://ollama.com) (needed for `pull`, `validate`, `env`; not for `detect`, `recommend`, or `report`)
 - psutil, PyYAML, click, requests (installed automatically)
+- Optional: `fastapi` + `uvicorn` for the browser GUI (`pip install 'best-engine-ai-helper[api]'`)
 
 ## Install
 
@@ -43,9 +44,24 @@ best-engine-ai-helper catalog show
 
 # Browse the hardware chip table
 best-engine-ai-helper hardware show
+
+# Launch the browser GUI (requires the [api] extra)
+best-engine-ai-helper gui
 ```
 
-See [EXAMPLES.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXAMPLES.md) for runnable recipes with expected output.
+See [EXAMPLES.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXAMPLES.md) for runnable recipes with expected output, and [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) for the browser GUI.
+
+## GUI
+
+`best-engine-ai-helper gui` serves a single-page browser GUI (FastAPI +
+vanilla JS, no build step) at `http://127.0.0.1:8000/gui`: the same hardware
+snapshot as `detect`, and a task-description box that returns the same
+recommendation as `report` — no terminal needed.
+
+![Recommendation results](assets/screenshots/gui-recommendation.png)
+
+See [GUI.md](GUI.md) for the full write-up, the JSON API it's built on, and
+how the favicon / touch-icon set is generated from `assets/logo.png`.
 
 ## How selection works
 

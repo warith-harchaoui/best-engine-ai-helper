@@ -156,6 +156,34 @@ print(to_markdown(report))                                # human-readable repor
 
 ---
 
+## gui
+
+Launch the browser GUI (hardware snapshot + task → best engine). Requires the
+`[api]` extra:
+
+```sh
+pip install 'best-engine-ai-helper[api]'
+best-engine-ai-helper gui
+# Serving GUI at http://127.0.0.1:8000/gui
+```
+
+Open `http://127.0.0.1:8000/gui`: the hardware panel loads on page load, and
+typing a task and clicking "Recommander" calls the same `recommend()` used by
+`report`. The two JSON endpoints it's built on are usable directly too:
+
+```sh
+curl -s http://127.0.0.1:8000/api/system | python3 -m json.tool
+
+curl -s -X POST http://127.0.0.1:8000/api/recommend \
+     -H 'Content-Type: application/json' \
+     -d '{"task": "product descriptions and image-quality checks"}' \
+  | python3 -m json.tool
+```
+
+See [GUI.md](GUI.md) for screenshots and the full write-up.
+
+---
+
 ## pull, validate, env
 
 ```sh
