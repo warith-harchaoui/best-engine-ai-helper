@@ -21,7 +21,7 @@ inside unit tests — the result is deterministic and never raises.
 
 Author
 ------
-Warith Harchaoui <warith.harchaoui@gmail.com>
+Warith Harchaoui <warith.harchaoui@deraison.ai>
 """
 
 from __future__ import annotations
@@ -37,10 +37,15 @@ import os_helper as osh
 # disagree about where the selection lives.
 from .pull import _CONFIG_JSON, _USER_DIR
 
-# Conservative defaults used when nothing has been selected yet. ``qwen3-vl:8b``
-# is multimodal (vision + text), so the same tag safely backs both the text and
-# vision fallbacks: one model to pull, and it answers either kind of prompt.
-DEFAULT_TEXT_MODEL = "qwen3-vl:8b"
+# Conservative defaults used when nothing has been selected yet.
+#
+# Text uses ``qwen3:8b`` (the catalog's solid text-only 8B), NOT the multimodal
+# ``qwen3-vl:8b``: the VL model returns an empty response under Ollama's
+# JSON-schema structured output on /api/generate, which silently broke every
+# structured text extraction (intent analysis, edit proposals, ...). The plain
+# ``qwen3:8b`` honours the ``format=<schema>`` grammar reliably. Vision still
+# defaults to ``qwen3-vl:8b``, the catalog's default local VLM.
+DEFAULT_TEXT_MODEL = "qwen3:8b"
 DEFAULT_VISION_MODEL = "qwen3-vl:8b"
 
 # Config keys, canonical spelling first. The canonical names match what

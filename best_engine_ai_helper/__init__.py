@@ -19,7 +19,7 @@ hardware, so they are cheap and deterministic (CI-safe).
 
 Author
 ------
-Warith Harchaoui <warith.harchaoui@gmail.com>
+Warith Harchaoui <warith.harchaoui@deraison.ai>
 """
 
 from __future__ import annotations
@@ -79,4 +79,4 @@ __all__ = [
 
 __version__ = "0.4.0"
 __author__ = "Warith Harchaoui"
-__email__ = "warith.harchaoui@gmail.com"
+__email__ = "warith.harchaoui@deraison.ai"

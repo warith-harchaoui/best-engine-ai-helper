@@ -22,7 +22,7 @@ network; it is pure ranking over the catalog and the detected hardware.
 
 Author
 ------
-Warith Harchaoui <warith.harchaoui@gmail.com>
+Warith Harchaoui <warith.harchaoui@deraison.ai>
 """
 
 from __future__ import annotations
