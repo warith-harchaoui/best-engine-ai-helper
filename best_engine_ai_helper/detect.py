@@ -302,9 +302,12 @@ def _amd_vram_gb() -> float | None:
     """
     out = _run(["rocm-smi", "--showmeminfo", "vram"])
     for line in out.splitlines():
-        # Typical line: "GPU[0]         : VRAM Total Memory (B): 17163091968"
+        # Typical line: "GPU[0]         : VRAM Total Memory (B): 17163091968".
+        # The byte count is the last colon-separated field, so split on the LAST
+        # colon (rpartition) — partition() would stop at the "GPU[0] :" prefix
+        # and leave the label text, which never parses as a number.
         if "VRAM Total Memory" in line and "B)" in line:
-            _, _, val = line.partition(":")
+            _, _, val = line.rpartition(":")
             try:
                 return float(val.strip()) / (1024 ** 3)
             except ValueError:

@@ -51,6 +51,10 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Fixed
 
+- AMD VRAM detection: `_amd_vram_gb` split the rocm-smi line on the *first*
+  colon, so the real `GPU[0] : VRAM Total Memory (B): <bytes>` format left the
+  label text where the number was expected and detection silently returned
+  None. Split on the last colon instead.
 - Ralph eyeball gate: the verdict prompt's literal JSON example (`{"ship": ...}`)
   was not brace-escaped, so `.format(critique=...)` raised `KeyError` on every
   real verdict. Escaped it; the eyeball loop now completes.

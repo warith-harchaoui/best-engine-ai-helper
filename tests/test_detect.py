@@ -63,6 +63,7 @@ def test_parse_memory_gb_units_and_garbage() -> None:
     assert detect._parse_memory_gb("96 GB") == 96.0
     assert detect._parse_memory_gb("  8 GB ") == 8.0
     assert detect._parse_memory_gb("32768 MiB") == pytest.approx(32.0)
+    assert detect._parse_memory_gb("16 GiB") == pytest.approx(16.0)
     assert detect._parse_memory_gb(str(16 * 1024**3)) == pytest.approx(16.0)  # bare bytes
     assert detect._parse_memory_gb("not a number") is None
 
@@ -76,6 +77,11 @@ def test_apple_memory_chip_and_bandwidth(monkeypatch: pytest.MonkeyPatch) -> Non
     assert detect._apple_bandwidth_gbs("Apple M2 Max") == 400.0
     assert detect._apple_bandwidth_gbs(None) is None
     assert detect._apple_bandwidth_gbs("Some Unknown Chip") is None
+    # When system_profiler yields nothing usable, the apple probes report None
+    # rather than raising.
+    monkeypatch.setattr(detect, "_run", _fake_run({}))
+    assert detect._apple_unified_gb() is None
+    assert detect.chip_name() is None
 
 
 def test_compute_profile_per_vendor(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -91,16 +97,24 @@ def test_compute_profile_per_vendor(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_discrete_gpu_vram_probes(monkeypatch: pytest.MonkeyPatch) -> None:
-    # nvidia-smi lists one line of MiB per GPU; the sum is converted to GB.
-    monkeypatch.setattr(detect, "_run", _fake_run({"nvidia-smi": "24564\n24564\n"}))
+    # nvidia-smi lists one line of MiB per GPU; non-numeric lines are skipped
+    # and the numeric ones summed, then converted to GB.
+    monkeypatch.setattr(detect, "_run", _fake_run({"nvidia-smi": "24564\nN/A\n24564\n"}))
     assert detect._nvidia_vram_gb() == pytest.approx(2 * 24564 / 1024, rel=1e-3)
     monkeypatch.setattr(detect, "_run", _fake_run({}))
     assert detect._nvidia_vram_gb() is None
-    # rocm-smi reports total VRAM in bytes; the number must follow the first
-    # colon on the line (partition(":") keys on that), then convert to GB.
+    # rocm-smi reports total VRAM in bytes as the LAST colon-separated field, so
+    # the real "GPU[0] : VRAM Total Memory (B): <bytes>" format must parse.
     monkeypatch.setattr(detect, "_run", _fake_run(
-        {"rocm-smi": "VRAM Total Memory (B): 17163091968"}))
+        {"rocm-smi": "GPU[0]        : VRAM Total Memory (B): 17163091968"}))
     assert detect._amd_vram_gb() == pytest.approx(17163091968 / 1024**3, rel=1e-3)
+    # A matching line whose byte field isn't numeric is skipped -> None.
+    monkeypatch.setattr(detect, "_run", _fake_run(
+        {"rocm-smi": "GPU[0] : VRAM Total Memory (B): N/A"}))
+    assert detect._amd_vram_gb() is None
+    # chip_name is Apple-only; off darwin it returns None without probing.
+    monkeypatch.setattr(detect, "platform_name", lambda: "linux")
+    assert detect.chip_name() is None
 
 
 def test_available_memory_selects_pool_by_platform(monkeypatch: pytest.MonkeyPatch) -> None:
