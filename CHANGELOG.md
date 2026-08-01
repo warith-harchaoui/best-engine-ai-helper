@@ -22,6 +22,10 @@ All notable changes to best-engine-ai-helper are documented here.
   English at `/gui?lang=en` — with a header link to switch. Both are rendered
   from one template plus a per-language strings table (`render_gui`); the JSON
   API stays language-neutral.
+- GUI mirrors the structured-output ranking: the candidate table gains a
+  `structured` column, and the chosen model shows a warning when it can't do
+  structured JSON output. A `/gui?task=...` deep link pre-fills the box and
+  runs the recommendation on load, so a result is shareable by URL.
 - Minimal browser GUI: `best-engine-ai-helper gui` (needs the new `[api]`
   extra: `fastapi` + `uvicorn`) serves a single-page app at `/gui` — the
   hardware snapshot `detect` prints, plus a task-description box that returns

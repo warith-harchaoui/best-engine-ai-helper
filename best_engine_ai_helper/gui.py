@@ -96,10 +96,12 @@ _STRINGS: dict[str, dict[str, dict[str, str]]] = {
             "best": "Meilleur",
             "axis": "axe :",
             "overBudget": "dépasse le budget mémoire — sera lent",
+            "notStructured": "pas de sortie JSON structurée — inadapté aux tâches à schéma",
             "lighterAlt": "Alternative plus légère :",
             "score": "score",
             "noCandidate": "Aucun candidat trouvé.",
             "allCandidates": "Tous les candidats",
+            "thStructured": "structuré",
             "thModel": "modèle",
             "thRam": "Go RAM",
             "thScore": "score",
@@ -170,10 +172,12 @@ _STRINGS: dict[str, dict[str, dict[str, str]]] = {
             "best": "Best",
             "axis": "axis:",
             "overBudget": "exceeds the memory budget — will be slow",
+            "notStructured": "no structured JSON output — unfit for schema-driven tasks",
             "lighterAlt": "Lighter alternative:",
             "score": "score",
             "noCandidate": "No candidate found.",
             "allCandidates": "All candidates",
+            "thStructured": "structured",
             "thModel": "model",
             "thRam": "GB RAM",
             "thScore": "score",
@@ -432,6 +436,14 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) runRecommend();
     });
 
+    // Deep link: /gui?task=... pre-fills the box and runs it on load, so a
+    // recommendation is shareable by URL. ?lang is handled server-side.
+    const urlTask = new URLSearchParams(location.search).get("task");
+    if (urlTask) {
+      $("task").value = urlTask;
+      runRecommend();
+    }
+
     async function runRecommend() {
       const task = $("task").value.trim() || null;
       const headroom = Number($("headroom").value) || 0.85;
@@ -464,6 +476,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
           <td class="py-1.5 pr-3">${fmt1(r.ram_gb)}</td>
           <td class="py-1.5 pr-3">${Math.round(r.score)}</td>
           <td class="py-1.5 pr-3">${r.fits ? T.yes : T.no}</td>
+          <td class="py-1.5 pr-3">${r.structured_output === false ? T.no : T.yes}</td>
           <td class="py-1.5">${fmtTps(r.est_tokens_per_s)}</td>
         </tr>`;
     }
@@ -484,6 +497,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
             ${fmt1(chosen.ram_gb)} ${T.gb}, ${T.score} ${Math.round(chosen.score)}, ~${fmtTps(chosen.est_tokens_per_s)} ${T.tps}
           </span>
           ${chosen.fits ? "" : `<span class="text-red-600 dark:text-red-400">${T.overBudget}</span>`}
+          ${chosen.structured_output === false ? `<span class="text-amber-600 dark:text-amber-400">${T.notStructured}</span>` : ""}
         </p>
         ${alt ? `<p class="mt-2 text-xs text-neutral-500 dark:text-neutral-400">${T.lighterAlt} <span class="font-mono">${alt.id}</span> — ${fmt1(alt.ram_gb)} ${T.gb}, ${T.score} ${Math.round(alt.score)}, ~${fmtTps(alt.est_tokens_per_s)} ${T.tps}.</p>` : ""}
       ` : `<p class="text-sm text-neutral-500 dark:text-neutral-400">${T.noCandidate}</p>`;
@@ -506,6 +520,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
                     <th class="pb-1.5 pr-3 font-medium">${T.thRam}</th>
                     <th class="pb-1.5 pr-3 font-medium">${T.thScore}</th>
                     <th class="pb-1.5 pr-3 font-medium">${T.thFits}</th>
+                    <th class="pb-1.5 pr-3 font-medium">${T.thStructured}</th>
                     <th class="pb-1.5 font-medium">${T.thTps}</th>
                   </tr>
                 </thead>

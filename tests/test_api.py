@@ -69,7 +69,9 @@ def test_recommend_chosen_candidate_has_expected_fields(client: TestClient) -> N
     report = client.post("/api/recommend", json={"task": "write python code"}).json()
     chosen = report["recommendations"]["llm"]["chosen"]
     assert chosen is not None
-    assert {"id", "kind", "ram_gb", "score", "fits", "est_tokens_per_s"} <= chosen.keys()
+    # structured_output is part of the contract the GUI's candidate table reads.
+    expected = {"id", "kind", "ram_gb", "score", "fits", "structured_output", "est_tokens_per_s"}
+    assert expected <= chosen.keys()
 
 
 def test_recommend_headroom_is_echoed(client: TestClient) -> None:
