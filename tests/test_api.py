@@ -94,6 +94,35 @@ def test_gui_serves_html(client: TestClient) -> None:
     assert "/api/recommend" in res.text
 
 
+def test_gui_default_is_french(client: TestClient) -> None:
+    res = client.get("/gui")
+    assert res.status_code == 200
+    assert '<html lang="fr"' in res.text
+    assert "Meilleur moteur local" in res.text
+    # Header offers the switch to English.
+    assert 'href="/gui?lang=en"' in res.text
+
+
+def test_gui_english_variant(client: TestClient) -> None:
+    res = client.get("/gui", params={"lang": "en"})
+    assert res.status_code == 200
+    assert '<html lang="en"' in res.text
+    assert "Best local engine" in res.text
+    assert "Meilleur moteur local" not in res.text
+    # Header offers the switch back to French.
+    assert 'href="/gui"' in res.text
+    # The EN placeholder contains double quotes; they must be HTML-escaped so
+    # they don't break out of the placeholder attribute (regression guard).
+    assert "&quot;write product descriptions" in res.text
+    assert 'placeholder="e.g. "write' not in res.text
+
+
+def test_gui_unknown_lang_falls_back_to_french(client: TestClient) -> None:
+    res = client.get("/gui", params={"lang": "zz"})
+    assert res.status_code == 200
+    assert '<html lang="fr"' in res.text
+
+
 def test_root_redirects_to_gui(client: TestClient) -> None:
     res = client.get("/", follow_redirects=False)
     assert res.status_code in (307, 308)

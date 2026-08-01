@@ -9,7 +9,9 @@ Exposes the two calls the GUI needs:
 
 A minimal single-page GUI is served at ``GET /gui`` (``GET /`` redirects
 there): it shows the machine's characteristics and lets you type a task
-description to get the best local engine(s) for it.
+description to get the best local engine(s) for it. It is bilingual —
+French by default, English at ``GET /gui?lang=en`` — with a header link to
+switch between the two.
 
 Install the extra to get the runtime dependencies::
 
@@ -22,7 +24,7 @@ Then run the app with any ASGI server::
 
 Author
 ------
-Warith Harchaoui <warith.harchaoui@gmail.com>
+Warith Harchaoui <warith.harchaoui@deraison.ai>
 """
 
 from __future__ import annotations
@@ -43,7 +45,7 @@ except ImportError as exc:  # pragma: no cover
 
 from . import catalog as _catalog
 from . import detect as _detect
-from .gui import GUI_HTML
+from .gui import render_gui
 from .recommend import recommend as _recommend_engines
 from .score import effective_budget as _effective_budget
 
@@ -82,8 +84,10 @@ def root() -> RedirectResponse:
 
 
 @app.get("/gui", response_class=HTMLResponse, include_in_schema=False)
-def gui() -> str:
-    return GUI_HTML
+def gui(lang: str = "fr") -> str:
+    # French by default; ``?lang=en`` serves English. render_gui falls back to
+    # French for any unknown code, so a bad value never errors.
+    return render_gui(lang)
 
 
 @app.get("/api/system")
