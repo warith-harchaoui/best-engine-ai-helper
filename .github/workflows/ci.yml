@@ -1,11 +1,11 @@
 name: ci
 
-# Gentle, deterministic gate: install the package (with the [api] extra, so
-# the FastAPI GUI surface is importable) + dev deps, then ruff lint and
-# pytest on the supported Python versions. The tests never call a live
-# model daemon (the pull / validate model loops are covered by graceful
-# fall-through tests, not live calls), so CI needs no Ollama. Intentionally
-# minimal.
+# Deterministic gate: install the package (with the [api] extra, so the FastAPI
+# GUI surface is importable) + dev deps, verify the dependency set is coherent
+# (pip check), then ruff lint, mypy types, and pytest with a coverage floor on
+# the supported Python versions. The tests never call a live model daemon (the
+# pull / validate model loops are covered by mocked / fall-through tests), so CI
+# needs no Ollama.
 
 "on":
   push:
@@ -30,7 +30,13 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[api]" -r requirements-dev.txt
+      - name: Pip check
+        # Catch incompatible pinned dependencies before they bite at runtime.
+        run: python -m pip check
       - name: Ruff
         run: ruff check .
+      - name: Mypy
+        run: mypy best_engine_ai_helper
       - name: Pytest
-        run: pytest -q
+        # A failing test or a coverage regression below the floor blocks merge.
+        run: pytest -q --cov=best_engine_ai_helper --cov-report=term-missing --cov-fail-under=90
