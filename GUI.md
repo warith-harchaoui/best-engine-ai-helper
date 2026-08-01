@@ -12,6 +12,18 @@ library calls the CLI uses — `detect.available_memory()`,
 `recommend.recommend()` — so its numbers always match `best-engine-ai-helper
 detect` / `report` run at the same moment.
 
+**Look and feel** matches the [sprezzature-figures
+gallery](https://harchaoui.org/warith/sprezzature/figures.html): Roboto /
+Roboto Serif / Roboto Mono, the `#007aff` brand blue, a neutral gray scale,
+and the same sticky-header / bordered-section rhythm. Light and dark both
+ship — the 🌞/🌙 toggle in the header persists to `localStorage` and defaults
+to the OS preference, matching `[data-color-scheme]` on `<html>`, resolved
+before first paint so there's no flash.
+
+| Light | Dark |
+|---|---|
+| ![Light mode](assets/screenshots/gui-hardware.png) | ![Dark mode](assets/screenshots/gui-dark.png) |
+
 ## Install and run
 
 ```sh
