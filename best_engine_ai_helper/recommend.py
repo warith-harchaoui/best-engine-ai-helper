@@ -98,6 +98,9 @@ def _candidate_row(
         "ram_gb": ram,
         "score": _benchmark_score(entry, kind, axis),
         "fits": ram <= budget,
+        # False = can't honour Ollama structured JSON output, so it is never
+        # auto-chosen for the helper's schema-driven tasks (see score.rank).
+        "structured_output": entry.get("structured_output", True) is not False,
         "est_tokens_per_s": estimated_tokens_per_second(entry, bandwidth_gbs),
         "notes": entry.get("notes", ""),
     }
@@ -158,6 +161,16 @@ def recommend(
                 f"Chosen {kind} on axis '{axis}': {chosen['id']} "
                 f"({chosen['ram_gb']:.1f} GB, {'fits' if chosen['fits'] else 'over budget'})"
             )
+            if not chosen.get("structured_output", True):
+                # Only happens when no structured-capable model fits the budget
+                # (e.g. a small machine, where the only VLMs that fit are the
+                # Qwen3-VL family). Say so plainly so the caller can warn the user
+                # rather than silently getting empty structured responses.
+                osh.warning(
+                    f"Chosen {kind} '{chosen['id']}' does NOT support Ollama structured "
+                    "JSON output; schema-driven tasks (intent, critique) will fail on it. "
+                    "Pull a structured-capable model or free up memory for one."
+                )
         # Lightest model within 3 benchmark points of the chosen one: the
         # "good enough but leaner / faster" alternative worth surfacing.
         lighter = None
@@ -186,12 +199,15 @@ def recommend(
 
 
 _METHOD_NOTE = (
-    "Each model is judged on three explicit factors: task fit (its benchmark on "
-    "the task's axis), memory fit (whether its peak-inference RAM fits the "
-    "accelerator's usable budget, so it runs on the GPU rather than spilling to "
-    "CPU), and throughput (estimated decode tokens/s = memory bandwidth / model "
-    "size x 0.65 efficiency, because generation is memory-bandwidth bound). The "
-    "chosen model is the highest task-fit that fits the memory budget; a lighter "
+    "Each model is judged on four explicit factors: structured-output capability "
+    "(whether it honours Ollama JSON-schema output -- the helper routes every "
+    "task through a schema, so a model that can't is never auto-chosen however "
+    "high it scores), task fit (its benchmark on the task's axis), memory fit "
+    "(whether its peak-inference RAM fits the accelerator's usable budget, so it "
+    "runs on the GPU rather than spilling to CPU), and throughput (estimated "
+    "decode tokens/s = memory bandwidth / model size x 0.65 efficiency, because "
+    "generation is memory-bandwidth bound). The chosen model is the highest "
+    "task-fit, structured-capable model that fits the memory budget; a lighter "
     "alternative is offered when one is nearly as strong but smaller and faster."
 )
 

@@ -39,14 +39,18 @@ from .pull import _CONFIG_JSON, _USER_DIR
 
 # Conservative defaults used when nothing has been selected yet.
 #
-# Text uses ``qwen3:8b`` (the catalog's solid text-only 8B), NOT the multimodal
-# ``qwen3-vl:8b``: the VL model returns an empty response under Ollama's
-# JSON-schema structured output on /api/generate, which silently broke every
-# structured text extraction (intent analysis, edit proposals, ...). The plain
-# ``qwen3:8b`` honours the ``format=<schema>`` grammar reliably. Vision still
-# defaults to ``qwen3-vl:8b``, the catalog's default local VLM.
+# Neither default is the multimodal ``qwen3-vl:8b``: that model returns an empty
+# response under Ollama's JSON-schema structured output on /api/generate, which
+# silently broke every structured call -- text extraction (intent, edit
+# proposals) and vision critique alike.
+#
+# Text  -> ``qwen3:8b``   (catalog's solid text-only 8B; honours ``format=<schema>``).
+# Vision-> ``gemma3:12b``  (multimodal; the only catalog VLM that reliably emits
+#          grammar-constrained structured JSON for image prompts). It is heavier
+#          (~12B) than qwen3-vl:8b, so a memory-constrained machine should pull a
+#          smaller working VLM via the recommend/pull flow, which overrides this.
 DEFAULT_TEXT_MODEL = "qwen3:8b"
-DEFAULT_VISION_MODEL = "qwen3-vl:8b"
+DEFAULT_VISION_MODEL = "gemma3:12b"
 
 # Config keys, canonical spelling first. The canonical names match what
 # ``pull.write_env`` persists; the ``SPREZZATURE_*`` names are the legacy

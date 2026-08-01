@@ -23,6 +23,15 @@
 #     ocr       OCRBench
 #     code      EvalPlus HumanEval+
 #     math      MATH sub-score from Open LLM Leaderboard v2
+#   structured_output  Whether the model reliably honours Ollama's JSON-schema
+#                      structured output (format=<schema>). Qwen3-VL reasoning
+#                      models return an EMPTY response under it (verified on
+#                      qwen3-vl:8b), so they are unusable for the helper's
+#                      structured tasks (intent, edit proposals, visual critique)
+#                      even though their raw benchmarks look strong. The helper
+#                      routes every structured call through a schema, so the
+#                      recommender treats a false here as disqualifying for auto-
+#                      selection. Default (absent) is treated as true.
 #   vllm_id     HuggingFace model ID for vLLM, null if unavailable
 #   fetched_at  ISO 8601 date of last external refresh; null = bundled seed
 
@@ -38,7 +47,8 @@
     ocr: null
     code: null
     math: null
-  notes: "Text-only; very small footprint."
+  notes: "Text-only; very small footprint. Reliable structured JSON output."
+  structured_output: true
   vllm_id: Qwen/Qwen2.5-3B-Instruct
   fetched_at: null
 
@@ -54,7 +64,8 @@
     ocr: null
     code: null
     math: null
-  notes: "Small VLM; fits on 4 GB VRAM machines."
+  notes: "Small VLM; fits on 4 GB VRAM machines. Qwen3-VL: unreliable under Ollama structured JSON output."
+  structured_output: false
   vllm_id: Qwen/Qwen3-VL-4B-Instruct
   fetched_at: null
 
@@ -70,7 +81,8 @@
     ocr: null
     code: null
     math: null
-  notes: "Solid text-only 8B."
+  notes: "Solid text-only 8B. Reliable structured JSON output; default text model."
+  structured_output: true
   vllm_id: Qwen/Qwen3-8B-Instruct
   fetched_at: null
 
@@ -86,7 +98,8 @@
     ocr: 89
     code: null
     math: null
-  notes: "Default local VLM; 256K context."
+  notes: "Qwen3-VL 8B: strong raw vision/OCR but returns an EMPTY response under Ollama structured JSON output (verified) -- unusable for the helper's structured tasks."
+  structured_output: false
   vllm_id: Qwen/Qwen3-VL-8B-Instruct
   fetched_at: null
 
@@ -102,7 +115,8 @@
     ocr: null
     code: null
     math: null
-  notes: "Google Gemma 3 12B multimodal."
+  notes: "Google Gemma 3 12B multimodal. Reliable structured JSON output for text AND image prompts; default vision model."
+  structured_output: true
   vllm_id: google/gemma-3-12b-it
   fetched_at: null
 
@@ -118,7 +132,8 @@
     ocr: null
     code: null
     math: null
-  notes: "Good mid-size text model."
+  notes: "Good mid-size text model. Reliable structured JSON output."
+  structured_output: true
   vllm_id: Qwen/Qwen3-14B-Instruct
   fetched_at: null
 
@@ -134,7 +149,8 @@
     ocr: null
     code: null
     math: null
-  notes: "Strong mid-size VLM."
+  notes: "Strong mid-size VLM. Qwen3-VL: unreliable under Ollama structured JSON output."
+  structured_output: false
   vllm_id: Qwen/Qwen3-VL-14B-Instruct
   fetched_at: null
 
@@ -150,7 +166,8 @@
     ocr: null
     code: null
     math: null
-  notes: "Large text model; fits 24 GB VRAM with headroom."
+  notes: "Large text model; fits 24 GB VRAM with headroom. Reliable structured JSON output."
+  structured_output: true
   vllm_id: Qwen/Qwen3-32B-Instruct
   fetched_at: null
 
@@ -166,7 +183,8 @@
     ocr: null
     code: null
     math: null
-  notes: "Large VLM; needs 32 GB VRAM."
+  notes: "Large VLM; needs 32 GB VRAM. Qwen3-VL: unreliable under Ollama structured JSON output."
+  structured_output: false
   vllm_id: Qwen/Qwen3-VL-32B-Instruct
   fetched_at: null
 
@@ -182,7 +200,8 @@
     ocr: null
     code: null
     math: null
-  notes: "32B at full Q8 precision."
+  notes: "32B at full Q8 precision. Reliable structured JSON output."
+  structured_output: true
   vllm_id: Qwen/Qwen3-32B-Instruct
   fetched_at: null
 
@@ -198,7 +217,8 @@
     ocr: null
     code: null
     math: null
-  notes: "Top text-only; needs 64 GB unified or VRAM."
+  notes: "Top text-only; needs 64 GB unified or VRAM. Reliable structured JSON output."
+  structured_output: true
   vllm_id: Qwen/Qwen3-72B-Instruct
   fetched_at: null
 
@@ -214,7 +234,8 @@
     ocr: null
     code: null
     math: null
-  notes: "Best local VLM; needs 64 GB unified or VRAM."
+  notes: "Highest raw vision benchmarks, but Qwen3-VL is unreliable under Ollama structured JSON output; prefer gemma3 for structured critique."
+  structured_output: false
   vllm_id: Qwen/Qwen3-VL-72B-Instruct
   fetched_at: null
 
@@ -230,6 +251,7 @@
     ocr: null
     code: null
     math: null
-  notes: "72B at Q8; needs 96 GB unified."
+  notes: "72B at Q8; needs 96 GB unified. Reliable structured JSON output."
+  structured_output: true
   vllm_id: Qwen/Qwen3-72B-Instruct
   fetched_at: null

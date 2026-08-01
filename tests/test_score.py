@@ -156,6 +156,31 @@ def test_rank_first_entry_matches_select() -> None:
     assert fitting[0]["id"] == selected["id"]
 
 
+def test_rank_prefers_structured_capable_over_higher_score() -> None:
+    # A structured-incapable VLM (Qwen3-VL-like) with a HIGHER vision score must
+    # rank below a structured-capable one: the helper runs everything through a
+    # JSON schema, so raw score can't rescue a model that returns empty on it.
+    capable = _make_vlm("capable-vlm", 9.0, vision=78.0, general=77.0)
+    capable["structured_output"] = True
+    incapable = _make_vlm("incapable-vlm", 9.0, vision=91.0, general=88.0)
+    incapable["structured_output"] = False
+
+    hw = {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}
+    ranked = score.rank(hw, [incapable, capable], kind="vlm", application="vision")
+    assert [r["id"] for r in ranked] == ["capable-vlm", "incapable-vlm"]
+    # Both still appear -- an explicit non-structured task can still find it.
+    assert {r["id"] for r in ranked} == {"capable-vlm", "incapable-vlm"}
+
+
+def test_rank_absent_structured_field_defaults_to_capable() -> None:
+    # Entries with no structured_output field (the whole existing catalog before
+    # this change) must behave as capable, so ranking stays score-ordered.
+    hw = {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}
+    ranked = score.rank(hw, ALL_MODELS, kind="vlm")
+    scores = [r["benchmarks"]["vision"] for r in ranked]
+    assert scores == sorted(scores, reverse=True)
+
+
 # ---------------------------------------------------------------------------
 # estimated_tokens_per_second
 # ---------------------------------------------------------------------------

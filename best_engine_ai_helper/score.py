@@ -335,4 +335,15 @@ def rank(
         copy["_fits"] = float(entry.get("ram_gb", 0)) <= budget
         annotated.append(copy)
 
-    return sorted(annotated, key=lambda e: _benchmark_score(e, kind, application), reverse=True)
+    # Structured-output capability is a primary sort key, ahead of raw benchmark
+    # score: the helper routes every task through a JSON schema, so a model that
+    # can't honour Ollama structured output (the Qwen3-VL family returns empty)
+    # is disqualified from auto-selection no matter how high it scores. It still
+    # appears in the ranked list -- just never above a structured-capable peer --
+    # so a caller who explicitly wants it for a non-structured task can find it.
+    # Absent field defaults to True (assume capable) for forward compatibility.
+    def _sort_key(e: dict[str, Any]) -> tuple[bool, float]:
+        structured_ok = e.get("structured_output", True) is not False
+        return (structured_ok, _benchmark_score(e, kind, application))
+
+    return sorted(annotated, key=_sort_key, reverse=True)
