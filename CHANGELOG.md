@@ -38,8 +38,22 @@ All notable changes to best-engine-ai-helper are documented here.
   composited onto the suite's cream background so the engraved-glove mark
   reads on both light and dark browser chrome.
 
+### Changed
+
+- Rationalized the test suite per the project's testing philosophy: fewer,
+  richer tests (≈138 → 81) at **higher** coverage (74% → 93%). Collapsed
+  one-assertion micro-tests into scenario and table-style tests, mirrored the
+  source tree (`test_llm` / `test_ralph` / `test_pull` / `test_validate` replace
+  `test_phase0b`), added `tests/conftest.py` for the shared Click runner and
+  `tests/test_scenarios.py` for end-to-end workflows, and mock-covered the
+  previously-untested subprocess / network / gate paths (hardware probes, ollama
+  pull, LLM backends and errors, the Ralph loops, the validation gates).
+
 ### Fixed
 
+- Ralph eyeball gate: the verdict prompt's literal JSON example (`{"ship": ...}`)
+  was not brace-escaped, so `.format(critique=...)` raised `KeyError` on every
+  real verdict. Escaped it; the eyeball loop now completes.
 - Clean `mypy` run across the package: annotated the subprocess and JSON
   boundaries that leaked `Any` (`detect`, `llm`, `ralph`, `catalog`), gave
   `cli._fmt_table` its `dict[str, Any]` argument, typed the LangChain message

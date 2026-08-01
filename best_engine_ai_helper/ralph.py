@@ -54,7 +54,7 @@ Given this critique, decide whether the artifact is ready to ship.
 
 Respond ONLY with a JSON object following this schema exactly:
 
-{"ship": <true|false>, "blocking": [<list of short blocking issues>], "score": <0.0-1.0>}
+{{"ship": <true|false>, "blocking": [<list of short blocking issues>], "score": <0.0-1.0>}}
 
 "ship" is true only when there are no blocking issues and the score exceeds 0.7.
 "blocking" lists the one-line labels of unresolved problems; empty list if none.

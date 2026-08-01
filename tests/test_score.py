@@ -1,7 +1,10 @@
 """
 Tests for best_engine_ai_helper.score.
 
-Uses synthetic catalogs so tests never depend on disk files or network access.
+Synthetic catalogs only, so the tests never depend on disk files or network.
+Each test pins one decision the ranker makes — budget arithmetic, memory-fit
+selection, structured-output priority, throughput — with the numbers worked out
+in the comments so a regression is easy to read.
 """
 
 from __future__ import annotations
@@ -10,190 +13,92 @@ import pytest
 
 from best_engine_ai_helper import score
 
-# ---------------------------------------------------------------------------
-# Fixtures — synthetic catalog entries
-# ---------------------------------------------------------------------------
 
-def _make_vlm(id_: str, ram_gb: float, vision: float, general: float) -> dict:
-    return {
-        "id": id_,
-        "kind": "vlm",
-        "ram_gb": ram_gb,
-        "benchmarks": {"general": general, "vision": vision},
-    }
+def _vlm(id_: str, ram_gb: float, vision: float, general: float) -> dict:
+    return {"id": id_, "kind": "vlm", "ram_gb": ram_gb,
+            "benchmarks": {"general": general, "vision": vision}}
 
 
-def _make_llm(id_: str, ram_gb: float, general: float) -> dict:
-    return {
-        "id": id_,
-        "kind": "llm",
-        "ram_gb": ram_gb,
-        "benchmarks": {"general": general, "vision": None},
-    }
+def _llm(id_: str, ram_gb: float, general: float) -> dict:
+    return {"id": id_, "kind": "llm", "ram_gb": ram_gb,
+            "benchmarks": {"general": general, "vision": None}}
 
 
-SMALL_VLM = _make_vlm("small-vlm", 3.5, vision=70.0, general=65.0)
-MID_VLM   = _make_vlm("mid-vlm",   9.0, vision=80.0, general=75.0)
-LARGE_VLM = _make_vlm("large-vlm", 52.0, vision=91.0, general=88.0)
-
-SMALL_LLM = _make_llm("small-llm", 2.2, general=62.0)
-MID_LLM   = _make_llm("mid-llm",  10.5, general=78.0)
-LARGE_LLM = _make_llm("large-llm", 48.0, general=87.0)
-
+SMALL_VLM = _vlm("small-vlm", 3.5, vision=70.0, general=65.0)
+MID_VLM = _vlm("mid-vlm", 9.0, vision=80.0, general=75.0)
+LARGE_VLM = _vlm("large-vlm", 52.0, vision=91.0, general=88.0)
+SMALL_LLM = _llm("small-llm", 2.2, general=62.0)
+MID_LLM = _llm("mid-llm", 10.5, general=78.0)
+LARGE_LLM = _llm("large-llm", 48.0, general=87.0)
 ALL_MODELS = [SMALL_LLM, SMALL_VLM, MID_LLM, MID_VLM, LARGE_LLM, LARGE_VLM]
 
 
-# ---------------------------------------------------------------------------
-# effective_budget
-# ---------------------------------------------------------------------------
-
-def test_effective_budget_uses_unified_first() -> None:
-    hw = {"unified_gb": 96.0, "vram_gb": 24.0, "ram_gb": 96.0}
-    # Unified takes priority; >36 GB so Metal cap 0.75, then headroom 0.85:
-    # 96 * 0.75 * 0.85 = 61.2
-    assert score.effective_budget(hw) == pytest.approx(61.2)
-
-
-def test_effective_budget_falls_back_to_vram() -> None:
-    hw = {"unified_gb": None, "vram_gb": 24.0, "ram_gb": 64.0}
-    # No unified; VRAM budget: 24 * 0.92 * 0.85 = 18.768
-    assert score.effective_budget(hw) == pytest.approx(18.768)
-
-
-def test_effective_budget_falls_back_to_half_ram() -> None:
-    hw = {"unified_gb": None, "vram_gb": None, "ram_gb": 32.0}
-    # CPU-only: half of RAM, then headroom: 32 * 0.5 * 0.85 = 13.6
-    assert score.effective_budget(hw) == pytest.approx(13.6)
+def test_effective_budget_priority_and_headroom() -> None:
+    # Unified pool wins over VRAM; >36 GB triggers the 0.75 Metal cap, then 0.85.
+    assert score.effective_budget(
+        {"unified_gb": 96.0, "vram_gb": 24.0, "ram_gb": 96.0}) == pytest.approx(61.2)
+    # No unified -> VRAM budget (0.92 usable * 0.85).
+    assert score.effective_budget(
+        {"unified_gb": None, "vram_gb": 24.0, "ram_gb": 64.0}) == pytest.approx(18.768)
+    # No accelerator -> half of system RAM * headroom.
+    assert score.effective_budget(
+        {"unified_gb": None, "vram_gb": None, "ram_gb": 32.0}) == pytest.approx(13.6)
+    # Custom headroom flows through: 64 * 0.75 * 0.90.
+    assert score.effective_budget(
+        {"unified_gb": 64.0, "vram_gb": None, "ram_gb": 64.0}, headroom=0.90
+    ) == pytest.approx(43.2)
 
 
-def test_effective_budget_custom_headroom() -> None:
-    hw = {"unified_gb": 64.0, "vram_gb": None, "ram_gb": 64.0}
-    # >36 GB so cap 0.75; 64 * 0.75 * 0.90 = 43.2
-    assert score.effective_budget(hw, headroom=0.90) == pytest.approx(43.2)
+def test_select_picks_best_that_fits_and_falls_back() -> None:
+    small = {"unified_gb": 24.0, "vram_gb": None, "ram_gb": 24.0}  # budget ~13.5 GB
+    large = {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}  # budget 61.2 GB
+    tiny = {"unified_gb": None, "vram_gb": 2.0, "ram_gb": 8.0}     # budget 1.6 GB
 
+    # VLM: on a small budget mid-vlm (9 GB, vision 80) beats small-vlm; on a
+    # large budget large-vlm wins; when nothing fits, the smallest is the last resort.
+    assert score.select(small, ALL_MODELS, kind="vlm")["id"] == "mid-vlm"
+    assert score.select(large, ALL_MODELS, kind="vlm")["id"] == "large-vlm"
+    assert score.select(tiny, ALL_MODELS, kind="vlm")["id"] == "small-vlm"
 
-# ---------------------------------------------------------------------------
-# select — VLM
-# ---------------------------------------------------------------------------
-
-def test_select_vlm_picks_best_vision_that_fits() -> None:
-    # 24 GB unified: budget = 24 * 0.66 * 0.85 = 13.46 GB; large-vlm (52) no fit
-    hw = {"unified_gb": 24.0, "vram_gb": None, "ram_gb": 24.0}
-    result = score.select(hw, ALL_MODELS, kind="vlm")
-    # mid-vlm (9.0 GB, vision 80) fits and beats small-vlm (3.5 GB, vision 70)
-    assert result["id"] == "mid-vlm"
-
-
-def test_select_vlm_on_large_machine_picks_top() -> None:
-    # 96 GB: budget = 61.2 GB; large-vlm (52) fits and wins
-    hw = {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}
-    result = score.select(hw, ALL_MODELS, kind="vlm")
-    assert result["id"] == "large-vlm"
-
-
-def test_select_vlm_last_resort_when_nothing_fits() -> None:
-    # 2 GB VRAM: budget = 1.6 GB; nothing fits → last resort (smallest)
-    hw = {"unified_gb": None, "vram_gb": 2.0, "ram_gb": 8.0}
-    result = score.select(hw, ALL_MODELS, kind="vlm")
-    # smallest VLM by ram_gb is small-vlm (3.5 GB)
-    assert result["id"] == "small-vlm"
-
-
-# ---------------------------------------------------------------------------
-# select — LLM
-# ---------------------------------------------------------------------------
-
-def test_select_llm_picks_by_general_score() -> None:
-    # 24 GB budget = 13.46 GB; large-llm (48) and large-vlm (52) don't fit
-    hw = {"unified_gb": 24.0, "vram_gb": None, "ram_gb": 24.0}
-    result = score.select(hw, ALL_MODELS, kind="llm")
-    # mid-llm (10.5 GB, general 78) beats mid-vlm (9.0 GB, general 75)
-    # and small-llm (2.2 GB, general 62) and small-vlm (3.5 GB, general 65)
-    assert result["id"] == "mid-llm"
-
-
-def test_select_llm_vlm_counts_as_candidate() -> None:
-    # VLMs are valid LLM candidates; on a large machine the best LLM by
-    # general score might be a VLM
-    hw = {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}
-    result = score.select(hw, ALL_MODELS, kind="llm")
-    # large-llm general=87, large-vlm general=88 → large-vlm wins as LLM too
-    assert result["id"] == "large-vlm"
+    # LLM: a VLM is a valid LLM candidate, so on a large machine the top general
+    # score (large-vlm, 88) wins the LLM slot too; on a small budget mid-llm wins.
+    assert score.select(small, ALL_MODELS, kind="llm")["id"] == "mid-llm"
+    assert score.select(large, ALL_MODELS, kind="llm")["id"] == "large-vlm"
 
 
 def test_select_raises_on_empty_catalog() -> None:
-    hw = {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}
     with pytest.raises(ValueError, match="empty"):
-        score.select(hw, [], kind="llm")
+        score.select({"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}, [], kind="llm")
 
 
-# ---------------------------------------------------------------------------
-# rank
-# ---------------------------------------------------------------------------
-
-def test_rank_all_fit_on_large_machine() -> None:
+def test_rank_orders_by_score_and_marks_fit() -> None:
     hw = {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}
     ranked = score.rank(hw, ALL_MODELS, kind="vlm")
-    # All VLMs should fit on 96 GB (budget = 76.8 GB; large-vlm = 52 GB fits)
-    fitting = [r for r in ranked if r["_fits"]]
-    assert len(fitting) == 3  # small, mid, large VLMs all fit
-
-
-def test_rank_descending_vision_score() -> None:
-    hw = {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}
-    ranked = score.rank(hw, ALL_MODELS, kind="vlm")
+    # Descending by the vision axis, and the first entry is what select() returns.
     scores = [r["benchmarks"]["vision"] for r in ranked]
     assert scores == sorted(scores, reverse=True)
-
-
-def test_rank_first_entry_matches_select() -> None:
-    # The first entry in rank() should match what select() returns
-    hw = {"unified_gb": 16.0, "vram_gb": None, "ram_gb": 16.0}
-    ranked = score.rank(hw, ALL_MODELS, kind="vlm")
-    selected = score.select(hw, ALL_MODELS, kind="vlm")
-    # First fitting entry should match
-    fitting = [r for r in ranked if r["_fits"]]
-    assert fitting[0]["id"] == selected["id"]
+    assert ranked[0]["id"] == score.select(hw, ALL_MODELS, kind="vlm")["id"]
+    # All three VLMs fit in 96 GB (budget 61.2 GB; largest is 52).
+    assert [r["_fits"] for r in ranked].count(True) == 3
 
 
 def test_rank_prefers_structured_capable_over_higher_score() -> None:
-    # A structured-incapable VLM (Qwen3-VL-like) with a HIGHER vision score must
-    # rank below a structured-capable one: the helper runs everything through a
-    # JSON schema, so raw score can't rescue a model that returns empty on it.
-    capable = _make_vlm("capable-vlm", 9.0, vision=78.0, general=77.0)
-    capable["structured_output"] = True
-    incapable = _make_vlm("incapable-vlm", 9.0, vision=91.0, general=88.0)
-    incapable["structured_output"] = False
-
+    # A structured-incapable VLM with a HIGHER vision score must rank below a
+    # capable one: the helper runs everything through a JSON schema, so raw
+    # score can't rescue a model that returns empty on it. Both still appear.
+    capable = dict(_vlm("capable-vlm", 9.0, vision=78.0, general=77.0), structured_output=True)
+    incapable = dict(_vlm("incapable-vlm", 9.0, vision=91.0, general=88.0), structured_output=False)
     hw = {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}
     ranked = score.rank(hw, [incapable, capable], kind="vlm", application="vision")
     assert [r["id"] for r in ranked] == ["capable-vlm", "incapable-vlm"]
-    # Both still appear -- an explicit non-structured task can still find it.
-    assert {r["id"] for r in ranked} == {"capable-vlm", "incapable-vlm"}
 
 
-def test_rank_absent_structured_field_defaults_to_capable() -> None:
-    # Entries with no structured_output field (the whole existing catalog before
-    # this change) must behave as capable, so ranking stays score-ordered.
-    hw = {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}
-    ranked = score.rank(hw, ALL_MODELS, kind="vlm")
-    scores = [r["benchmarks"]["vision"] for r in ranked]
-    assert scores == sorted(scores, reverse=True)
-
-
-# ---------------------------------------------------------------------------
-# estimated_tokens_per_second
-# ---------------------------------------------------------------------------
-
-def test_tps_scales_inverse_with_size() -> None:
-    # tok/s = bandwidth / ram * 0.65; smaller model → faster
+def test_estimated_tokens_per_second() -> None:
+    # tok/s = bandwidth / ram * 0.65 efficiency; smaller model -> faster.
     fast = score.estimated_tokens_per_second({"ram_gb": 8.0}, 400.0)
     slow = score.estimated_tokens_per_second({"ram_gb": 52.0}, 400.0)
-    assert fast is not None and slow is not None
-    assert fast > slow
+    assert fast is not None and slow is not None and fast > slow
     assert score.estimated_tokens_per_second({"ram_gb": 10.0}, 400.0) == pytest.approx(26.0)
-
-
-def test_tps_none_without_bandwidth() -> None:
+    # No bandwidth or zero size -> not estimable.
     assert score.estimated_tokens_per_second({"ram_gb": 8.0}, None) is None
     assert score.estimated_tokens_per_second({"ram_gb": 0}, 400.0) is None

@@ -217,7 +217,10 @@ def _shape_schema_for_ollama(schema: dict[str, Any]) -> dict[str, Any]:
         for union_key in ("oneOf", "anyOf"):
             if union_key in node:
                 members = [walk(m, seen) for m in node[union_key]]
-                object_members = [m for m in members if isinstance(m, dict) and m.get("type") == "object"]
+                object_members = [
+                    m for m in members
+                    if isinstance(m, dict) and m.get("type") == "object"
+                ]
                 if len(object_members) >= 2:
                     return _flatten_object_union(object_members)
                 # Not an object union (e.g. str | null): keep the first concrete

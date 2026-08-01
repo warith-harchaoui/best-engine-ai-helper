@@ -122,3 +122,24 @@ def test_parse_model_page_text_only_is_llm() -> None:
 
 def test_parse_model_page_returns_none_without_model() -> None:
     assert apxml.parse_model_page("<html>no payload here</html>") is None
+
+
+def test_fetch_open_weight_models_skips_failures_and_honours_limit(monkeypatch) -> None:
+    # Patch _fetch so the whole crawl runs offline: one directory page linking a
+    # good model and a broken one; the broken page raises and must be skipped,
+    # not sink the feed.
+    directory = '<a href="/models/qwen35-9b">a</a><a href="/models/broken">b</a>'
+    model_html = _rsc_page(_compact(_MODEL_OBJ))
+
+    def fake_fetch(url: str, session: object, timeout: float) -> str:
+        if "modelType=open_weight" in url:
+            return directory
+        if "qwen35-9b" in url:
+            return model_html
+        raise apxml.requests.HTTPError("500 on the broken page")
+
+    monkeypatch.setattr(apxml, "_fetch", fake_fetch)
+    models = apxml.fetch_open_weight_models()
+    assert [m["slug"] for m in models] == ["qwen35-9b"]
+    # limit caps how many model pages are fetched.
+    assert apxml.fetch_open_weight_models(limit=0) == []
