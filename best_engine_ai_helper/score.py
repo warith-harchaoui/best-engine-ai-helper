@@ -207,8 +207,11 @@ def select(
 
     Selection order:
     1. Filter: keep entries whose ``ram_gb`` fits within the effective budget.
-    2. Rank: sort by benchmark score (application-specific if given, else
-       vision for VLM or general for LLM).
+    2. Rank: structured-output capability first (a model that cannot honour
+       Ollama structured output is never chosen over one that can), then
+       benchmark score (application-specific if given, else vision for VLM or
+       general for LLM). This matches :func:`rank`, so ``rank(...)[0]`` and
+       ``select(...)`` agree.
     3. Last resort: if nothing fits, return the smallest model in the catalog
        rather than raising; the caller decides whether to warn the user.
 
@@ -266,7 +269,16 @@ def select(
     fitting = [e for e in candidates if float(e.get("ram_gb", 0)) <= budget]
 
     if fitting:
-        return max(fitting, key=lambda e: _benchmark_score(e, kind, application))
+        # Structured-output capability is the primary key, exactly as in rank():
+        # a model that can't honour Ollama structured output is never chosen over
+        # a capable one, however high its raw score. This keeps select() and
+        # rank()[0] in agreement, so the library and the CLI recommend the same
+        # model. Absent field defaults to capable.
+        def _sort_key(e: dict[str, Any]) -> tuple[bool, float]:
+            structured_ok = e.get("structured_output", True) is not False
+            return (structured_ok, _benchmark_score(e, kind, application))
+
+        return max(fitting, key=_sort_key)
 
     # Nothing fits: return the smallest model as a last resort so the caller
     # can surface a useful warning rather than crashing entirely

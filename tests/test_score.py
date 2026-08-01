@@ -82,6 +82,19 @@ def test_rank_orders_by_score_and_marks_fit() -> None:
     assert [r["_fits"] for r in ranked].count(True) == 3
 
 
+def test_select_agrees_with_rank_on_structured_output() -> None:
+    # select() must apply the same structured-output priority as rank(), so the
+    # library's select() and the CLI's rank()[0] recommend the same model: a
+    # capable model is chosen over a higher-scoring incapable one.
+    capable = dict(_vlm("capable-vlm", 9.0, vision=78.0, general=77.0), structured_output=True)
+    incapable = dict(_vlm("incapable-vlm", 9.0, vision=91.0, general=88.0), structured_output=False)
+    hw = {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}
+    chosen = score.select(hw, [incapable, capable], kind="vlm", application="vision")
+    assert chosen["id"] == "capable-vlm"
+    assert chosen["id"] == score.rank(hw, [incapable, capable], kind="vlm",
+                                      application="vision")[0]["id"]
+
+
 def test_rank_prefers_structured_capable_over_higher_score() -> None:
     # A structured-incapable VLM with a HIGHER vision score must rank below a
     # capable one: the helper runs everything through a JSON schema, so raw
