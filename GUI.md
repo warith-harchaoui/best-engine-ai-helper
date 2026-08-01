@@ -39,19 +39,27 @@ bind address). Equivalent, if you want the ASGI app directly:
 uvicorn best_engine_ai_helper.api:app --port 8000
 ```
 
+## Language
+
+The page is bilingual — **French by default, English at `/gui?lang=en`** — with
+a header link (`EN` / `FR`) that switches between them. Both are rendered from a
+single template plus a per-language strings table by `gui.render_gui(lang)`; an
+unknown `?lang=` falls back to French rather than erroring. The JSON API is
+language-neutral, so only the labels differ — the numbers are identical.
+
 ## What it shows
 
-### 1. Caractéristiques système (hardware snapshot)
+### 1. System characteristics (hardware snapshot)
 
-Plateforme, fournisseur / puce, accélérateur, bande passante mémoire, et le
-budget mémoire utilisable (`effective_budget`, after the Apple Metal
-GPU-usable cap and the safety headroom — see the README's "How selection
-works"). A **Rafraîchir** button re-probes the machine without reloading the
-page, useful right after plugging in an eGPU or closing memory-heavy apps.
+Platform, vendor / chip, accelerator, memory bandwidth, and the usable memory
+budget (`effective_budget`, after the Apple Metal GPU-usable cap and the safety
+headroom — see the README's "How selection works"). A **Refresh** button
+re-probes the machine without reloading the page, useful right after plugging in
+an eGPU or closing memory-heavy apps.
 
 ![Hardware panel](assets/screenshots/gui-hardware.png)
 
-### 2. Décrire la tâche → best engine(s)
+### 2. Describe the task → best engine(s)
 
 Type a free-text task — the same kind of phrase `report --task "..."` takes —
 and the page shows, per model kind the task needs (LLM for text, VLM when

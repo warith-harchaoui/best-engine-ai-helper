@@ -127,7 +127,8 @@ See [EXAMPLES.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob
 `best-engine-ai-helper gui` serves a single-page browser GUI (FastAPI +
 vanilla JS, no build step) at `http://127.0.0.1:8000/gui`: the same hardware
 snapshot as `detect`, and a task-description box that returns the same
-recommendation as `report` — no terminal needed.
+recommendation as `report` — no terminal needed. The page is bilingual —
+French by default, English at `/gui?lang=en` — with a header link to switch.
 
 ![Recommendation results](assets/screenshots/gui-recommendation.png)
 
@@ -184,11 +185,11 @@ constants in `score.py`.
 
 The bundled seed catalog (`models.yaml`) covers 13 models from the Qwen 3, Qwen 2.5, and Gemma 3 families, from 3B to 72B parameters, across Q4_K_M and Q8_0 quantizations. The catalog tracks on-disk size, estimated peak RAM, and benchmark scores from the Open LLM Leaderboard v2 and the OpenVLM Leaderboard.
 
-`catalog update` (Phase 0b) refreshes the cache from external sources: the Ollama registry API, the HuggingFace Hub API, the Open LLM Leaderboard v2 dataset, the OpenVLM Leaderboard dataset, and the [ApXML LLM directory](https://apxml.com/models?modelType=open_weight) (open-weight models with VRAM/compute needs and coding benchmarks, consulted regularly). The bundled seed is never modified by the refresh.
+`catalog update` refreshes the cache from the [ApXML LLM directory](https://apxml.com/models?modelType=open_weight) (open-weight models with their per-quant VRAM needs, consulted regularly). It fetches the specs, normalizes them to catalog entries, and merges them into `~/.best-engine-ai-helper/catalog_cache.yaml` by id — the bundled seed is never modified. Use `--limit N` for a quick partial refresh. ApXML's static pages carry specs but no numeric leaderboard scores, so refreshed entries keep null benchmarks (and rank low) until a scored source — the Open LLM Leaderboard v2, the OpenVLM Leaderboard — fills them.
 
 ## Hardware table
 
-`hardware.yaml` lists known GPU and Apple Silicon chip configurations with their usable memory (physical pool minus OS and driver overhead). `hardware update` (Phase 0b) refreshes NVIDIA entries from TechPowerUp.
+`hardware.yaml` lists known GPU and Apple Silicon chip configurations with their usable memory (physical pool minus OS and driver overhead). There is no public specs API spanning every chip, so `hardware update` records ground truth for the machine it runs on instead: it detects this machine's chip, memory pool, and Ollama-usable share, and upserts that row into `~/.best-engine-ai-helper/hardware_cache.yaml` (keyed on chip + memory tier).
 
 ## Downstream integration
 

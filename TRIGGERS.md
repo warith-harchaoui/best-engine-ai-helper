@@ -21,9 +21,10 @@ environment so that other tools (Ollama, vLLM, sprezzature-local) can.
 | Pull the best model and validate | `best-engine-ai-helper pull` | `pull.ollama_pull(tag)` |
 | Validate the current model | `best-engine-ai-helper validate` | `validate_vlm.run_gate()` + `validate_llm.run_gate()` |
 | Print the env block | `best-engine-ai-helper env` | `pull.write_env(...)` |
-| Refresh the model catalog | `best-engine-ai-helper catalog update` | `catalog.update()` (Phase 0b) |
-| Refresh the hardware table | `best-engine-ai-helper hardware update` | `hardware.update()` (Phase 0b) |
+| Refresh the model catalog | `best-engine-ai-helper catalog update` | `apxml.fetch_open_weight_models()` + `catalog.write_cache(...)` |
+| Refresh the hardware table | `best-engine-ai-helper hardware update` | `hardware.detect_local_entry()` + `hardware.write_cache(...)` |
 | Launch the browser GUI | `best-engine-ai-helper gui` | `uvicorn best_engine_ai_helper.api:app` |
+| Open the GUI in English | `best-engine-ai-helper gui` → `/gui?lang=en` | `gui.render_gui("en")` |
 
 ## Natural-language phrasings that should fire
 

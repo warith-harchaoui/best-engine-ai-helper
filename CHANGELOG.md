@@ -6,6 +6,22 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Added
 
+- `catalog update` now refreshes the model cache from the ApXML open-weight
+  directory: it fetches specs, normalizes them to catalog entries, and merges
+  them into `~/.best-engine-ai-helper/catalog_cache.yaml` by id (the bundled
+  seed is never touched). Supports `--limit` and `--timeout`. ApXML carries no
+  numeric benchmarks, so refreshed entries rank low until a scored source
+  fills them.
+- `hardware update` now records the running machine into
+  `~/.best-engine-ai-helper/hardware_cache.yaml`: the detected chip, its memory
+  pool, and the Ollama-usable share after the OS reservation, upserted by
+  chip + memory tier. (There is no public specs API spanning every GPU / Apple
+  chip, so a refresh captures ground truth for the current machine rather than
+  scraping a third-party site.)
+- English variant of the GUI: the page is now bilingual — French by default,
+  English at `/gui?lang=en` — with a header link to switch. Both are rendered
+  from one template plus a per-language strings table (`render_gui`); the JSON
+  API stays language-neutral.
 - Minimal browser GUI: `best-engine-ai-helper gui` (needs the new `[api]`
   extra: `fastapi` + `uvicorn`) serves a single-page app at `/gui` — the
   hardware snapshot `detect` prints, plus a task-description box that returns
@@ -17,6 +33,13 @@ All notable changes to best-engine-ai-helper are documented here.
   apple-touch-icon, and Android/PWA icons generated from `assets/logo.png`,
   composited onto the suite's cream background so the engraved-glove mark
   reads on both light and dark browser chrome.
+
+### Fixed
+
+- Clean `mypy` run across the package: annotated the subprocess and JSON
+  boundaries that leaked `Any` (`detect`, `llm`, `ralph`, `catalog`), gave
+  `cli._fmt_table` its `dict[str, Any]` argument, typed the LangChain message
+  list, and dropped `type: ignore` comments that no longer apply.
 
 ## [0.4.0] — 2026-07-31
 

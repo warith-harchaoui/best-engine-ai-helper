@@ -192,9 +192,11 @@ best-engine-ai-helper validate        # re-run Ralph gates on the current model
 best-engine-ai-helper env             # print env block for ~/.zshrc
 ```
 
-Still stubs (print a notice):
+Refresh the caches (both merge into `~/.best-engine-ai-helper/`, leaving the
+bundled seed untouched):
 
 ```sh
-best-engine-ai-helper catalog update  # refresh catalog from external sources
-best-engine-ai-helper hardware update # refresh hardware table
+best-engine-ai-helper catalog update            # fetch open-weight models from ApXML
+best-engine-ai-helper catalog update --limit 20 # quick partial refresh / smoke test
+best-engine-ai-helper hardware update           # record this machine's chip + memory
 ```

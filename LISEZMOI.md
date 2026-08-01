@@ -33,7 +33,9 @@ téléchargés. Deux cas, en toute franchise :
 
 Une GUI minimale dans le navigateur (`best-engine-ai-helper gui`) couvre la moitié en
 lecture seule de ce flux — caractéristiques matérielles et recommandation de moteur à
-partir d'une tâche — sans passer par le terminal. Voir [GUI.md](GUI.md) (en anglais).
+partir d'une tâche — sans passer par le terminal. La page est bilingue : français par
+défaut, anglais via `/gui?lang=en`, avec un lien d'en-tête pour basculer. Voir
+[GUI.md](GUI.md) (en anglais).
 
 ## Prérequis
 
@@ -188,9 +190,9 @@ avertissement.
 | `recommend` | Classe les candidats pour ce matériel (sans téléchargement) |
 | `report` | Recommande le(s) meilleur(s) moteur(s) pour une tâche (Markdown + JSON) |
 | `catalog show` | Affiche le catalogue de modèles fusionné |
-| `catalog update` | Rafraîchit le cache depuis des sources de leaderboards externes |
+| `catalog update` | Rafraîchit le cache modèles depuis l'annuaire open-weight ApXML (`--limit N` pour un rafraîchissement partiel) |
 | `hardware show` | Affiche la table des puces matérielles connues |
-| `hardware update` | Rafraîchit le cache matériel depuis TechPowerUp et Ollama |
+| `hardware update` | Enregistre la puce et la mémoire de cette machine dans le cache matériel |
 | `pull` | Télécharge le meilleur modèle et exécute les contrôles Ralph |
 | `validate` | Exécute les contrôles Ralph sur le modèle actuellement configuré |
 | `env` | Affiche le bloc d'exports shell prêt pour `~/.zshrc` |
