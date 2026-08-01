@@ -353,3 +353,86 @@ class TestProseLoop:
         result = _ralph.prose_loop(text, charter="No machine tics.", llm_chat=smart_model)
         # The text must have been modified by the fix
         assert result != text
+
+
+# ---------------------------------------------------------------------------
+# llm.py — _shape_schema_for_ollama (discriminated-union flattening)
+# ---------------------------------------------------------------------------
+
+class TestShapeSchemaForOllama:
+    """Ollama's structured-output grammar cannot build a oneOf/anyOf of $ref
+    branches (it then emits only empty values); the shaper inlines refs and
+    flattens such unions into one tagged object so the grammar can produce a
+    real value, which the caller's Pydantic re-validates against the true union.
+    """
+
+    def test_inlines_refs_and_flattens_discriminated_union(self) -> None:
+        schema = {
+            "$defs": {
+                "SetTitle": {
+                    "type": "object",
+                    "properties": {
+                        "op": {"const": "set_title"},
+                        "title": {"type": "string"},
+                    },
+                    "required": ["op", "title"],
+                },
+                "SortRows": {
+                    "type": "object",
+                    "properties": {
+                        "op": {"const": "sort_rows"},
+                        "ascending": {"type": "boolean"},
+                    },
+                    "required": ["op", "ascending"],
+                },
+            },
+            "type": "object",
+            "properties": {
+                "ops": {
+                    "type": "array",
+                    "items": {
+                        "oneOf": [
+                            {"$ref": "#/$defs/SetTitle"},
+                            {"$ref": "#/$defs/SortRows"},
+                        ],
+                        "discriminator": {"propertyName": "op"},
+                    },
+                }
+            },
+            "required": ["ops"],
+        }
+        shaped = _llm._shape_schema_for_ollama(schema)
+
+        assert "$defs" not in shaped
+        items = shaped["properties"]["ops"]["items"]
+        assert items["type"] == "object"
+        # Both branches' fields are present, all optional except the tag...
+        assert set(items["properties"]) == {"op", "title", "ascending"}
+        # ...the discriminator became an enum of every branch's tag...
+        assert set(items["properties"]["op"]["enum"]) == {"set_title", "sort_rows"}
+        # ...and the tag is forced required so the model can't omit it.
+        assert "op" in items["required"]
+        assert "discriminator" not in items
+
+    def test_leaves_plain_schema_essentially_unchanged(self) -> None:
+        schema = {
+            "type": "object",
+            "properties": {
+                "goal": {"type": "string", "enum": ["a", "b"]},
+                "n": {"type": "integer"},
+            },
+            "required": ["goal"],
+        }
+        shaped = _llm._shape_schema_for_ollama(schema)
+        assert shaped["properties"]["goal"]["enum"] == ["a", "b"]
+        assert shaped["required"] == ["goal"]
+
+    def test_nullable_union_keeps_the_concrete_branch(self) -> None:
+        # str | None schemas (anyOf: [string, null]) must not be flattened away
+        # to nothing -- keep the concrete branch so the field stays usable.
+        schema = {
+            "type": "object",
+            "properties": {"note": {"anyOf": [{"type": "string"}, {"type": "null"}]}},
+        }
+        shaped = _llm._shape_schema_for_ollama(schema)
+        assert shaped["properties"]["note"]["type"] == "string"

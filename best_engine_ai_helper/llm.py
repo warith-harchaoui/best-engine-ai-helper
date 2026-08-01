@@ -43,6 +43,7 @@ Warith Harchaoui <warith.harchaoui@deraison.ai>
 from __future__ import annotations
 
 import base64
+import copy
 import json
 import os
 from typing import Any
@@ -137,6 +138,104 @@ def _resolve_model(model: str | None, images: list[bytes] | None) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Ollama structured-output schema shaping
+# ---------------------------------------------------------------------------
+
+def _merge_tag_property(existing: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
+    """Combine one property seen in several union branches. When it is the
+    discriminator (a ``const``/``enum`` string, e.g. ``operation_type``), fold
+    every branch's value into a single ``enum`` so the model must pick one of
+    them; otherwise keep the first definition."""
+    values: list[Any] = []
+    for node in (existing, incoming):
+        if "const" in node:
+            values.append(node["const"])
+        elif "enum" in node:
+            values.extend(node["enum"])
+    if values:
+        seen: list[Any] = []
+        for v in values:
+            if v not in seen:
+                seen.append(v)
+        return {"type": "string", "enum": seen}
+    return existing
+
+
+def _flatten_object_union(members: list[dict[str, Any]]) -> dict[str, Any]:
+    """Collapse a discriminated union of object schemas into ONE permissive
+    object: the union of all branches' properties (the discriminator becomes an
+    enum of every tag), required = only what every branch requires (the tag).
+
+    Ollama's structured-output grammar cannot build a ``oneOf``/``anyOf`` of
+    ``$ref`` branches -- it then admits only an empty value -- but it handles a
+    single tagged object fine. The caller's Pydantic model re-validates the
+    result against the real discriminated union, so per-branch correctness is
+    still enforced downstream; this only widens what the grammar will emit.
+    """
+    object_members = [m for m in members if m.get("type") == "object"]
+    props: dict[str, Any] = {}
+    tag_hits: dict[str, int] = {}  # key -> how many branches pin it to a const/enum
+    required_sets: list[set[str]] = []
+    for member in object_members:
+        for key, sub in member.get("properties", {}).items():
+            props[key] = _merge_tag_property(props[key], sub) if key in props else sub
+            if "const" in sub or "enum" in sub:
+                tag_hits[key] = tag_hits.get(key, 0) + 1
+        required_sets.append(set(member.get("required", [])))
+    required = set.intersection(*required_sets) if required_sets else set()
+    # A property every branch pins to a const/enum is the discriminator (e.g.
+    # operation_type / kind). Pydantic gives it a default so it is not in any
+    # branch's "required", but the grammar MUST force it or the model omits it
+    # and the union can't be resolved. Require it explicitly.
+    n = len(object_members)
+    required |= {key for key, hits in tag_hits.items() if hits == n}
+    return {"type": "object", "properties": props, "required": sorted(required)}
+
+
+def _shape_schema_for_ollama(schema: dict[str, Any]) -> dict[str, Any]:
+    """Rewrite a Pydantic JSON Schema into a form Ollama's structured-output
+    grammar accepts: inline every ``$ref`` (Ollama ignores ``$defs``) and
+    flatten each ``oneOf``/``anyOf`` of objects into a single tagged object.
+
+    Non-union schemas (intent, plain models) pass through essentially
+    unchanged. Returns a new dict; the input is never mutated.
+    """
+    defs = schema.get("$defs", {})
+
+    def walk(node: Any, seen: tuple[str, ...]) -> Any:
+        if isinstance(node, list):
+            return [walk(item, seen) for item in node]
+        if not isinstance(node, dict):
+            return node
+
+        if "$ref" in node:
+            name = node["$ref"].split("/")[-1]
+            if name in seen or name not in defs:
+                return {"type": "object"}  # cycle or dangling ref: permissive stub
+            return walk(copy.deepcopy(defs[name]), seen + (name,))
+
+        for union_key in ("oneOf", "anyOf"):
+            if union_key in node:
+                members = [walk(m, seen) for m in node[union_key]]
+                object_members = [m for m in members if isinstance(m, dict) and m.get("type") == "object"]
+                if len(object_members) >= 2:
+                    return _flatten_object_union(object_members)
+                # Not an object union (e.g. str | null): keep the first concrete
+                # (non-null) branch so the grammar has a single shape to target.
+                concrete = [m for m in members if isinstance(m, dict) and m.get("type") != "null"]
+                return concrete[0] if concrete else members[0]
+
+        return {
+            key: walk(value, seen)
+            for key, value in node.items()
+            if key not in ("$defs", "discriminator")
+        }
+
+    shaped = walk(copy.deepcopy(schema), ())
+    return shaped if isinstance(shaped, dict) else {"type": "object"}
+
+
+# ---------------------------------------------------------------------------
 # Ollama backend
 # ---------------------------------------------------------------------------
 
@@ -196,9 +295,10 @@ def _chat_ollama(
         # Ollama expects a list of base64-encoded strings, not raw bytes
         payload["images"] = [base64.b64encode(img).decode() for img in images]
     if json_schema is not None:
-        # Pass the schema itself so Ollama constrains generation to match it
-        # (structured outputs), not just "some JSON".
-        payload["format"] = json_schema
+        # Pass the schema so Ollama constrains generation to match it (structured
+        # outputs), shaped so its grammar can build: $refs inlined, discriminated
+        # unions flattened to a tagged object (see _shape_schema_for_ollama).
+        payload["format"] = _shape_schema_for_ollama(json_schema)
 
     url = f"{_base_url()}/api/generate"
     try:
