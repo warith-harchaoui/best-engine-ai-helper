@@ -1,7 +1,8 @@
 name: ci
 
-# Gentle, deterministic gate: install the package + dev deps, then ruff lint
-# and pytest on the supported Python versions. The tests never call a live
+# Gentle, deterministic gate: install the package (with the [api] extra, so
+# the FastAPI GUI surface is importable) + dev deps, then ruff lint and
+# pytest on the supported Python versions. The tests never call a live
 # model daemon (the pull / validate model loops are covered by graceful
 # fall-through tests, not live calls), so CI needs no Ollama. Intentionally
 # minimal.
@@ -28,7 +29,7 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -e . -r requirements-dev.txt
+          pip install -e ".[api]" -r requirements-dev.txt
       - name: Ruff
         run: ruff check .
       - name: Pytest

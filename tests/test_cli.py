@@ -9,6 +9,7 @@ code and print a useful message to stderr.
 from __future__ import annotations
 
 import json
+import sys
 
 import pytest
 from click.testing import CliRunner
@@ -165,3 +166,57 @@ def test_validate_missing_env_reports_gracefully(runner: CliRunner) -> None:
     result = runner.invoke(main, ["validate"])
     combined = (result.output or "") + (result.stderr if hasattr(result, "stderr") else "")
     assert combined.strip(), "validate should produce output even with no model configured"
+
+
+# ---------------------------------------------------------------------------
+# gui
+#
+# uvicorn.run() would otherwise block the test process serving forever, so
+# every happy-path test replaces it with a recording stub before invoking the
+# command. The extra-not-installed path is simulated by setting
+# sys.modules["uvicorn"] = None, which makes `import uvicorn` raise
+# ImportError regardless of whether the [api] extra is actually present.
+# ---------------------------------------------------------------------------
+
+def test_gui_invokes_uvicorn_with_defaults(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    uvicorn = pytest.importorskip("uvicorn")
+    calls: dict[str, object] = {}
+    monkeypatch.setattr(
+        uvicorn, "run", lambda app, **kw: calls.update(app=app, **kw)
+    )
+
+    result = runner.invoke(main, ["gui"])
+
+    assert result.exit_code == 0, result.output
+    assert calls["app"] == "best_engine_ai_helper.api:app"
+    assert calls["host"] == "127.0.0.1"
+    assert calls["port"] == 8000
+    assert "Serving GUI" in result.output
+
+
+def test_gui_respects_host_and_port_flags(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    uvicorn = pytest.importorskip("uvicorn")
+    calls: dict[str, object] = {}
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kw: calls.update(kw))
+
+    result = runner.invoke(main, ["gui", "--host", "0.0.0.0", "--port", "9000"])
+
+    assert result.exit_code == 0, result.output
+    assert calls["host"] == "0.0.0.0"
+    assert calls["port"] == 9000
+
+
+def test_gui_without_api_extra_exits_nonzero(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(sys.modules, "uvicorn", None)
+
+    result = runner.invoke(main, ["gui"])
+
+    assert result.exit_code == 1
+    combined = (result.output or "") + (result.stderr if hasattr(result, "stderr") else "")
+    assert "[api]" in combined

@@ -62,7 +62,10 @@ def main() -> None:
         _composite(size).save(_OUT_DIR / name)
 
     ico_frames = [_composite(s) for s in (16, 32, 48)]
-    ico_frames[0].save(
+    # Pillow's ICO encoder downsamples FROM the saved image for each requested
+    # size and silently drops any size larger than it — so this must save the
+    # largest frame, not the smallest, or only the 16x16 entry survives.
+    ico_frames[-1].save(
         _OUT_DIR / "favicon.ico",
         format="ICO",
         sizes=[(f.width, f.height) for f in ico_frames],
