@@ -50,18 +50,20 @@ class TestChatOllamaMock:
         assert result == "hello"
 
     def test_chat_ollama_json_mode(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """When json_schema is provided, payload must include format='json'."""
+        """json_schema must be passed through as Ollama's ``format`` (the schema
+        itself, for structured outputs) -- not the old free-JSON ``"json"``."""
         monkeypatch.setenv("SPREZZATURE_LLM_BACKEND", "ollama")
 
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"response": '{"key": 1}'}
         mock_resp.raise_for_status.return_value = None
 
+        schema = {"type": "object", "properties": {"key": {"type": "integer"}}}
         with patch("requests.post", return_value=mock_resp) as mock_post:
-            result = _llm.chat("return json", json_schema={"type": "object"})
+            result = _llm.chat("return json", json_schema=schema)
 
         payload = mock_post.call_args[1]["json"]
-        assert payload.get("format") == "json"
+        assert payload.get("format") == schema
         # When json_schema is set, the string result should be parsed into a dict
         assert isinstance(result, dict)
         assert result["key"] == 1
@@ -146,7 +148,8 @@ class TestChatOpenAIMock:
         assert image_part["image_url"]["url"].startswith("data:image/png;base64,")
 
     def test_chat_openai_json_mode(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """json_schema triggers response_format: json_object in the payload."""
+        """json_schema triggers a structured response_format: json_schema, with
+        the schema carried in the payload (not the old bare json_object)."""
         monkeypatch.setenv("SPREZZATURE_LLM_BACKEND", "openai")
 
         mock_resp = MagicMock()
@@ -155,11 +158,13 @@ class TestChatOpenAIMock:
         }
         mock_resp.raise_for_status.return_value = None
 
+        schema = {"type": "object", "properties": {"x": {"type": "integer"}}}
         with patch("requests.post", return_value=mock_resp) as mock_post:
-            result = _llm.chat("give json", json_schema={"type": "object"})
+            result = _llm.chat("give json", json_schema=schema)
 
-        payload = mock_post.call_args[1]["json"]
-        assert payload.get("response_format", {}).get("type") == "json_object"
+        response_format = mock_post.call_args[1]["json"].get("response_format", {})
+        assert response_format.get("type") == "json_schema"
+        assert response_format["json_schema"]["schema"] == schema
         assert isinstance(result, dict)
 
 
