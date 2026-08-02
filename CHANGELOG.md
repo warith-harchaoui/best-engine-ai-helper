@@ -4,6 +4,8 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-08-02
+
 ### Added
 
 - `catalog update` now refreshes the model cache from the ApXML open-weight
@@ -53,7 +55,9 @@ All notable changes to best-engine-ai-helper are documented here.
   entry points), brought LISEZMOI to parity with README, and refreshed the
   sample `recommend` / `select` outputs to match the current ranking. Populated
   the `references/WRITING.md`, `references/ECRITURE.md`, and `references/CODING.md`
-  local copies from their canonical gists.
+  local copies from their canonical gists. Absolutized the image and link URLs
+  in `README.md` / `LISEZMOI.md` to `raw.githubusercontent` / `github.com/blob`
+  so they render on the PyPI project page (relative paths 404 there).
 - Rationalized the test suite per the project's testing philosophy: fewer,
   richer tests (≈138 → 81) at **higher** coverage (74% → 93%). Collapsed
   one-assertion micro-tests into scenario and table-style tests, mirrored the
@@ -65,6 +69,12 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Fixed
 
+- CI (and local `pytest`) was red on the two langchain-backend tests: the
+  langchain branch in `llm.py` imports `langchain_core.messages`
+  unconditionally, but `langchain-core` was not a declared dev dependency.
+  Added it to `requirements-dev.txt` and made the `ChatOllama` test stub the
+  optional backend via `sys.modules` (mirroring the existing `langchain_openai`
+  stub) instead of importing the uninstalled real package.
 - `recommend`'s "lighter alternative" was chosen by score proximity alone, so
   under a structured-capable pick it could suggest a lighter but
   structured-incapable model (e.g. a Qwen3-VL) that silently fails the suite's

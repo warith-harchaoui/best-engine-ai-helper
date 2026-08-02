@@ -1,6 +1,6 @@
 # best-engine-ai-helper
 
-[🇫🇷](LISEZMOI.md) · [🇬🇧](README.md)
+[🇫🇷](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/LISEZMOI.md) · [🇬🇧](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/README.md)
 
 [![Licence : BSD-3-Clause](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](#)
@@ -16,7 +16,7 @@ télécharge le modèle via Ollama, exécute deux contrôles de qualité (la bou
 prose et la boucle Ralph Eyeball pour la vision), et écrit un fichier d'environnement que
 les projets en aval viennent sourcer.
 
-[![logo](assets/logo.png)](https://harchaoui.org/warith/ai-helpers)
+[![logo](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/assets/logo.png)](https://harchaoui.org/warith/ai-helpers)
 
 ## La promesse
 
@@ -35,7 +35,7 @@ Une GUI minimale dans le navigateur (`best-engine-ai-helper gui`) couvre la moit
 lecture seule de ce flux (les caractéristiques matérielles, et la recommandation de moteur
 à partir d'une tâche) sans passer par le terminal. La page est bilingue : français par
 défaut, anglais via `/gui?lang=en`, avec un lien d'en-tête pour basculer. Voir
-[GUI.md](GUI.md) (en anglais).
+[GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) (en anglais).
 
 ## Prérequis
 
@@ -153,8 +153,8 @@ best-engine-ai-helper hardware show
 best-engine-ai-helper gui
 ```
 
-Voir [EXAMPLES.md](EXAMPLES.md) pour des recettes complètes avec exemples de sortie, et
-[GUI.md](GUI.md) pour la GUI navigateur.
+Voir [EXAMPLES.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXAMPLES.md) pour des recettes complètes avec exemples de sortie, et
+[GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) pour la GUI navigateur.
 
 ## GUI
 
@@ -164,9 +164,9 @@ et une zone de texte pour la tâche qui renvoie la même recommandation que `rep
 terminal. La page est bilingue (français par défaut, anglais sur `/gui?lang=en`), avec un
 lien d'en-tête pour basculer.
 
-![Résultats de recommandation](assets/screenshots/gui-recommendation.png)
+![Résultats de recommandation](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/screenshots/gui-recommendation.png)
 
-Voir [GUI.md](GUI.md) pour le détail complet, l'API JSON sous-jacente, et comment le jeu
+Voir [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) pour le détail complet, l'API JSON sous-jacente, et comment le jeu
 d'icônes (favicon / touch-icon) est généré à partir de `assets/logo.png`.
 
 ## Comment fonctionne la sélection
@@ -247,4 +247,4 @@ Les projets qui utilisent le modèle sélectionné sourcent ce fichier ou lisent
 
 ## Licence
 
-[BSD-3-Clause](LICENSE). Copyright 2026 Warith Harchaoui.
+[BSD-3-Clause](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/LICENSE). Copyright 2026 Warith Harchaoui.

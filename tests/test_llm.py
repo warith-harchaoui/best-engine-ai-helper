@@ -66,7 +66,8 @@ def test_chat_openai_builds_payload(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_chat_langchain_backend(monkeypatch: pytest.MonkeyPatch) -> None:
-    import langchain_ollama
+    import sys
+    import types
 
     monkeypatch.setenv("SPREZZATURE_LLM_BACKEND", "langchain")
     monkeypatch.delenv("SPREZZATURE_LLM_BASE_URL", raising=False)  # default -> :11434 -> ChatOllama
@@ -76,7 +77,12 @@ def test_chat_langchain_backend(monkeypatch: pytest.MonkeyPatch) -> None:
         def invoke(self, msgs: Any) -> Any:
             return type("Msg", (), {"content": "hi from langchain"})()
 
-    monkeypatch.setattr(langchain_ollama, "ChatOllama", _FakeLLM)
+    # langchain_ollama is an optional extra not installed here; inject a stub so
+    # the default-URL branch is covered without depending on the real package
+    # (mirrors the langchain_openai stub below).
+    fake_module = types.ModuleType("langchain_ollama")
+    fake_module.ChatOllama = _FakeLLM  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "langchain_ollama", fake_module)
     assert _llm.chat("hello", system="sys") == "hi from langchain"
 
 

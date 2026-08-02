@@ -4,7 +4,7 @@ Pick and pull the best local large language model (LLM) or vision-language model
 
 The tool detects available memory (Apple Silicon unified pool, NVIDIA VRAM, or system RAM), consults a bundled model catalog, and selects the highest-scoring model that fits within a configurable safety headroom. After selection, it pulls the model via Ollama, runs two quality gates (the Ralph Loop for prose and the Ralph Eyeball Loop for vision), and writes an environment file that downstream projects source to find the chosen model.
 
-A minimal browser GUI (`best-engine-ai-helper gui`) covers the read-only half of this (the hardware snapshot, and the task-to-engine recommendation) without the CLI. See [GUI.md](GUI.md).
+A minimal browser GUI (`best-engine-ai-helper gui`) covers the read-only half of this (the hardware snapshot, and the task-to-engine recommendation) without the CLI. See [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md).
 
 ## Requirements
 
@@ -130,9 +130,9 @@ snapshot as `detect`, and a task-description box that returns the same
 recommendation as `report`, with no terminal needed. The page is bilingual
 (French by default, English at `/gui?lang=en`), with a header link to switch.
 
-![Recommendation results](assets/screenshots/gui-recommendation.png)
+![Recommendation results](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/screenshots/gui-recommendation.png)
 
-See [GUI.md](GUI.md) for the full write-up, the JSON API it's built on, and
+See [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) for the full write-up, the JSON API it's built on, and
 how the favicon / touch-icon set is generated from `assets/logo.png`.
 
 ## How selection works
