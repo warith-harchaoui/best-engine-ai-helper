@@ -12,7 +12,7 @@ score reflects fit to *this* niche.
 ## At a glance
 
 <!-- TABLE:START -->
-| Tool | Auto hardware detection | Benchmark-ranked selection | Ralph validation gates | Offline catalog | CI-testable | Programmatic API |
+| Local LLM Selection | Auto hardware detection | Benchmark-ranked selection | Ralph validation gates | Offline catalog | CI-testable | Programmatic API |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: |
 | **best-engine-ai-helper** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
 | Ollama (CLI) | ⭐ | ⭐ | ⭐ | ⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐ |
@@ -22,6 +22,16 @@ score reflects fit to *this* niche.
 | LocalAI | ⭐ | ⭐ | ⭐ | ⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐⭐ |
 | text-generation-webui | ⭐⭐ | ⭐ | ⭐ | ⭐⭐⭐ | ⭐ | ⭐⭐⭐ |
 <!-- TABLE:END -->
+
+## Positioning map
+
+<!-- FIGURE:START -->
+2D representation of the table above.
+
+![Positioning map](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/landscape.png)
+
+The map is a 2-D summary of the six criteria, so read it as a shape, not a scoreboard. `best-engine-ai-helper` is at the top-right corner. The axes read **Horizontal — Programmatic ↔ Automated** and **Vertical — Offline ↔ Testable**.
+<!-- FIGURE:END -->
 
 ## Positioning
 

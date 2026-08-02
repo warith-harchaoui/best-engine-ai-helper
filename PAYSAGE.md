@@ -12,7 +12,7 @@ outil optimisé pour un usage très différent n'est pas pénalisé.
 ## Vue d'ensemble
 
 <!-- TABLE:START -->
-| Outil | Détection matériel auto | Sélection par score | Contrôles Ralph | Catalogue hors ligne | Testable en IC | API programmatique |
+| Sélection de LLM local | Détection matériel auto | Sélection par score | Contrôles Ralph | Catalogue hors ligne | Testable en IC | API programmatique |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: |
 | **best-engine-ai-helper** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
 | Ollama (CLI) | ⭐ | ⭐ | ⭐ | ⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐ |
@@ -22,6 +22,16 @@ outil optimisé pour un usage très différent n'est pas pénalisé.
 | LocalAI | ⭐ | ⭐ | ⭐ | ⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐⭐ |
 | text-generation-webui | ⭐⭐ | ⭐ | ⭐ | ⭐⭐⭐ | ⭐ | ⭐⭐⭐ |
 <!-- TABLE:END -->
+
+## Carte de positionnement
+
+<!-- FIGURE:START -->
+Représentation 2D du tableau ci-dessus.
+
+![Carte de positionnement](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/paysage.png)
+
+La carte est un résumé en 2D des 6 critères : à lire comme une forme, pas comme un classement. « best-engine-ai-helper » se situe dans le coin en haut à droite. Les axes se lisent **Horizontal — Flexibilité ↔ Automatisation** et **Vertical — Accessibilité ↔ Intégration**.
+<!-- FIGURE:END -->
 
 ## Positionnement
 
