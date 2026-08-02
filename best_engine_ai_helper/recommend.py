@@ -165,7 +165,8 @@ def recommend(
         # Prefer the highest-scoring model that both fits memory AND decodes fast
         # enough to be usable; fall back to a fitting-but-slow model only when
         # nothing comfortable exists, and to an over-budget model as a last resort.
-        chosen = (comfortable or fitting or rows or [None])[0]
+        candidates = comfortable or fitting or rows
+        chosen: dict[str, Any] | None = candidates[0] if candidates else None
         if chosen is None:
             osh.warning(f"No candidate found for kind '{kind}' on axis '{axis}'")
         else:

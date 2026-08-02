@@ -4,6 +4,20 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-02
+
+First stable release. The recommender now defaults to **comfortable, realistic**
+picks (not merely "theoretically fits"), and the whole suite sits on the
+os-helper 2.0.0 foundation.
+
+### Changed
+
+- **Requires os-helper 2.x** (`os-helper>=2.0.0,<3`, was `>=1.5.0`). Logging
+  routes through os-helper on its stable 2.x contract.
+- Install docs use `pip install best-engine-ai-helper` (from PyPI); added a test
+  guarding every Markdown file against a stale `git+...@vX.Y.Z` self-pin. CI stays
+  a super-light blocking gate (ruff + mypy + pytest).
+
 ### Added
 
 - **Comfort throughput floor** in recommendation and pulling. A model that

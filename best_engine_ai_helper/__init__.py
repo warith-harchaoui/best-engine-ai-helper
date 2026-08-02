@@ -77,6 +77,6 @@ __all__ = [
     "DEFAULT_VISION_MODEL",
 ]
 
-__version__ = "0.5.0"
+__version__ = "1.0.0"
 __author__ = "Warith Harchaoui"
 __email__ = "warith.harchaoui@deraison.ai"
