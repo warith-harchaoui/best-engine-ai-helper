@@ -147,9 +147,21 @@ _VALID_APPLICATIONS = ["code", "math", "ocr", "vision", "chat", "generalist"]
         "Omit for the default kind-based rule (vision for VLM, general for LLM)."
     ),
 )
-def recommend_cmd(kind: str, headroom: float, application: str | None) -> None:
+@click.option(
+    "--min-tps",
+    type=float,
+    default=_score.COMFORT_TPS,
+    show_default=True,
+    help=(
+        "Comfort throughput floor in tokens/s: a model that fits memory but is "
+        "estimated below this decodes too slowly to recommend (shown comfy=NO)."
+    ),
+)
+def recommend_cmd(kind: str, headroom: float, application: str | None,
+                  min_tps: float) -> None:
     """Print ranked model candidates for this hardware (dry run, no pull)."""
     hw = _detect.available_memory()
+    bandwidth = _detect.compute_profile().get("bandwidth_gbs")
     entries = _catalog.load_catalog()
 
     kinds: list[str] = ["llm", "vlm"] if kind == "both" else [kind]
@@ -163,6 +175,8 @@ def recommend_cmd(kind: str, headroom: float, application: str | None) -> None:
         click.echo(header)
         rows = []
         for e in ranked:
+            tps = _score.estimated_tokens_per_second(e, bandwidth)
+            comfy = bool(e.get("_fits")) and (tps is None or tps >= min_tps)
             rows.append({
                 "id": e.get("id", "-"),
                 "ram_gb": e.get("ram_gb", "-"),
@@ -172,9 +186,12 @@ def recommend_cmd(kind: str, headroom: float, application: str | None) -> None:
                     else e.get("benchmarks", {}).get("general")
                 ) or "-",
                 "fits": "yes" if e.get("_fits") else "NO",
+                "tok/s": f"{tps:.0f}" if tps else "-",
+                "comfy": "yes" if comfy else "NO",
                 "notes": (e.get("notes") or "")[:40],
             })
-        click.echo(_fmt_table(rows, ["id", "ram_gb", "score", "fits", "notes"]))
+        click.echo(_fmt_table(
+            rows, ["id", "ram_gb", "score", "fits", "tok/s", "comfy", "notes"]))
 
     click.echo()
 
@@ -359,7 +376,18 @@ def hardware_update() -> None:
     show_default=False,
     help="Target use-case (code, math, ocr, vision, chat, generalist). Biases model selection.",
 )
-def pull_cmd(keep_failed: bool, vllm: bool, application: str | None) -> None:
+@click.option(
+    "--min-tps",
+    type=float,
+    default=_score.COMFORT_TPS,
+    show_default=True,
+    help=(
+        "Comfort throughput floor in tokens/s. A model that fits memory but is "
+        "estimated below this is tried only after comfortable ones."
+    ),
+)
+def pull_cmd(keep_failed: bool, vllm: bool, application: str | None,
+             min_tps: float) -> None:
     """Pull the best model and run Ralph validation gates.
 
     Detects hardware, ranks candidates, pulls the top model, runs both the
@@ -373,6 +401,7 @@ def pull_cmd(keep_failed: bool, vllm: bool, application: str | None) -> None:
     from . import validate_vlm as _validate_vlm
 
     hw = _detect.available_memory()
+    bandwidth = _detect.compute_profile().get("bandwidth_gbs")
     entries = _catalog.load_catalog()
 
     # Rank VLM candidates; the best VLM also covers text tasks
@@ -381,6 +410,18 @@ def pull_cmd(keep_failed: bool, vllm: bool, application: str | None) -> None:
     if not fitting:
         click.echo("No model fits in available memory. Trying the smallest anyway.", err=True)
         fitting = ranked[:1]
+
+    # Comfort floor: a model that fits memory but decodes too slowly (a 32B on a
+    # 400 GB/s laptop crawls at ~7 tok/s) should not be pulled ahead of a slightly
+    # lower-scoring model that actually runs at a usable speed. Try comfortable
+    # candidates first, each group still in benchmark order; slow-but-fitting
+    # models stay as a fallback. The sort is stable, so rank is preserved within
+    # each group.
+    def _too_slow(entry: dict[str, Any]) -> bool:
+        tps = _score.estimated_tokens_per_second(entry, bandwidth)
+        return tps is not None and tps < min_tps
+
+    fitting.sort(key=_too_slow)
 
     for candidate in fitting:
         tag = candidate["id"]

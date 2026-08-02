@@ -4,6 +4,22 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Comfort throughput floor** in recommendation and pulling. A model that
+  fits in memory can still decode too slowly to be usable (a 32B at Q8 crawls
+  at ~7 tok/s on an M2 Max / 400 GB/s). Selection now treats "fits your
+  hardware" as *fits in memory AND runs at a usable speed*: a new comfort floor
+  (`score.COMFORT_TPS`, default 15 tok/s, reusing the existing
+  `estimated_tokens_per_second` estimate) marks memory-fitting-but-slow models
+  as not comfortable. `recommend` picks the highest-scoring comfortable model
+  (falling back to a fitting-but-slow one only when none is comfortable, with a
+  warning), `pull` tries comfortable candidates before slow ones, and both the
+  `recommend` and `report` outputs gain a `comfy` column plus a stated floor.
+  A `--min-tps` flag overrides the threshold on `recommend` and `pull`.
+  Previously the ranker chose the top benchmark score that merely fit memory,
+  over-recommending large models that technically load but feel stuck.
+
 ## [0.5.0] — 2026-08-02
 
 ### Added

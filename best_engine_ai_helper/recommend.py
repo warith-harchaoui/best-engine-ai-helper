@@ -33,7 +33,7 @@ from typing import Any
 
 import os_helper as osh
 
-from .score import effective_budget, estimated_tokens_per_second, rank
+from .score import COMFORT_TPS, effective_budget, estimated_tokens_per_second, rank
 
 # Keyword -> benchmark axis. The task text is scanned for these; the first axis
 # whose keywords appear wins for the text model. Vision keywords additionally
@@ -85,23 +85,30 @@ def parse_task(task: str | None) -> dict[str, Any]:
 
 
 def _candidate_row(
-    entry: dict[str, Any], budget: float, bandwidth_gbs: float | None, axis: str
+    entry: dict[str, Any], budget: float, bandwidth_gbs: float | None, axis: str,
+    min_tps: float = COMFORT_TPS,
 ) -> dict[str, Any]:
-    """One catalog entry annotated with the three decision factors."""
+    """One catalog entry annotated with the four decision factors."""
     from .score import _benchmark_score  # local: internal scorer
 
     ram = float(entry.get("ram_gb", 0) or 0)
     kind = entry.get("kind", "llm")
+    fits = ram <= budget
+    tps = estimated_tokens_per_second(entry, bandwidth_gbs)
     return {
         "id": entry.get("id"),
         "kind": kind,
         "ram_gb": ram,
         "score": _benchmark_score(entry, kind, axis),
-        "fits": ram <= budget,
+        "fits": fits,
         # False = can't honour Ollama structured JSON output, so it is never
         # auto-chosen for the helper's schema-driven tasks (see score.rank).
         "structured_output": entry.get("structured_output", True) is not False,
-        "est_tokens_per_s": estimated_tokens_per_second(entry, bandwidth_gbs),
+        "est_tokens_per_s": tps,
+        # Fits in memory AND decodes fast enough to be usable interactively. When
+        # bandwidth is unknown (tps is None) speed can't be estimated, so it is
+        # not held against the model — memory fit alone decides.
+        "comfortable": fits and (tps is None or tps >= min_tps),
         "notes": entry.get("notes", ""),
     }
 
@@ -113,6 +120,7 @@ def recommend(
     *,
     headroom: float = 0.85,
     compute: dict[str, Any] | None = None,
+    min_tps: float = COMFORT_TPS,
 ) -> dict[str, Any]:
     """
     Recommend the best engine per needed kind for this hardware and task.
@@ -151,9 +159,13 @@ def recommend(
     for kind in parsed["kinds"]:
         axis = parsed["vlm_application"] if kind == "vlm" else parsed["application"]
         ranked = rank(hw, catalog, kind, headroom=headroom, application=axis)
-        rows = [_candidate_row(e, budget, bandwidth, axis) for e in ranked]
+        rows = [_candidate_row(e, budget, bandwidth, axis, min_tps) for e in ranked]
         fitting = [r for r in rows if r["fits"]]
-        chosen = fitting[0] if fitting else (rows[0] if rows else None)
+        comfortable = [r for r in fitting if r["comfortable"]]
+        # Prefer the highest-scoring model that both fits memory AND decodes fast
+        # enough to be usable; fall back to a fitting-but-slow model only when
+        # nothing comfortable exists, and to an over-budget model as a last resort.
+        chosen = (comfortable or fitting or rows or [None])[0]
         if chosen is None:
             osh.warning(f"No candidate found for kind '{kind}' on axis '{axis}'")
         else:
@@ -171,6 +183,15 @@ def recommend(
                     "JSON output; schema-driven tasks (intent, critique) will fail on it. "
                     "Pull a structured-capable model or free up memory for one."
                 )
+            if chosen["fits"] and not chosen.get("comfortable", True):
+                # Fits in memory but decodes below the comfort floor: the classic
+                # "it loads, but it crawls" pick. Say so plainly instead of
+                # silently recommending a model that makes the machine feel stuck.
+                osh.warning(
+                    f"Chosen {kind} '{chosen['id']}' fits memory but is estimated at "
+                    f"~{chosen['est_tokens_per_s']} tok/s (< {min_tps:.0f} comfortable); "
+                    "expect sluggish interactive use — a smaller model would feel faster."
+                )
         # Lightest model within 3 benchmark points of the chosen one: the
         # "good enough but leaner / faster" alternative worth surfacing. It must
         # not be less structured-output-capable than the chosen model, otherwise
@@ -179,7 +200,7 @@ def recommend(
         lighter = None
         if chosen:
             near = [
-                r for r in fitting
+                r for r in (comfortable or fitting)
                 if r["score"] >= chosen["score"] - 3
                 and (r["structured_output"] or not chosen["structured_output"])
             ]
@@ -199,6 +220,7 @@ def recommend(
         "hardware": {**hw, **({"compute": compute} if compute else {})},
         "memory_budget_gb": budget,
         "headroom": headroom,
+        "comfort_tps": min_tps,
         "recommendations": picks,
         "method": _METHOD_NOTE,
         "sources": _SOURCES,
@@ -214,8 +236,11 @@ _METHOD_NOTE = (
     "runs on the GPU rather than spilling to CPU), and throughput (estimated "
     "decode tokens/s = memory bandwidth / model size x 0.65 efficiency, because "
     "generation is memory-bandwidth bound). The chosen model is the highest "
-    "task-fit, structured-capable model that fits the memory budget; a lighter "
-    "alternative is offered when one is nearly as strong but smaller and faster."
+    "task-fit, structured-capable model that BOTH fits the memory budget AND "
+    "clears the comfort throughput floor (estimated tokens/s >= comfort_tps): a "
+    "model that merely fits memory but decodes too slowly to be usable is flagged "
+    "and never auto-chosen over a comfortable one, however high it scores. A "
+    "lighter alternative is offered when one is nearly as strong but smaller and faster."
 )
 
 _SOURCES = [
@@ -256,6 +281,9 @@ def to_markdown(report: dict[str, Any]) -> str:
                      "(sets the decode-speed ceiling)")
     lines.append(f"- Usable model budget: **{report['memory_budget_gb']:.1f} GB** "
                  f"(headroom {report['headroom']})")
+    if report.get("comfort_tps"):
+        lines.append(f"- Comfort throughput floor: **{report['comfort_tps']:.0f} tok/s** "
+                     "(a model below this fits memory but decodes too slowly to recommend)")
     lines.append("")
 
     for kind, block in report["recommendations"].items():
@@ -264,9 +292,14 @@ def to_markdown(report: dict[str, Any]) -> str:
         lines.append("")
         if chosen:
             tps = _fmt_tps(chosen["est_tokens_per_s"])
+            if not chosen["fits"]:
+                flag = "  ⚠️ exceeds memory budget (spills to CPU)"
+            elif not chosen.get("comfortable", True):
+                flag = "  ⚠️ below comfort floor (fits but decodes slowly)"
+            else:
+                flag = ""
             lines.append(f"**→ `{chosen['id']}`** — {chosen['ram_gb']:.1f} GB, "
-                         f"score {chosen['score']:.0f}, ~{tps} tok/s"
-                         + ("" if chosen["fits"] else "  ⚠️ exceeds budget (will be slow)"))
+                         f"score {chosen['score']:.0f}, ~{tps} tok/s" + flag)
             alt = block["lighter_alternative"]
             if alt:
                 lines.append("")
@@ -276,11 +309,12 @@ def to_markdown(report: dict[str, Any]) -> str:
         else:
             lines.append("_No candidate found._")
         lines.append("")
-        lines.append("| model | RAM GB | score | fits | ~tok/s |")
-        lines.append("|---|---|---|---|---|")
+        lines.append("| model | RAM GB | score | fits | ~tok/s | comfy |")
+        lines.append("|---|---|---|---|---|---|")
         for r in block["candidates"]:
             lines.append(f"| `{r['id']}` | {r['ram_gb']:.1f} | {r['score']:.0f} | "
-                         f"{'yes' if r['fits'] else 'no'} | {_fmt_tps(r['est_tokens_per_s'])} |")
+                         f"{'yes' if r['fits'] else 'no'} | {_fmt_tps(r['est_tokens_per_s'])} | "
+                         f"{'yes' if r.get('comfortable') else 'no'} |")
         lines.append("")
 
     lines.append("## How this was decided")

@@ -59,6 +59,16 @@ _CPU_RAM_FRACTION = 0.5
 # see references/CODING.md.
 _DECODE_EFFICIENCY = 0.65
 
+# Comfort floor: a model can fit in memory yet decode too slowly to be usable
+# interactively. This is the minimum estimated decode rate (tokens/s) below which
+# a model is flagged "not comfortable" and is NOT auto-recommended even though it
+# fits — the missing half of "fits your hardware" (fits in memory AND runs at a
+# tolerable speed). 15 tok/s is a bit faster than a brisk reader, roughly the
+# point below which local chat starts to feel like waiting. On an M2 Max
+# (400 GB/s) it draws the line just under the 14B class, exactly where a 32B
+# model drops to ~7 tok/s. Source: MLX / llama.cpp community UX benchmarks.
+COMFORT_TPS: float = 15.0
+
 
 def effective_budget(hw: dict[str, float | None], headroom: float = 0.85) -> float:
     """

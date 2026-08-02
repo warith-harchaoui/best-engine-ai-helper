@@ -133,6 +133,33 @@ def test_pull_writes_env_when_both_gates_pass(
     assert written["text_model"]  # the chosen tag was persisted
 
 
+def test_pull_prefers_comfortable_over_fits_but_slow(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # On an M2-Max-like machine a 48 GB model fits memory but crawls (~5 tok/s);
+    # a 10 GB model clears the comfort floor (~26 tok/s). pull must try the
+    # comfortable model first even though the slow one scores higher.
+    from best_engine_ai_helper import catalog, detect, pull
+    monkeypatch.setattr(detect, "available_memory",
+                        lambda: {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0})
+    monkeypatch.setattr(detect, "compute_profile",
+                        lambda: {"accelerator": "gpu-metal", "chip": "Apple M2 Max",
+                                 "bandwidth_gbs": 400.0})
+    monkeypatch.setattr(catalog, "load_catalog", lambda: [
+        {"id": "big-slow", "kind": "vlm", "ram_gb": 48.0,
+         "benchmarks": {"vision": 90, "general": 90}, "structured_output": True},
+        {"id": "small-fast", "kind": "vlm", "ram_gb": 10.0,
+         "benchmarks": {"vision": 80, "general": 80}, "structured_output": True},
+    ])
+    _patch_gates(monkeypatch, vlm=True, prose=True)
+    pulled: list[str] = []
+    monkeypatch.setattr(pull, "ollama_pull", lambda tag, **k: (pulled.append(tag), True)[1])
+    monkeypatch.setattr(pull, "write_env", lambda **kw: tmp_path / "env.sh")
+    result = runner.invoke(main, ["pull"])
+    assert result.exit_code == 0
+    assert pulled[0] == "small-fast"  # comfortable model tried first, not big-slow
+
+
 def test_pull_removes_failed_model_and_exits_nonzero(
     runner: CliRunner, monkeypatch: pytest.MonkeyPatch
 ) -> None:
