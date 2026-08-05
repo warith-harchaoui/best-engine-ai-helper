@@ -178,6 +178,51 @@ for the full flow and the missing-file policy.
 
 ---
 
+## usages
+
+Browse and resolve the sev7n **usage catalog** — named task profiles grouped
+into families. A profile states only its *needs*; best-engine chooses the model.
+
+```sh
+best-engine-ai-helper usages list
+```
+
+Lists the families (`F1` constrained generation, `F2` prose generation, `F3`
+embeddings) and every profile (`text2sql`, `rag-answer`, `embeddings`,
+`text2sql-figures`, `report-bluf`, `classification`, `pii-rgpd`, `persona`) with
+its family and status — no model names, only needs.
+
+```sh
+best-engine-ai-helper usages show text2sql
+```
+
+Prints one profile's needs: task text (mapped to a benchmark axis), whether it
+needs structured output, its throughput floor, memory headroom, advisory quality
+bar, and context-length hint.
+
+```sh
+# Resolve one profile to the model best-engine picks for THIS machine
+best-engine-ai-helper usages resolve text2sql
+
+# Resolve a whole family to a single shared model, written to a gitignored file
+best-engine-ai-helper usages resolve --family F1 --out llm.engine.F1.yaml
+```
+
+The chosen model lives only in the generated `llm.engine*.yaml` (gitignored,
+machine-specific) — the same rule as `resolve`. From Python:
+
+```python
+from best_engine_ai_helper import resolve_usage, resolve_family, list_usages
+
+for u in list_usages():
+    print(u["name"], u["family"], u["status"])
+
+engine = resolve_usage("text2sql")   # best-engine chooses the model here
+family = resolve_family("F1")        # one model for the whole F1 group
+```
+
+---
+
 ## catalog show
 
 Print the full merged model catalog (bundled seed plus any local cache updates).

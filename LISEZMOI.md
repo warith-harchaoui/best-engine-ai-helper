@@ -227,6 +227,9 @@ Quand aucun modèle ne tient, l'outil sélectionne le plus petit du catalogue et
 | `validate` | Exécute les contrôles Ralph sur le modèle actuellement configuré |
 | `env` | Affiche le bloc d'exports shell prêt pour `~/.zshrc` |
 | `gui` | Lance la GUI navigateur (nécessite l'extra `[api]`) |
+| `usages list` | Liste les profils d'usage et les familles (besoins uniquement, jamais de modèle) |
+| `usages show <profil>` | Affiche les besoins d'un profil (tâche, *structured output*, planchers) |
+| `usages resolve <profil>` | Résout un profil (ou `--family`) vers le modèle que best-engine choisit ici |
 
 ## Intégration avec les projets en aval
 
@@ -323,6 +326,61 @@ moteur résolu.
 et spécifique à la machine : son absence est normale — `ensure` le résout depuis le brief au
 premier usage. Le modèle reste ainsi hors de toute variable : le fichier moteur résolu est
 l'unique source de vérité.
+
+## Usages / profils de tâche
+
+Là où un *brief* est écrit par dépôt, les charges de travail récurrentes de la suite sev7n
+sont nommées une fois dans un **catalogue d'usages** intégré (`usages.yaml`). Chaque
+**profil** — `text2sql`, `rag-answer`, `embeddings`, `text2sql-figures`, `report-bluf`,
+`classification`, `pii-rgpd`, `persona` — n'énonce que ses **besoins** : type de tâche
+(texte / code / vision / *embeddings*), besoin ou non de sortie structurée (*structured
+output*), plancher de débit, marge mémoire, seuil de qualité indicatif et longueur de
+contexte. Un profil est, au fond, un *brief* nommé : il est donc résolu par le **même moteur
+à quatre critères** que n'importe quel *brief*.
+
+Un profil **ne nomme jamais de modèle.** best-engine est le seul décideur : il lit les
+besoins, sonde la machine, et choisit le modèle local concret, en n'écrivant ce choix que
+dans un fichier moteur généré (`llm.engine*.yaml`), **gitignoré et spécifique à la machine**
+— jamais un littéral versionné. C'est tout l'intérêt de l'outil.
+
+Les profils sont regroupés en **familles** — les usages qui peuvent partager un même modèle,
+pour qu'une machine n'ait pas à en garder huit :
+
+| Famille | Besoin | Profils |
+|---------|--------|---------|
+| **F1 — génération contrainte** | code + sortie structurée fiable (SQL / JSON), déterministe | `text2sql`, `text2sql-figures`, `classification`, `pii-rgpd` |
+| **F2 — génération rédactionnelle** | prose fidèle FR/EN sur long contexte | `rag-answer`, `report-bluf`, `persona` |
+| **F3 — *embeddings*** | vecteurs de recherche multilingues et multi-granulaires (jamais un modèle de chat) | `embeddings` |
+
+Résoudre une famille donne **un** modèle pour le groupe ; résoudre un profil seul donne le
+modèle éventuellement spécialisé pour ce travail quand le matériel le permet. Sur une machine
+spacieuse best-engine peut spécialiser ; sur une machine contrainte, une famille se replie
+sur un seul modèle.
+
+Découverte et résolution via la même surface CLI / bibliothèque :
+
+```sh
+best-engine-ai-helper usages list                 # tous les profils + familles (besoins, pas de modèle)
+best-engine-ai-helper usages show text2sql        # les besoins d'un profil
+best-engine-ai-helper usages resolve text2sql     # -> le modèle que best-engine choisit ici
+best-engine-ai-helper usages resolve --family F1 --out llm.engine.F1.yaml
+```
+
+```python
+from best_engine_ai_helper import resolve_usage, resolve_family, list_usages
+
+for u in list_usages():
+    print(u["name"], u["family"], u["status"])
+
+engine = resolve_usage("text2sql")   # best-engine choisit le modèle pour CETTE machine
+family = resolve_family("F1")        # un seul modèle pour tout le groupe F1
+```
+
+best-engine écrit les modèles retenus dans le `llm.engine*.yaml` gitignoré de cette machine
+(le prolongement de l'`env.sh` qu'il produit déjà) ; l'application lit ce fichier, et une
+nouvelle résolution re-décide si le matériel change. Ajouter un profil = quelques lignes dans
+`usages.yaml` ; un *overlay* utilisateur dans `~/.best-engine-ai-helper/usages_cache.yaml`
+surcharge par nom.
 
 ## Licence
 

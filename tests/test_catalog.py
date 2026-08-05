@@ -24,7 +24,10 @@ def test_load_catalog_seed_invariants() -> None:
     assert len(ids) == len(set(ids))  # ids are unique
     for e in entries:
         assert {"id", "kind", "ram_gb", "benchmarks"} <= e.keys()
-        assert e["kind"] in ("llm", "vlm")
+        # embed entries (text embedders for the ann-router index) join llm/vlm as
+        # a third kind; the generative picker ignores them, the F3 usage selects
+        # among them by memory fit.
+        assert e["kind"] in ("llm", "vlm", "embed")
         assert float(e["ram_gb"]) > 0
 
 

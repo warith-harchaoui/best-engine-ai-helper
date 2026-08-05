@@ -1,0 +1,317 @@
+# Bundled usage catalog ("description d'usage"). Hand-maintained.
+#
+# A *usage profile* names a concrete sev7n workload and states ONLY its NEEDS.
+# It never names a model. best-engine is the sole decider: it reads these needs,
+# probes the machine, and CHOOSES the concrete local model(s) from the model
+# catalog (models.yaml), writing that choice into a machine-specific engine file
+# that is gitignored (the extension of the env.sh it already writes). The app
+# consumes that generated file, never a literal model name.
+#
+# Each profile is, at its core, a named `llm.brief.yaml`: its `brief` block
+# carries exactly the fields the existing brief->engine resolver already
+# understands (kind, task, structured_output, headroom, min_tps), so a profile
+# is resolved by the SAME four-criteria picker (structured output, memory fit,
+# task fit, throughput) as any hand-written brief. The catalog only supplies the
+# criteria per usage; the picker supplies the model.
+#
+# Requesting a model by profile / family (result is machine-specific + gitignored):
+#   CLI  : best-engine-ai-helper usages resolve text2sql
+#          best-engine-ai-helper usages resolve --family F1 --out llm.engine.F1.yaml
+#   Lib  : best_engine_ai_helper.resolve_usage("text2sql")
+#          best_engine_ai_helper.resolve_family("F1")
+#
+# Extensible: add a profile = append a block here (a few lines). A user overlay
+# at ~/.best-engine-ai-helper/usages_cache.yaml overrides by name.
+# Discoverable: `usages list` / `list_usages()` enumerate every profile+family.
+#
+# Fields (NEEDS only -- never a model name)
+#   name           Unique profile id (the key callers request).
+#   summary        One-line description shown in listings.
+#   description    The intelligent, load-bearing prose: what this workload truly
+#                  needs from a model, so the pick is sensible.
+#   status         stable | scaffold. `scaffold` = the need is real and
+#                  resolvable, but its downstream plumbing has not landed yet.
+#   family         F1 | F2 | F3. The group of usages that can share one model.
+#   local_strict   true = must run fully local (no cloud), always.
+#   brief          The selection criteria, passed straight to engine.resolve():
+#     kind             llm | vlm | both | embed.
+#     task             Free text NEED. Its wording maps to the benchmark axis
+#                      (code/math/ocr/vision/generalist) and to whether a VLM is
+#                      needed -- so it is phrased for that mapping, never to name
+#                      a model.
+#     structured_output  Whether the job needs schema-constrained JSON.
+#     headroom         Memory safety fraction (clamped to 0.5).
+#     min_tps          Comfort throughput floor (tokens/s): higher for
+#                      interactive/low-latency jobs, lower when quality outweighs
+#                      speed.
+#   min_quality      Advisory benchmark floor on the axis; a pick below it is
+#                    flagged, not blocked.
+#   context_length   Advisory: the context window the workload wants.
+#
+# ---------------------------------------------------------------------------
+# Families: usages that can share ONE model. Each profile names its family; each
+# family carries a representative brief so a caller can resolve the whole group
+# in one shot (one model for the family) instead of one model per profile. On a
+# roomy machine best-engine may specialise per profile; on a tight one a family
+# collapses onto its single model.
+
+families:
+  - id: F1
+    name: constrained-generation
+    summary: "Code + reliable structured output (SQL / JSON): one coder-capable model."
+    description: >-
+      Usages that must emit schema-constrained output -- a read-only SQL query, a
+      figure spec, a class label, entity spans -- from a code-capable model:
+      text2sql, text2sql-figures, classification, pii-rgpd. They share one model
+      with dependable structured output and determinism. The representative task
+      is a code/structured one, so the picker scores candidates on the code axis.
+    members: [text2sql, text2sql-figures, classification, pii-rgpd]
+    local_strict: true
+    brief:
+      kind: llm
+      structured_output: true
+      headroom: 0.5
+      min_tps: 20
+      task: >-
+        Translate a natural-language question into a read-only SQL query and
+        emit schema-constrained JSON; deterministic code reasoning.
+    min_quality: 80
+    context_length: 32768
+
+  - id: F2
+    name: prose-generation
+    summary: "Faithful FR/EN prose over long context: one generalist model."
+    description: >-
+      Usages whose deliverable is faithful natural-language prose in French or
+      English over retrieved or long inputs: rag-answer, report-bluf, persona.
+      They share one strong generalist instruct model. The representative task is
+      a grounded prose one (answer from passages + write a report), so the picker
+      scores candidates on the generalist axis.
+    members: [rag-answer, report-bluf, persona]
+    local_strict: true
+    brief:
+      kind: llm
+      structured_output: true
+      headroom: 0.5
+      min_tps: 12
+      task: >-
+        Answer a French or English question from retrieved passages and write a
+        faithful, well-structured report in the reader's language.
+    min_quality: 74
+    context_length: 32768
+
+  - id: F3
+    name: embeddings
+    summary: "Multilingual multi-granular embeddings: an embedder, never a chat model."
+    description: >-
+      The retrieval index: a multilingual embedding model for the multi-granular
+      ann-router index (word / keyphrase / sentence / paragraph / page). It is
+      never a generative chat model, so it is resolved by memory fit over the
+      embedders in the model catalog (kind: embed), ranked by retrieval quality.
+    members: [embeddings]
+    local_strict: true
+    brief:
+      kind: embed
+      structured_output: false
+      task: >-
+        Embed French and English text at multiple granularities for a local
+        approximate-nearest-neighbour index.
+    min_quality: null
+    context_length: 8192
+
+# ---------------------------------------------------------------------------
+# Profiles
+
+profiles:
+
+- name: text2sql
+  summary: "Natural-language question -> read-only SQL (Vanna / qwencoder)."
+  description: >-
+    The Equipier Data core. A user question in French or English must become a
+    single, correct, read-only SQL query against a known schema. This is a code
+    task first: it rewards a SQL/code-capable model over a generalist of the same
+    size. The query is emitted under a JSON schema so it can be validated and
+    executed safely, which makes reliable structured output non-negotiable (a
+    model that returns empty under constrained decoding is useless here). It must
+    be deterministic and low-latency, since Vanna runs it inline in a request, so
+    the comfort floor is set high.
+  status: stable
+  family: F1
+  local_strict: true
+  brief:
+    kind: llm
+    structured_output: true
+    headroom: 0.5
+    min_tps: 20
+    task: >-
+      Translate a natural-language question into a single read-only SQL query
+      against a fixed schema; deterministic, schema-constrained SQL and code
+      reasoning.
+  min_quality: 80
+  context_length: 32768
+
+- name: rag-answer
+  summary: "Sourced RAG answer with page-precise citations, FR/EN, low hallucination."
+  description: >-
+    Recherche documentaire. Answer a French or English question strictly from
+    retrieved passages, attaching page-precise citations, and say "not found"
+    rather than invent when the passages do not support an answer. This rewards
+    strong bilingual instruction-following and faithfulness far more than raw
+    trivia: the model must stay grounded and obey the "cite or abstain" contract,
+    enforced with a structured answer (found flag, answer, citations), so
+    structured output is required. It reads several retrieved passages, so it
+    wants a comfortable context window; quality matters more than peak speed.
+  status: stable
+  family: F2
+  local_strict: true
+  brief:
+    kind: llm
+    structured_output: true
+    headroom: 0.5
+    min_tps: 15
+    task: >-
+      Answer a French or English question grounded only in retrieved passages,
+      with page-precise citations; faithful and low-hallucination, replying
+      not-found rather than inventing.
+  min_quality: 74
+  context_length: 32768
+
+- name: embeddings
+  summary: "Local multi-granular embeddings for the ann-router index (FR/EN)."
+  description: >-
+    The retrieval half of recherche documentaire. A local embedding model builds
+    the multi-granular index (word / keyphrase / sentence / paragraph / page)
+    that feeds ~/ann-router. It must be multilingual (French and English in the
+    same space), handle long paragraph/page spans, and be cheap enough to embed a
+    whole corpus offline. This is not a generative benchmark pick, so it is
+    resolved by memory fit over the embedders in the model catalog, ranked by
+    retrieval quality rather than by generative task fit.
+  status: stable
+  family: F3
+  local_strict: true
+  brief:
+    kind: embed
+    structured_output: false
+    task: >-
+      Embed French and English text at word, keyphrase, sentence, paragraph and
+      page granularity for a local approximate-nearest-neighbour index.
+  min_quality: null
+  context_length: 8192
+
+- name: text2sql-figures
+  summary: "Question + table -> structured figure spec that sprezzature-figures renders to SVG (a venir)."
+  description: >-
+    The figures extension of text2sql, arriving via ~/sprezzature-figures. From a
+    question and the tabular result of a query, the model emits a *structured*
+    figure description -- plot type plus encodings and parameters -- as JSON,
+    which sprezzature-figures then turns into a house-styled SVG figure. The
+    model's job is the structured spec, not the drawing, so this is a
+    code/structured task with the same non-negotiable schema-constrained output
+    as text2sql. Marked scaffold: the profile is authored and resolvable now, but
+    the sprezzature-figures wiring lands later, so it is not yet a production use.
+  status: scaffold
+  family: F1
+  local_strict: true
+  brief:
+    kind: llm
+    structured_output: true
+    headroom: 0.5
+    min_tps: 20
+    task: >-
+      From a question and a tabular result, emit a structured figure
+      specification -- plot type plus encodings and parameters -- as JSON for a
+      renderer; code and schema-constrained output.
+  min_quality: 78
+  context_length: 32768
+
+- name: report-bluf
+  summary: "Multi-persona report / BLUF generation, FR/EN, quality over speed."
+  description: >-
+    Multi-persona report writing with a BLUF (bottom-line-up-front) opening. A
+    long-form generation job where writing quality and faithful synthesis matter
+    more than latency, so it tolerates a lower throughput floor and lets the
+    picker reach for a larger model when one runs comfortably. Reports are
+    assembled from structured sections in the reader's language, so structured
+    output is on.
+  status: stable
+  family: F2
+  local_strict: true
+  brief:
+    kind: llm
+    structured_output: true
+    headroom: 0.5
+    min_tps: 10
+    task: >-
+      Write a BLUF-first, multi-persona report in the reader's language with a
+      clear structure and faithful synthesis of the inputs.
+  min_quality: 78
+  context_length: 32768
+
+- name: classification
+  summary: "Confidentiality classification C1/C2/C3, fast and deterministic."
+  description: >-
+    Assign a confidentiality level (C1 / C2 / C3) to a text with a short
+    justification. A small, fast model is ideal: the label space is tiny, the
+    decision is bounded, and the value is in high throughput and determinism, not
+    depth. The label is emitted under a schema so it is machine-consumable, so
+    structured output is required. The comfort floor is high (this runs at scale).
+  status: stable
+  family: F1
+  local_strict: true
+  brief:
+    kind: llm
+    structured_output: true
+    headroom: 0.5
+    min_tps: 25
+    task: >-
+      Classify a text into confidentiality level C1, C2 or C3 with a short
+      justification; fast, deterministic, schema-constrained label.
+  min_quality: 60
+  context_length: 8192
+
+- name: pii-rgpd
+  summary: "PII / GDPR detection + pseudonymisation surrogates, FR/EN, deterministic."
+  description: >-
+    Detect personal data and special-category GDPR entities (health, beliefs,
+    union membership, sexual orientation, precise location, online identifiers)
+    in French or English text, and propose type-, locale- and gender-consistent
+    pseudonymisation surrogates. It pairs with the deterministic Presidio + Faker
+    pipeline (privacy.py); the model contributes bilingual entity spotting and
+    surrogate proposals under a schema (entity spans + suggested surrogate), so
+    reliable structured output and determinism are required.
+  status: stable
+  family: F1
+  local_strict: true
+  brief:
+    kind: llm
+    structured_output: true
+    headroom: 0.5
+    min_tps: 20
+    task: >-
+      Detect personal and special-category GDPR entities in French or English
+      text and propose pseudonymisation surrogates; schema-constrained spans,
+      deterministic.
+  min_quality: 70
+  context_length: 16384
+
+- name: persona
+  summary: "Persona / register adaptation of a passage, FR/EN, meaning-preserving."
+  description: >-
+    Rewrite a passage to match a target persona and register in the reader's
+    language while preserving meaning. A prose-quality, bilingual
+    instruction-following job: no schema is needed on the output (the deliverable
+    is natural text), so structured output is off, and the picker favours a
+    strong generalist writer that runs comfortably.
+  status: stable
+  family: F2
+  local_strict: true
+  brief:
+    kind: llm
+    structured_output: false
+    headroom: 0.5
+    min_tps: 15
+    task: >-
+      Rewrite a passage to match a target persona and register in the reader's
+      language, preserving meaning.
+  min_quality: 74
+  context_length: 16384

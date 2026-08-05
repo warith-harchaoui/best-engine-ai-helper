@@ -14,3 +14,5 @@ venv/
 htmlcov/
 .DS_Store
 .private/
+# best-engine writes the machine-specific chosen models here (per-machine, never commit)
+llm.engine*.yaml

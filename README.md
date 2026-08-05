@@ -1,5 +1,7 @@
 # best-engine-ai-helper
 
+[🇫🇷](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/LISEZMOI.md) · [🇬🇧](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/README.md)
+
 Pick and pull the best local large language model (LLM) or vision-language model (VLM) for the hardware in the current machine.
 
 The tool detects available memory (Apple Silicon unified pool, NVIDIA VRAM, or system RAM), consults a bundled model catalog, and selects the highest-scoring model that fits within a configurable safety headroom. After selection, it pulls the model via Ollama, runs two quality gates (the Ralph Loop for prose and the Ralph Eyeball Loop for vision), and writes an environment file that downstream projects source to find the chosen model.
@@ -194,7 +196,7 @@ constants in `score.py`.
 
 ## Model catalog
 
-The bundled seed catalog (`models.yaml`) covers 13 models from the Qwen 3, Qwen 2.5, and Gemma 3 families, from 3B to 72B parameters, across Q4_K_M and Q8_0 quantizations. The catalog tracks on-disk size, estimated peak RAM, and benchmark scores from the Open LLM Leaderboard v2 and the OpenVLM Leaderboard.
+The bundled seed catalog (`models.yaml`) covers the Qwen 3, Qwen 2.5, Qwen 2.5-Coder, and Gemma 3 families (from 3B to 72B parameters, across Q4_K_M and Q8_0), plus a small set of `kind: embed` text embedders for the retrieval index. The catalog tracks on-disk size, estimated peak RAM, and benchmark scores from the Open LLM Leaderboard v2, the OpenVLM Leaderboard, EvalPlus (code), and MTEB (embedding retrieval). This is the *search space* best-engine picks from — it is never a per-usage choice.
 
 `catalog update` refreshes the cache from the [ApXML LLM directory](https://apxml.com/models?modelType=open_weight) (open-weight models with their per-quant VRAM needs, consulted regularly). It fetches the specs, normalizes them to catalog entries, and merges them into `~/.best-engine-ai-helper/catalog_cache.yaml` by id (the bundled seed is never modified). Use `--limit N` for a quick partial refresh. ApXML's static pages carry specs but no numeric leaderboard scores, so refreshed entries keep null benchmarks (and rank low) until a scored source, such as the Open LLM Leaderboard v2 or the OpenVLM Leaderboard, fills them.
 
@@ -268,6 +270,43 @@ A project usually knows its job more precisely than a machine-wide default can, 
 **Missing-file policy.** The brief is committed, so its absence is a real bug and `ensure` raises loudly with the command to run. The engine file is gitignored and machine-specific, so its absence is normal — `ensure` resolves it from the brief on first use. This keeps the model out of any variable: the resolved engine file is the single source of truth.
 
 The suite's consumers — [Standpoint](https://github.com/warith-harchaoui/standpoint), vocal-helper, and md2star — follow this pattern; each ships an `llm.brief.yaml` describing its own job (Standpoint's, for instance, names schema-constrained JSON, so the structured-output gate rules out higher-scoring vision models that cannot honour a schema and picks the strongest one that can) and reads the model only from the resolved engine file.
+
+## Usages / task profiles
+
+Where a brief is written per repo, the recurring sev7n workloads are named once in a bundled **usage catalog** (`usages.yaml`). Each **profile** — `text2sql`, `rag-answer`, `embeddings`, `text2sql-figures`, `report-bluf`, `classification`, `pii-rgpd`, `persona` — states only its **needs**: task type (text / code / vision / embeddings), whether it needs structured output, a throughput floor, a memory headroom, an advisory quality bar, and a context-length hint. A profile is, at heart, a named brief, so it is resolved by the **same four-criteria picker** as any brief.
+
+A profile **never names a model.** best-engine is the sole decider: it reads the needs, probes the machine, and chooses the concrete local model, writing that choice only into a generated engine file (`llm.engine*.yaml`) that is **gitignored and machine-specific** — never a committed literal. That is the whole point of the tool.
+
+Profiles are grouped into **families** — the usages that can share one model, so a machine need not hold eight:
+
+| Family | What it needs | Profiles |
+|--------|---------------|----------|
+| **F1 — constrained generation** | code + reliable structured output (SQL / JSON), deterministic | `text2sql`, `text2sql-figures`, `classification`, `pii-rgpd` |
+| **F2 — prose generation** | faithful FR/EN prose over long context | `rag-answer`, `report-bluf`, `persona` |
+| **F3 — embeddings** | multilingual, multi-granular retrieval vectors (never a chat model) | `embeddings` |
+
+Resolving a family yields **one** model for the group; resolving a single profile yields the possibly-specialised model for that job when the hardware allows it. On a roomy machine best-engine may specialise; on a tight one a family collapses onto one model.
+
+Discover and resolve through the existing CLI / library surface:
+
+```sh
+best-engine-ai-helper usages list                 # every profile + family (needs, no models)
+best-engine-ai-helper usages show text2sql        # one profile's needs
+best-engine-ai-helper usages resolve text2sql     # -> the model best-engine picks here
+best-engine-ai-helper usages resolve --family F1 --out llm.engine.F1.yaml
+```
+
+```python
+from best_engine_ai_helper import resolve_usage, resolve_family, list_usages
+
+for u in list_usages():
+    print(u["name"], u["family"], u["status"])
+
+engine = resolve_usage("text2sql")   # best-engine chooses the model for THIS machine
+family = resolve_family("F1")        # one model for the whole constrained-generation group
+```
+
+best-engine writes the retained models into the gitignored `llm.engine*.yaml` for this machine (the extension of the `env.sh` it already emits); the app reads that file and re-resolution re-decides if the hardware changes. Adding a profile is a few lines in `usages.yaml`; a user overlay at `~/.best-engine-ai-helper/usages_cache.yaml` overrides by name.
 
 ## License
 

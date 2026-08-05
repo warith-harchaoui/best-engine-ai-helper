@@ -304,6 +304,126 @@ def report_cmd(task: str | None, headroom: float, out: str | None, fmt: str) -> 
 
 
 # ---------------------------------------------------------------------------
+# usages subgroup — the sev7n usage catalog (task profiles + families)
+# ---------------------------------------------------------------------------
+
+@main.group("usages")
+def usages_group() -> None:
+    """Browse and resolve the sev7n usage catalog (task profiles + families)."""
+
+
+@usages_group.command("list")
+def usages_list() -> None:
+    """List every usage profile and family (names, not models)."""
+    from . import usages as _usages
+
+    click.echo("Families (usages that can share one model):")
+    frows = [
+        {"id": f["id"], "name": f["name"],
+         "members": ", ".join(f["members"]), "summary": f["summary"][:48]}
+        for f in _usages.list_families()
+    ]
+    click.echo(_fmt_table(frows, ["id", "name", "members", "summary"]))
+
+    click.echo("\nProfiles:")
+    prows = [
+        {"name": p["name"], "family": p["family"] or "-",
+         "status": p["status"], "summary": p["summary"][:52]}
+        for p in _usages.list_usages()
+    ]
+    click.echo(_fmt_table(prows, ["name", "family", "status", "summary"]))
+
+
+@usages_group.command("show")
+@click.argument("name")
+def usages_show(name: str) -> None:
+    """Show one profile's needs (task, structured output, floors) — no model."""
+    from . import usages as _usages
+
+    try:
+        prof = _usages.get_usage(name)
+    except KeyError as exc:
+        click.echo(str(exc), err=True)
+        sys.exit(1)
+
+    brief = prof.get("brief", {})
+    click.echo(f"{prof['name']}  [{prof.get('status', 'stable')}, family "
+               f"{prof.get('family', '-')}]")
+    click.echo(f"  {prof.get('summary', '')}\n")
+    click.echo(prof.get("description", "").strip() + "\n")
+    click.echo("Needs (selection criteria):")
+    click.echo(f"  kind             : {brief.get('kind', '-')}")
+    click.echo(f"  structured_output: {brief.get('structured_output', '-')}")
+    click.echo(f"  min_tps          : {brief.get('min_tps', '-')}")
+    click.echo(f"  headroom         : {brief.get('headroom', '-')}")
+    click.echo(f"  min_quality      : {prof.get('min_quality', '-')}")
+    click.echo(f"  context_length   : {prof.get('context_length', '-')}")
+    click.echo(f"  local_strict     : {prof.get('local_strict', True)}")
+    click.echo(f"  task             : {' '.join(brief.get('task', '').split())}")
+
+
+def _echo_resolved(descriptor: dict[str, Any], out: str | None) -> None:
+    """Print a resolved usage/family descriptor and optionally write it (gitignored)."""
+    label = descriptor.get("usage") or descriptor.get("family") or "?"
+    chosen = []
+    for kind in ("llm", "vlm", "embed"):
+        section = descriptor.get(kind)
+        if isinstance(section, dict) and section.get("model"):
+            ram = section.get("ram_gb")
+            tps = section.get("est_tokens_per_s")
+            extra = f", ~{tps:.0f} tok/s" if isinstance(tps, (int, float)) else ""
+            chosen.append(f"{kind}={section['model']} ({ram} GB{extra})")
+    click.echo(f"{label}: backend {descriptor.get('backend')}  "
+               + ("  ".join(chosen) if chosen else "no model resolved"))
+    if descriptor.get("status") == "scaffold":
+        click.echo("  NOTE: scaffolded profile — resolvable now, downstream wiring pending.")
+    click.echo("  NOTE: machine-specific — the chosen model lives only in the "
+               "generated file; keep it gitignored, never commit.")
+    if out:
+        from . import engine as _engine
+
+        path = _engine.write_engine(descriptor, out)
+        click.echo(f"  wrote {path}")
+        for cmd in descriptor.get("serve", []):
+            click.echo(f"  bring it up:  {cmd}")
+
+
+@usages_group.command("resolve")
+@click.argument("name", required=False)
+@click.option("--family", "family_id", type=str, default=None,
+              help="Resolve a whole family (F1/F2/F3) to one model instead of a profile.")
+@click.option("--backend", type=click.Choice(["auto", "ollama", "vllm"]), default="auto",
+              show_default=True, help="Serving backend; 'auto' picks per hardware.")
+@click.option("--endpoint", type=str, default=None, help="Override the server base URL.")
+@click.option("--out", type=str, default=None,
+              help="Write the generated engine file here (gitignored, machine-specific).")
+def usages_resolve(name: str | None, family_id: str | None, backend: str,
+                   endpoint: str | None, out: str | None) -> None:
+    """Resolve a profile (or --family) into this machine's model — best-engine decides.
+
+    Reads only the usage's needs, probes the hardware, and picks the concrete
+    local model. The result is machine-specific: it lives in the generated engine
+    file (gitignored), never in a committed literal.
+    """
+    from . import usages as _usages
+
+    if not name and not family_id:
+        click.echo("Give a profile NAME or --family F1/F2/F3.", err=True)
+        sys.exit(1)
+    try:
+        if family_id:
+            descriptor = _usages.resolve_family(
+                family_id, backend=backend, endpoint=endpoint)
+        else:
+            descriptor = _usages.resolve_usage(
+                name, backend=backend, endpoint=endpoint)  # type: ignore[arg-type]
+    except (KeyError, ValueError) as exc:
+        click.echo(f"resolve failed: {exc}", err=True)
+        sys.exit(1)
+    _echo_resolved(descriptor, out)
+
+
+# ---------------------------------------------------------------------------
 # catalog subgroup
 # ---------------------------------------------------------------------------
 

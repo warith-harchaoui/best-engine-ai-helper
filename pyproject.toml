@@ -49,7 +49,7 @@ where = ["."]
 include = ["best_engine_ai_helper*"]
 
 [tool.setuptools.package-data]
-"*" = ["models.yaml", "hardware.yaml"]
+"*" = ["models.yaml", "hardware.yaml", "usages.yaml"]
 "best_engine_ai_helper" = ["static/**"]
 
 [tool.ruff]

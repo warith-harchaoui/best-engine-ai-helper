@@ -6,6 +6,25 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Added
 
+- **Usage catalog (`usages.yaml`) — named sev7n task profiles + families.** Eight
+  profiles (`text2sql`, `rag-answer`, `embeddings`, `text2sql-figures`,
+  `report-bluf`, `classification`, `pii-rgpd`, `persona`), each stating only its
+  **needs** (task type, structured-output requirement, throughput floor, memory
+  headroom, advisory quality bar, context length) — **never a model name**. A
+  profile is a named brief, resolved by the same four-criteria picker. Profiles
+  are grouped into families **F1** (constrained generation), **F2** (prose
+  generation), **F3** (embeddings) — the usages that can share one model. New
+  CLI `usages list` / `usages show NAME` / `usages resolve NAME|--family FID`,
+  and library `list_usages`, `list_families`, `get_usage`, `get_family`,
+  `usage_brief`, `family_brief`, `resolve_usage`, `resolve_family`. best-engine
+  chooses the concrete model and writes it only to the gitignored
+  `llm.engine*.yaml` (added to `.gitignore`). A user overlay at
+  `~/.best-engine-ai-helper/usages_cache.yaml` overrides by name.
+- **Catalog additions (the search space).** Qwen 2.5-Coder entries (a real code
+  axis for `text2sql`) and `kind: embed` text embedders (scored on MTEB) for the
+  embeddings usage. `embed` joins `llm`/`vlm` as a third catalog kind; the
+  generative picker ignores it, the F3 usage selects among embedders by memory
+  fit.
 - **`resolve` command + the brief → engine contract.** A repo commits a tuned
   `llm.brief.yaml` (its LLM/VLM usage: `kind`, `headroom`, `min_tps`,
   `structured_output`, free-text `task`, and `mode: local|cloud`).

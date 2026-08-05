@@ -17,6 +17,9 @@ environment so that other tools (Ollama, vLLM, sprezzature-local) can.
 | Select the best model | (part of `recommend`) | `score.select(hw, catalog, kind)` |
 | Recommend engine(s) for a free-text task | `best-engine-ai-helper report --task "..."` | `recommend.recommend(hw, catalog, task)` |
 | Resolve a committed brief into a per-machine engine file | `best-engine-ai-helper resolve --brief llm.brief.yaml --out llm.engine.yaml` | `engine.resolve(brief)` / `engine.ensure(dir)` |
+| List the sev7n usage profiles + families | `best-engine-ai-helper usages list` | `list_usages()` / `list_families()` |
+| Show one usage profile's needs | `best-engine-ai-helper usages show text2sql` | `get_usage("text2sql")` |
+| Resolve a usage profile / family into this machine's model | `best-engine-ai-helper usages resolve text2sql` / `... resolve --family F1` | `resolve_usage("text2sql")` / `resolve_family("F1")` |
 | Browse the full model catalog | `best-engine-ai-helper catalog show` | `catalog.load_catalog()` |
 | Browse the hardware chip table | `best-engine-ai-helper hardware show` | `hardware.load_hardware()` |
 | Pull the best model and validate | `best-engine-ai-helper pull` | `pull.ollama_pull(tag)` |
@@ -93,7 +96,10 @@ the right tool:
 
 | File | Location | Direction | Purpose |
 |------|----------|-----------|---------|
-| `models.yaml` | package root | read | Bundled model seed catalog |
+| `models.yaml` | package root | read | Bundled model seed catalog (the search space) |
+| `usages.yaml` | package root | read | Bundled usage catalog: task profiles + families (needs, never a model) |
+| `usages_cache.yaml` | `~/.best-engine-ai-helper/` | read | User overlay for extra/overridden usage profiles |
+| `llm.engine*.yaml` | consumer repo root | write | Gitignored, machine-specific engine descriptor from a profile/family (`resolve_usage` / `resolve_family`) |
 | `hardware.yaml` | package root | read | Bundled chip lookup table |
 | `catalog_cache.yaml` | `~/.best-engine-ai-helper/` | read+write | Auto-refresh model layer |
 | `hardware_cache.yaml` | `~/.best-engine-ai-helper/` | read+write | Auto-refresh hardware layer |

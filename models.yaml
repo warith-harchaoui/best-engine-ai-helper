@@ -52,6 +52,65 @@
   vllm_id: Qwen/Qwen2.5-3B-Instruct
   fetched_at: null
 
+# --- Code / SQL specialists (Qwen 2.5 Coder) ------------------------------
+# Coder-tuned checkpoints: markedly stronger on the `code` axis than the
+# general Qwen 3 text models of the same size, at some cost to broad general
+# knowledge. They exist so a code/SQL usage (text2sql, text2sql-figures) has a
+# real specialist to prefer instead of a generalist. `code` scores are EvalPlus
+# HumanEval+ figures for the instruct variants (estimates pending a rescrape);
+# all honour Ollama structured JSON output, which text2sql needs for a
+# constrained, deterministic query.
+- id: qwen2.5-coder:7b
+  kind: llm
+  size_b: 7
+  quant: Q4_K_M
+  disk_gb: 4.7
+  ram_gb: 5.2
+  benchmarks:
+    general: 66
+    vision: null
+    ocr: null
+    code: 84
+    math: null
+  notes: "Qwen2.5-Coder 7B: SQL/code specialist. Reliable structured JSON output; the default text2sql pick."
+  structured_output: true
+  vllm_id: Qwen/Qwen2.5-Coder-7B-Instruct
+  fetched_at: null
+
+- id: qwen2.5-coder:14b
+  kind: llm
+  size_b: 14
+  quant: Q4_K_M
+  disk_gb: 9.0
+  ram_gb: 9.9
+  benchmarks:
+    general: 72
+    vision: null
+    ocr: null
+    code: 88
+    math: null
+  notes: "Qwen2.5-Coder 14B: stronger code/SQL at a mid footprint. Reliable structured JSON output."
+  structured_output: true
+  vllm_id: Qwen/Qwen2.5-Coder-14B-Instruct
+  fetched_at: null
+
+- id: qwen2.5-coder:32b
+  kind: llm
+  size_b: 32
+  quant: Q4_K_M
+  disk_gb: 20
+  ram_gb: 22
+  benchmarks:
+    general: 75
+    vision: null
+    ocr: null
+    code: 92
+    math: null
+  notes: "Qwen2.5-Coder 32B: top open code/SQL model; needs a roomy budget. Reliable structured JSON output."
+  structured_output: true
+  vllm_id: Qwen/Qwen2.5-Coder-32B-Instruct
+  fetched_at: null
+
 - id: qwen3-vl:4b
   kind: vlm
   size_b: 4
@@ -254,4 +313,82 @@
   notes: "72B at Q8; needs 96 GB unified. Reliable structured JSON output."
   structured_output: true
   vllm_id: Qwen/Qwen3-72B-Instruct
+  fetched_at: null
+
+# --- Embedding models (kind: embed) ---------------------------------------
+# Text embedders for the multi-granular ann-router index, NOT chat models: the
+# LLM/VLM benchmark picker ignores kind: embed, and the embeddings usage (F3)
+# selects among these by memory fit, ranked on the `mteb` retrieval score (MTEB
+# average). structured_output is irrelevant to an embedder. Sizes are the Ollama
+# tag footprints; scores are MTEB-average estimates pending a rescrape.
+- id: nomic-embed-text
+  kind: embed
+  size_b: 0.137
+  quant: F16
+  disk_gb: 0.27
+  ram_gb: 0.5
+  benchmarks:
+    general: null
+    vision: null
+    ocr: null
+    code: null
+    math: null
+    mteb: 62.4
+  notes: "137M, 8K context; the smallest safe embedder fallback."
+  structured_output: false
+  vllm_id: nomic-ai/nomic-embed-text-v1.5
+  fetched_at: null
+
+- id: mxbai-embed-large
+  kind: embed
+  size_b: 0.335
+  quant: F16
+  disk_gb: 0.67
+  ram_gb: 0.7
+  benchmarks:
+    general: null
+    vision: null
+    ocr: null
+    code: null
+    math: null
+    mteb: 64.7
+  notes: "335M, strong English retrieval; lighter option when memory is tight."
+  structured_output: false
+  vllm_id: mixedbread-ai/mxbai-embed-large-v1
+  fetched_at: null
+
+- id: snowflake-arctic-embed2
+  kind: embed
+  size_b: 0.568
+  quant: F16
+  disk_gb: 1.1
+  ram_gb: 1.2
+  benchmarks:
+    general: null
+    vision: null
+    ocr: null
+    code: null
+    math: null
+    mteb: 65.0
+  notes: "Multilingual, strong retrieval; a good multilingual cross-check."
+  structured_output: false
+  vllm_id: Snowflake/snowflake-arctic-embed-l-v2.0
+  fetched_at: null
+
+- id: bge-m3
+  kind: embed
+  size_b: 0.567
+  quant: F16
+  disk_gb: 1.1
+  ram_gb: 1.2
+  benchmarks:
+    general: null
+    vision: null
+    ocr: null
+    code: null
+    math: null
+    mteb: 66.0
+  notes: "Multilingual (100+ langs), 8K context; best all-round FR/EN granularity."
+  structured_output: false
+  vllm_id: BAAI/bge-m3
   fetched_at: null

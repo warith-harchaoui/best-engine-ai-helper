@@ -72,6 +72,22 @@ from .score import (
     select,
 )
 
+# The usage catalog: named sev7n workloads (text2sql, rag-answer, embeddings, …)
+# grouped into families, each stating only its NEEDS. resolve_usage / resolve_family
+# let a caller request "the model for profile X" — best-engine chooses it.
+from .usages import (
+    family_brief,
+    get_family,
+    get_usage,
+    list_families,
+    list_usages,
+    load_families,
+    load_usages,
+    resolve_family,
+    resolve_usage,
+    usage_brief,
+)
+
 __all__ = [
     "platform_name",
     "chip_vendor",
@@ -107,6 +123,17 @@ __all__ = [
     "load_config",
     "DEFAULT_TEXT_MODEL",
     "DEFAULT_VISION_MODEL",
+    # usage catalog (task profiles + families)
+    "list_usages",
+    "list_families",
+    "get_usage",
+    "get_family",
+    "load_usages",
+    "load_families",
+    "usage_brief",
+    "family_brief",
+    "resolve_usage",
+    "resolve_family",
 ]
 
 __version__ = "1.0.0"
