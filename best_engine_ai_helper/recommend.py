@@ -33,7 +33,19 @@ from typing import Any
 
 import os_helper as osh
 
-from .score import COMFORT_TPS, effective_budget, estimated_tokens_per_second, rank
+from .score import (
+    COMFORT_TPS,
+    MAX_HEADROOM,
+    effective_budget,
+    estimated_tokens_per_second,
+    rank,
+)
+
+# A candidate scoring within this many benchmark points of the strongest allowed
+# model is "good enough". Among that band we pick the LEANEST/fastest model, not
+# the top scorer — the core anti-greed rule (a 12B that matches a 32B to within a
+# few points but runs 3x faster is the better local default).
+_SUFFICIENT_MARGIN: float = 3.0
 
 # Keyword -> benchmark axis. The task text is scanned for these; the first axis
 # whose keywords appear wins for the text model. Vision keywords additionally
@@ -86,23 +98,32 @@ def parse_task(task: str | None) -> dict[str, Any]:
 
 def _candidate_row(
     entry: dict[str, Any], budget: float, bandwidth_gbs: float | None, axis: str,
-    min_tps: float = COMFORT_TPS,
+    min_tps: float = COMFORT_TPS, backend: str = "ollama",
 ) -> dict[str, Any]:
-    """One catalog entry annotated with the four decision factors."""
-    from .score import _benchmark_score  # local: internal scorer
+    """One catalog entry annotated with the four decision factors.
 
-    ram = float(entry.get("ram_gb", 0) or 0)
+    ``ram_gb``, ``fits`` and ``est_tokens_per_s`` are computed for ``backend``:
+    an Ollama pick sizes against the Q4 ``ram_gb``, a vLLM pick against the
+    heavier FP16 footprint (see :func:`score.model_footprint_gb`).
+    """
+    from .score import _benchmark_score, model_footprint_gb  # local: internal
+
+    ram = model_footprint_gb(entry, backend)
     kind = entry.get("kind", "llm")
     fits = ram <= budget
-    tps = estimated_tokens_per_second(entry, bandwidth_gbs)
+    tps = estimated_tokens_per_second(entry, bandwidth_gbs, backend)
     return {
         "id": entry.get("id"),
+        # HuggingFace id (vLLM) and parameter count carried through so the
+        # resolver can build a vLLM engine entry without re-reading the catalog.
+        "vllm_id": entry.get("vllm_id"),
+        "size_b": entry.get("size_b"),
         "kind": kind,
         "ram_gb": ram,
         "score": _benchmark_score(entry, kind, axis),
         "fits": fits,
-        # False = can't honour Ollama structured JSON output, so it is never
-        # auto-chosen for the helper's schema-driven tasks (see score.rank).
+        # False = can't honour structured JSON output, so it is never auto-chosen
+        # for the helper's schema-driven tasks (see score.rank).
         "structured_output": entry.get("structured_output", True) is not False,
         "est_tokens_per_s": tps,
         # Fits in memory AND decodes fast enough to be usable interactively. When
@@ -113,14 +134,34 @@ def _candidate_row(
     }
 
 
+def _pick_sufficient(pool: list[dict[str, Any]]) -> dict[str, Any]:
+    """Return the leanest model within :data:`_SUFFICIENT_MARGIN` points of the best.
+
+    ``pool`` is sorted best-first (structured-capable, then benchmark score), so
+    ``pool[0]`` is the strongest allowed candidate. Among every candidate scoring
+    within the margin of it — and no less structured-capable — the one with the
+    smallest memory footprint wins. This is the anti-greed pick: good enough on
+    quality, cheapest to run, rather than the absolute top scorer.
+    """
+    top = pool[0]
+    near = [
+        r for r in pool
+        if r["score"] >= top["score"] - _SUFFICIENT_MARGIN
+        and (r["structured_output"] or not top["structured_output"])
+    ]
+    return min(near, key=lambda r: r["ram_gb"]) if near else top
+
+
 def recommend(
     hw: dict[str, float | None],
     catalog: list[dict[str, Any]],
     task: str | None = None,
     *,
-    headroom: float = 0.85,
+    headroom: float = MAX_HEADROOM,
     compute: dict[str, Any] | None = None,
     min_tps: float = COMFORT_TPS,
+    backend: str = "ollama",
+    kinds: list[str] | None = None,
 ) -> dict[str, Any]:
     """
     Recommend the best engine per needed kind for this hardware and task.
@@ -134,10 +175,22 @@ def recommend(
     task : str or None
         Free-text or keyword task. None means a generalist text assistant.
     headroom : float
-        Memory safety margin passed to :func:`score.effective_budget`.
+        Memory safety margin passed to :func:`score.effective_budget` (clamped to
+        :data:`score.MAX_HEADROOM`).
     compute : dict or None
         Compute profile from :func:`detect.compute_profile` (accelerator +
         bandwidth). None disables the throughput estimate.
+    min_tps : float
+        Comfort throughput floor; a fitting model below it is only picked when no
+        comfortable one exists (and the choice is warned about).
+    backend : {'ollama', 'vllm'}
+        Serving backend, so memory fit and throughput reflect what actually
+        loads. Threaded to :func:`score.rank` and :func:`_candidate_row`.
+    kinds : list of str or None
+        Explicit kinds to resolve (``["llm"]``, ``["vlm"]`` or both), overriding
+        the kinds inferred from ``task``. The task text still selects the
+        benchmark axis. Used when the caller already knows what it needs (e.g. a
+        brief that declares ``kind: both``).
 
     Returns
     -------
@@ -150,23 +203,29 @@ def recommend(
     bandwidth = compute.get("bandwidth_gbs")
     budget = effective_budget(hw, headroom=headroom)
     parsed = parse_task(task)
+    needed_kinds = kinds if kinds is not None else parsed["kinds"]
     osh.info(
         f"Recommending for task axis '{parsed['application']}' "
-        f"(kinds: {', '.join(parsed['kinds'])}); memory budget {budget:.1f} GB"
+        f"(kinds: {', '.join(needed_kinds)}, backend: {backend}); "
+        f"memory budget {budget:.1f} GB"
     )
 
     picks: dict[str, Any] = {}
-    for kind in parsed["kinds"]:
+    for kind in needed_kinds:
         axis = parsed["vlm_application"] if kind == "vlm" else parsed["application"]
-        ranked = rank(hw, catalog, kind, headroom=headroom, application=axis)
-        rows = [_candidate_row(e, budget, bandwidth, axis, min_tps) for e in ranked]
+        ranked = rank(hw, catalog, kind, headroom=headroom, application=axis,
+                      backend=backend)
+        rows = [_candidate_row(e, budget, bandwidth, axis, min_tps, backend)
+                for e in ranked]
         fitting = [r for r in rows if r["fits"]]
         comfortable = [r for r in fitting if r["comfortable"]]
-        # Prefer the highest-scoring model that both fits memory AND decodes fast
-        # enough to be usable; fall back to a fitting-but-slow model only when
-        # nothing comfortable exists, and to an over-budget model as a last resort.
-        candidates = comfortable or fitting or rows
-        chosen: dict[str, Any] | None = candidates[0] if candidates else None
+        # Prefer models that fit memory AND decode fast enough to be usable; fall
+        # back to fitting-but-slow only when nothing is comfortable, then to an
+        # over-budget last resort. Within the chosen tier, _pick_sufficient takes
+        # the LEANEST model within a few benchmark points of the best (anti-greed)
+        # rather than the top scorer.
+        pool = comfortable or fitting or rows
+        chosen: dict[str, Any] | None = _pick_sufficient(pool) if pool else None
         if chosen is None:
             osh.warning(f"No candidate found for kind '{kind}' on axis '{axis}'")
         else:

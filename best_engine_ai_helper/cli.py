@@ -196,6 +196,64 @@ def recommend_cmd(kind: str, headroom: float, application: str | None,
     click.echo()
 
 
+@main.command("resolve")
+@click.option(
+    "--brief", type=str, required=True,
+    help="Path to the committed usage brief (llm.brief.yaml).",
+)
+@click.option(
+    "--out", type=str, default=None,
+    help="Where to write the engine file. Default: llm.engine.yaml beside the brief.",
+)
+@click.option(
+    "--backend", type=click.Choice(["auto", "ollama", "vllm"]), default="auto",
+    show_default=True,
+    help="Serving backend. 'auto' = vLLM on a discrete GPU (NVIDIA/AMD), else Ollama.",
+)
+@click.option(
+    "--endpoint", type=str, default=None,
+    help="Override the server base URL (e.g. a remote vLLM box).",
+)
+def resolve_cmd(brief: str, out: str | None, backend: str, endpoint: str | None) -> None:
+    """Resolve a usage brief into a machine-specific engine file (gitignored).
+
+    Reads the committed brief, detects this machine's hardware, picks a realistic
+    backend + model per kind, and writes the engine descriptor consumers read at
+    call time. The output is hardware-specific — add it to .gitignore, never
+    commit it.
+    """
+    from pathlib import Path
+
+    from . import engine as _engine
+
+    brief_path = Path(brief)
+    if not brief_path.is_file():
+        click.echo(f"Brief not found: {brief_path}", err=True)
+        sys.exit(1)
+
+    out_path = Path(out) if out else brief_path.with_name(_engine.ENGINE_NAME)
+    try:
+        descriptor = _engine.resolve(brief_path, backend=backend, endpoint=endpoint)
+        _engine.write_engine(descriptor, out_path)
+    except Exception as exc:  # keep resolution failures readable, no traceback
+        osh.error(f"resolve failed:\n\t{exc}")
+        click.echo(f"resolve failed: {exc}", err=True)
+        sys.exit(1)
+
+    chosen = ", ".join(
+        f"{k}={descriptor[k]['model']}"
+        for k in ("llm", "vlm")
+        if descriptor.get(k)
+    )
+    click.echo(
+        f"Wrote {out_path}\n"
+        f"  backend: {descriptor['backend']}  ({chosen})\n"
+        f"  NOTE: hardware-specific — add '{out_path.name}' to .gitignore, do not commit."
+    )
+    for cmd in descriptor.get("serve", []):
+        click.echo(f"  bring it up:  {cmd}")
+
+
 @main.command("report")
 @click.option(
     "--task",

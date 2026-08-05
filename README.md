@@ -204,6 +204,10 @@ The bundled seed catalog (`models.yaml`) covers 13 models from the Qwen 3, Qwen 
 
 ## Downstream integration
 
+There are two ways to consume the selected model. Use the first when every tool on the machine should share one model. Use the second when a project has its own idea of the job and wants the pick that fits that job, not a generic one.
+
+### Pattern A: one shared model for the whole machine
+
 After `best-engine-ai-helper pull` completes, it writes `~/.best-engine-ai-helper/env.sh`. `pull` picks one model that clears both quality gates and points the text and vision slots at it, so both tags match (the exact tag depends on your hardware):
 
 ```sh
@@ -214,6 +218,56 @@ export BEST_LLM_BASE_URL=http://localhost:11434
 ```
 
 Projects that consume the selected model source this file or read the companion `config.json`.
+
+### Pattern B: a per-project engine resolved from a tuned brief
+
+A project usually knows its job more precisely than a machine-wide default can, and the quality of the pick depends on how well that job is described — the task text is what maps to a scoring axis and decides whether a VLM is needed (see [How selection works](#how-selection-works)). So the project keeps a committed **brief** describing the job and resolves it, per machine, into a gitignored **engine file** that names the backend and model to use. No `DEFAULT_MODEL` constant lives in the project: the model is always read from the resolved engine file.
+
+1. **Commit the brief** — `llm.brief.yaml` in the repo, hardware-independent:
+
+   ```yaml
+   kind: both              # llm | vlm | both
+   headroom: 0.5           # max fraction of usable accelerator memory (clamped to 0.5)
+   min_tps: 15             # comfort throughput floor (tokens/s)
+   structured_output: true # the job needs schema-constrained output
+   task: >-
+     Name PCA axis poles as schema-constrained JSON, write a short analysis in
+     the table's own language, and sanity-check the rendered chart image.
+   ```
+
+2. **Resolve it, per machine** — writes a gitignored `llm.engine.yaml`:
+
+   ```sh
+   best-engine-ai-helper resolve --brief llm.brief.yaml --out llm.engine.yaml
+   ```
+
+   The backend is chosen for the hardware: **vLLM when a discrete GPU (NVIDIA/AMD) is present, Ollama otherwise** (macOS, CPU-only Linux, Intel iGPU). The pick is deliberately conservative — the memory headroom is capped at 0.5, and among models within a few benchmark points of the best it takes the leanest and fastest, not the largest that merely fits. vLLM picks are sized against full FP16 weights (heavier than the Ollama Q4 estimate), so a vLLM pick is realistic on the real GPU. The output is hardware-specific — add it to `.gitignore`:
+
+   ```yaml
+   backend: ollama
+   base_url: http://localhost:11434
+   llm: {model: gemma3:12b, ram_gb: 9.2, est_tokens_per_s: 28.3, structured_output: true}
+   vlm: {model: gemma3:12b, ram_gb: 9.2, est_tokens_per_s: 28.3, structured_output: true}
+   serve: [ollama pull gemma3:12b]
+   ```
+
+3. **Consume it, no constant** — read the engine at call time and let the transport route to the right backend:
+
+   ```python
+   from best_engine_ai_helper import ensure, llm
+
+   engine = ensure(".")            # loads llm.engine.yaml, or resolves it from
+                                   # llm.brief.yaml on first use
+   summary = llm.chat(prompt, engine=engine, kind="llm")
+   critique = llm.chat(prompt, engine=engine, kind="vlm",
+                       images=[png], json_schema=SCHEMA)
+   ```
+
+   `chat` reads the backend and model from the engine file and dispatches to Ollama (`/api/generate`) or vLLM (OpenAI-compatible `/v1/chat/completions`) transparently, with schema-constrained structured output on both.
+
+**Missing-file policy.** The brief is committed, so its absence is a real bug and `ensure` raises loudly with the command to run. The engine file is gitignored and machine-specific, so its absence is normal — `ensure` resolves it from the brief on first use. This keeps the model out of any variable: the resolved engine file is the single source of truth.
+
+The suite's consumers — [Standpoint](https://github.com/warith-harchaoui/standpoint), vocal-helper, and md2star — follow this pattern; each ships an `llm.brief.yaml` describing its own job (Standpoint's, for instance, names schema-constrained JSON, so the structured-output gate rules out higher-scoring vision models that cannot honour a schema and picks the strongest one that can) and reads the model only from the resolved engine file.
 
 ## License
 

@@ -34,36 +34,42 @@ ALL_MODELS = [SMALL_LLM, SMALL_VLM, MID_LLM, MID_VLM, LARGE_LLM, LARGE_VLM]
 
 
 def test_effective_budget_priority_and_headroom() -> None:
-    # Unified pool wins over VRAM; >36 GB triggers the 0.75 Metal cap, then 0.85.
+    # Unified pool wins over VRAM; >36 GB triggers the 0.75 Metal cap, then the
+    # default 0.5 headroom: 96 * 0.75 * 0.5.
     assert score.effective_budget(
-        {"unified_gb": 96.0, "vram_gb": 24.0, "ram_gb": 96.0}) == pytest.approx(61.2)
-    # No unified -> VRAM budget (0.92 usable * 0.85).
+        {"unified_gb": 96.0, "vram_gb": 24.0, "ram_gb": 96.0}) == pytest.approx(36.0)
+    # No unified -> VRAM budget (0.92 usable * 0.5).
     assert score.effective_budget(
-        {"unified_gb": None, "vram_gb": 24.0, "ram_gb": 64.0}) == pytest.approx(18.768)
-    # No accelerator -> half of system RAM * headroom.
+        {"unified_gb": None, "vram_gb": 24.0, "ram_gb": 64.0}) == pytest.approx(11.04)
+    # No accelerator -> half of system RAM * 0.5 headroom.
     assert score.effective_budget(
-        {"unified_gb": None, "vram_gb": None, "ram_gb": 32.0}) == pytest.approx(13.6)
-    # Custom headroom flows through: 64 * 0.75 * 0.90.
+        {"unified_gb": None, "vram_gb": None, "ram_gb": 32.0}) == pytest.approx(8.0)
+    # Headroom is CLAMPED to MAX_HEADROOM (0.5): a caller asking for 0.90 still
+    # gets 64 * 0.75 * 0.5, never * 0.90 — the anti-greed ceiling.
+    assert score.MAX_HEADROOM == 0.5
     assert score.effective_budget(
         {"unified_gb": 64.0, "vram_gb": None, "ram_gb": 64.0}, headroom=0.90
-    ) == pytest.approx(43.2)
+    ) == pytest.approx(24.0)
 
 
 def test_select_picks_best_that_fits_and_falls_back() -> None:
-    small = {"unified_gb": 24.0, "vram_gb": None, "ram_gb": 24.0}  # budget ~13.5 GB
-    large = {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}  # budget 61.2 GB
-    tiny = {"unified_gb": None, "vram_gb": 2.0, "ram_gb": 8.0}     # budget 1.6 GB
+    small = {"unified_gb": 24.0, "vram_gb": None, "ram_gb": 24.0}  # budget 7.92 GB
+    large = {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}  # budget 36.0 GB
+    tiny = {"unified_gb": None, "vram_gb": 2.0, "ram_gb": 8.0}     # budget 0.92 GB
 
-    # VLM: on a small budget mid-vlm (9 GB, vision 80) beats small-vlm; on a
-    # large budget large-vlm wins; when nothing fits, the smallest is the last resort.
-    assert score.select(small, ALL_MODELS, kind="vlm")["id"] == "mid-vlm"
-    assert score.select(large, ALL_MODELS, kind="vlm")["id"] == "large-vlm"
+    # VLM: under the 0.5-clamped budget only small-vlm fits the 7.92 GB machine
+    # (mid-vlm is 9 GB); mid-vlm fits the 36 GB machine and beats small-vlm on
+    # vision; when nothing fits, the smallest is the last resort. large-vlm (52)
+    # no longer fits any of these once headroom is capped at 0.5.
+    assert score.select(small, ALL_MODELS, kind="vlm")["id"] == "small-vlm"
+    assert score.select(large, ALL_MODELS, kind="vlm")["id"] == "mid-vlm"
     assert score.select(tiny, ALL_MODELS, kind="vlm")["id"] == "small-vlm"
 
-    # LLM: a VLM is a valid LLM candidate, so on a large machine the top general
-    # score (large-vlm, 88) wins the LLM slot too; on a small budget mid-llm wins.
-    assert score.select(small, ALL_MODELS, kind="llm")["id"] == "mid-llm"
-    assert score.select(large, ALL_MODELS, kind="llm")["id"] == "large-vlm"
+    # LLM: a VLM is a valid LLM candidate. On the tight 7.92 GB budget small-vlm
+    # (general 65) edges small-llm (62); on the 36 GB machine mid-llm (78) is the
+    # top fitting general score (the large models no longer fit).
+    assert score.select(small, ALL_MODELS, kind="llm")["id"] == "small-vlm"
+    assert score.select(large, ALL_MODELS, kind="llm")["id"] == "mid-llm"
 
 
 def test_select_raises_on_empty_catalog() -> None:
@@ -77,9 +83,15 @@ def test_rank_orders_by_score_and_marks_fit() -> None:
     # Descending by the vision axis, and the first entry is what select() returns.
     scores = [r["benchmarks"]["vision"] for r in ranked]
     assert scores == sorted(scores, reverse=True)
-    assert ranked[0]["id"] == score.select(hw, ALL_MODELS, kind="vlm")["id"]
-    # All three VLMs fit in 96 GB (budget 61.2 GB; largest is 52).
-    assert [r["_fits"] for r in ranked].count(True) == 3
+    # rank() sorts by score regardless of fit, so its top is the highest scorer
+    # (large-vlm) even though it no longer fits the 36 GB budget. select() returns
+    # the best-scoring model that DOES fit — the first fitting entry in the rank.
+    assert ranked[0]["id"] == "large-vlm"
+    first_fitting = next(r for r in ranked if r["_fits"])
+    assert first_fitting["id"] == score.select(hw, ALL_MODELS, kind="vlm")["id"]
+    # Two of three VLMs fit in 96 GB (budget 36 GB under the 0.5 cap; large-vlm
+    # is 52 GB and no longer fits).
+    assert [r["_fits"] for r in ranked].count(True) == 2
 
 
 def test_select_agrees_with_rank_on_structured_output() -> None:
