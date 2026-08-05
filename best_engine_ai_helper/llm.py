@@ -46,6 +46,8 @@ import base64
 import copy
 import json
 import os
+import time
+from collections.abc import Callable
 from typing import Any
 
 import os_helper as osh
@@ -55,10 +57,38 @@ import os_helper as osh
 # ---------------------------------------------------------------------------
 
 # Backends that speak the OpenAI Chat Completions wire format, so they route
-# through ``_chat_openai``: a local vLLM server, and any generic OpenAI-compatible
-# server. Cloud providers (and Anthropic/Gemini's own formats) arrive on the
-# 'cloud' branch.
-_OPENAI_COMPATIBLE = frozenset({"vllm", "openai"})
+# through ``_chat_openai``: a local vLLM server, generic OpenAI-compatible
+# servers, and the OpenAI-compatible cloud providers. Anthropic / Gemini use
+# their own wire formats and get dedicated transports later on this branch.
+_OPENAI_COMPATIBLE = frozenset({"vllm", "openai", "openrouter", "together", "azure"})
+
+# ---------------------------------------------------------------------------
+# Observability seam (Phase 6, 6.0a)
+# ---------------------------------------------------------------------------
+# Every suite LLM/VLM call funnels through ``chat``; registered observers get a
+# small event dict per call so monitoring (a local ledger, a dashboard) can be
+# built on top without changing behaviour. No observer is registered by default,
+# so this is a no-op until something opts in.
+_OBSERVERS: list[Callable[[dict[str, Any]], None]] = []
+
+
+def add_observer(fn: Callable[[dict[str, Any]], None]) -> None:
+    """Register a per-call observer. It receives the event dict from :func:`chat`."""
+    _OBSERVERS.append(fn)
+
+
+def clear_observers() -> None:
+    """Remove all registered observers (chiefly for tests)."""
+    _OBSERVERS.clear()
+
+
+def _emit(event: dict[str, Any]) -> None:
+    """Fan an event out to observers; an observer that raises is never fatal."""
+    for fn in _OBSERVERS:
+        try:
+            fn(event)
+        except Exception as exc:  # noqa: BLE001 — observability must not break inference
+            osh.warning(f"LLM observer raised, ignoring: {exc!r}")
 
 
 def _backend() -> str:
@@ -647,40 +677,59 @@ def chat(
         f"images={len(images) if images else 0}, json={json_mode}"
     )
 
-    if transport == "ollama":
-        raw = _chat_ollama(
-            prompt,
-            system=system,
-            images=images,
-            json_schema=json_schema,
-            model=resolved_model,
-            temperature=temperature,
-            base_url=base_url,
-        )
-    elif transport == "openai":
-        raw = _chat_openai(
-            prompt,
-            system=system,
-            images=images,
-            json_schema=json_schema,
-            model=resolved_model,
-            temperature=temperature,
-            base_url=base_url,
-        )
-    elif transport == "langchain":
-        raw = _chat_langchain(
-            prompt,
-            system=system,
-            images=images,
-            json_schema=json_schema,
-            model=resolved_model,
-            temperature=temperature,
-        )
-    else:
-        osh.error(f"Unknown backend: {backend!r}")
-        raise ValueError(
-            f"Unknown backend: {backend!r}. Valid values: 'ollama', 'vllm', 'openai', 'langchain'."
-        )
+    resolved_kind = kind or ("vlm" if images else "llm")
+    t0 = time.perf_counter()
+    try:
+        if transport == "ollama":
+            raw = _chat_ollama(
+                prompt,
+                system=system,
+                images=images,
+                json_schema=json_schema,
+                model=resolved_model,
+                temperature=temperature,
+                base_url=base_url,
+            )
+        elif transport == "openai":
+            raw = _chat_openai(
+                prompt,
+                system=system,
+                images=images,
+                json_schema=json_schema,
+                model=resolved_model,
+                temperature=temperature,
+                base_url=base_url,
+            )
+        elif transport == "langchain":
+            raw = _chat_langchain(
+                prompt,
+                system=system,
+                images=images,
+                json_schema=json_schema,
+                model=resolved_model,
+                temperature=temperature,
+            )
+        else:
+            osh.error(f"Unknown backend: {backend!r}")
+            raise ValueError(
+                f"Unknown backend: {backend!r}. "
+                "Valid values: 'ollama', 'vllm', 'openai', 'langchain'."
+            )
+    except Exception as exc:
+        _emit({
+            "backend": backend, "model": resolved_model, "kind": resolved_kind,
+            "in_chars": len(prompt), "images": len(images) if images else 0,
+            "out_chars": 0, "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
+            "ok": False, "error": repr(exc),
+        })
+        raise
+
+    _emit({
+        "backend": backend, "model": resolved_model, "kind": resolved_kind,
+        "in_chars": len(prompt), "images": len(images) if images else 0,
+        "out_chars": len(raw), "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
+        "ok": True, "error": None,
+    })
 
     # Parse JSON when requested; fall back to raw string on parse failure
     if json_mode:

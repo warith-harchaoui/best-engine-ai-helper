@@ -49,6 +49,17 @@ _VLLM_URL = "http://localhost:8000/v1"
 
 _VALID_BACKENDS = ("ollama", "vllm")
 
+# Default API roots for cloud providers, used when a cloud brief does not pin its
+# own base_url. (cloud branch — the transport, keys, and cost accounting build on
+# this in later Phase 6 steps.)
+_CLOUD_BASE_URLS = {
+    "openai": "https://api.openai.com/v1",
+    "openrouter": "https://openrouter.ai/api/v1",
+    "together": "https://api.together.xyz/v1",
+    "anthropic": "https://api.anthropic.com",
+    "gemini": "https://generativelanguage.googleapis.com/v1beta",
+}
+
 
 # Accelerator vendors that have a real (fast) vLLM runtime today. A discrete
 # CUDA (NVIDIA) or ROCm (AMD) GPU gets vLLM; Apple Silicon, Intel iGPUs, and
@@ -152,11 +163,8 @@ def resolve(
     spec = load_brief(brief)
     mode = str(spec.get("mode", "local")).strip().lower()
     if mode == "cloud":
-        raise NotImplementedError(
-            "mode: cloud is not available yet — cloud providers (and their local "
-            "fallback), cost, failover, pseudonymization and NSFW safety ship on "
-            "the best-engine-ai-helper 'cloud' branch. Use mode: local (the "
-            "default) for now."
+        return _resolve_cloud(
+            spec, endpoint=endpoint, catalog=catalog, hw=hw, compute=compute
         )
     if mode != "local":
         osh.warning(f"Unknown brief mode {mode!r}; treating as 'local'.")
@@ -251,6 +259,64 @@ def _resolve_local(
             serve.append(cmd)
 
     engine["serve"] = serve
+    return engine
+
+
+def _resolve_cloud(
+    spec: dict[str, Any],
+    *,
+    endpoint: str | None = None,
+    catalog: list[dict[str, Any]] | None = None,
+    hw: dict[str, float | None] | None = None,
+    compute: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Resolve a ``mode: cloud`` brief: a provider primary + a local fallback.
+
+    The primary is declarative (provider, model, base_url, api-key env *name*);
+    the ``fallback`` is a full local descriptor resolved from the same brief, so
+    a failed paid call can degrade to the always-available local model — the safe
+    direction (paid -> local). The cloud transport, keys, and cost accounting are
+    wired in later Phase 6 steps on this branch.
+    """
+    provider = str(spec.get("provider", "openai")).strip().lower()
+    model = spec.get("model")
+    if not model:
+        raise ValueError(
+            "A cloud brief needs a 'model' (e.g. gpt-4o, claude-3-5-sonnet). "
+            "Optionally add 'vlm_model', 'base_url', and 'api_key_env'."
+        )
+    vlm_model = spec.get("vlm_model", model)
+    kinds = _kinds_from_brief(spec.get("kind", "both"))
+    base_url = endpoint or spec.get("base_url") or _CLOUD_BASE_URLS.get(provider, "")
+
+    engine: dict[str, Any] = {
+        "generated_by": "best-engine-ai-helper — machine-specific, do not commit",
+        "mode": "cloud",
+        "backend": provider,
+        "base_url": base_url,
+        # NAME of the env var holding the key — never the key value itself.
+        "api_key_env": spec.get("api_key_env"),
+    }
+    for kind in kinds:
+        engine[kind] = {
+            "model": vlm_model if kind == "vlm" else model,
+            "structured_output": bool(spec.get("structured_output", True)),
+            "cloud": True,
+        }
+    engine["serve"] = []
+
+    # Local backup resolved from the SAME brief, so a failed paid call degrades to
+    # the always-available local model (paid -> local, the safe direction).
+    local_spec = {k: v for k, v in spec.items() if k != "mode"}
+    try:
+        engine["fallback"] = _resolve_local(
+            local_spec, backend="auto", catalog=catalog, hw=hw, compute=compute
+        )
+    except Exception as exc:  # a missing local model must not break cloud resolution
+        osh.warning(f"Could not resolve a local fallback for the cloud engine: {exc}")
+        engine["fallback"] = None
+
+    osh.info(f"Resolved cloud engine: provider={provider}, model={model} (+ local fallback)")
     return engine
 
 

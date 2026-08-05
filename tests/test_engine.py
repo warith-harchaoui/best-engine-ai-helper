@@ -131,12 +131,47 @@ def test_resolve_defaults_to_local_mode() -> None:
     assert eng["mode"] == "local"
 
 
-def test_resolve_cloud_mode_is_deferred() -> None:
-    # The `mode` field is recognised (forward-compatible), but cloud resolution
-    # ships on the 'cloud' branch — asking for it now fails loudly, not silently.
-    with pytest.raises(NotImplementedError, match="cloud"):
-        engine.resolve({"kind": "llm", "mode": "cloud", "task": "x"},
+def test_resolve_cloud_primary_with_local_fallback(monkeypatch) -> None:
+    # cloud branch: mode: cloud resolves a provider primary + an embedded local
+    # fallback (paid -> local). Force the fallback backend to be hardware-independent.
+    monkeypatch.setattr(engine, "default_backend", lambda: "ollama")
+    brief = {"kind": "both", "mode": "cloud", "provider": "openai",
+             "model": "gpt-4o", "api_key_env": "OPENAI_API_KEY",
+             "task": "summarize a transcript and read a chart"}
+    eng = engine.resolve(brief, catalog=_CATALOG, hw=_HW, compute=_COMPUTE)
+    assert eng["mode"] == "cloud" and eng["backend"] == "openai"
+    assert eng["base_url"] == "https://api.openai.com/v1"
+    assert eng["api_key_env"] == "OPENAI_API_KEY"  # key referenced by NAME only
+    assert eng["llm"]["model"] == "gpt-4o" and eng["llm"]["cloud"] is True
+    # Embedded local backup, resolved from the same brief.
+    assert eng["fallback"]["mode"] == "local"
+    assert eng["fallback"]["backend"] == "ollama"
+    assert eng["fallback"]["llm"]["model"] == "mid-vlm"
+
+
+def test_resolve_cloud_requires_a_model() -> None:
+    with pytest.raises(ValueError, match="needs a 'model'"):
+        engine.resolve({"mode": "cloud", "provider": "openai", "task": "x"},
                        catalog=_CATALOG, hw=_HW, compute=_COMPUTE)
+
+
+def test_chat_emits_observation_event(monkeypatch) -> None:
+    # The 6.0a seam: every chat() call fans a small event out to observers.
+    events: list[dict] = []
+    monkeypatch.setattr(llm, "_chat_ollama", lambda prompt, **kw: "hello there")
+    llm.clear_observers()
+    llm.add_observer(events.append)
+    try:
+        eng = {"backend": "ollama", "base_url": "http://localhost:11434",
+               "llm": {"model": "qwen3:8b"}}
+        llm.chat("hi", engine=eng, kind="llm")
+    finally:
+        llm.clear_observers()
+    assert len(events) == 1
+    ev = events[0]
+    assert ev["ok"] is True and ev["backend"] == "ollama"
+    assert ev["model"] == "qwen3:8b" and ev["kind"] == "llm"
+    assert ev["out_chars"] == len("hello there") and ev["latency_ms"] >= 0
 
 
 def test_chat_engine_routes_backend_and_base_url(monkeypatch) -> None:
