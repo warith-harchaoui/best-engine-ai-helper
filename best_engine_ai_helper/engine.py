@@ -29,7 +29,7 @@ Warith Harchaoui <warith.harchaoui@deraison.ai>
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 from urllib.parse import urlparse
 
 import os_helper as osh
@@ -81,13 +81,13 @@ def default_backend() -> str:
     return "vllm" if chip_vendor() in _VLLM_VENDORS else "ollama"
 
 
-def _kinds_from_brief(kind: str) -> list[str]:
+def _kinds_from_brief(kind: str) -> list[Literal["llm", "vlm"]]:
     """Map a brief's ``kind`` field to the ordered list of kinds to resolve."""
     k = (kind or "both").strip().lower()
     if k == "both":
         return ["llm", "vlm"]
     if k in ("llm", "vlm"):
-        return [k]
+        return [cast(Literal["llm", "vlm"], k)]
     osh.warning(f"Unknown brief kind {kind!r}; defaulting to both llm and vlm.")
     return ["llm", "vlm"]
 

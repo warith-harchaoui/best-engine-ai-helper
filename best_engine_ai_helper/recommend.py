@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 import os_helper as osh
 
@@ -161,7 +161,7 @@ def recommend(
     compute: dict[str, Any] | None = None,
     min_tps: float = COMFORT_TPS,
     backend: str = "ollama",
-    kinds: list[str] | None = None,
+    kinds: list[Literal["llm", "vlm"]] | None = None,
 ) -> dict[str, Any]:
     """
     Recommend the best engine per needed kind for this hardware and task.
@@ -203,7 +203,9 @@ def recommend(
     bandwidth = compute.get("bandwidth_gbs")
     budget = effective_budget(hw, headroom=headroom)
     parsed = parse_task(task)
-    needed_kinds = kinds if kinds is not None else parsed["kinds"]
+    needed_kinds = kinds if kinds is not None else cast(
+        list[Literal["llm", "vlm"]], parsed["kinds"]
+    )
     osh.info(
         f"Recommending for task axis '{parsed['application']}' "
         f"(kinds: {', '.join(needed_kinds)}, backend: {backend}); "

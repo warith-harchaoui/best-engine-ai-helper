@@ -49,6 +49,15 @@ All notable changes to best-engine-ai-helper are documented here.
 - New Python API: `resolve`, `ensure`, `write_engine`, `load_engine`,
   `model_for`, `default_backend`, `model_footprint_gb`, `MAX_HEADROOM`.
 
+### Fixed
+
+- **Mypy CI regression from the `kinds`/usage-catalog work.** `recommend()`'s
+  `kinds` parameter and `engine._kinds_from_brief` now return
+  `list[Literal["llm", "vlm"]]` instead of `list[str]`, matching what `rank()`
+  expects; `llm._dispatch`, `llm._cache_key_payload` and the retry closure in
+  `llm.chat` gained the parameter annotations mypy was missing; `chat`'s
+  JSON-mode return is explicitly cast from `json.loads`.
+
 ### Changed
 
 - **Anti-greed selection — picks are realistic, not maximal.**

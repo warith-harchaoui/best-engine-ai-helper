@@ -48,7 +48,7 @@ import json
 import os
 import time
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 import os_helper as osh
 
@@ -637,8 +637,10 @@ def _resolve_target(
 
 
 def _dispatch(
-    transport: str, backend: str, prompt: str, *, system, images, json_schema,
-    model: str, temperature: float, base_url,
+    transport: str, backend: str, prompt: str, *,
+    system: str | None, images: list[bytes] | None,
+    json_schema: dict[str, Any] | None,
+    model: str, temperature: float, base_url: str | None,
 ) -> str:
     """Run one transport call. Raises on failure; performs no logging/emit."""
     if transport == "ollama":
@@ -688,7 +690,9 @@ def _with_retry(fn: Callable[[], str], retries: int) -> str:
 
 
 def _cache_key_payload(
-    backend, model, kind, prompt, system, json_schema, temperature, images
+    backend: str, model: str, kind: str, prompt: str, system: str | None,
+    json_schema: dict[str, Any] | None, temperature: float,
+    images: list[bytes] | None,
 ) -> dict[str, Any]:
     """The semantic signature of a call — what determines its result.
 
@@ -806,7 +810,10 @@ def chat(
         t0 = time.perf_counter()
         cached = False
 
-        def _run(_t=transport, _b=backend, _m=resolved_model, _u=base_url) -> str:
+        def _run(
+            _t: str = transport, _b: str = backend, _m: str = resolved_model,
+            _u: str | None = base_url,
+        ) -> str:
             return _with_retry(
                 lambda: _dispatch(
                     _t, _b, prompt, system=system, images=images,
@@ -853,7 +860,7 @@ def chat(
         # Parse JSON when requested; fall back to raw string on parse failure.
         if json_mode:
             try:
-                return json.loads(raw)
+                return cast(dict[str, Any], json.loads(raw))
             except json.JSONDecodeError:
                 osh.warning(
                     "Requested JSON mode but response was not valid JSON; returning raw text"
