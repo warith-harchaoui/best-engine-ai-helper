@@ -43,13 +43,34 @@ from .detect import (
     compute_profile,
     platform_name,
 )
+
+# The brief -> engine resolution flow: turn a repo's committed usage brief into a
+# gitignored, machine-specific engine descriptor (backend + model per kind), and
+# read it back. ``default_backend`` encodes the Ollama-vs-vLLM rule.
+from .engine import (
+    BRIEF_NAME,
+    ENGINE_NAME,
+    default_backend,
+    ensure,
+    load_engine,
+    model_for,
+    resolve,
+    write_engine,
+)
 from .hardware import load_hardware, lookup_chip
 
 # Export the engine-recommendation function under a distinct name so it does
 # not shadow the ``recommend`` submodule on attribute access.
 from .recommend import parse_task, to_markdown, write_report
 from .recommend import recommend as recommend_engines
-from .score import effective_budget, estimated_tokens_per_second, rank, select
+from .score import (
+    MAX_HEADROOM,
+    effective_budget,
+    estimated_tokens_per_second,
+    model_footprint_gb,
+    rank,
+    select,
+)
 
 __all__ = [
     "platform_name",
@@ -65,10 +86,21 @@ __all__ = [
     "rank",
     "effective_budget",
     "estimated_tokens_per_second",
+    "model_footprint_gb",
+    "MAX_HEADROOM",
     "recommend_engines",
     "parse_task",
     "to_markdown",
     "write_report",
+    # brief -> engine resolution
+    "resolve",
+    "ensure",
+    "write_engine",
+    "load_engine",
+    "model_for",
+    "default_backend",
+    "BRIEF_NAME",
+    "ENGINE_NAME",
     "text_model",
     "vision_model",
     "resolved_models",

@@ -84,25 +84,31 @@ def test_markdown_and_file_emitters(tmp_path) -> None:
 
 
 def test_comfort_floor_demotes_fits_but_slow_models() -> None:
-    # big-llm (48 GB) fits the 96 GB budget but decodes at ~5 tok/s on an M2 Max;
-    # mid-llm (10.5 GB) clears the comfort floor at ~25 tok/s. The comfort gate
-    # must pick the comfortable model, not the higher-scoring slow one, and mark
-    # the slow-but-fitting model as not comfortable in the candidate table.
-    rep = recommend.recommend(_HW, _CATALOG, task="write copy", compute=_COMPUTE)
+    # slow-big (30 GB) fits the 36 GB budget (0.5 headroom on a 96 GB M2 Max) but
+    # decodes at ~8.7 tok/s; fast-mid (10.5 GB) clears the comfort floor at
+    # ~25 tok/s. The comfort gate must pick the comfortable model, not the
+    # higher-scoring slow one, and mark the slow-but-fitting model not comfortable.
+    catalog = [
+        {"id": "slow-big", "kind": "llm", "ram_gb": 30.0, "benchmarks": {"general": 87}},
+        {"id": "fast-mid", "kind": "llm", "ram_gb": 10.5, "benchmarks": {"general": 78}},
+    ]
+    rep = recommend.recommend(_HW, catalog, task="write copy", compute=_COMPUTE)
     block = rep["recommendations"]["llm"]
-    assert block["chosen"]["id"] == "mid-llm"
+    assert block["chosen"]["id"] == "fast-mid"
     rows = {r["id"]: r for r in block["candidates"]}
-    assert rows["big-llm"]["fits"] is True
-    assert rows["big-llm"]["comfortable"] is False
-    assert rows["mid-llm"]["comfortable"] is True
+    assert rows["slow-big"]["fits"] is True
+    assert rows["slow-big"]["comfortable"] is False
+    assert rows["fast-mid"]["comfortable"] is True
     assert rep["comfort_tps"] == recommend.COMFORT_TPS
 
 
 def test_comfort_floor_ignored_when_bandwidth_unknown() -> None:
     # Without a compute profile there is no throughput estimate, so the comfort
-    # gate cannot fire: the highest-scoring model that fits memory still wins
-    # (big-vlm at 88 general, since a VLM is a valid text candidate too).
+    # gate cannot fire: memory fit alone decides. Under the 0.5 headroom the big
+    # models (48/52 GB) no longer fit the 36 GB budget, so the leanest-sufficient
+    # pick among fitting models (mid-llm, general 78) wins and is comfortable by
+    # default when speed is unknown.
     rep = recommend.recommend(_HW, _CATALOG, task="write copy")
     chosen = rep["recommendations"]["llm"]["chosen"]
-    assert chosen["id"] == "big-vlm"
+    assert chosen["id"] == "mid-llm"
     assert chosen["est_tokens_per_s"] is None and chosen["comfortable"] is True

@@ -16,6 +16,7 @@ environment so that other tools (Ollama, vLLM, sprezzature-local) can.
 | Rank models for this hardware | `best-engine-ai-helper recommend` | `score.rank(hw, catalog, kind)` |
 | Select the best model | (part of `recommend`) | `score.select(hw, catalog, kind)` |
 | Recommend engine(s) for a free-text task | `best-engine-ai-helper report --task "..."` | `recommend.recommend(hw, catalog, task)` |
+| Resolve a committed brief into a per-machine engine file | `best-engine-ai-helper resolve --brief llm.brief.yaml --out llm.engine.yaml` | `engine.resolve(brief)` / `engine.ensure(dir)` |
 | Browse the full model catalog | `best-engine-ai-helper catalog show` | `catalog.load_catalog()` |
 | Browse the hardware chip table | `best-engine-ai-helper hardware show` | `hardware.load_hardware()` |
 | Pull the best model and validate | `best-engine-ai-helper pull` | `pull.ollama_pull(tag)` |
@@ -45,6 +46,9 @@ the right tool:
 - "run the Ralph gates on the model"
 - "write the env file for sprezzature"
 - "which qwen3 variant fits on my M2 Max"
+- "resolve my project's llm.brief.yaml into an engine file"
+- "pick the backend and model for this repo's brief"
+- "make the gitignored llm.engine.yaml for this machine"
 - "show the model catalog"
 - "refresh the catalog from the leaderboard"
 - "show available hardware chips"
@@ -66,6 +70,9 @@ the right tool:
 - « lancer les contrôles Ralph sur le modèle »
 - « écrire le fichier d'environnement pour sprezzature »
 - « quel variant qwen3 tient sur mon M2 Max »
+- « résoudre le llm.brief.yaml de mon projet en fichier moteur »
+- « choisir le backend et le modèle pour le brief de ce dépôt »
+- « générer le llm.engine.yaml gitignoré pour cette machine »
 - « afficher le catalogue de modèles »
 - « rafraîchir le catalogue depuis le classement »
 - « afficher les puces matérielles connues »
@@ -92,3 +99,5 @@ the right tool:
 | `hardware_cache.yaml` | `~/.best-engine-ai-helper/` | read+write | Auto-refresh hardware layer |
 | `env.sh` | `~/.best-engine-ai-helper/` | write | Shell exports for downstream projects |
 | `config.json` | `~/.best-engine-ai-helper/` | write | JSON version of env.sh |
+| `llm.brief.yaml` | consumer repo root | read | Committed, hardware-independent usage brief |
+| `llm.engine.yaml` | consumer repo root | write | Gitignored, machine-specific engine descriptor (`resolve` / `ensure`) |

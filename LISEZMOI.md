@@ -230,6 +230,12 @@ Quand aucun modèle ne tient, l'outil sélectionne le plus petit du catalogue et
 
 ## Intégration avec les projets en aval
 
+Il y a deux façons de consommer le modèle sélectionné. La première quand tous les outils de
+la machine doivent partager un même modèle. La seconde quand un projet a sa propre idée du
+travail à faire et veut le modèle adapté à ce travail, pas un modèle générique.
+
+### Modèle A : un seul modèle partagé pour toute la machine
+
 Après `best-engine-ai-helper pull`, le fichier `~/.best-engine-ai-helper/env.sh` contient
 les tags du modèle retenu. `pull` choisit un seul modèle qui passe les deux contrôles de
 qualité et pointe les emplacements texte et vision dessus, donc les deux tags coïncident
@@ -244,6 +250,79 @@ export BEST_LLM_BASE_URL=http://localhost:11434
 
 Les projets qui utilisent le modèle sélectionné sourcent ce fichier ou lisent le
 `config.json` correspondant.
+
+### Modèle B : un moteur par projet, résolu depuis un brief ajusté
+
+Un projet connaît en général sa tâche plus précisément qu'un défaut valable pour toute la
+machine, et la qualité du choix dépend de la précision avec laquelle cette tâche est décrite
+— c'est le texte de la tâche qui se traduit en axe de score et qui décide si un VLM est
+nécessaire (voir [Comment fonctionne la sélection](#comment-fonctionne-la-sélection)). Le
+projet garde donc un **brief** versionné qui décrit son travail, et le résout, par machine,
+en un **fichier moteur** gitignoré qui nomme le backend et le modèle à utiliser. Aucune
+constante `DEFAULT_MODEL` ne vit dans le projet : le modèle se lit toujours depuis le fichier
+moteur résolu.
+
+1. **Versionner le brief** — `llm.brief.yaml` dans le dépôt, indépendant du matériel :
+
+   ```yaml
+   mode: local             # local (défaut ; le mode cloud arrivera sur la branche cloud)
+   kind: both              # llm | vlm | both
+   headroom: 0.5           # fraction max de la mémoire accélérateur utilisable (plafonnée à 0,5)
+   min_tps: 15             # plancher de débit confortable (jetons/s)
+   structured_output: true # la tâche exige une sortie contrainte par schéma
+   task: >-
+     Nommer les pôles des axes ACP en JSON contraint par schéma, rédiger une courte
+     analyse dans la langue de la table, et vérifier l'image du graphique rendu.
+   ```
+
+   `mode: local` est le défaut et la seule famille de backend gérée aujourd'hui ; un brief
+   `mode: cloud` (fournisseur payant avec repli local) est prévu pour une future branche
+   `cloud` et n'est pas encore résoluble.
+
+2. **Le résoudre, par machine** — écrit un `llm.engine.yaml` gitignoré :
+
+   ```sh
+   best-engine-ai-helper resolve --brief llm.brief.yaml --out llm.engine.yaml
+   ```
+
+   Le backend est choisi selon le matériel : **vLLM quand un GPU discret (NVIDIA/AMD) est
+   présent, Ollama sinon** (macOS, Linux CPU seul, iGPU Intel). Le choix est délibérément
+   prudent — la marge mémoire est plafonnée à 0,5, et parmi les modèles à quelques points de
+   benchmark du meilleur, il prend le plus léger et le plus rapide, pas le plus gros qui tient
+   tout juste. Les choix vLLM sont dimensionnés sur les poids FP16 complets (plus lourds que
+   l'estimation Ollama Q4), pour qu'un choix vLLM soit réaliste sur le vrai GPU. La sortie est
+   spécifique au matériel — ajoutez-la au `.gitignore` :
+
+   ```yaml
+   backend: ollama
+   base_url: http://localhost:11434
+   llm: {model: gemma3:12b, ram_gb: 9.2, est_tokens_per_s: 28.3, structured_output: true}
+   vlm: {model: gemma3:12b, ram_gb: 9.2, est_tokens_per_s: 28.3, structured_output: true}
+   serve: [ollama pull gemma3:12b]
+   ```
+
+3. **Le consommer, sans constante** — lisez le moteur au moment de l'appel et laissez le
+   transport router vers le bon backend :
+
+   ```python
+   from best_engine_ai_helper import ensure, llm
+
+   engine = ensure(".")            # charge llm.engine.yaml, ou le résout depuis
+                                   # llm.brief.yaml au premier usage
+   resume = llm.chat(prompt, engine=engine, kind="llm")
+   critique = llm.chat(prompt, engine=engine, kind="vlm",
+                       images=[png], json_schema=SCHEMA)
+   ```
+
+   `chat` lit le backend et le modèle depuis le fichier moteur et dispatche vers Ollama
+   (`/api/generate`) ou vLLM (`/v1/chat/completions`, compatible OpenAI) de façon transparente,
+   avec sortie structurée contrainte par schéma des deux côtés.
+
+**Politique de fichier manquant.** Le brief est versionné : son absence est un vrai bug et
+`ensure` lève une erreur explicite avec la commande à lancer. Le fichier moteur est gitignoré
+et spécifique à la machine : son absence est normale — `ensure` le résout depuis le brief au
+premier usage. Le modèle reste ainsi hors de toute variable : le fichier moteur résolu est
+l'unique source de vérité.
 
 ## Licence
 

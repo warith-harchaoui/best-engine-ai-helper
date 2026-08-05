@@ -4,6 +4,46 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **`resolve` command + the brief → engine contract.** A repo commits a tuned
+  `llm.brief.yaml` (its LLM/VLM usage: `kind`, `headroom`, `min_tps`,
+  `structured_output`, free-text `task`, and `mode: local|cloud`).
+  `best-engine-ai-helper resolve --brief llm.brief.yaml --out llm.engine.yaml`
+  turns it into a **gitignored, machine-specific** engine descriptor (backend +
+  model per kind). Consumers read the model only from that file — no
+  `DEFAULT_MODEL` constant.
+- **Dual backend, chosen by hardware.** `engine.default_backend()`: **vLLM on a
+  discrete GPU (NVIDIA/AMD), Ollama otherwise** (macOS, CPU-only Linux, Intel
+  iGPU). `resolve --backend auto|ollama|vllm` and `--endpoint URL` override it.
+- **`engine.ensure(dir)` + missing-file policy.** Loads `llm.engine.yaml`, or
+  resolves it from the brief on first use; a missing **brief** raises loudly
+  (it is committed, so its absence is a real bug).
+- **Centralized transport.** `llm.chat(..., engine=<descriptor|path>, kind=…)`
+  reads the backend/base_url/model from the engine file and dispatches to Ollama
+  (`/api/generate`) or vLLM (OpenAI-compatible `/v1/chat/completions`), with
+  schema-constrained structured output on both. `base_url` is now injectable.
+- **Brief `mode: local|cloud` field** (default `local`), recognised now for
+  forward-compatibility. `mode: cloud` raises `NotImplementedError` — cloud
+  providers (with a paid → local fallback), cost, failover, pseudonymization and
+  NSFW safety ship on a later `cloud` branch.
+- New Python API: `resolve`, `ensure`, `write_engine`, `load_engine`,
+  `model_for`, `default_backend`, `model_footprint_gb`, `MAX_HEADROOM`.
+
+### Changed
+
+- **Anti-greed selection — picks are realistic, not maximal.**
+  - **Headroom capped at 0.5** (`score.MAX_HEADROOM`), and any caller/brief value
+    is clamped down to it (was a 0.85 default). This is the main guard against a
+    model that technically loads but leaves no room for the OS or KV growth.
+  - **Leanest-sufficient, not biggest-that-fits.** Among models within 3 benchmark
+    points of the best comfortable candidate, `recommend` now picks the
+    smallest/fastest, not the top scorer.
+  - **Backend-aware sizing.** `score.model_footprint_gb` sizes a vLLM pick against
+    full FP16 weights (~2 bytes/param + overhead), not the Ollama Q4 `ram_gb`, so
+    a vLLM recommendation is realistic on the real GPU. `select`/`rank`/
+    `recommend`/`estimated_tokens_per_second` take a `backend` argument.
+
 ## [1.0.0] - 2026-08-02
 
 First stable release. The recommender now defaults to **comfortable, realistic**

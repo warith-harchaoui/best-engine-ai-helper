@@ -54,6 +54,13 @@ import os_helper as osh
 # Environment resolution
 # ---------------------------------------------------------------------------
 
+# Backends that speak the OpenAI Chat Completions wire format, so they route
+# through ``_chat_openai``: a local vLLM server, and any generic OpenAI-compatible
+# server. Cloud providers (and Anthropic/Gemini's own formats) arrive on the
+# 'cloud' branch.
+_OPENAI_COMPATIBLE = frozenset({"vllm", "openai"})
+
+
 def _backend() -> str:
     """Return the configured backend name, lower-cased."""
     return os.environ.get("SPREZZATURE_LLM_BACKEND", "ollama").lower()
@@ -141,6 +148,7 @@ def _resolve_model(model: str | None, images: list[bytes] | None) -> str:
 # Ollama structured-output schema shaping
 # ---------------------------------------------------------------------------
 
+
 def _merge_tag_property(existing: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
     """Combine one property seen in several union branches. When it is the
     discriminator (a ``const``/``enum`` string, e.g. ``operation_type``), fold
@@ -218,8 +226,7 @@ def _shape_schema_for_ollama(schema: dict[str, Any]) -> dict[str, Any]:
             if union_key in node:
                 members = [walk(m, seen) for m in node[union_key]]
                 object_members = [
-                    m for m in members
-                    if isinstance(m, dict) and m.get("type") == "object"
+                    m for m in members if isinstance(m, dict) and m.get("type") == "object"
                 ]
                 if len(object_members) >= 2:
                     return _flatten_object_union(object_members)
@@ -242,6 +249,7 @@ def _shape_schema_for_ollama(schema: dict[str, Any]) -> dict[str, Any]:
 # Ollama backend
 # ---------------------------------------------------------------------------
 
+
 def _chat_ollama(
     prompt: str,
     *,
@@ -250,6 +258,7 @@ def _chat_ollama(
     json_schema: dict[str, Any] | None,
     model: str,
     temperature: float,
+    base_url: str | None = None,
 ) -> str:
     """
     Send a chat request to the Ollama /api/generate endpoint.
@@ -303,7 +312,7 @@ def _chat_ollama(
         # unions flattened to a tagged object (see _shape_schema_for_ollama).
         payload["format"] = _shape_schema_for_ollama(json_schema)
 
-    url = f"{_base_url()}/api/generate"
+    url = f"{(base_url or _base_url()).rstrip('/')}/api/generate"
     try:
         resp = requests.post(url, json=payload, timeout=_timeout())
         resp.raise_for_status()
@@ -322,6 +331,7 @@ def _chat_ollama(
 # OpenAI-compatible backend
 # ---------------------------------------------------------------------------
 
+
 def _chat_openai(
     prompt: str,
     *,
@@ -330,6 +340,7 @@ def _chat_openai(
     json_schema: dict[str, Any] | None,
     model: str,
     temperature: float,
+    base_url: str | None = None,
 ) -> str:
     """
     Send a chat request to an OpenAI-compatible /v1/chat/completions endpoint.
@@ -379,10 +390,12 @@ def _chat_openai(
         for img_bytes in images:
             b64 = base64.b64encode(img_bytes).decode()
             # Data URI format required by the vision spec
-            content.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:image/png;base64,{b64}"},
-            })
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{b64}"},
+                }
+            )
         messages.append({"role": "user", "content": content})
     else:
         messages.append({"role": "user", "content": prompt})
@@ -400,7 +413,10 @@ def _chat_openai(
             "json_schema": {"name": "response", "schema": json_schema, "strict": True},
         }
 
-    url = f"{_base_url()}/v1/chat/completions"
+    # Accept a base URL with or without a trailing ``/v1`` (an engine descriptor's
+    # vLLM base_url may include it; the env default does not).
+    base = (base_url or _base_url()).rstrip("/")
+    url = f"{base}/chat/completions" if base.endswith("/v1") else f"{base}/v1/chat/completions"
     headers: dict[str, str] = {"Content-Type": "application/json"}
     key = _api_key()
     if key:
@@ -424,6 +440,7 @@ def _chat_openai(
 # ---------------------------------------------------------------------------
 # LangChain backend
 # ---------------------------------------------------------------------------
+
 
 def _chat_langchain(
     prompt: str,
@@ -476,15 +493,16 @@ def _chat_langchain(
     if "11434" in base or "localhost" in base:
         try:
             from langchain_ollama import ChatOllama
+
             llm = ChatOllama(model=model, temperature=temperature, base_url=base)
         except ImportError as exc:
             raise ImportError(
-                "langchain_ollama is not installed. "
-                "Run: pip install langchain-ollama"
+                "langchain_ollama is not installed. Run: pip install langchain-ollama"
             ) from exc
     else:
         try:
             from langchain_openai import ChatOpenAI
+
             llm = ChatOpenAI(
                 model=model,
                 temperature=temperature,
@@ -493,8 +511,7 @@ def _chat_langchain(
             )
         except ImportError as exc:
             raise ImportError(
-                "langchain_openai is not installed. "
-                "Run: pip install langchain-openai"
+                "langchain_openai is not installed. Run: pip install langchain-openai"
             ) from exc
 
     from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
@@ -529,6 +546,7 @@ def _chat_langchain(
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def chat(
     prompt: str,
     *,
@@ -537,13 +555,18 @@ def chat(
     json_schema: dict[str, Any] | None = None,
     model: str | None = None,
     temperature: float = 0.2,
+    engine: dict[str, Any] | str | None = None,
+    kind: str | None = None,
 ) -> str | dict[str, Any]:
     """
     Send a prompt to the configured local model and return the response.
 
-    The backend is selected by ``SPREZZATURE_LLM_BACKEND``. All three backends
-    (ollama, openai, langchain) accept the same arguments so callers are
-    backend-agnostic.
+    The backend and model come from one of two sources. When ``engine`` is given
+    (the suite's preferred path), they are read from a resolved engine descriptor
+    — the gitignored ``llm.engine.yaml`` a repo gets from ``best-engine-ai-helper
+    resolve``; a ``vllm`` backend is served over the OpenAI-compatible protocol.
+    Otherwise the legacy env path applies: the backend is
+    ``SPREZZATURE_LLM_BACKEND`` and the model resolves via env / persisted config.
 
     Parameters
     ----------
@@ -563,11 +586,19 @@ def chat(
         the returned JSON matches the schema's shape -- not merely valid JSON of
         some arbitrary shape.
     model : str or None
-        Override the model tag. Defaults to ``SPREZZATURE_LLM_VISION`` when
-        images are present, or ``SPREZZATURE_LLM_TEXT`` otherwise.
+        Override the model tag/id. Wins over both the engine descriptor and the
+        env default. When absent with no engine, defaults to the vision model
+        when images are present, else the text model.
     temperature : float
         Sampling temperature. Lower values are more deterministic. Defaults to
         0.2 because structured extraction tasks benefit from low variance.
+    engine : dict | str | None
+        A resolved engine descriptor (dict from :func:`engine.resolve` /
+        :func:`engine.ensure`, or a path to ``llm.engine.yaml``). When given, its
+        ``backend`` / ``base_url`` and the per-kind ``model`` drive the request.
+    kind : {'llm', 'vlm'} or None
+        Which model to use from ``engine``. Defaults to ``vlm`` when images are
+        present, else ``llm``. Ignored when ``engine`` is None.
 
     Returns
     -------
@@ -591,16 +622,32 @@ def chat(
     >>> # with open("chart.png", "rb") as f:
     >>> #     result = chat("Describe the chart.", images=[f.read()])
     """
-    resolved_model = _resolve_model(model, images)
     # json_schema presence is the signal to request structured JSON output
     json_mode = json_schema is not None
-    backend = _backend()
+
+    # Resolve (backend, base_url, model). Engine descriptor wins when supplied;
+    # otherwise the legacy env path. `transport` is the wire protocol: a vLLM
+    # backend speaks the OpenAI-compatible protocol, so it maps to `_chat_openai`.
+    base_url: str | None = None
+    if engine is not None:
+        from . import engine as _engine
+
+        eng = engine if isinstance(engine, dict) else _engine.load_engine(engine)
+        k = kind or ("vlm" if images else "llm")
+        backend, base_url, engine_model = _engine.model_for(eng, k)
+        resolved_model = model or engine_model
+        transport = "openai" if backend in _OPENAI_COMPATIBLE else backend
+    else:
+        resolved_model = _resolve_model(model, images)
+        backend = _backend()
+        transport = backend
+
     osh.info(
         f"chat via {backend}: model={resolved_model}, "
         f"images={len(images) if images else 0}, json={json_mode}"
     )
 
-    if backend == "ollama":
+    if transport == "ollama":
         raw = _chat_ollama(
             prompt,
             system=system,
@@ -608,8 +655,9 @@ def chat(
             json_schema=json_schema,
             model=resolved_model,
             temperature=temperature,
+            base_url=base_url,
         )
-    elif backend == "openai":
+    elif transport == "openai":
         raw = _chat_openai(
             prompt,
             system=system,
@@ -617,8 +665,9 @@ def chat(
             json_schema=json_schema,
             model=resolved_model,
             temperature=temperature,
+            base_url=base_url,
         )
-    elif backend == "langchain":
+    elif transport == "langchain":
         raw = _chat_langchain(
             prompt,
             system=system,
@@ -628,10 +677,9 @@ def chat(
             temperature=temperature,
         )
     else:
-        osh.error(f"Unknown SPREZZATURE_LLM_BACKEND: {backend!r}")
+        osh.error(f"Unknown backend: {backend!r}")
         raise ValueError(
-            f"Unknown SPREZZATURE_LLM_BACKEND: {backend!r}. "
-            "Valid values: 'ollama', 'openai', 'langchain'."
+            f"Unknown backend: {backend!r}. Valid values: 'ollama', 'vllm', 'openai', 'langchain'."
         )
 
     # Parse JSON when requested; fall back to raw string on parse failure
@@ -685,8 +733,7 @@ def embed(text: str) -> list[float]:
     if backend != "ollama":
         osh.error(f"embed() unsupported on backend {backend!r} (ollama only)")
         raise NotImplementedError(
-            f"embed() is only supported with the 'ollama' backend; "
-            f"current backend is {backend!r}."
+            f"embed() is only supported with the 'ollama' backend; current backend is {backend!r}."
         )
 
     payload = {
