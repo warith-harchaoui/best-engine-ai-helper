@@ -573,6 +573,138 @@ def _chat_langchain(
 
 
 # ---------------------------------------------------------------------------
+# Failover chain + retry + cache (Phase 6, 6.0b / 6.3)
+# ---------------------------------------------------------------------------
+
+
+def _load_engine(engine: Any) -> Any:
+    """Load an engine path into a dict; pass a dict/None through unchanged."""
+    if engine is None or isinstance(engine, dict):
+        return engine
+    from . import engine as _engine
+
+    return _engine.load_engine(engine)
+
+
+def _engine_capable(eng: Any, kind: str, needs_schema: bool) -> bool:
+    """Whether an engine descriptor can serve ``kind`` (and a schema if needed)."""
+    if not isinstance(eng, dict):
+        return True  # env path / unknown — assume capable
+    section = eng.get(kind)
+    if not section or not section.get("model"):
+        return False
+    if needs_schema and section.get("structured_output") is False:
+        return False
+    return True
+
+
+def _engine_chain(engine: Any, kind: str, needs_schema: bool) -> list[Any]:
+    """Build the ordered failover chain from ``engine``.
+
+    A list is used as-is; a cloud engine's embedded ``fallback`` is appended after
+    it (paid -> local); a bare engine is a chain of one; ``None`` is the env path.
+    Engines that cannot serve ``kind`` (or a schema when required) are dropped, but
+    the chain is never empty.
+    """
+    if engine is None:
+        return [None]
+    if isinstance(engine, list):
+        chain = [_load_engine(e) for e in engine]
+    else:
+        eng = _load_engine(engine)
+        chain = [eng]
+        fb = eng.get("fallback") if isinstance(eng, dict) else None
+        if fb:
+            chain.append(fb)
+    capable = [e for e in chain if _engine_capable(e, kind, needs_schema)]
+    return capable or chain
+
+
+def _resolve_target(
+    eng: Any, model: str | None, images: list[bytes] | None, kind: str | None
+) -> tuple[str, str | None, str, str]:
+    """Return ``(backend, base_url, resolved_model, transport)`` for one engine."""
+    if eng is not None:
+        from . import engine as _engine
+
+        k = kind or ("vlm" if images else "llm")
+        backend, base_url, engine_model = _engine.model_for(eng, k)
+        transport = "openai" if backend in _OPENAI_COMPATIBLE else backend
+        return backend, base_url, model or engine_model, transport
+    resolved = _resolve_model(model, images)
+    backend = _backend()
+    return backend, None, resolved, backend
+
+
+def _dispatch(
+    transport: str, backend: str, prompt: str, *, system, images, json_schema,
+    model: str, temperature: float, base_url,
+) -> str:
+    """Run one transport call. Raises on failure; performs no logging/emit."""
+    if transport == "ollama":
+        return _chat_ollama(prompt, system=system, images=images,
+                            json_schema=json_schema, model=model,
+                            temperature=temperature, base_url=base_url)
+    if transport == "openai":
+        return _chat_openai(prompt, system=system, images=images,
+                           json_schema=json_schema, model=model,
+                           temperature=temperature, base_url=base_url)
+    if transport == "langchain":
+        return _chat_langchain(prompt, system=system, images=images,
+                              json_schema=json_schema, model=model,
+                              temperature=temperature)
+    raise ValueError(
+        f"Unknown backend: {backend!r}. "
+        "Valid values: 'ollama', 'vllm', 'openai', 'langchain'."
+    )
+
+
+def _with_retry(fn: Callable[[], str], retries: int) -> str:
+    """Call ``fn``, retrying transient transport errors up to ``retries`` times.
+
+    Uses tenacity (exponential backoff) when installed, else a light
+    immediate-retry loop. Only ``RuntimeError`` (the transport's transient
+    failure) is retried.
+    """
+    if retries <= 0:
+        return fn()
+    try:
+        import tenacity
+    except ImportError:
+        last: Exception | None = None
+        for _ in range(retries + 1):
+            try:
+                return fn()
+            except RuntimeError as exc:
+                last = exc
+        raise last  # type: ignore[misc]
+    retryer = tenacity.Retrying(
+        stop=tenacity.stop_after_attempt(retries + 1),
+        wait=tenacity.wait_exponential(multiplier=0.5, max=8),
+        retry=tenacity.retry_if_exception_type(RuntimeError),
+        reraise=True,
+    )
+    return retryer(fn)
+
+
+def _cache_key_payload(
+    backend, model, kind, prompt, system, json_schema, temperature, images
+) -> dict[str, Any]:
+    """The semantic signature of a call — what determines its result.
+
+    Excludes the machine-specific engine descriptor, so two machines calling the
+    same model with the same prompt share a cache hit.
+    """
+    import hashlib
+
+    return {
+        "backend": backend, "model": model, "kind": kind, "prompt": prompt,
+        "system": system, "temperature": temperature, "json_schema": json_schema,
+        "images": [hashlib.sha256(i).hexdigest() for i in (images or [])],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -585,8 +717,10 @@ def chat(
     json_schema: dict[str, Any] | None = None,
     model: str | None = None,
     temperature: float = 0.2,
-    engine: dict[str, Any] | str | None = None,
+    engine: dict[str, Any] | str | list[Any] | None = None,
     kind: str | None = None,
+    cache: bool = False,
+    retries: int = 0,
 ) -> str | dict[str, Any]:
     """
     Send a prompt to the configured local model and return the response.
@@ -654,92 +788,83 @@ def chat(
     """
     # json_schema presence is the signal to request structured JSON output
     json_mode = json_schema is not None
-
-    # Resolve (backend, base_url, model). Engine descriptor wins when supplied;
-    # otherwise the legacy env path. `transport` is the wire protocol: a vLLM
-    # backend speaks the OpenAI-compatible protocol, so it maps to `_chat_openai`.
-    base_url: str | None = None
-    if engine is not None:
-        from . import engine as _engine
-
-        eng = engine if isinstance(engine, dict) else _engine.load_engine(engine)
-        k = kind or ("vlm" if images else "llm")
-        backend, base_url, engine_model = _engine.model_for(eng, k)
-        resolved_model = model or engine_model
-        transport = "openai" if backend in _OPENAI_COMPATIBLE else backend
-    else:
-        resolved_model = _resolve_model(model, images)
-        backend = _backend()
-        transport = backend
-
-    osh.info(
-        f"chat via {backend}: model={resolved_model}, "
-        f"images={len(images) if images else 0}, json={json_mode}"
-    )
-
     resolved_kind = kind or ("vlm" if images else "llm")
-    t0 = time.perf_counter()
-    try:
-        if transport == "ollama":
-            raw = _chat_ollama(
-                prompt,
-                system=system,
-                images=images,
-                json_schema=json_schema,
-                model=resolved_model,
-                temperature=temperature,
-                base_url=base_url,
+
+    # Ordered failover chain: primary(s) first, a cloud engine's local fallback
+    # after it (paid -> local). Try each until one succeeds.
+    chain = _engine_chain(engine, resolved_kind, json_mode)
+    last_exc: Exception | None = None
+
+    for attempt, eng in enumerate(chain):
+        backend, base_url, resolved_model, transport = _resolve_target(
+            eng, model, images, kind
+        )
+        osh.info(
+            f"chat via {backend}: model={resolved_model}, "
+            f"images={len(images) if images else 0}, json={json_mode}, attempt={attempt}"
+        )
+        t0 = time.perf_counter()
+        cached = False
+
+        def _run(_t=transport, _b=backend, _m=resolved_model, _u=base_url) -> str:
+            return _with_retry(
+                lambda: _dispatch(
+                    _t, _b, prompt, system=system, images=images,
+                    json_schema=json_schema, model=_m, temperature=temperature,
+                    base_url=_u,
+                ),
+                retries,
             )
-        elif transport == "openai":
-            raw = _chat_openai(
-                prompt,
-                system=system,
-                images=images,
-                json_schema=json_schema,
-                model=resolved_model,
-                temperature=temperature,
-                base_url=base_url,
-            )
-        elif transport == "langchain":
-            raw = _chat_langchain(
-                prompt,
-                system=system,
-                images=images,
-                json_schema=json_schema,
-                model=resolved_model,
-                temperature=temperature,
-            )
-        else:
-            osh.error(f"Unknown backend: {backend!r}")
-            raise ValueError(
-                f"Unknown backend: {backend!r}. "
-                "Valid values: 'ollama', 'vllm', 'openai', 'langchain'."
-            )
-    except Exception as exc:
+
+        try:
+            if cache and eng is not None:
+                try:
+                    import wallet_helper as _wh
+                except ImportError:
+                    osh.warning("cache=True but wallet-helper is not installed; running uncached")
+                    raw = _run()
+                else:
+                    payload = _cache_key_payload(
+                        backend, resolved_model, resolved_kind, prompt, system,
+                        json_schema, temperature, images,
+                    )
+                    raw, cached = _wh.default_wallet().call(
+                        f"beh-llm:{backend}", payload, _run
+                    )
+            else:
+                raw = _run()
+        except Exception as exc:  # noqa: BLE001 — fail over to the next engine
+            last_exc = exc
+            _emit({
+                "backend": backend, "model": resolved_model, "kind": resolved_kind,
+                "in_chars": len(prompt), "images": len(images) if images else 0,
+                "out_chars": 0, "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
+                "ok": False, "error": repr(exc), "attempt": attempt, "cached": False,
+            })
+            continue
+
         _emit({
             "backend": backend, "model": resolved_model, "kind": resolved_kind,
             "in_chars": len(prompt), "images": len(images) if images else 0,
-            "out_chars": 0, "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
-            "ok": False, "error": repr(exc),
+            "out_chars": len(raw), "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
+            "ok": True, "error": None, "attempt": attempt, "cached": cached,
         })
-        raise
 
-    _emit({
-        "backend": backend, "model": resolved_model, "kind": resolved_kind,
-        "in_chars": len(prompt), "images": len(images) if images else 0,
-        "out_chars": len(raw), "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
-        "ok": True, "error": None,
-    })
+        # Parse JSON when requested; fall back to raw string on parse failure.
+        if json_mode:
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError:
+                osh.warning(
+                    "Requested JSON mode but response was not valid JSON; returning raw text"
+                )
+                return raw
+        return raw
 
-    # Parse JSON when requested; fall back to raw string on parse failure
-    if json_mode:
-        try:
-            parsed: dict[str, Any] = json.loads(raw)
-            return parsed
-        except json.JSONDecodeError:
-            # Return raw string rather than crashing; caller can inspect
-            osh.warning("Requested JSON mode but response was not valid JSON; returning raw text")
-            return raw
+    # Every engine in the chain failed.
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError("no engine could serve the request")
 
     return raw
 

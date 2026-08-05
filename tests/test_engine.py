@@ -207,3 +207,37 @@ def test_chat_engine_routes_backend_and_base_url(monkeypatch) -> None:
     assert captured["fn"] == "ollama"
     assert captured["model"] == "qwen3:8b"
     assert captured["base_url"] == "http://localhost:11434"
+
+
+def test_chat_fails_over_paid_to_local(monkeypatch) -> None:
+    # A cloud engine carries an embedded local fallback; when the paid call fails,
+    # chat() degrades to the local model (paid -> local) and reports both attempts.
+    calls: list = []
+
+    def _fake_dispatch(transport, backend, prompt, *, model, **kw):
+        calls.append((backend, model))
+        if backend == "openai":
+            raise RuntimeError("cloud is down")
+        return "local answer"
+
+    monkeypatch.setattr(llm, "_dispatch", _fake_dispatch)
+    events: list[dict] = []
+    llm.clear_observers()
+    llm.add_observer(events.append)
+    try:
+        cloud_eng = {
+            "backend": "openai", "base_url": "https://api.openai.com/v1",
+            "llm": {"model": "gpt-4o"},
+            "fallback": {"backend": "ollama", "base_url": "http://localhost:11434",
+                         "llm": {"model": "qwen3:8b"}},
+        }
+        out = llm.chat("hi", engine=cloud_eng, kind="llm")
+    finally:
+        llm.clear_observers()
+
+    assert out == "local answer"
+    assert calls == [("openai", "gpt-4o"), ("ollama", "qwen3:8b")]
+    # Attempt 0 failed (paid), attempt 1 succeeded (local) — both observed.
+    assert events[0]["ok"] is False and events[0]["attempt"] == 0
+    won = events[-1]
+    assert won["ok"] is True and won["attempt"] == 1 and won["backend"] == "ollama"
