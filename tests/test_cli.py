@@ -57,6 +57,76 @@ def test_report_prints_markdown_json_and_writes_files(
     assert (tmp_path / "r.md").is_file() and (tmp_path / "r.json").is_file()
 
 
+def test_resolve_cmd_writes_engine_file(runner: CliRunner, tmp_path: Path) -> None:
+    brief = tmp_path / "llm.brief.yaml"
+    brief.write_text(yaml.safe_dump({"kind": "llm", "task": "write python code"}))
+    out = tmp_path / "llm.engine.yaml"
+    result = runner.invoke(main, ["resolve", "--brief", str(brief), "--out", str(out)])
+    assert result.exit_code == 0
+    assert f"Wrote {out}" in result.output
+    assert out.is_file() and "backend" in yaml.safe_load(out.read_text())
+
+
+def test_resolve_cmd_missing_brief_errors(runner: CliRunner, tmp_path: Path) -> None:
+    result = runner.invoke(
+        main, ["resolve", "--brief", str(tmp_path / "nope.yaml")]
+    )
+    assert result.exit_code == 1
+    assert "not found" in result.output
+
+
+# ---------------------------------------------------------------------------
+# usages subgroup — the sev7n usage catalog (task profiles + families).
+# ---------------------------------------------------------------------------
+
+
+def test_usages_list_prints_families_and_profiles(runner: CliRunner) -> None:
+    result = runner.invoke(main, ["usages", "list"])
+    assert result.exit_code == 0
+    assert "Families" in result.output and "Profiles" in result.output
+    assert "text2sql" in result.output and "F1" in result.output
+
+
+def test_usages_show_known_profile(runner: CliRunner) -> None:
+    result = runner.invoke(main, ["usages", "show", "text2sql"])
+    assert result.exit_code == 0
+    assert "Needs (selection criteria):" in result.output
+    assert "structured_output" in result.output
+
+
+def test_usages_show_unknown_profile_errors(runner: CliRunner) -> None:
+    result = runner.invoke(main, ["usages", "show", "not-a-real-profile"])
+    assert result.exit_code == 1
+
+
+def test_usages_resolve_profile_writes_engine(
+    runner: CliRunner, tmp_path: Path
+) -> None:
+    out = tmp_path / "llm.engine.yaml"
+    result = runner.invoke(main, ["usages", "resolve", "text2sql", "--out", str(out)])
+    assert result.exit_code == 0
+    assert "text2sql: backend" in result.output
+    assert out.is_file()
+
+
+def test_usages_resolve_family(runner: CliRunner) -> None:
+    result = runner.invoke(main, ["usages", "resolve", "--family", "F1"])
+    assert result.exit_code == 0
+    assert "F1: backend" in result.output
+
+
+def test_usages_resolve_requires_name_or_family(runner: CliRunner) -> None:
+    result = runner.invoke(main, ["usages", "resolve"])
+    assert result.exit_code == 1
+    assert "NAME or --family" in result.output
+
+
+def test_usages_resolve_unknown_profile_errors(runner: CliRunner) -> None:
+    result = runner.invoke(main, ["usages", "resolve", "not-a-real-profile"])
+    assert result.exit_code == 1
+    assert "resolve failed" in result.output
+
+
 # ---------------------------------------------------------------------------
 # catalog update / hardware update — offline via patched fetch / detection.
 # ---------------------------------------------------------------------------
