@@ -6,7 +6,7 @@ Outils comparables dans le domaine « choisir et lancer un grand modèle de lang
 comparés à `best-engine-ai-helper`. Les notes vont de ⭐ (1) à ⭐⭐⭐⭐⭐ (5), selon la
 pertinence pour le travail visé par ce projet : détecter le matériel disponible, sélectionner
 le modèle au meilleur score qui tient dans la mémoire, le valider par des contrôles de qualité
-empiriques, et écrire un fichier d'environnement que les projets en aval peuvent sourcer. Un
+empiriques et écrire un fichier d'environnement que les projets en aval peuvent sourcer. Un
 outil optimisé pour un usage très différent n'est pas pénalisé.
 
 ## Vue d'ensemble
@@ -38,7 +38,7 @@ La carte est un résumé en 2D des 6 critères : à lire comme une forme, pas co
 `best-engine-ai-helper` occupe la zone étroite où la conscience du matériel, la validation
 empirique et l'automatisation scriptable se rejoignent. La plupart des outils de cet espace
 résolvent le problème du *service* (comment faire tourner un modèle une fois qu'on l'a
-choisi). Ce projet résout le problème de la *sélection* (quel modèle choisir, et comment
+choisi). Ce projet résout le problème de la *sélection* (quel modèle choisir et comment
 prouver qu'il fonctionne correctement sur cette machine précise).
 
 ## Notice par outil
@@ -84,6 +84,6 @@ restent à la charge de l'utilisateur.
 ### text-generation-webui (Oobabooga)
 
 text-generation-webui est une interface web complète pour faire tourner et affiner des modèles
-locaux. Elle est orientée GPU, configurée manuellement, et n'est pas conçue pour
+locaux. Elle est orientée GPU, configurée manuellement et n'est pas conçue pour
 l'automatisation scriptée ni les pipelines d'IC. C'est le bon choix pour l'expérimentation
 interactive et les flux de travail d'affinage.
