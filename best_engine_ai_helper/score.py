@@ -54,10 +54,32 @@ _CPU_RAM_FRACTION = 0.5
 # Real-world decode throughput as a fraction of the memory-bandwidth ceiling.
 # Token generation reads the active model once per token, so the ceiling is
 # bandwidth / model-bytes; attention over the KV cache, kernel launches, and
-# sampling pull the achieved rate down to roughly 50-80%. 0.65 is a mid,
-# deliberately conservative point. Source: llama.cpp / MLX community benchmarks;
-# see references/CODING.md.
+# sampling pull the achieved rate down to roughly 50-80%.
+#
+# The achieved fraction is NOT the same across backends, even on identical
+# hardware (confirmed on Ubuntu + discrete GPU: Ollama and vLLM do not decode
+# at the same speed for the same model). Two per-backend figures, both
+# deliberately conservative:
+#
+# - Ollama (llama.cpp/GGML runtime): 0.65, a mid-conservative point across
+#   Apple Metal and CUDA. Source: llama.cpp / MLX community benchmarks; see
+#   references/CODING.md.
+# - vLLM (CUDA/ROCm only — see engine.default_backend): 0.75. PagedAttention
+#   avoids the KV-cache fragmentation and per-token allocation overhead that
+#   pulls llama.cpp's achieved rate down, and vLLM's CUDA-graph capture
+#   removes most Python/kernel-launch overhead from the decode step, so a
+#   single-stream vLLM decode tracks closer to the bandwidth ceiling. Source:
+#   vLLM project benchmarks (PagedAttention paper, vLLM blog); see
+#   references/CODING.md. This figure describes single-request decode, not
+#   vLLM's much larger *aggregate* throughput advantage under concurrent
+#   batched requests, which this single-model estimator does not model.
 _DECODE_EFFICIENCY = 0.65
+_VLLM_DECODE_EFFICIENCY = 0.75
+
+_DECODE_EFFICIENCY_BY_BACKEND: dict[str, float] = {
+    "ollama": _DECODE_EFFICIENCY,
+    "vllm": _VLLM_DECODE_EFFICIENCY,
+}
 
 # Comfort floor: a model can fit in memory yet decode too slowly to be usable
 # interactively. This is the minimum estimated decode rate (tokens/s) below which
@@ -190,10 +212,11 @@ def estimated_tokens_per_second(
 
     Token generation is memory-bandwidth bound: each new token requires reading
     the model's active weights from memory once, so the ceiling is
-    ``bandwidth / model_bytes``. The estimate derates that ceiling by
-    :data:`_DECODE_EFFICIENCY` to reflect KV-cache reads, kernel overhead, and
-    sampling. It describes steady-state generation, not the compute-bound
-    prefill of a long prompt.
+    ``bandwidth / model_bytes``. The estimate derates that ceiling by a
+    backend-specific decode efficiency (see
+    :data:`_DECODE_EFFICIENCY_BY_BACKEND`) to reflect KV-cache reads, kernel
+    overhead, and sampling. It describes steady-state generation, not the
+    compute-bound prefill of a long prompt.
 
     Parameters
     ----------
@@ -201,10 +224,15 @@ def estimated_tokens_per_second(
         Catalog entry; its :func:`model_footprint_gb` is the active-model size.
     bandwidth_gbs : float or None
         Memory bandwidth in GB/s from :func:`detect.compute_profile`. When None
-        (unknown hardware) the estimate is not computable and None is returned.
+        (unknown hardware, e.g. an unrecognised discrete-GPU model) the
+        estimate is not computable and None is returned.
     backend : {'ollama', 'vllm'}
-        Serving backend, so the size proxy matches what actually loads (heavier
-        FP16 weights under vLLM decode more slowly than the Q4 Ollama figure).
+        Serving backend. Affects both the size proxy (heavier FP16 weights
+        under vLLM decode more slowly than the Q4 Ollama figure) AND the
+        decode efficiency (vLLM's PagedAttention + CUDA-graph decode tracks
+        closer to the bandwidth ceiling than llama.cpp's — confirmed to
+        differ on identical Ubuntu + discrete-GPU hardware, not just a
+        cross-platform artifact).
 
     Returns
     -------
@@ -217,7 +245,8 @@ def estimated_tokens_per_second(
     ram = model_footprint_gb(entry, backend)
     if ram <= 0:
         return None
-    return round(bandwidth_gbs / ram * _DECODE_EFFICIENCY, 1)
+    efficiency = _DECODE_EFFICIENCY_BY_BACKEND.get(backend, _DECODE_EFFICIENCY)
+    return round(bandwidth_gbs / ram * efficiency, 1)
 
 
 def _benchmark_score(

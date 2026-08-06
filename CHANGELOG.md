@@ -6,6 +6,44 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Added
 
+- **MCP surface (`mcp.py`, `[mcp]` extra), entry point
+  `best-engine-ai-helper-mcp`.** Exposes the same FastAPI app from `[api]`
+  (`/api/system`, `/api/recommend`) as MCP tools via `fastapi-mcp`, mirroring
+  the pattern already shipped in `standpoint` / `vocal-helper` / `md2star`.
+  Closes the last surface gap flagged in `ai-helpers/.private/do.md` §7.
+- **argparse CLI twin (`cli_argparse.py`), entry point
+  `best-engine-ai-helper-argparse`.** Mirrors every `cli.py` command 1:1
+  (same flags, same defaults, same output); no business logic duplicated —
+  every handler delegates to the same library functions the click commands
+  call. Closes the suite's CLI-surface gap flagged in `ai-helpers/.private/do.md`
+  §7 (this repo was the only member without an argparse surface). The click
+  entry point (`best-engine-ai-helper`) stays the primary, unchanged one —
+  click is a core dependency here, not an opt-in extra, so the suite's usual
+  "argparse is primary, click is the twin" naming is inverted; see the new
+  module's docstring for the reasoning.
+- **NVIDIA/AMD memory-bandwidth tables (`detect.py`).** `compute_profile()`
+  previously only estimated decode throughput on Apple Silicon —
+  `bandwidth_gbs` was always `None` on NVIDIA/AMD, so `est_tokens_per_s` and
+  the comfort-throughput floor never applied on a discrete-GPU machine. New
+  per-board bandwidth tables (`_NVIDIA_BANDWIDTH_GBS`, `_AMD_BANDWIDTH_GBS`,
+  matched by substring against the detected GPU name) close that gap; an
+  unrecognised board still degrades to `bandwidth_gbs: None` rather than a
+  fabricated number.
+- **Backend-aware decode efficiency (`score.py`).** `estimated_tokens_per_second`
+  now applies a different achieved-bandwidth fraction for vLLM (0.75) than for
+  Ollama (0.65) — confirmed to differ on identical Ubuntu + discrete-GPU
+  hardware, not just a cross-platform artifact. PagedAttention + CUDA-graph
+  decode tracks closer to the bandwidth ceiling than llama.cpp's more
+  conservative kernel path for single-stream generation.
+- **Hardware detection now delegates to `os_helper.hardware_utils`.**
+  `detect.py` no longer shells out to `nvidia-smi` / `rocm-smi` /
+  `system_profiler` / `lspci` itself; it calls the new generic hardware probe
+  in `os-helper>=2.1.0` (cores, CPU model, GPU vendor/model/VRAM, RAM) and adds
+  only the AI-throughput-specific layer (bandwidth tables, backend sizing) on
+  top. `detect`/`/api/system` gained a `hardware` field with the raw facts
+  (CPU cores/model, per-GPU name + VRAM) alongside the existing throughput
+  estimate. `psutil` is no longer a direct dependency (comes transitively via
+  os-helper).
 - **Usage catalog (`usages.yaml`) — named sev7n task profiles + families.** Eight
   profiles (`text2sql`, `rag-answer`, `embeddings`, `text2sql-figures`,
   `report-bluf`, `classification`, `pii-rgpd`, `persona`), each stating only its

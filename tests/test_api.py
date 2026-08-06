@@ -26,10 +26,17 @@ def test_system_endpoint_shape(client: TestClient) -> None:
     res = client.get("/api/system")
     assert res.status_code == 200
     data = res.json()
-    assert set(data) == {"platform", "chip_vendor", "memory", "compute", "memory_budget_gb"}
+    assert set(data) == {
+        "platform", "chip_vendor", "memory", "compute", "memory_budget_gb", "hardware",
+    }
     assert set(data["memory"]) == {"unified_gb", "vram_gb", "ram_gb"}
     assert set(data["compute"]) == {"accelerator", "chip", "bandwidth_gbs"}
     assert data["memory_budget_gb"] > 0
+    # "hardware" is the raw os_helper snapshot (cores, model names, VRAM),
+    # distinct from the AI-throughput-derived "compute" above.
+    assert set(data["hardware"]) == {
+        "platform", "cpu", "ram_gb", "gpu_vendor", "gpus", "apple_chip", "apple_unified_gb",
+    }
 
 
 def test_recommend_endpoint(client: TestClient) -> None:

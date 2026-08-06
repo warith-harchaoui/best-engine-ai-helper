@@ -110,6 +110,10 @@ def detect_cmd(as_json: bool) -> None:
         "platform": _detect.platform_name(),
         "chip_vendor": _detect.chip_vendor(),
         "memory": mem,
+        # Raw CPU/GPU facts straight from os_helper — cores, model names, and
+        # per-GPU VRAM, distinct from "memory" above (this repo's inference
+        # budget pools) and from "compute" elsewhere (bandwidth estimate).
+        "hardware": osh.hardware_info(),
     }
     click.echo(json.dumps(info, indent=2))
 

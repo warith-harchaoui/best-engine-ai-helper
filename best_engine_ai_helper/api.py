@@ -43,6 +43,8 @@ except ImportError as exc:  # pragma: no cover
         "Install with: pip install 'best-engine-ai-helper[api]'"
     ) from exc
 
+import os_helper as osh
+
 from . import catalog as _catalog
 from . import detect as _detect
 from .gui import render_gui
@@ -75,6 +77,10 @@ def _system_info() -> dict[str, Any]:
         "memory": hw,
         "compute": compute,
         "memory_budget_gb": _effective_budget(hw),
+        # Raw CPU/GPU facts straight from os_helper (cores, model names,
+        # per-GPU VRAM) — distinct from "compute" above (the AI-throughput
+        # bandwidth estimate derived from these facts).
+        "hardware": osh.hardware_info(),
     }
 
 

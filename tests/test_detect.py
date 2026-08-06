@@ -1,141 +1,158 @@
 """
 Tests for best_engine_ai_helper.detect.
 
-The hardware probes shell out to system_profiler / nvidia-smi / rocm-smi /
-lspci. Rather than depend on which tools a CI box happens to have, these tests
-patch ``detect._run`` to feed canned tool output, so every vendor and memory
-branch runs deterministically. One test keeps the real machine's public
-contract (``available_memory`` shape) honest.
+Raw hardware probing (subprocess calls to nvidia-smi / rocm-smi /
+system_profiler / lspci, CPU/RAM introspection) lives in
+``os_helper.hardware_utils`` and is tested there. This module only tests the
+AI-throughput layer built on top: the bandwidth lookup tables (Apple, NVIDIA,
+AMD), ``compute_profile()``, and ``available_memory()``. Tests patch the
+local wrapper functions (``detect.chip_vendor`` / ``detect.chip_name``) or the
+``os_helper`` calls directly, so every vendor branch runs deterministically
+without needing the tools that back it installed.
 """
 
 from __future__ import annotations
-
-import sys
 
 import pytest
 
 from best_engine_ai_helper import detect
 
-# A representative macOS ``system_profiler SPHardwareDataType`` excerpt.
-_MAC_HW = (
-    "Hardware:\n"
-    "    Hardware Overview:\n"
-    "      Model Name: MacBook Pro\n"
-    "      Chip: Apple M2 Max\n"
-    "      Memory: 96 GB\n"
-)
+
+def test_platform_name_matches_os_helper() -> None:
+    import os_helper as osh
+
+    assert detect.platform_name() == osh.platform_name()
+    assert detect.platform_name() in ("darwin", "linux", "windows")
 
 
-def _fake_run(mapping: dict[str, str]):
-    """Return a ``_run`` replacement yielding ``mapping[cmd[0]]`` (default '')."""
-    def run(cmd: list[str], **kw: object) -> str:
-        return mapping.get(cmd[0], "")
-    return run
+def test_chip_vendor_and_chip_name_delegate_to_os_helper(monkeypatch: pytest.MonkeyPatch) -> None:
+    import os_helper as osh
 
-
-def test_chip_vendor_detects_each_backend(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Each vendor is selected by the first probe that returns non-empty output.
-    cases = [
-        ("darwin", {"system_profiler": _MAC_HW}, "apple"),
-        ("linux", {"nvidia-smi": "GPU 0: NVIDIA RTX 4090 (UUID: ...)"}, "nvidia"),
-        ("linux", {"rocm-smi": "GPU[0]: 1002"}, "amd"),
-        ("linux", {"lspci": "01:00.0 VGA compatible controller: Intel Arc"}, "intel"),
-        ("linux", {}, "cpu"),
-    ]
-    for plat, mapping, expected in cases:
-        monkeypatch.setattr(detect, "platform_name", lambda p=plat: p)
-        monkeypatch.setattr(detect, "_run", _fake_run(mapping))
-        assert detect.chip_vendor() == expected, f"{plat} / {mapping}"
-
-
-def test_platform_name_matches_sys_platform() -> None:
-    result = detect.platform_name()
-    assert result in ("darwin", "linux", "windows")
-    if sys.platform.startswith("darwin"):
-        assert result == "darwin"
-    elif sys.platform.startswith("win"):
-        assert result == "windows"
-    else:
-        assert result == "linux"
-
-
-def test_parse_memory_gb_units_and_garbage() -> None:
-    assert detect._parse_memory_gb("96 GB") == 96.0
-    assert detect._parse_memory_gb("  8 GB ") == 8.0
-    assert detect._parse_memory_gb("32768 MiB") == pytest.approx(32.0)
-    assert detect._parse_memory_gb("16 GiB") == pytest.approx(16.0)
-    assert detect._parse_memory_gb(str(16 * 1024**3)) == pytest.approx(16.0)  # bare bytes
-    assert detect._parse_memory_gb("not a number") is None
-
-
-def test_apple_memory_chip_and_bandwidth(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(detect, "platform_name", lambda: "darwin")
-    monkeypatch.setattr(detect, "_run", _fake_run({"system_profiler": _MAC_HW}))
-    assert detect._apple_unified_gb() == 96.0
+    monkeypatch.setattr(osh, "gpu_vendor", lambda: "nvidia")
+    assert detect.chip_vendor() == "nvidia"
+    monkeypatch.setattr(osh, "apple_chip_name", lambda: "Apple M2 Max")
     assert detect.chip_name() == "Apple M2 Max"
+
+
+def test_bandwidth_from_table_prefers_most_specific_label() -> None:
+    table = {"RTX 4070": 504.2, "RTX 4070 Ti": 999.0}
+    # The longer label ('RTX 4070 Ti') must win over the shorter substring
+    # ('RTX 4070') when both match the detected name.
+    assert detect._bandwidth_from_table("NVIDIA GeForce RTX 4070 Ti", table) == 999.0
+    assert detect._bandwidth_from_table("NVIDIA GeForce RTX 4070", table) == 504.2
+    assert detect._bandwidth_from_table("Some Unknown GPU", table) is None
+    assert detect._bandwidth_from_table(None, table) is None
+
+
+def test_apple_bandwidth_known_and_unknown_chips() -> None:
     # The most specific label wins: 'M2 Max' resolves to 400, not the base 'M2'.
     assert detect._apple_bandwidth_gbs("Apple M2 Max") == 400.0
+    assert detect._apple_bandwidth_gbs("Apple M1 Ultra") == 800.0
     assert detect._apple_bandwidth_gbs(None) is None
     assert detect._apple_bandwidth_gbs("Some Unknown Chip") is None
-    # When system_profiler yields nothing usable, the apple probes report None
-    # rather than raising.
-    monkeypatch.setattr(detect, "_run", _fake_run({}))
-    assert detect._apple_unified_gb() is None
-    assert detect.chip_name() is None
 
 
-def test_compute_profile_per_vendor(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(detect, "chip_name", lambda: "Apple M2 Max")
+def test_nvidia_and_amd_bandwidth_tables_have_entries() -> None:
+    assert detect._bandwidth_from_table(
+        "NVIDIA GeForce RTX 4090", detect._NVIDIA_BANDWIDTH_GBS
+    ) == 1008.0
+    assert detect._bandwidth_from_table(
+        "AMD Radeon RX 7900 XTX", detect._AMD_BANDWIDTH_GBS
+    ) == 960.0
+
+
+def test_compute_profile_apple(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(detect, "chip_vendor", lambda: "apple")
+    monkeypatch.setattr(detect, "chip_name", lambda: "Apple M2 Max")
     assert detect.compute_profile() == {
         "accelerator": "gpu-metal", "chip": "Apple M2 Max", "bandwidth_gbs": 400.0,
     }
-    for vendor, accel in [("nvidia", "gpu-cuda"), ("amd", "gpu-rocm"), ("cpu", "cpu")]:
-        monkeypatch.setattr(detect, "chip_vendor", lambda v=vendor: v)
-        prof = detect.compute_profile()
-        assert prof["accelerator"] == accel and prof["chip"] is None
 
 
-def test_discrete_gpu_vram_probes(monkeypatch: pytest.MonkeyPatch) -> None:
-    # nvidia-smi lists one line of MiB per GPU; non-numeric lines are skipped
-    # and the numeric ones summed, then converted to GB.
-    monkeypatch.setattr(detect, "_run", _fake_run({"nvidia-smi": "24564\nN/A\n24564\n"}))
-    assert detect._nvidia_vram_gb() == pytest.approx(2 * 24564 / 1024, rel=1e-3)
-    monkeypatch.setattr(detect, "_run", _fake_run({}))
-    assert detect._nvidia_vram_gb() is None
-    # rocm-smi reports total VRAM in bytes as the LAST colon-separated field, so
-    # the real "GPU[0] : VRAM Total Memory (B): <bytes>" format must parse.
-    monkeypatch.setattr(detect, "_run", _fake_run(
-        {"rocm-smi": "GPU[0]        : VRAM Total Memory (B): 17163091968"}))
-    assert detect._amd_vram_gb() == pytest.approx(17163091968 / 1024**3, rel=1e-3)
-    # A matching line whose byte field isn't numeric is skipped -> None.
-    monkeypatch.setattr(detect, "_run", _fake_run(
-        {"rocm-smi": "GPU[0] : VRAM Total Memory (B): N/A"}))
-    assert detect._amd_vram_gb() is None
-    # chip_name is Apple-only; off darwin it returns None without probing.
-    monkeypatch.setattr(detect, "platform_name", lambda: "linux")
-    assert detect.chip_name() is None
+def test_compute_profile_nvidia_and_amd_populate_bandwidth(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Regression guard: before the NVIDIA/AMD bandwidth tables existed,
+    # compute_profile() always returned bandwidth_gbs=None off Apple Silicon,
+    # so estimated_tokens_per_second() could never produce a number on a
+    # discrete GPU. A known GPU name must now resolve a real figure.
+    import os_helper as osh
+
+    monkeypatch.setattr(detect, "chip_vendor", lambda: "nvidia")
+    monkeypatch.setattr(
+        osh, "gpus",
+        lambda: [{"vendor": "nvidia", "name": "NVIDIA GeForce RTX 4090", "vram_gb": 24.0}],
+    )
+    prof = detect.compute_profile()
+    assert prof == {
+        "accelerator": "gpu-cuda", "chip": "NVIDIA GeForce RTX 4090", "bandwidth_gbs": 1008.0,
+    }
+
+    monkeypatch.setattr(detect, "chip_vendor", lambda: "amd")
+    monkeypatch.setattr(
+        osh, "gpus",
+        lambda: [{"vendor": "amd", "name": "Radeon RX 7900 XTX", "vram_gb": 24.0}],
+    )
+    prof = detect.compute_profile()
+    assert prof == {
+        "accelerator": "gpu-rocm", "chip": "Radeon RX 7900 XTX", "bandwidth_gbs": 960.0,
+    }
 
 
-def test_available_memory_selects_pool_by_platform(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(detect, "_ram_gb_psutil", lambda: 64.0)
+def test_compute_profile_unrecognised_gpu_degrades_gracefully(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import os_helper as osh
+
+    monkeypatch.setattr(detect, "chip_vendor", lambda: "nvidia")
+    # A brand-new SKU not yet in the table: chip is still reported, bandwidth
+    # (and therefore the downstream tokens/s estimate) is honestly None.
+    monkeypatch.setattr(
+        osh, "gpus",
+        lambda: [{"vendor": "nvidia", "name": "NVIDIA RTX 9999", "vram_gb": 48.0}],
+    )
+    prof = detect.compute_profile()
+    assert prof == {"accelerator": "gpu-cuda", "chip": "NVIDIA RTX 9999", "bandwidth_gbs": None}
+
+    # No GPU name at all (nvidia-smi returned nothing usable).
+    monkeypatch.setattr(osh, "gpus", lambda: [])
+    prof = detect.compute_profile()
+    assert prof == {"accelerator": "gpu-cuda", "chip": None, "bandwidth_gbs": None}
+
+
+def test_compute_profile_cpu(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(detect, "chip_vendor", lambda: "cpu")
+    assert detect.compute_profile() == {"accelerator": "cpu", "chip": None, "bandwidth_gbs": None}
+    monkeypatch.setattr(detect, "chip_vendor", lambda: "intel")
+    prof = detect.compute_profile()
+    assert prof["accelerator"] == "cpu" and prof["chip"] is None
+
+
+def test_available_memory_selects_pool_by_vendor(monkeypatch: pytest.MonkeyPatch) -> None:
+    import os_helper as osh
+
+    monkeypatch.setattr(osh, "ram_gb", lambda: 64.0)
+
     # Apple Silicon: unified pool populated, discrete VRAM left None.
-    monkeypatch.setattr(detect, "platform_name", lambda: "darwin")
-    monkeypatch.setattr(detect, "_apple_unified_gb", lambda: 96.0)
+    monkeypatch.setattr(detect, "chip_vendor", lambda: "apple")
+    monkeypatch.setattr(osh, "apple_unified_memory_gb", lambda: 96.0)
     mem = detect.available_memory()
     assert (mem["unified_gb"], mem["vram_gb"], mem["ram_gb"]) == (96.0, None, 64.0)
-    # Discrete GPU on Linux: VRAM populated (NVIDIA preferred over AMD), unified None.
-    monkeypatch.setattr(detect, "platform_name", lambda: "linux")
-    monkeypatch.setattr(detect, "_nvidia_vram_gb", lambda: 24.0)
-    monkeypatch.setattr(detect, "_amd_vram_gb", lambda: None)
+
+    # Discrete GPU: VRAM populated by summing every visible card, unified None.
+    monkeypatch.setattr(detect, "chip_vendor", lambda: "nvidia")
+    monkeypatch.setattr(
+        osh, "gpus",
+        lambda: [
+            {"vendor": "nvidia", "name": "RTX 4090", "vram_gb": 24.0},
+            {"vendor": "nvidia", "name": "RTX 4090", "vram_gb": 24.0},
+        ],
+    )
     mem = detect.available_memory()
-    assert (mem["unified_gb"], mem["vram_gb"]) == (None, 24.0)
+    assert (mem["unified_gb"], mem["vram_gb"]) == (None, 48.0)
 
-
-def test_run_returns_empty_on_missing_binary() -> None:
-    # A binary that isn't on PATH must yield '' so probes are simple truthiness
-    # checks with no try/except at every call site.
-    assert detect._run(["definitely-not-a-real-binary-zzz"]) == ""
+    # CPU-only: neither pool populated, RAM always is.
+    monkeypatch.setattr(detect, "chip_vendor", lambda: "cpu")
+    mem = detect.available_memory()
+    assert (mem["unified_gb"], mem["vram_gb"], mem["ram_gb"]) == (None, None, 64.0)
 
 
 def test_available_memory_public_contract_on_this_machine() -> None:

@@ -1,14 +1,23 @@
 """
-detect — hardware detection for local model selection.
+detect — turn raw hardware facts into AI-inference throughput estimates.
 
-Probes the current machine for available memory (unified, VRAM, RAM) and
-identifies the GPU or CPU vendor. All public functions return simple scalars
-or dicts so callers need no knowledge of OS internals.
+Raw probing (subprocess calls to ``nvidia-smi`` / ``rocm-smi`` /
+``system_profiler`` / ``lspci``, CPU/RAM introspection) is NOT done here: it
+lives in ``os_helper.hardware_utils``, a generic cross-platform hardware probe
+shared by every repo in the AI Helpers suite. This module is the thin,
+AI-domain layer on top of it — it takes the vendor + chip/GPU name + memory
+size that ``os_helper`` reports and turns them into what a local model picker
+actually needs: an accelerator kind, a memory-bandwidth estimate, and the
+memory pool available for inference.
 
-Probe order matters: Apple Silicon detection runs first because macOS can also
-report nvidia-smi output in certain VM/eGPU setups. After Apple, NVIDIA, then
-AMD, then a CPU-only fallback using half of available RAM as a conservative
-estimate of what a model loader can actually use.
+Memory bandwidth is the ceiling on decode throughput (token generation reads
+the whole active model from memory once per token), so it — not raw core
+count — is what :func:`compute_profile` reports and what
+``score.estimated_tokens_per_second`` keys its tokens/s estimate on. Apple
+Silicon publishes per-chip bandwidth; NVIDIA/AMD publish it per GPU model.
+Both are tabulated below by substring match on the chip/GPU name ``os_helper``
+reports; an unrecognised model degrades gracefully to "throughput not
+estimated" rather than a wrong number.
 
 Author
 ------
@@ -17,84 +26,17 @@ Warith Harchaoui <warith.harchaoui@deraison.ai>
 
 from __future__ import annotations
 
-import subprocess
-import sys
 from typing import Any
 
 import os_helper as osh
 
 # ---------------------------------------------------------------------------
-# Internal helpers
+# Re-exported raw facts (thin wrappers) — kept as functions in THIS module
+# so the rest of the package (and its tests) can keep importing
+# `detect.platform_name` / `detect.chip_vendor` / `detect.chip_name` without
+# caring that the actual probing lives in os_helper.hardware_utils.
 # ---------------------------------------------------------------------------
 
-def _run(cmd: list[str], **kwargs: Any) -> str:
-    """
-    Run a subprocess and return its stdout as a string.
-
-    Returns an empty string on any failure so callers can treat the result
-    as a simple truthiness check without try/except at every call site.
-
-    Parameters
-    ----------
-    cmd : list[str]
-        Command and arguments, as passed to subprocess.run.
-    **kwargs
-        Forwarded to subprocess.run (e.g. timeout).
-
-    Returns
-    -------
-    str
-        Decoded stdout, or '' on error.
-    """
-    try:
-        result: subprocess.CompletedProcess[str] = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=True,
-            **kwargs,
-        )
-        return result.stdout
-    except (FileNotFoundError, subprocess.CalledProcessError, OSError) as exc:
-        # FileNotFoundError: binary not on PATH
-        # CalledProcessError: binary exists but returned non-zero
-        osh.debug(f"Probe command unavailable/failed: {cmd[0]} ({exc})")
-        return ""
-
-
-def _parse_memory_gb(value_str: str) -> float | None:
-    """
-    Parse a memory string like '96 GB' or '32768 MiB' into GB as a float.
-
-    Parameters
-    ----------
-    value_str : str
-        Raw string from system_profiler or similar tools.
-
-    Returns
-    -------
-    float or None
-        Memory in GB, or None if the string could not be parsed.
-    """
-    s = value_str.strip()
-    try:
-        if "GB" in s.upper():
-            return float(s.upper().replace("GB", "").strip())
-        if "GIB" in s.upper():
-            return float(s.upper().replace("GIB", "").strip())
-        if "MB" in s.upper():
-            return float(s.upper().replace("MB", "").strip()) / 1024.0
-        if "MIB" in s.upper():
-            return float(s.upper().replace("MIB", "").strip()) / 1024.0
-        # Bare integer assumed to be bytes (e.g., wmic output)
-        return float(s) / (1024 ** 3)
-    except ValueError:
-        return None
-
-
-# ---------------------------------------------------------------------------
-# Platform detection
-# ---------------------------------------------------------------------------
 
 def platform_name() -> str:
     """
@@ -103,110 +45,47 @@ def platform_name() -> str:
     Returns
     -------
     str
-        One of: 'darwin', 'linux', 'windows'.
+        One of: 'darwin', 'linux', 'windows'. Delegates to
+        :func:`os_helper.platform_name`.
 
     Examples
     --------
     >>> platform_name() in ('darwin', 'linux', 'windows')
     True
     """
-    if sys.platform.startswith("darwin"):
-        return "darwin"
-    if sys.platform.startswith("win"):
-        return "windows"
-    # All other POSIX systems treated as linux for our purposes
-    return "linux"
+    return osh.platform_name()
 
-
-# ---------------------------------------------------------------------------
-# Chip vendor
-# ---------------------------------------------------------------------------
 
 def chip_vendor() -> str:
     """
     Identify the primary compute vendor for model inference.
 
-    Checks in order: Apple Silicon, NVIDIA (nvidia-smi), AMD (rocm-smi),
-    then falls back to 'cpu'.
-
     Returns
     -------
     str
-        One of: 'apple', 'nvidia', 'amd', 'intel', 'cpu'.
+        One of: 'apple', 'nvidia', 'amd', 'intel', 'cpu'. Delegates to
+        :func:`os_helper.gpu_vendor`.
 
     Examples
     --------
     >>> chip_vendor() in ('apple', 'nvidia', 'amd', 'intel', 'cpu')
     True
     """
-    plat = platform_name()
-
-    if plat == "darwin":
-        # system_profiler reliably reports the Apple Silicon chip name
-        out = _run(["system_profiler", "SPHardwareDataType"])
-        if "Apple M" in out or "Apple A" in out:
-            osh.debug("Detected compute vendor: apple")
-            return "apple"
-
-    # Try NVIDIA — works on Linux and Windows
-    if _run(["nvidia-smi", "-L"]):
-        osh.debug("Detected compute vendor: nvidia")
-        return "nvidia"
-
-    # AMD ROCm stack
-    if _run(["rocm-smi", "--showid"]):
-        osh.debug("Detected compute vendor: amd")
-        return "amd"
-
-    # Intel Arc / integrated GPU (future-proofing)
-    if plat == "linux":
-        lspci = _run(["lspci"])
-        if "Intel" in lspci and "VGA" in lspci:
-            osh.debug("Detected compute vendor: intel")
-            return "intel"
-
-    osh.debug("No accelerator detected; falling back to cpu")
-    return "cpu"
-
-
-# ---------------------------------------------------------------------------
-# Memory detection
-# ---------------------------------------------------------------------------
-
-def _apple_unified_gb() -> float | None:
-    """
-    Read the unified memory size from system_profiler on macOS.
-
-    Returns
-    -------
-    float or None
-        Memory in GB, or None if not running on Apple Silicon.
-    """
-    out = _run(["system_profiler", "SPHardwareDataType"])
-    for line in out.splitlines():
-        # The relevant line looks like: "  Memory: 96 GB"
-        if "Memory:" in line and ("GB" in line or "MB" in line):
-            _, _, value = line.partition("Memory:")
-            parsed = _parse_memory_gb(value)
-            if parsed is not None:
-                return parsed
-    return None
+    return osh.gpu_vendor()
 
 
 def chip_name() -> str | None:
     """Return the Apple Silicon chip name (e.g. ``"Apple M2 Max"``), or None.
 
-    Read from ``system_profiler`` on macOS; None on other platforms or when the
-    chip line is absent.
+    Delegates to :func:`os_helper.apple_chip_name`; None on non-macOS
+    platforms or when the chip line is absent (old Intel Macs).
     """
-    if platform_name() != "darwin":
-        return None
-    out = _run(["system_profiler", "SPHardwareDataType"])
-    for line in out.splitlines():
-        if "Chip:" in line:
-            return line.partition("Chip:")[2].strip() or None
-    return None
+    return osh.apple_chip_name()
 
+
+# ---------------------------------------------------------------------------
+# AI-throughput domain data: memory-bandwidth-per-chip lookup tables
+# ---------------------------------------------------------------------------
 
 # Apple Silicon unified-memory bandwidth in GB/s, by chip, from Apple's
 # published specifications. Bandwidth is the dominant factor in local decode
@@ -221,19 +100,85 @@ _APPLE_BANDWIDTH_GBS: dict[str, float] = {
     "M4 Max": 546.0, "M4 Pro": 273.0, "M4": 120.0,
 }
 
+# NVIDIA discrete-GPU memory bandwidth in GB/s, by board name, from NVIDIA's
+# published specifications. Matched by substring against the name
+# `os_helper.nvidia_gpus()` reads from `nvidia-smi`. Datacenter cards first
+# (highest bandwidth, so a "H100 NVL" query does not fall through to a shorter
+# "H100" match at the wrong figure — see the length-sorted lookup below),
+# then the consumer RTX line most likely to sit under a local vLLM/Ollama
+# server. Source: NVIDIA spec sheets / TechPowerUp GPU database.
+_NVIDIA_BANDWIDTH_GBS: dict[str, float] = {
+    # Datacenter / workstation.
+    "H100 SXM": 3350.0, "H100 NVL": 3938.0, "H100 PCIe": 2000.0,
+    "H200": 4800.0,
+    "A100 80GB": 2039.0, "A100 40GB": 1555.0,
+    "L40S": 864.0, "L40": 864.0, "L4": 300.0,
+    "A40": 696.0, "A30": 933.0, "A10": 600.0,
+    "T4": 320.0,
+    "RTX 6000 Ada": 960.0, "RTX 5000 Ada": 576.0, "RTX 4000 Ada": 360.0,
+    # Consumer RTX 40 series.
+    "RTX 4090": 1008.0, "RTX 4080 SUPER": 736.0, "RTX 4080": 716.8,
+    "RTX 4070 Ti SUPER": 672.0, "RTX 4070 Ti": 504.2, "RTX 4070 SUPER": 504.2,
+    "RTX 4070": 504.2, "RTX 4060 Ti": 288.0, "RTX 4060": 272.0,
+    # Consumer RTX 30 series.
+    "RTX 3090 Ti": 1008.0, "RTX 3090": 936.2, "RTX 3080 Ti": 912.4,
+    "RTX 3080": 760.3, "RTX 3070 Ti": 608.3, "RTX 3070": 448.0,
+    "RTX 3060 Ti": 448.0, "RTX 3060": 360.0,
+}
+
+# AMD discrete-GPU memory bandwidth in GB/s, by board name, from AMD's
+# published specifications. Matched by substring against the name
+# `os_helper.amd_gpus()` reads from `rocm-smi`. Source: AMD spec sheets /
+# TechPowerUp GPU database.
+_AMD_BANDWIDTH_GBS: dict[str, float] = {
+    "MI300X": 5300.0, "MI300A": 5300.0, "MI250X": 3277.0, "MI250": 3277.0,
+    "MI210": 1638.0, "MI100": 1229.0,
+    "RX 7900 XTX": 960.0, "RX 7900 XT": 800.0, "RX 7900 GRE": 576.0,
+    "RX 7800 XT": 624.1, "RX 7700 XT": 432.0,
+    "RX 6950 XT": 576.0, "RX 6900 XT": 512.0, "RX 6800 XT": 512.0,
+    "RX 6800": 512.0, "RX 6700 XT": 384.0,
+}
+
+
+def _bandwidth_from_table(name: str | None, table: dict[str, float]) -> float | None:
+    """Look up a chip/GPU's memory bandwidth by substring match.
+
+    Matches the most specific (longest) label first so a Pro/Max/Ultra/Ti/
+    SUPER variant is never mistaken for its shorter base-model name (e.g.
+    ``'RTX 4070 Ti'`` must win over the bare ``'RTX 4070'`` when both are
+    substrings of the detected name).
+
+    Parameters
+    ----------
+    name : str or None
+        The chip or GPU name as reported by ``os_helper`` (e.g.
+        ``'Apple M2 Max'`` or ``'NVIDIA GeForce RTX 4090'``).
+    table : dict[str, float]
+        One of :data:`_APPLE_BANDWIDTH_GBS`, :data:`_NVIDIA_BANDWIDTH_GBS`,
+        :data:`_AMD_BANDWIDTH_GBS`.
+
+    Returns
+    -------
+    float or None
+        Bandwidth in GB/s, or None when ``name`` is falsy or matches no
+        entry — throughput simply cannot be estimated for that model.
+    """
+    if not name:
+        return None
+    for label in sorted(table, key=len, reverse=True):
+        if label in name:
+            return table[label]
+    return None
+
 
 def _apple_bandwidth_gbs(chip: str | None) -> float | None:
-    """Look up unified-memory bandwidth for an Apple chip name.
+    """Look up unified-memory bandwidth for an Apple chip name."""
+    return _bandwidth_from_table(chip, _APPLE_BANDWIDTH_GBS)
 
-    Matches the most specific chip label first (``M2 Max`` before ``M2``) so a
-    Pro/Max/Ultra variant is not mistaken for the base chip.
-    """
-    if not chip:
-        return None
-    for label in sorted(_APPLE_BANDWIDTH_GBS, key=len, reverse=True):
-        if label in chip:
-            return _APPLE_BANDWIDTH_GBS[label]
-    return None
+
+# ---------------------------------------------------------------------------
+# Compute profile — accelerator + bandwidth, the AI-throughput view
+# ---------------------------------------------------------------------------
 
 
 def compute_profile() -> dict[str, Any]:
@@ -244,16 +189,25 @@ def compute_profile() -> dict[str, Any]:
     - ``accelerator``: ``"gpu-metal"`` (Apple Silicon), ``"gpu-cuda"`` (NVIDIA),
       ``"gpu-rocm"`` (AMD), or ``"cpu"`` (no discrete accelerator detected).
     - ``chip``: the chip / GPU name when known, else None.
-    - ``bandwidth_gbs``: memory bandwidth in GB/s when known, else None. This is
-      the ceiling on decode throughput; token generation reads the whole active
-      model from memory once per token, so tokens/s scales with it.
+    - ``bandwidth_gbs``: memory bandwidth in GB/s when the chip/GPU matches a
+      known model in :data:`_APPLE_BANDWIDTH_GBS` / :data:`_NVIDIA_BANDWIDTH_GBS`
+      / :data:`_AMD_BANDWIDTH_GBS`, else None. This is the ceiling on decode
+      throughput; token generation reads the whole active model from memory
+      once per token, so tokens/s scales with it.
 
-    Bandwidth is only tabulated for Apple Silicon here (published specs);
-    discrete-GPU bandwidth is left None because VRAM size, not bandwidth, is the
-    binding constraint the catalog already models, and the figure varies by
-    exact board. Callers treat a None bandwidth as "throughput not estimated".
+    Bandwidth is tabulated for Apple Silicon (per-chip) and for discrete
+    NVIDIA/AMD GPUs (per-board, matched on the model name ``os_helper``
+    reports). An unrecognised GPU model — a new SKU not yet in the table, or a
+    multi-GPU box where the name string is ambiguous — degrades to
+    ``bandwidth_gbs: None`` rather than a fabricated number; callers treat
+    that as "throughput not estimated", never as zero.
     """
+    # Route through the local wrappers (not osh.* directly) so this stays on
+    # the same seam callers/tests already patch (`detect.chip_vendor`,
+    # `detect.chip_name`), keeping compute_profile consistent with the rest
+    # of the package no matter which layer a caller mocks.
     vendor = chip_vendor()
+
     if vendor == "apple":
         chip = chip_name()
         return {
@@ -261,85 +215,39 @@ def compute_profile() -> dict[str, Any]:
             "chip": chip,
             "bandwidth_gbs": _apple_bandwidth_gbs(chip),
         }
-    if vendor == "nvidia":
-        return {"accelerator": "gpu-cuda", "chip": None, "bandwidth_gbs": None}
-    if vendor == "amd":
-        return {"accelerator": "gpu-rocm", "chip": None, "bandwidth_gbs": None}
+
+    if vendor in ("nvidia", "amd"):
+        table = _NVIDIA_BANDWIDTH_GBS if vendor == "nvidia" else _AMD_BANDWIDTH_GBS
+        cards = osh.gpus()
+        # A multi-GPU box still reports one chip name (the first card) for
+        # display; the bandwidth estimate assumes a single-GPU serve, which
+        # matches how the picker sizes a model against one accelerator's pool.
+        name = cards[0]["name"] if cards else None
+        if not name:
+            osh.debug(f"{vendor} detected but no GPU name available; throughput unestimated.")
+        return {
+            "accelerator": "gpu-cuda" if vendor == "nvidia" else "gpu-rocm",
+            "chip": name,
+            "bandwidth_gbs": _bandwidth_from_table(name, table),
+        }
+
     return {"accelerator": "cpu", "chip": None, "bandwidth_gbs": None}
 
 
-def _nvidia_vram_gb() -> float | None:
-    """
-    Sum VRAM across all visible NVIDIA GPUs using nvidia-smi.
-
-    Returns
-    -------
-    float or None
-        Total VRAM in GB, or None if nvidia-smi is unavailable.
-    """
-    out = _run(
-        ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"]
-    )
-    if not out.strip():
-        return None
-    total_mib = 0.0
-    for line in out.strip().splitlines():
-        try:
-            total_mib += float(line.strip())
-        except ValueError:
-            continue
-    return total_mib / 1024.0 if total_mib > 0 else None
-
-
-def _amd_vram_gb() -> float | None:
-    """
-    Read VRAM from ROCm's rocm-smi on AMD Linux systems.
-
-    Returns
-    -------
-    float or None
-        VRAM in GB, or None if rocm-smi is unavailable or reports nothing.
-    """
-    out = _run(["rocm-smi", "--showmeminfo", "vram"])
-    for line in out.splitlines():
-        # Typical line: "GPU[0]         : VRAM Total Memory (B): 17163091968".
-        # The byte count is the last colon-separated field, so split on the LAST
-        # colon (rpartition) — partition() would stop at the "GPU[0] :" prefix
-        # and leave the label text, which never parses as a number.
-        if "VRAM Total Memory" in line and "B)" in line:
-            _, _, val = line.rpartition(":")
-            try:
-                return float(val.strip()) / (1024 ** 3)
-            except ValueError:
-                continue
-    return None
-
-
-def _ram_gb_psutil() -> float:
-    """
-    Return total system RAM in GB using psutil.
-
-    psutil is a mandatory runtime dependency so this never raises ImportError.
-
-    Returns
-    -------
-    float
-        Total RAM in GB.
-    """
-    import psutil  # always available as a declared dependency
-
-    return float(psutil.virtual_memory().total) / (1024 ** 3)
+# ---------------------------------------------------------------------------
+# Available memory — the inference budget pools
+# ---------------------------------------------------------------------------
 
 
 def available_memory() -> dict[str, float | None]:
     """
     Detect available memory for model inference.
 
-    Probes in priority order:
+    Reads three pools from ``os_helper``'s hardware facts:
+
     1. Apple Silicon unified memory (macOS with Apple chip)
-    2. NVIDIA VRAM via nvidia-smi
-    3. AMD VRAM via rocm-smi
-    4. System RAM via psutil (always populated)
+    2. NVIDIA/AMD VRAM (summed across all visible GPUs)
+    3. System RAM (always populated)
 
     Returns
     -------
@@ -361,20 +269,22 @@ def available_memory() -> dict[str, float | None]:
     >>> mem['ram_gb'] > 0
     True
     """
-    plat = platform_name()
+    # Same seam as compute_profile(): route through the local chip_vendor()
+    # wrapper so both functions honour a `detect.chip_vendor` patch identically.
+    vendor = chip_vendor()
+    ram_gb: float = osh.ram_gb()
 
     unified_gb: float | None = None
     vram_gb: float | None = None
-    ram_gb: float = _ram_gb_psutil()
 
-    if plat == "darwin":
-        # On Apple Silicon, the unified pool is the inference budget
-        unified_gb = _apple_unified_gb()
-    else:
-        # Prefer NVIDIA over AMD when both are present (unusual but possible)
-        vram_gb = _nvidia_vram_gb()
-        if vram_gb is None:
-            vram_gb = _amd_vram_gb()
+    if vendor == "apple":
+        unified_gb = osh.apple_unified_memory_gb()
+    elif vendor in ("nvidia", "amd"):
+        # Sum VRAM across every visible GPU — the picker treats a multi-GPU
+        # box as one pool, matching how Ollama/vLLM report available memory.
+        cards = osh.gpus()
+        total = sum(c["vram_gb"] for c in cards if c.get("vram_gb"))
+        vram_gb = round(total, 1) if total > 0 else None
 
     osh.info(
         f"Memory detected — unified: {unified_gb} GB, "

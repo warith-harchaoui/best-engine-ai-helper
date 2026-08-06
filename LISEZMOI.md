@@ -42,7 +42,7 @@ défaut, anglais via `/gui?lang=en`, avec un lien d'en-tête pour basculer. Voir
 - Python 3.10 ou ultérieur
 - [Ollama](https://ollama.com) (nécessaire uniquement pour `pull`, `validate` et `env` ; pas
   requis pour `detect`, `recommend` ou `report`)
-- psutil, PyYAML, click, requests (installés automatiquement)
+- os-helper (détection matérielle), PyYAML, click, requests (installés automatiquement)
 - Optionnel : `fastapi` + `uvicorn` pour la GUI navigateur
   (`pip install 'best-engine-ai-helper[api]'`)
 
@@ -131,6 +131,12 @@ best-engine-ai-helper --version
 best-engine-ai-helper detect     # affiche le matériel de la machine en JSON
 ```
 
+Chaque commande existe aussi via un jumeau argparse,
+`best-engine-ai-helper-argparse` (mêmes options, même sortie) — la surface
+CLI sans dépendance supplémentaire de la suite (click est ici une dépendance
+de base, donc `best-engine-ai-helper` reste le point d'entrée principal ; le
+jumeau argparse est une surface ajoutée, pas un remplacement).
+
 ## Démarrage rapide
 
 ```sh
@@ -151,6 +157,14 @@ best-engine-ai-helper hardware show
 
 # Lancer la GUI navigateur (nécessite l'extra [api])
 best-engine-ai-helper gui
+```
+
+Les mêmes points d'accès `/api/system` et `/api/recommend` sont aussi
+accessibles comme outils MCP pour tout hôte agentique compatible :
+
+```sh
+pip install "best-engine-ai-helper[mcp]"
+best-engine-ai-helper-mcp        # -> http://127.0.0.1:8000 (MCP sur /mcp)
 ```
 
 Voir [EXAMPLES.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXAMPLES.md) pour des recettes complètes avec exemples de sortie, et
