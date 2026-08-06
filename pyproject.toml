@@ -36,22 +36,6 @@ mcp = [
     # fastapi-mcp ships a 2.x-compatible release (same issue hit md2star).
     "mcp>=1.12,<2",
 ]
-# cloud branch (Phase 6) extras — each optional, core stays light.
-# Failover retry/backoff for llm.chat(retries=…).
-cloud = [
-    "tenacity>=8,<10",
-]
-# Persistent memoization + single-flight for llm.chat(cache=True): never pay for
-# an identical paid call twice.
-cache = [
-    "wallet-helper>=0.1",
-]
-# Deterministic PII augmentation for the local-LLM pseudonymizer (privacy.py).
-privacy = [
-    "presidio-analyzer>=2.2",
-    "presidio-anonymizer>=2.2",
-    "Faker>=25",
-]
 
 [project.scripts]
 best-engine-ai-helper = "best_engine_ai_helper.cli:main"

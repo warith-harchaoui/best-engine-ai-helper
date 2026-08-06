@@ -94,9 +94,7 @@ All notable changes to best-engine-ai-helper are documented here.
 - **Mypy CI regression from the `kinds`/usage-catalog work.** `recommend()`'s
   `kinds` parameter and `engine._kinds_from_brief` now return
   `list[Literal["llm", "vlm"]]` instead of `list[str]`, matching what `rank()`
-  expects; `llm._dispatch`, `llm._cache_key_payload` and the retry closure in
-  `llm.chat` gained the parameter annotations mypy was missing; `chat`'s
-  JSON-mode return is explicitly cast from `json.loads`.
+  expects.
 - **Mypy + CI collection regressions from the argparse CLI / MCP work.**
   `cli_argparse.py`'s `_score.rank` call, its three `_add_*_group` helpers
   (missing `_SubParsersAction` type argument), and `main`'s `ns.func(ns)`
