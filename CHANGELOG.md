@@ -4,6 +4,8 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-06
+
 ### Added
 
 - **MCP surface (`mcp.py`, `[mcp]` extra), entry point
@@ -95,6 +97,14 @@ All notable changes to best-engine-ai-helper are documented here.
   expects; `llm._dispatch`, `llm._cache_key_payload` and the retry closure in
   `llm.chat` gained the parameter annotations mypy was missing; `chat`'s
   JSON-mode return is explicitly cast from `json.loads`.
+- **Mypy + CI collection regressions from the argparse CLI / MCP work.**
+  `cli_argparse.py`'s `_score.rank` call, its three `_add_*_group` helpers
+  (missing `_SubParsersAction` type argument), and `main`'s `ns.func(ns)`
+  dispatch (returning `Any` against a declared `int`) are now typed cleanly.
+  Separately, CI installed only the `[api]` extra, so `pytest
+  --doctest-modules` failed to even collect `mcp.py` (it raises at import
+  time without `[mcp]`, by design — same pattern as `api.py`); CI now
+  installs `.[mcp]`, which already pulls in `[api]`'s deps too.
 
 ### Changed
 

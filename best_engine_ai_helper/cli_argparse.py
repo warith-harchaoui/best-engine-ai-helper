@@ -42,7 +42,7 @@ import logging
 import os
 import sys
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, cast
 
 import os_helper as osh
 
@@ -142,7 +142,7 @@ def _handle_recommend(ns: argparse.Namespace) -> int:
 
     for k in kinds:
         ranked = _score.rank(
-            hw, entries, kind=k, headroom=ns.headroom, application=ns.application
+            hw, entries, kind=k, headroom=ns.headroom, application=ns.application  # type: ignore[arg-type]
         )
         header = f"\n=== {k.upper()} candidates"
         if ns.application:
@@ -827,13 +827,13 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _add_usages_group(sub: argparse._SubParsersAction) -> None:
+def _add_usages_group(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """
     Attach the `usages` subcommand group (list / show / resolve).
 
     Parameters
     ----------
-    sub : argparse._SubParsersAction
+    sub : argparse._SubParsersAction[argparse.ArgumentParser]
         The top-level subparser action to register this group on.
     """
     g = sub.add_parser("usages", help="Browse and resolve the sev7n usage catalog.")
@@ -859,13 +859,13 @@ def _add_usages_group(sub: argparse._SubParsersAction) -> None:
     p.set_defaults(func=_handle_usages_resolve)
 
 
-def _add_catalog_group(sub: argparse._SubParsersAction) -> None:
+def _add_catalog_group(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """
     Attach the `catalog` subcommand group (show / update).
 
     Parameters
     ----------
-    sub : argparse._SubParsersAction
+    sub : argparse._SubParsersAction[argparse.ArgumentParser]
         The top-level subparser action to register this group on.
     """
     g = sub.add_parser("catalog", help="Manage the model catalog.")
@@ -883,13 +883,13 @@ def _add_catalog_group(sub: argparse._SubParsersAction) -> None:
     p.set_defaults(func=_handle_catalog_update)
 
 
-def _add_hardware_group(sub: argparse._SubParsersAction) -> None:
+def _add_hardware_group(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """
     Attach the `hardware` subcommand group (show / update).
 
     Parameters
     ----------
-    sub : argparse._SubParsersAction
+    sub : argparse._SubParsersAction[argparse.ArgumentParser]
         The top-level subparser action to register this group on.
     """
     g = sub.add_parser("hardware", help="Manage the hardware chip table.")
@@ -926,7 +926,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     level = {0: logging.WARNING, 1: logging.INFO}.get(ns.verbose, logging.DEBUG)
     osh.init_logging(level=level, stdout=False)
 
-    return ns.func(ns)
+    return cast(int, ns.func(ns))
 
 
 if __name__ == "__main__":  # pragma: no cover

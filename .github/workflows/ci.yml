@@ -1,7 +1,8 @@
 name: ci
 
-# Deterministic gate: install the package (with the [api] extra, so the FastAPI
-# GUI surface is importable) + dev deps, verify the dependency set is coherent
+# Deterministic gate: install the package (with the [mcp] extra, which pulls in
+# [api] too, so the FastAPI GUI surface AND the MCP surface are both importable
+# under --doctest-modules) + dev deps, verify the dependency set is coherent
 # (pip check), then ruff lint, mypy types, and pytest with a coverage floor on
 # the supported Python versions. The tests never call a live model daemon (the
 # pull / validate model loops are covered by mocked / fall-through tests), so CI
@@ -30,7 +31,7 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[api]" -r requirements-dev.txt
+          pip install -e ".[mcp]" -r requirements-dev.txt
       - name: Pip check
         # Catch incompatible pinned dependencies before they bite at runtime.
         run: python -m pip check
