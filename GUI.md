@@ -42,10 +42,13 @@ uvicorn best_engine_ai_helper.api:app --port 8000
 ## Language
 
 The page is bilingual (**French by default, English at `/gui?lang=en`**), with
-a header link (`EN` / `FR`) that switches between them. Both are rendered from a
-single template plus a per-language strings table by `gui.render_gui(lang)`; an
-unknown `?lang=` falls back to French rather than erroring. The JSON API is
-language-neutral, so only the labels differ; the numbers are identical.
+a header link (a flag emoji, 🇬🇧 / 🇫🇷) that switches between them. Both are
+rendered from a single template by `gui.render_gui(lang)`; every string comes
+from [`locales/i18n.yaml`](locales/i18n.yaml)'s `gui:` namespace — that file is
+the one place to edit wording, add a language, or check a translation, not
+`gui.py`. An unknown `?lang=` falls back to `meta.default_locale` (French)
+rather than erroring. The JSON API is language-neutral, so only the labels
+differ; the numbers are identical.
 
 ## What it shows
 

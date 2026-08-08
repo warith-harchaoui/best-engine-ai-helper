@@ -86,13 +86,15 @@ def _system_info() -> dict[str, Any]:
 
 @app.get("/", include_in_schema=False)
 def root() -> RedirectResponse:
+    """Redirect the bare root path to the browser GUI."""
     return RedirectResponse(url="/gui")
 
 
 @app.get("/gui", response_class=HTMLResponse, include_in_schema=False)
 def gui(lang: str = "fr") -> str:
-    # French by default; ``?lang=en`` serves English. render_gui falls back to
-    # French for any unknown code, so a bad value never errors.
+    """Serve the single-page GUI (``?lang=en`` for English, French by default)."""
+    # render_gui falls back to French for any unknown code, so a bad value
+    # never errors.
     return render_gui(lang)
 
 

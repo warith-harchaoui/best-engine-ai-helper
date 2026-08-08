@@ -4,6 +4,35 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **Repository no longer distributed as a Claude/OpenCode Agent Skill.**
+  Removed `skills/best-engine-ai-helper/` (the skill packaging README) and
+  `TRIGGERS.md` (an orphaned natural-language trigger catalog that existed
+  only to back that skill's routing). The project ships as a library, CLI
+  (`cli.py` + `cli_argparse.py`), FastAPI GUI/HTTP API (`api.py`), and MCP
+  server (`mcp.py`) — no skill surface.
+- **`locales/i18n.yaml` is now the single source of truth for every
+  GUI-visible string.** `gui.py` no longer hardcodes its French/English label
+  tables; it loads them from the new `locales/i18n.yaml` (`gui:` namespace,
+  57 semantic keys, `meta.default_locale` / `meta.supported_locales` drive
+  fallback). Wording is unchanged; only where it lives changed.
+- **`references/CODING.md` refreshed from its canonical gist**, with one
+  deliberate, documented deviation: the gist's "Agent Skills" section (and
+  every skill-specific delivery-surface reference) is dropped, since this
+  project does not ship one. Root `CODING.md` rewritten as a short pointer to
+  the mirror plus the standard's key bullets (now including the
+  `locales/i18n.yaml` and multi-surface-delegation rules). `CONTRIBUTING.md`'s
+  mirrored bullet list updated to match.
+
+### Fixed
+
+- **`gui.py` mypy strict compliance** for the new locale-loading code path
+  (`_locale_meta` / `_locale_gui_strings` typed precisely instead of a bare
+  `dict[str, object]`).
+- Two undocumented FastAPI route handlers (`api.py`'s `root()` and `gui()`)
+  now carry a one-line docstring.
+
 ## [1.1.0] - 2026-08-06
 
 ### Added
