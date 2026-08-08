@@ -50,7 +50,7 @@ _STRINGS: dict[str, dict[str, dict[str, str]]] = {
             "GITHUB": "⭐️ sur GitHub",
             "THEME_ARIA": "Changer de thème",
             "LANG_HREF": "/gui?lang=en",
-            "LANG_LABEL": "EN",
+            "LANG_LABEL": "🇬🇧",
             "LANG_ARIA": "English version",
             "HERO_TITLE": "Meilleur moteur local",
             "HERO_P": (
@@ -126,7 +126,7 @@ _STRINGS: dict[str, dict[str, dict[str, str]]] = {
             "GITHUB": "⭐️ on GitHub",
             "THEME_ARIA": "Toggle theme",
             "LANG_HREF": "/gui",
-            "LANG_LABEL": "FR",
+            "LANG_LABEL": "🇫🇷",
             "LANG_ARIA": "Version française",
             "HERO_TITLE": "Best local engine",
             "HERO_P": (
