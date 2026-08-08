@@ -10,10 +10,10 @@ de vision-langage (VLM, *vision-language model*) local adapté au matériel de l
 courante.
 
 L'outil détecte la mémoire disponible (mémoire unifiée Apple Silicon, mémoire vidéo NVIDIA
-ou RAM système), consulte un catalogue de modèles intégré, et sélectionne le modèle au
+ou RAM système), consulte un catalogue de modèles intégré et sélectionne le modèle au
 meilleur score qui tient dans une marge de sécurité configurable. Après la sélection, il
 télécharge le modèle via Ollama, exécute deux contrôles de qualité (la boucle Ralph pour la
-prose et la boucle Ralph Eyeball pour la vision), et écrit un fichier d'environnement que
+prose et la boucle Ralph Eyeball pour la vision) et écrit un fichier d'environnement que
 les projets en aval viennent sourcer.
 
 [![logo](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/assets/logo.png)](https://harchaoui.org/warith/ai-helpers)
@@ -32,7 +32,7 @@ téléchargés. Deux cas, en toute franchise :
    mais optionnelle : le catalogue intégré suffit pour un usage courant.
 
 Une GUI minimale dans le navigateur (`best-engine-ai-helper gui`) couvre la moitié en
-lecture seule de ce flux (les caractéristiques matérielles, et la recommandation de moteur
+lecture seule de ce flux (les caractéristiques matérielles et la recommandation de moteur
 à partir d'une tâche) sans passer par le terminal. La page est bilingue : français par
 défaut, anglais via `/gui?lang=en`, avec un lien d'en-tête pour basculer. Voir
 [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) (en anglais).
@@ -180,7 +180,7 @@ lien d'en-tête pour basculer.
 
 ![Résultats de recommandation](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/screenshots/gui-recommendation.png)
 
-Voir [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) pour le détail complet, l'API JSON sous-jacente, et comment le jeu
+Voir [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) pour le détail complet, l'API JSON sous-jacente et comment le jeu
 d'icônes (favicon / touch-icon) est généré à partir de `assets/logo.png`.
 
 ## Comment fonctionne la sélection
@@ -271,10 +271,10 @@ Les projets qui utilisent le modèle sélectionné sourcent ce fichier ou lisent
 ### Modèle B : un moteur par projet, résolu depuis un brief ajusté
 
 Un projet connaît en général sa tâche plus précisément qu'un défaut valable pour toute la
-machine, et la qualité du choix dépend de la précision avec laquelle cette tâche est décrite
+machine et la qualité du choix dépend de la précision avec laquelle cette tâche est décrite
 — c'est le texte de la tâche qui se traduit en axe de score et qui décide si un VLM est
 nécessaire (voir [Comment fonctionne la sélection](#comment-fonctionne-la-sélection)). Le
-projet garde donc un **brief** versionné qui décrit son travail, et le résout, par machine,
+projet garde donc un **brief** versionné qui décrit son travail et le résout, par machine,
 en un **fichier moteur** gitignoré qui nomme le backend et le modèle à utiliser. Aucune
 constante `DEFAULT_MODEL` ne vit dans le projet : le modèle se lit toujours depuis le fichier
 moteur résolu.
@@ -289,7 +289,7 @@ moteur résolu.
    structured_output: true # la tâche exige une sortie contrainte par schéma
    task: >-
      Nommer les pôles des axes ACP en JSON contraint par schéma, rédiger une courte
-     analyse dans la langue de la table, et vérifier l'image du graphique rendu.
+     analyse dans la langue de la table et vérifier l'image du graphique rendu.
    ```
 
    `mode: local` est le défaut et la seule famille de backend gérée aujourd'hui ; un brief
@@ -304,7 +304,7 @@ moteur résolu.
 
    Le backend est choisi selon le matériel : **vLLM quand un GPU discret (NVIDIA/AMD) est
    présent, Ollama sinon** (macOS, Linux CPU seul, iGPU Intel). Le choix est délibérément
-   prudent — la marge mémoire est plafonnée à 0,5, et parmi les modèles à quelques points de
+   prudent — la marge mémoire est plafonnée à 0,5 et parmi les modèles à quelques points de
    benchmark du meilleur, il prend le plus léger et le plus rapide, pas le plus gros qui tient
    tout juste. Les choix vLLM sont dimensionnés sur les poids FP16 complets (plus lourds que
    l'estimation Ollama Q4), pour qu'un choix vLLM soit réaliste sur le vrai GPU. La sortie est
@@ -324,7 +324,7 @@ moteur résolu.
    ```python
    from best_engine_ai_helper import ensure, llm
 
-   engine = ensure(".")            # charge llm.engine.yaml, ou le résout depuis
+   engine = ensure(".")            # charge llm.engine.yaml ou le résout depuis
                                    # llm.brief.yaml au premier usage
    resume = llm.chat(prompt, engine=engine, kind="llm")
    critique = llm.chat(prompt, engine=engine, kind="vlm",
@@ -353,7 +353,7 @@ contexte. Un profil est, au fond, un *brief* nommé : il est donc résolu par le
 à quatre critères** que n'importe quel *brief*.
 
 Un profil **ne nomme jamais de modèle.** best-engine est le seul décideur : il lit les
-besoins, sonde la machine, et choisit le modèle local concret, en n'écrivant ce choix que
+besoins, sonde la machine et choisit le modèle local concret, en n'écrivant ce choix que
 dans un fichier moteur généré (`llm.engine*.yaml`), **gitignoré et spécifique à la machine**
 — jamais un littéral versionné. C'est tout l'intérêt de l'outil.
 
@@ -391,10 +391,14 @@ family = resolve_family("F1")        # un seul modèle pour tout le groupe F1
 ```
 
 best-engine écrit les modèles retenus dans le `llm.engine*.yaml` gitignoré de cette machine
-(le prolongement de l'`env.sh` qu'il produit déjà) ; l'application lit ce fichier, et une
+(le prolongement de l'`env.sh` qu'il produit déjà) ; l'application lit ce fichier et une
 nouvelle résolution re-décide si le matériel change. Ajouter un profil = quelques lignes dans
 `usages.yaml` ; un *overlay* utilisateur dans `~/.best-engine-ai-helper/usages_cache.yaml`
 surcharge par nom.
+
+## Remerciements
+
+Remerciements chaleureux à [Victor Favreau](https://www.linkedin.com/in/victor-favreau-41b823117/) pour nos échanges fructueux.
 
 ## Licence
 

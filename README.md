@@ -324,6 +324,10 @@ family = resolve_family("F1")        # one model for the whole constrained-gener
 
 best-engine writes the retained models into the gitignored `llm.engine*.yaml` for this machine (the extension of the `env.sh` it already emits); the app reads that file and re-resolution re-decides if the hardware changes. Adding a profile is a few lines in `usages.yaml`; a user overlay at `~/.best-engine-ai-helper/usages_cache.yaml` overrides by name.
 
+## Acknowledgements
+
+Special thanks to [Victor Favreau](https://www.linkedin.com/in/victor-favreau-41b823117/) for fruitful discussions.
+
 ## License
 
 [BSD-3-Clause](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/LICENSE). Copyright 2026 Warith Harchaoui.

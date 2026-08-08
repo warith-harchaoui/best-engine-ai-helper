@@ -54,7 +54,7 @@ _STRINGS: dict[str, dict[str, dict[str, str]]] = {
             "LANG_ARIA": "English version",
             "HERO_TITLE": "Meilleur moteur local",
             "HERO_P": (
-                "Caractéristiques de cette machine, et le meilleur moteur local "
+                "Caractéristiques de cette machine et le meilleur moteur local "
                 "(LLM / VLM) pour la tâche que vous décrivez."
             ),
             "SYS_H2": "Caractéristiques système",
