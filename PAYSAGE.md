@@ -16,7 +16,7 @@ outil optimisé pour un usage très différent n'est pas pénalisé.
 | --- | :---: | :---: | :---: | :---: | :---: | :---: |
 | **best-engine-ai-helper** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
 | Ollama (CLI) | ⭐ | ⭐ | ⭐ | ⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐ |
-| LM Studio | ⭐⭐ | ⭐⭐ | ⭐ | ⭐⭐⭐⭐ | ⭐ | ⭐⭐ |
+| LM Studio | ⭐⭐ | ⭐⭐ | ⭐ | ⭐⭐⭐⭐ | ⭐ | ⭐⭐⭐ |
 | Jan.ai | ⭐⭐ | ⭐⭐ | ⭐ | ⭐⭐⭐⭐ | ⭐ | ⭐⭐ |
 | llm (Simon Willison) | ⭐ | ⭐ | ⭐ | ⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐ |
 | LocalAI | ⭐ | ⭐ | ⭐ | ⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐⭐ |
@@ -30,7 +30,7 @@ Représentation 2D du tableau ci-dessus.
 
 ![Carte de positionnement](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/paysage.png)
 
-La carte est un résumé en 2D des 6 critères : à lire comme une forme, pas comme un classement. « best-engine-ai-helper » se situe dans le coin en haut à droite. Les axes se lisent **Horizontal — Flexibilité ↔ Automatisation** et **Vertical — Accessibilité ↔ Intégration**.
+La carte est un résumé en 2D des 6 critères : à lire comme une forme, pas comme un classement. « best-engine-ai-helper » se situe dans le coin en haut à droite. Les axes se lisent **Horizontal — Ingéniosité ↔ Autonomie** et **Vertical — Accessibilité ↔ Rigueur**.
 <!-- FIGURE:END -->
 
 ## Positionnement

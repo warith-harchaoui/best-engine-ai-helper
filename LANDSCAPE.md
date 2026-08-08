@@ -16,7 +16,7 @@ score reflects fit to *this* niche.
 | --- | :---: | :---: | :---: | :---: | :---: | :---: |
 | **best-engine-ai-helper** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
 | Ollama (CLI) | ⭐ | ⭐ | ⭐ | ⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐ |
-| LM Studio | ⭐⭐ | ⭐⭐ | ⭐ | ⭐⭐⭐⭐ | ⭐ | ⭐⭐ |
+| LM Studio | ⭐⭐ | ⭐⭐ | ⭐ | ⭐⭐⭐⭐ | ⭐ | ⭐⭐⭐ |
 | Jan.ai | ⭐⭐ | ⭐⭐ | ⭐ | ⭐⭐⭐⭐ | ⭐ | ⭐⭐ |
 | llm (Simon Willison) | ⭐ | ⭐ | ⭐ | ⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐ |
 | LocalAI | ⭐ | ⭐ | ⭐ | ⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐⭐ |
@@ -30,7 +30,7 @@ score reflects fit to *this* niche.
 
 ![Positioning map](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/landscape.png)
 
-The map is a 2-D summary of the six criteria, so read it as a shape, not a scoreboard. `best-engine-ai-helper` is at the top-right corner. The axes read **Horizontal — Programmatic ↔ Automated** and **Vertical — Offline ↔ Testable**.
+The map is a 2-D summary of the six criteria, so read it as a shape, not a scoreboard. `best-engine-ai-helper` is at the top-right corner. The axes read **Horizontal — Flexible ↔ Robust** and **Vertical — Accessible ↔ Precise**.
 <!-- FIGURE:END -->
 
 ## Positioning
