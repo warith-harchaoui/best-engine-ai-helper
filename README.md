@@ -4,6 +4,8 @@
 
 Pick and pull the best local large language model (LLM) or vision-language model (VLM) for the hardware in the current machine.
 
+![Best Engine AI Helper glove logo](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/logo.png)
+
 The tool detects available memory (Apple Silicon unified pool, NVIDIA VRAM, or system RAM), consults a bundled model catalog, and selects the highest-scoring model that fits within a configurable safety headroom. After selection, it pulls the model via Ollama, runs two quality gates (the Ralph Loop for prose and the Ralph Eyeball Loop for vision), and writes an environment file that downstream projects source to find the chosen model.
 
 A minimal browser GUI (`best-engine-ai-helper gui`) covers the read-only half of this (the hardware snapshot, and the task-to-engine recommendation) without the CLI. See [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md).
