@@ -1,0 +1,183 @@
+# Human-language source of truth for best-engine-ai-helper's GUI.
+# Code refers to the keys under `gui:`; this file owns the wording.
+# See references/CODING.md section 21.3.
+
+meta:
+  default_locale: fr
+  supported_locales:
+  - fr
+  - en
+gui:
+  meta_description:
+    fr: Caractéristiques matérielles de cette machine et meilleur moteur local (LLM / VLM) pour une tâche
+      donnée.
+    en: This machine's hardware characteristics and the best local engine (LLM / VLM) for a given task.
+  skip_to_content:
+    fr: Aller au contenu
+    en: Skip to content
+  nav_aria:
+    fr: Principal
+    en: Main
+  github_link_label:
+    fr: ⭐️ sur GitHub
+    en: ⭐️ on GitHub
+  theme_toggle_aria:
+    fr: Changer de thème
+    en: Toggle theme
+  lang_toggle_href:
+    fr: /gui?lang=en
+    en: /gui
+  lang_toggle_flag:
+    fr: 🇬🇧
+    en: 🇫🇷
+  lang_toggle_aria:
+    fr: English version
+    en: Version française
+  hero_title:
+    fr: Meilleur moteur local
+    en: Best local engine
+  hero_subtitle:
+    fr: Caractéristiques de cette machine et le meilleur moteur local (LLM / VLM) pour la tâche que vous
+      décrivez.
+    en: This machine's characteristics, and the best local engine (LLM / VLM) for the task you describe.
+  system_heading:
+    fr: Caractéristiques système
+    en: System characteristics
+  refresh_button:
+    fr: Rafraîchir
+    en: Refresh
+  detecting:
+    fr: Détection en cours…
+    en: Detecting…
+  task_heading:
+    fr: Décrire la tâche
+    en: Describe the task
+  task_subtitle:
+    fr: Une phrase suffit — les mots-clés visuels ajoutent un VLM à la recommandation.
+    en: One sentence is enough — visual keywords add a VLM to the recommendation.
+  task_label:
+    fr: Description de la tâche
+    en: Task description
+  task_placeholder:
+    fr: ex. « rédiger des fiches produit et vérifier la qualité de photos »
+    en: e.g. "write product descriptions and check photo quality"
+  run_button:
+    fr: Recommander le(s) meilleur(s) moteur(s)
+    en: Recommend the best engine(s)
+  headroom_label:
+    fr: Marge mémoire
+    en: Memory headroom
+  footer_note:
+    fr: local uniquement, aucune télémétrie
+    en: local only, no telemetry
+  detect_failed:
+    fr: 'Détection impossible : '
+    en: 'Detection failed: '
+  field_platform:
+    fr: Plateforme
+    en: Platform
+  field_vendor:
+    fr: Fournisseur
+    en: Vendor
+  field_chip:
+    fr: Puce / accélérateur
+    en: Chip / accelerator
+  pool_unified:
+    fr: Mémoire unifiée
+    en: Unified memory
+  pool_vram:
+    fr: VRAM
+    en: VRAM
+  pool_ram:
+    fr: RAM système
+    en: System RAM
+  field_bandwidth:
+    fr: Bande passante mémoire
+    en: Memory bandwidth
+  unknown:
+    fr: inconnue
+    en: unknown
+  field_budget:
+    fr: Budget modèle utilisable
+    en: Usable model budget
+  unit_gb:
+    fr: Go
+    en: GB
+  unit_gbs:
+    fr: Go/s
+    en: GB/s
+  analyzing:
+    fr: Analyse de la tâche et du matériel…
+    en: Analyzing task and hardware…
+  done:
+    fr: Terminé.
+    en: Done.
+  recommend_failed:
+    fr: 'Échec de la recommandation : '
+    en: 'Recommendation failed: '
+  error_generic:
+    fr: Erreur.
+    en: Error.
+  'yes':
+    fr: oui
+    en: 'yes'
+  'no':
+    fr: non
+    en: 'no'
+  best_label:
+    fr: Meilleur
+    en: Best
+  axis_label:
+    fr: 'axe :'
+    en: 'axis:'
+  over_budget_warning:
+    fr: dépasse le budget mémoire — sera lent
+    en: exceeds the memory budget — will be slow
+  not_structured_warning:
+    fr: pas de sortie JSON structurée — inadapté aux tâches à schéma
+    en: no structured JSON output — unfit for schema-driven tasks
+  lighter_alternative:
+    fr: 'Alternative plus légère :'
+    en: 'Lighter alternative:'
+  score_label:
+    fr: score
+    en: score
+  no_candidate:
+    fr: Aucun candidat trouvé.
+    en: No candidate found.
+  all_candidates:
+    fr: Tous les candidats
+    en: All candidates
+  th_structured:
+    fr: structuré
+    en: structured
+  th_model:
+    fr: modèle
+    en: model
+  th_ram:
+    fr: Go RAM
+    en: GB RAM
+  th_score:
+    fr: score
+    en: score
+  th_fits:
+    fr: tient
+    en: fits
+  th_tps:
+    fr: tok/s
+    en: tok/s
+  task_prefix:
+    fr: 'Tâche :'
+    en: 'Task:'
+  generic_assistant:
+    fr: assistant texte généraliste
+    en: general-purpose text assistant
+  matched_keywords:
+    fr: 'Mots-clés détectés :'
+    en: 'Detected keywords:'
+  needs_label:
+    fr: 'Besoins :'
+    en: 'Needs:'
+  unit_tps:
+    fr: tok/s
+    en: tok/s

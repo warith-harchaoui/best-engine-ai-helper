@@ -13,6 +13,13 @@ English). The JSON API the page calls is language-neutral, so only the labels
 differ. ``GUI_HTML`` is the French render, kept as a module constant for
 callers and tests that want the default page directly.
 
+Every user-facing string is authored once, in ``locales/i18n.yaml`` (package
+root's ``gui:`` namespace) — this module never hardcodes wording. It loads
+that file, maps its stable semantic keys onto the template's ``{{TOKEN}}``
+placeholders and the JavaScript ``T`` object, and falls back to the
+``meta.default_locale`` declared in the YAML (French) for any language the
+file does not cover.
+
 Visual language matches the sprezzature-figures gallery
 (https://harchaoui.org/warith/sprezzature/figures.html): Roboto / Roboto
 Serif / Roboto Mono, the #007aff brand blue, a neutral gray scale, and a
@@ -27,173 +34,138 @@ Warith Harchaoui <warith.harchaoui@deraison.ai>
 
 from __future__ import annotations
 
+import functools
 import html
 import json
+from pathlib import Path
+
+import yaml
+
+# Root of the installed package; locales/i18n.yaml sits next to pyproject.toml,
+# same convention as models.yaml / hardware.yaml / usages.yaml (see catalog.py).
+_PACKAGE_ROOT = Path(__file__).resolve().parent.parent
+_LOCALES_PATH = _PACKAGE_ROOT / "locales" / "i18n.yaml"
 
 # ---------------------------------------------------------------------------
-# Per-language label tables
+# Template-token <-> locale-key maps
 # ---------------------------------------------------------------------------
-# `html` keys fill {{TOKEN}} placeholders in the markup; `js` keys are emitted
-# as a `const T = {...}` object the page's script reads, so every user-facing
-# string — HTML and JavaScript alike — lives here and nowhere else.
+# The markup and inline script below were written once against these short
+# token names; renaming every {{TOKEN}} / T.name reference to match the YAML's
+# semantic keys would only add churn, so these maps are the single place that
+# bridges the two vocabularies. `_HTML_TOKEN_TO_KEY` fills {{TOKEN}} placeholders;
+# `_JS_NAME_TO_KEY` builds the `const T = {...}` object the page's script reads.
 
-_STRINGS: dict[str, dict[str, dict[str, str]]] = {
-    "fr": {
-        "html": {
-            "LANG": "fr",
-            "META_DESC": (
-                "Caractéristiques matérielles de cette machine et meilleur "
-                "moteur local (LLM / VLM) pour une tâche donnée."
-            ),
-            "SKIP": "Aller au contenu",
-            "NAV_ARIA": "Principal",
-            "GITHUB": "⭐️ sur GitHub",
-            "THEME_ARIA": "Changer de thème",
-            "LANG_HREF": "/gui?lang=en",
-            "LANG_LABEL": "🇬🇧",
-            "LANG_ARIA": "English version",
-            "HERO_TITLE": "Meilleur moteur local",
-            "HERO_P": (
-                "Caractéristiques de cette machine et le meilleur moteur local "
-                "(LLM / VLM) pour la tâche que vous décrivez."
-            ),
-            "SYS_H2": "Caractéristiques système",
-            "REFRESH": "Rafraîchir",
-            "DETECTING": "Détection en cours…",
-            "TASK_H2": "Décrire la tâche",
-            "TASK_P": (
-                "Une phrase suffit — les mots-clés visuels ajoutent un VLM à la "
-                "recommandation."
-            ),
-            "TASK_LABEL": "Description de la tâche",
-            "TASK_PLACEHOLDER": (
-                "ex. « rédiger des fiches produit et vérifier la qualité de photos »"
-            ),
-            "RUN_BTN": "Recommander le(s) meilleur(s) moteur(s)",
-            "HEADROOM": "Marge mémoire",
-            "FOOTER_NOTE": "local uniquement, aucune télémétrie",
-        },
-        "js": {
-            "detecting": "Détection en cours…",
-            "detectFail": "Détection impossible : ",
-            "fPlatform": "Plateforme",
-            "fVendor": "Fournisseur",
-            "fChip": "Puce / accélérateur",
-            "poolUnified": "Mémoire unifiée",
-            "poolVram": "VRAM",
-            "poolRam": "RAM système",
-            "fBandwidth": "Bande passante mémoire",
-            "unknown": "inconnue",
-            "fBudget": "Budget modèle utilisable",
-            "gb": "Go",
-            "gbs": "Go/s",
-            "analyzing": "Analyse de la tâche et du matériel…",
-            "done": "Terminé.",
-            "recFail": "Échec de la recommandation : ",
-            "error": "Erreur.",
-            "yes": "oui",
-            "no": "non",
-            "best": "Meilleur",
-            "axis": "axe :",
-            "overBudget": "dépasse le budget mémoire — sera lent",
-            "notStructured": "pas de sortie JSON structurée — inadapté aux tâches à schéma",
-            "lighterAlt": "Alternative plus légère :",
-            "score": "score",
-            "noCandidate": "Aucun candidat trouvé.",
-            "allCandidates": "Tous les candidats",
-            "thStructured": "structuré",
-            "thModel": "modèle",
-            "thRam": "Go RAM",
-            "thScore": "score",
-            "thFits": "tient",
-            "thTps": "tok/s",
-            "task": "Tâche :",
-            "genericAssistant": "assistant texte généraliste",
-            "matched": "Mots-clés détectés :",
-            "needs": "Besoins :",
-            "tps": "tok/s",
-        },
-    },
-    "en": {
-        "html": {
-            "LANG": "en",
-            "META_DESC": (
-                "This machine's hardware characteristics and the best local "
-                "engine (LLM / VLM) for a given task."
-            ),
-            "SKIP": "Skip to content",
-            "NAV_ARIA": "Main",
-            "GITHUB": "⭐️ on GitHub",
-            "THEME_ARIA": "Toggle theme",
-            "LANG_HREF": "/gui",
-            "LANG_LABEL": "🇫🇷",
-            "LANG_ARIA": "Version française",
-            "HERO_TITLE": "Best local engine",
-            "HERO_P": (
-                "This machine's characteristics, and the best local engine "
-                "(LLM / VLM) for the task you describe."
-            ),
-            "SYS_H2": "System characteristics",
-            "REFRESH": "Refresh",
-            "DETECTING": "Detecting…",
-            "TASK_H2": "Describe the task",
-            "TASK_P": (
-                "One sentence is enough — visual keywords add a VLM to the "
-                "recommendation."
-            ),
-            "TASK_LABEL": "Task description",
-            "TASK_PLACEHOLDER": (
-                'e.g. "write product descriptions and check photo quality"'
-            ),
-            "RUN_BTN": "Recommend the best engine(s)",
-            "HEADROOM": "Memory headroom",
-            "FOOTER_NOTE": "local only, no telemetry",
-        },
-        "js": {
-            "detecting": "Detecting…",
-            "detectFail": "Detection failed: ",
-            "fPlatform": "Platform",
-            "fVendor": "Vendor",
-            "fChip": "Chip / accelerator",
-            "poolUnified": "Unified memory",
-            "poolVram": "VRAM",
-            "poolRam": "System RAM",
-            "fBandwidth": "Memory bandwidth",
-            "unknown": "unknown",
-            "fBudget": "Usable model budget",
-            "gb": "GB",
-            "gbs": "GB/s",
-            "analyzing": "Analyzing task and hardware…",
-            "done": "Done.",
-            "recFail": "Recommendation failed: ",
-            "error": "Error.",
-            "yes": "yes",
-            "no": "no",
-            "best": "Best",
-            "axis": "axis:",
-            "overBudget": "exceeds the memory budget — will be slow",
-            "notStructured": "no structured JSON output — unfit for schema-driven tasks",
-            "lighterAlt": "Lighter alternative:",
-            "score": "score",
-            "noCandidate": "No candidate found.",
-            "allCandidates": "All candidates",
-            "thStructured": "structured",
-            "thModel": "model",
-            "thRam": "GB RAM",
-            "thScore": "score",
-            "thFits": "fits",
-            "thTps": "tok/s",
-            "task": "Task:",
-            "genericAssistant": "general-purpose text assistant",
-            "matched": "Detected keywords:",
-            "needs": "Needs:",
-            "tps": "tok/s",
-        },
-    },
+_HTML_TOKEN_TO_KEY: dict[str, str] = {
+    "META_DESC": "meta_description",
+    "SKIP": "skip_to_content",
+    "NAV_ARIA": "nav_aria",
+    "GITHUB": "github_link_label",
+    "THEME_ARIA": "theme_toggle_aria",
+    "LANG_HREF": "lang_toggle_href",
+    "LANG_LABEL": "lang_toggle_flag",
+    "LANG_ARIA": "lang_toggle_aria",
+    "HERO_TITLE": "hero_title",
+    "HERO_P": "hero_subtitle",
+    "SYS_H2": "system_heading",
+    "REFRESH": "refresh_button",
+    "DETECTING": "detecting",
+    "TASK_H2": "task_heading",
+    "TASK_P": "task_subtitle",
+    "TASK_LABEL": "task_label",
+    "TASK_PLACEHOLDER": "task_placeholder",
+    "RUN_BTN": "run_button",
+    "HEADROOM": "headroom_label",
+    "FOOTER_NOTE": "footer_note",
+}
+_JS_NAME_TO_KEY: dict[str, str] = {
+    "detecting": "detecting",
+    "detectFail": "detect_failed",
+    "fPlatform": "field_platform",
+    "fVendor": "field_vendor",
+    "fChip": "field_chip",
+    "poolUnified": "pool_unified",
+    "poolVram": "pool_vram",
+    "poolRam": "pool_ram",
+    "fBandwidth": "field_bandwidth",
+    "unknown": "unknown",
+    "fBudget": "field_budget",
+    "gb": "unit_gb",
+    "gbs": "unit_gbs",
+    "analyzing": "analyzing",
+    "done": "done",
+    "recFail": "recommend_failed",
+    "error": "error_generic",
+    "yes": "yes",
+    "no": "no",
+    "best": "best_label",
+    "axis": "axis_label",
+    "overBudget": "over_budget_warning",
+    "notStructured": "not_structured_warning",
+    "lighterAlt": "lighter_alternative",
+    "score": "score_label",
+    "noCandidate": "no_candidate",
+    "allCandidates": "all_candidates",
+    "thStructured": "th_structured",
+    "thModel": "th_model",
+    "thRam": "th_ram",
+    "thScore": "th_score",
+    "thFits": "th_fits",
+    "thTps": "th_tps",
+    "task": "task_prefix",
+    "genericAssistant": "generic_assistant",
+    "matched": "matched_keywords",
+    "needs": "needs_label",
+    "tps": "unit_tps",
 }
 
-# Default language when the query string names none or an unknown one.
-_DEFAULT_LANG = "fr"
+
+@functools.lru_cache(maxsize=1)
+def _locale_document() -> dict[str, object]:
+    """Parse and cache ``locales/i18n.yaml``.
+
+    Returns
+    -------
+    dict
+        The full parsed document (``meta`` + ``gui`` top-level keys).
+    """
+    raw = yaml.safe_load(_LOCALES_PATH.read_text(encoding="utf-8")) or {}
+    if "gui" not in raw:
+        raise RuntimeError(f"{_LOCALES_PATH} is missing the required 'gui' section")
+    return raw
+
+
+# Default language when the query string names none or an unknown one — read
+# from the YAML's own declared default so the file stays the single source of
+# truth for locale metadata (see references/CODING.md section 21.3.4).
+_DEFAULT_LANG: str = str(_locale_document()["meta"]["default_locale"])
+_SUPPORTED_LANGS: set[str] = set(_locale_document()["meta"]["supported_locales"])
+
+
+def _strings_for(lang: str) -> dict[str, dict[str, str]]:
+    """Build the ``{"html": ..., "js": ...}`` label tables for one language.
+
+    Parameters
+    ----------
+    lang : str
+        Requested language code.
+
+    Returns
+    -------
+    dict
+        ``html`` maps template tokens to text; ``js`` maps the names the
+        inline script reads off ``T``. A key missing for ``lang`` falls back
+        to ``_DEFAULT_LANG``'s value, then to the bare key itself — the file
+        should never omit an entry, but a page must never 500 over copy.
+    """
+    gui = _locale_document()["gui"]
+
+    def pick(key: str) -> str:
+        entry = gui.get(key, {})
+        return entry.get(lang) or entry.get(_DEFAULT_LANG) or key
+
+    html_strings = {"LANG": lang, **{tok: pick(k) for tok, k in _HTML_TOKEN_TO_KEY.items()}}
+    js_strings = {name: pick(k) for name, k in _JS_NAME_TO_KEY.items()}
+    return {"html": html_strings, "js": js_strings}
 
 
 # The document template. Human-facing text is tokenised as {{TOKEN}} (HTML) or
@@ -561,15 +533,16 @@ def render_gui(lang: str = _DEFAULT_LANG) -> str:
     Parameters
     ----------
     lang : str
-        Two-letter language code. ``"fr"`` (default) and ``"en"`` are supported;
-        any other value falls back to French so an unknown ``?lang=`` never 500s.
+        Two-letter language code. Any value outside ``locales/i18n.yaml``'s
+        ``meta.supported_locales`` (``"fr"``, ``"en"``) falls back to
+        ``meta.default_locale`` so an unknown ``?lang=`` never 500s.
 
     Returns
     -------
     str
         The complete HTML document for that language.
     """
-    strings = _STRINGS.get(lang, _STRINGS[_DEFAULT_LANG])
+    strings = _strings_for(lang if lang in _SUPPORTED_LANGS else _DEFAULT_LANG)
     page = _GUI_TEMPLATE
     for token, value in strings["html"].items():
         # Escape every value: these labels land in attributes (placeholder, aria,

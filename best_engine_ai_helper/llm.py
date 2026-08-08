@@ -3,8 +3,8 @@ llm — pluggable local-model backend for best-engine-ai-helper.
 
 Provides two public functions, ``chat`` and ``embed``, that route requests to
 the backend selected by the ``SPREZZATURE_LLM_BACKEND`` environment variable.
-All skill scripts call only these two functions; the transport details (Ollama
-JSON API vs OpenAI-compatible REST vs LangChain) are invisible to callers.
+Callers use only these two functions; the transport details (Ollama JSON API
+vs OpenAI-compatible REST vs LangChain) stay invisible to them.
 
 Supported backends
 ------------------
