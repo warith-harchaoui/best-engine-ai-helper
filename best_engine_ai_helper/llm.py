@@ -735,20 +735,34 @@ def chat(
                 "'ollama', 'vllm', 'openai', 'langchain'."
             )
     except Exception as exc:
-        _emit({
-            "backend": backend, "model": resolved_model, "kind": resolved_kind,
-            "in_chars": len(prompt), "images": len(images) if images else 0,
-            "out_chars": 0, "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
-            "ok": False, "error": repr(exc),
-        })
+        _emit(
+            {
+                "backend": backend,
+                "model": resolved_model,
+                "kind": resolved_kind,
+                "in_chars": len(prompt),
+                "images": len(images) if images else 0,
+                "out_chars": 0,
+                "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
+                "ok": False,
+                "error": repr(exc),
+            }
+        )
         raise
 
-    _emit({
-        "backend": backend, "model": resolved_model, "kind": resolved_kind,
-        "in_chars": len(prompt), "images": len(images) if images else 0,
-        "out_chars": len(raw), "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
-        "ok": True, "error": None,
-    })
+    _emit(
+        {
+            "backend": backend,
+            "model": resolved_model,
+            "kind": resolved_kind,
+            "in_chars": len(prompt),
+            "images": len(images) if images else 0,
+            "out_chars": len(raw),
+            "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
+            "ok": True,
+            "error": None,
+        }
+    )
 
     # Parse JSON when requested; fall back to raw string on parse failure
     if json_mode:

@@ -195,17 +195,27 @@ def test_shape_schema_for_ollama() -> None:
     # tagged object (Ollama's grammar can't build a oneOf of refs).
     schema = {
         "$defs": {
-            "SetTitle": {"type": "object", "properties": {
-                "op": {"const": "set_title"}, "title": {"type": "string"}},
-                "required": ["op", "title"]},
-            "SortRows": {"type": "object", "properties": {
-                "op": {"const": "sort_rows"}, "ascending": {"type": "boolean"}},
-                "required": ["op", "ascending"]},
+            "SetTitle": {
+                "type": "object",
+                "properties": {"op": {"const": "set_title"}, "title": {"type": "string"}},
+                "required": ["op", "title"],
+            },
+            "SortRows": {
+                "type": "object",
+                "properties": {"op": {"const": "sort_rows"}, "ascending": {"type": "boolean"}},
+                "required": ["op", "ascending"],
+            },
         },
         "type": "object",
-        "properties": {"ops": {"type": "array", "items": {
-            "oneOf": [{"$ref": "#/$defs/SetTitle"}, {"$ref": "#/$defs/SortRows"}],
-            "discriminator": {"propertyName": "op"}}}},
+        "properties": {
+            "ops": {
+                "type": "array",
+                "items": {
+                    "oneOf": [{"$ref": "#/$defs/SetTitle"}, {"$ref": "#/$defs/SortRows"}],
+                    "discriminator": {"propertyName": "op"},
+                },
+            }
+        },
         "required": ["ops"],
     }
     items = _llm._shape_schema_for_ollama(schema)["properties"]["ops"]["items"]
@@ -217,10 +227,17 @@ def test_shape_schema_for_ollama() -> None:
     # A plain schema is essentially unchanged; a nullable union keeps its
     # concrete branch rather than being flattened away.
     plain = _llm._shape_schema_for_ollama(
-        {"type": "object", "properties": {"goal": {"type": "string", "enum": ["a", "b"]}},
-         "required": ["goal"]})
+        {
+            "type": "object",
+            "properties": {"goal": {"type": "string", "enum": ["a", "b"]}},
+            "required": ["goal"],
+        }
+    )
     assert plain["properties"]["goal"]["enum"] == ["a", "b"] and plain["required"] == ["goal"]
     nullable = _llm._shape_schema_for_ollama(
-        {"type": "object",
-         "properties": {"note": {"anyOf": [{"type": "string"}, {"type": "null"}]}}})
+        {
+            "type": "object",
+            "properties": {"note": {"anyOf": [{"type": "string"}, {"type": "null"}]}},
+        }
+    )
     assert nullable["properties"]["note"]["type"] == "string"

@@ -61,16 +61,28 @@ def test_load_catalog_missing_seed_raises(tmp_path: Path) -> None:
 
 def test_estimate_ram_applies_quant_overhead() -> None:
     # Known quants use their overhead factor; unknown quants fall back to 1.15.
-    for disk, quant, expected in [(6.1, "Q4_K_M", 6.832), (6.1, "Q8_0", 6.71),
-                                  (10.0, "FP16", 10.5), (5.0, "Q2_K", 6.0),
-                                  (10.0, "UNKNOWN", 11.5)]:
+    for disk, quant, expected in [
+        (6.1, "Q4_K_M", 6.832),
+        (6.1, "Q8_0", 6.71),
+        (10.0, "FP16", 10.5),
+        (5.0, "Q2_K", 6.0),
+        (10.0, "UNKNOWN", 11.5),
+    ]:
         assert catalog.estimate_ram(disk, quant) == pytest.approx(expected, rel=1e-3)
 
 
 def _apxml_spec() -> dict:
-    return {"slug": "qwen3-8b", "name": "Qwen3 8B", "kind": "llm", "size_b": 8.0,
-            "ram_gb": 6.0, "vllm_id": "Qwen/Qwen3-8B", "context_length": 32768,
-            "license": "apache-2.0", "url": "https://apxml.com/models/qwen3-8b"}
+    return {
+        "slug": "qwen3-8b",
+        "name": "Qwen3 8B",
+        "kind": "llm",
+        "size_b": 8.0,
+        "ram_gb": 6.0,
+        "vllm_id": "Qwen/Qwen3-8B",
+        "context_length": 32768,
+        "license": "apache-2.0",
+        "url": "https://apxml.com/models/qwen3-8b",
+    }
 
 
 def test_normalize_apxml_spec_maps_and_filters() -> None:
@@ -84,20 +96,25 @@ def test_normalize_apxml_spec_maps_and_filters() -> None:
     assert all(v is None for v in entry["benchmarks"].values())
     # A spec with no slug can't be keyed, so it is dropped from a batch.
     assert catalog.normalize_apxml_spec({"name": "no slug"}, "2026-08-01") is None
-    assert [e["id"] for e in catalog.normalize_apxml_specs(
-        [_apxml_spec(), {"name": "no slug"}], fetched_at="2026-08-01")] == ["qwen3-8b"]
+    assert [
+        e["id"]
+        for e in catalog.normalize_apxml_specs(
+            [_apxml_spec(), {"name": "no slug"}], fetched_at="2026-08-01"
+        )
+    ] == ["qwen3-8b"]
 
 
 def test_write_cache_creates_and_merges_by_id(tmp_path: Path) -> None:
     cache = tmp_path / "catalog_cache.yaml"
-    catalog.write_cache(catalog.normalize_apxml_specs([_apxml_spec()], fetched_at="2026-08-01"),
-                        cache_path=cache)
+    catalog.write_cache(
+        catalog.normalize_apxml_specs([_apxml_spec()], fetched_at="2026-08-01"), cache_path=cache
+    )
     # A second refresh: same id overwrites (new ram), a new id appends.
     spec_b = dict(_apxml_spec(), slug="gemma3-4b")
     updated = dict(_apxml_spec(), ram_gb=7.0)
     catalog.write_cache(
-        catalog.normalize_apxml_specs([updated, spec_b], fetched_at="2026-08-02"),
-        cache_path=cache)
+        catalog.normalize_apxml_specs([updated, spec_b], fetched_at="2026-08-02"), cache_path=cache
+    )
     by_id = {e["id"]: e for e in yaml.safe_load(cache.read_text())}
     assert set(by_id) == {"qwen3-8b", "gemma3-4b"}
     assert by_id["qwen3-8b"]["ram_gb"] == 7.0

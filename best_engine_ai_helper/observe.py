@@ -192,10 +192,9 @@ def estimate_cost_usd(event: dict[str, Any]) -> float | None:
 
     in_tokens = float(event.get("in_chars", 0)) / _CHARS_PER_TOKEN
     out_tokens = float(event.get("out_chars", 0)) / _CHARS_PER_TOKEN
-    cost: float = (
-        in_tokens / 1_000_000 * float(pricing.get("input_per_1m", 0.0))
-        + out_tokens / 1_000_000 * float(pricing.get("output_per_1m", 0.0))
-    )
+    cost: float = in_tokens / 1_000_000 * float(
+        pricing.get("input_per_1m", 0.0)
+    ) + out_tokens / 1_000_000 * float(pricing.get("output_per_1m", 0.0))
     return round(cost, 6)
 
 
@@ -312,14 +311,10 @@ class Ledger:
                 f"SELECT {column}, COUNT(*), SUM(cost_usd) FROM calls "  # noqa: S608 — column is one of two fixed literals below, never user input
                 f"GROUP BY {column} ORDER BY COUNT(*) DESC"
             ).fetchall()
-            return [
-                {column: key, "calls": count, "cost_usd": cost}
-                for key, count, cost in rows
-            ]
+            return [{column: key, "calls": count, "cost_usd": cost} for key, count, cost in rows]
 
         recent_errors = cur.execute(
-            "SELECT ts, user, model, error FROM calls WHERE ok = 0 "
-            "ORDER BY id DESC LIMIT 10"
+            "SELECT ts, user, model, error FROM calls WHERE ok = 0 ORDER BY id DESC LIMIT 10"
         ).fetchall()
 
         if total_calls == 0:

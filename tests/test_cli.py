@@ -85,9 +85,7 @@ def test_detect_emits_valid_json(runner: CliRunner) -> None:
     assert data["memory"]["ram_gb"] > 0
 
 
-def test_report_prints_markdown_json_and_writes_files(
-    runner: CliRunner, tmp_path: Path
-) -> None:
+def test_report_prints_markdown_json_and_writes_files(runner: CliRunner, tmp_path: Path) -> None:
     md = runner.invoke(main, ["report", "--task", "write python code"])
     assert md.exit_code == 0 and "# Best local engine" in md.output
     js = runner.invoke(main, ["report", "--format", "json"])
@@ -111,9 +109,7 @@ def test_resolve_cmd_writes_engine_file(runner: CliRunner, tmp_path: Path) -> No
 
 
 def test_resolve_cmd_missing_brief_errors(runner: CliRunner, tmp_path: Path) -> None:
-    result = runner.invoke(
-        main, ["resolve", "--brief", str(tmp_path / "nope.yaml")]
-    )
+    result = runner.invoke(main, ["resolve", "--brief", str(tmp_path / "nope.yaml")])
     assert result.exit_code == 1
     assert "not found" in result.output
 
@@ -142,9 +138,7 @@ def test_usages_show_unknown_profile_errors(runner: CliRunner) -> None:
     assert result.exit_code == 1
 
 
-def test_usages_resolve_profile_writes_engine(
-    runner: CliRunner, tmp_path: Path
-) -> None:
+def test_usages_resolve_profile_writes_engine(runner: CliRunner, tmp_path: Path) -> None:
     out = tmp_path / "llm.engine.yaml"
     result = runner.invoke(main, ["usages", "resolve", "text2sql", "--out", str(out)])
     assert result.exit_code == 0
@@ -174,6 +168,7 @@ def test_usages_resolve_unknown_profile_errors(runner: CliRunner) -> None:
 # catalog update / hardware update — offline via patched fetch / detection.
 # ---------------------------------------------------------------------------
 
+
 def test_catalog_update_writes_and_empty_feed_fails(
     runner: CliRunner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -183,10 +178,20 @@ def test_catalog_update_writes_and_empty_feed_fails(
     cache = tmp_path / "catalog_cache.yaml"
     monkeypatch.setattr(catalog, "_CACHE_PATH", cache)
 
-    monkeypatch.setattr(apxml, "fetch_open_weight_models", lambda **kw: [{
-        "slug": "qwen3-8b", "kind": "llm", "size_b": 8.0, "ram_gb": 6.0,
-        "vllm_id": "Qwen/Qwen3-8B", "url": "https://apxml.com/models/qwen3-8b",
-    }])
+    monkeypatch.setattr(
+        apxml,
+        "fetch_open_weight_models",
+        lambda **kw: [
+            {
+                "slug": "qwen3-8b",
+                "kind": "llm",
+                "size_b": 8.0,
+                "ram_gb": 6.0,
+                "vllm_id": "Qwen/Qwen3-8B",
+                "url": "https://apxml.com/models/qwen3-8b",
+            }
+        ],
+    )
     ok = runner.invoke(main, ["catalog", "update"])
     assert ok.exit_code == 0 and cache.exists()
     written = yaml.safe_load(cache.read_text())
@@ -207,10 +212,18 @@ def test_hardware_update_records_or_reports_nothing(
     cache = tmp_path / "hardware_cache.yaml"
     monkeypatch.setattr(hardware, "_HW_CACHE_PATH", cache)
 
-    monkeypatch.setattr(hardware, "detect_local_entry", lambda *a, **k: {
-        "chip": "Apple M2 Max", "vendor": "apple", "memory_gb": 32.0,
-        "ollama_usable_gb": 28.0, "source": "detected", "fetched_at": "2026-08-01",
-    })
+    monkeypatch.setattr(
+        hardware,
+        "detect_local_entry",
+        lambda *a, **k: {
+            "chip": "Apple M2 Max",
+            "vendor": "apple",
+            "memory_gb": 32.0,
+            "ollama_usable_gb": 28.0,
+            "source": "detected",
+            "fetched_at": "2026-08-01",
+        },
+    )
     ok = runner.invoke(main, ["hardware", "update"])
     assert ok.exit_code == 0 and yaml.safe_load(cache.read_text())[0]["chip"] == "Apple M2 Max"
 
@@ -225,8 +238,10 @@ def test_hardware_update_records_or_reports_nothing(
 # pull / validate / env — ollama + gates patched, so no downloads or network.
 # ---------------------------------------------------------------------------
 
+
 def _patch_gates(monkeypatch: pytest.MonkeyPatch, vlm: bool, prose: bool) -> None:
     from best_engine_ai_helper import pull, validate_llm, validate_vlm
+
     monkeypatch.setattr(pull, "ollama_pull", lambda tag, **k: True)
     monkeypatch.setattr(validate_vlm, "validate", lambda chat: vlm)
     monkeypatch.setattr(validate_llm, "validate", lambda chat: prose)
@@ -239,8 +254,9 @@ def test_pull_writes_env_when_both_gates_pass(
 
     _patch_gates(monkeypatch, vlm=True, prose=True)
     written: dict[str, object] = {}
-    monkeypatch.setattr(pull, "write_env",
-                        lambda **kw: (written.update(kw), tmp_path / "env.sh")[1])
+    monkeypatch.setattr(
+        pull, "write_env", lambda **kw: (written.update(kw), tmp_path / "env.sh")[1]
+    )
     result = runner.invoke(main, ["pull"])
     assert result.exit_code == 0 and "Both gates passed" in result.output
     assert written["text_model"]  # the chosen tag was persisted
@@ -253,17 +269,35 @@ def test_pull_prefers_comfortable_over_fits_but_slow(
     # a 10 GB model clears the comfort floor (~26 tok/s). pull must try the
     # comfortable model first even though the slow one scores higher.
     from best_engine_ai_helper import catalog, detect, pull
-    monkeypatch.setattr(detect, "available_memory",
-                        lambda: {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0})
-    monkeypatch.setattr(detect, "compute_profile",
-                        lambda: {"accelerator": "gpu-metal", "chip": "Apple M2 Max",
-                                 "bandwidth_gbs": 400.0})
-    monkeypatch.setattr(catalog, "load_catalog", lambda: [
-        {"id": "big-slow", "kind": "vlm", "ram_gb": 48.0,
-         "benchmarks": {"vision": 90, "general": 90}, "structured_output": True},
-        {"id": "small-fast", "kind": "vlm", "ram_gb": 10.0,
-         "benchmarks": {"vision": 80, "general": 80}, "structured_output": True},
-    ])
+
+    monkeypatch.setattr(
+        detect, "available_memory", lambda: {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}
+    )
+    monkeypatch.setattr(
+        detect,
+        "compute_profile",
+        lambda: {"accelerator": "gpu-metal", "chip": "Apple M2 Max", "bandwidth_gbs": 400.0},
+    )
+    monkeypatch.setattr(
+        catalog,
+        "load_catalog",
+        lambda: [
+            {
+                "id": "big-slow",
+                "kind": "vlm",
+                "ram_gb": 48.0,
+                "benchmarks": {"vision": 90, "general": 90},
+                "structured_output": True,
+            },
+            {
+                "id": "small-fast",
+                "kind": "vlm",
+                "ram_gb": 10.0,
+                "benchmarks": {"vision": 80, "general": 80},
+                "structured_output": True,
+            },
+        ],
+    )
     _patch_gates(monkeypatch, vlm=True, prose=True)
     pulled: list[str] = []
     monkeypatch.setattr(pull, "ollama_pull", lambda tag, **k: (pulled.append(tag), True)[1])
@@ -290,8 +324,7 @@ def test_pull_vllm_prints_serve_command_without_downloading(
 ) -> None:
     from best_engine_ai_helper import pull
 
-    monkeypatch.setattr(pull, "ollama_pull",
-                        lambda *a, **k: pytest.fail("--vllm must not pull"))
+    monkeypatch.setattr(pull, "ollama_pull", lambda *a, **k: pytest.fail("--vllm must not pull"))
     result = runner.invoke(main, ["pull", "--vllm"])
     assert result.exit_code == 0 and "vllm serve" in result.output
 
@@ -312,6 +345,7 @@ def test_validate_runs_gates_when_configured(
     runner: CliRunner, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from best_engine_ai_helper import validate_llm, validate_vlm
+
     monkeypatch.setenv("BEST_LLM_TEXT", "qwen3:8b")
     monkeypatch.setattr(validate_vlm, "validate", lambda chat: True)
     monkeypatch.setattr(validate_llm, "validate", lambda chat: True)

@@ -44,6 +44,7 @@ from .recommend import write_report as _write_report
 # Formatting helpers
 # ---------------------------------------------------------------------------
 
+
 def _fmt_table(rows: list[dict[str, Any]], columns: list[str]) -> str:
     """
     Format a list of dicts as a plain-text table with aligned columns.
@@ -80,6 +81,7 @@ def _fmt_table(rows: list[dict[str, Any]], columns: list[str]) -> str:
 # Top-level group
 # ---------------------------------------------------------------------------
 
+
 @click.group()
 @click.version_option(package_name="best-engine-ai-helper")
 @click.option(
@@ -107,6 +109,7 @@ def main(verbose: int) -> None:
 # ---------------------------------------------------------------------------
 # detect
 # ---------------------------------------------------------------------------
+
 
 @main.command("detect")
 @click.option("--json", "as_json", is_flag=True, default=True, hidden=True)
@@ -180,8 +183,9 @@ _VALID_APPLICATIONS = ["code", "math", "ocr", "vision", "chat", "generalist"]
         "rather than being a deterministic function of the hardware alone."
     ),
 )
-def recommend_cmd(kind: str, headroom: float, application: str | None,
-                  min_tps: float, live: bool) -> None:
+def recommend_cmd(
+    kind: str, headroom: float, application: str | None, min_tps: float, live: bool
+) -> None:
     """Print ranked model candidates for this hardware (dry run, no pull)."""
     hw = _detect.available_memory()
     bandwidth = _detect.compute_profile().get("bandwidth_gbs")
@@ -191,8 +195,14 @@ def recommend_cmd(kind: str, headroom: float, application: str | None,
     kinds: list[str] = ["llm", "vlm"] if kind == "both" else [kind]
 
     for k in kinds:
-        ranked = _score.rank(hw, entries, kind=k, headroom=headroom,  # type: ignore[arg-type]
-                              application=application, load=load)
+        ranked = _score.rank(
+            hw,
+            entries,
+            kind=k,
+            headroom=headroom,  # type: ignore[arg-type]
+            application=application,
+            load=load,
+        )
         header = f"\n=== {k.upper()} candidates"
         if application:
             header += f" [{application}]"
@@ -202,41 +212,51 @@ def recommend_cmd(kind: str, headroom: float, application: str | None,
         for e in ranked:
             tps = _score.estimated_tokens_per_second(e, bandwidth)
             comfy = bool(e.get("_fits")) and (tps is None or tps >= min_tps)
-            rows.append({
-                "id": e.get("id", "-"),
-                "ram_gb": e.get("ram_gb", "-"),
-                "score": (
-                    e.get("benchmarks", {}).get("vision")
-                    if k == "vlm"
-                    else e.get("benchmarks", {}).get("general")
-                ) or "-",
-                "fits": "yes" if e.get("_fits") else "NO",
-                "tok/s": f"{tps:.0f}" if tps else "-",
-                "comfy": "yes" if comfy else "NO",
-                "notes": (e.get("notes") or "")[:40],
-            })
-        click.echo(_fmt_table(
-            rows, ["id", "ram_gb", "score", "fits", "tok/s", "comfy", "notes"]))
+            rows.append(
+                {
+                    "id": e.get("id", "-"),
+                    "ram_gb": e.get("ram_gb", "-"),
+                    "score": (
+                        e.get("benchmarks", {}).get("vision")
+                        if k == "vlm"
+                        else e.get("benchmarks", {}).get("general")
+                    )
+                    or "-",
+                    "fits": "yes" if e.get("_fits") else "NO",
+                    "tok/s": f"{tps:.0f}" if tps else "-",
+                    "comfy": "yes" if comfy else "NO",
+                    "notes": (e.get("notes") or "")[:40],
+                }
+            )
+        click.echo(_fmt_table(rows, ["id", "ram_gb", "score", "fits", "tok/s", "comfy", "notes"]))
 
     click.echo()
 
 
 @main.command("resolve")
 @click.option(
-    "--brief", type=str, required=True,
+    "--brief",
+    type=str,
+    required=True,
     help="Path to the committed usage brief (llm.brief.yaml).",
 )
 @click.option(
-    "--out", type=str, default=None,
+    "--out",
+    type=str,
+    default=None,
     help="Where to write the engine file. Default: llm.engine.yaml beside the brief.",
 )
 @click.option(
-    "--backend", type=click.Choice(["auto", "ollama", "vllm"]), default="auto",
+    "--backend",
+    type=click.Choice(["auto", "ollama", "vllm"]),
+    default="auto",
     show_default=True,
     help="Serving backend. 'auto' = vLLM on a discrete GPU (NVIDIA/AMD), else Ollama.",
 )
 @click.option(
-    "--endpoint", type=str, default=None,
+    "--endpoint",
+    type=str,
+    default=None,
     help="Override the server base URL (e.g. a remote vLLM box).",
 )
 def resolve_cmd(brief: str, out: str | None, backend: str, endpoint: str | None) -> None:
@@ -265,11 +285,7 @@ def resolve_cmd(brief: str, out: str | None, backend: str, endpoint: str | None)
         click.echo(f"resolve failed: {exc}", err=True)
         sys.exit(1)
 
-    chosen = ", ".join(
-        f"{k}={descriptor[k]['model']}"
-        for k in ("llm", "vlm")
-        if descriptor.get(k)
-    )
+    chosen = ", ".join(f"{k}={descriptor[k]['model']}" for k in ("llm", "vlm") if descriptor.get(k))
     click.echo(
         f"Wrote {out_path}\n"
         f"  backend: {descriptor['backend']}  ({chosen})\n"
@@ -285,8 +301,8 @@ def resolve_cmd(brief: str, out: str | None, backend: str, endpoint: str | None)
     type=str,
     default=None,
     help=(
-        "Free-text task, e.g. \"retail product descriptions and image-quality "
-        "checks\". Vision words add a VLM; code/math/ocr words pick the axis. "
+        'Free-text task, e.g. "retail product descriptions and image-quality '
+        'checks". Vision words add a VLM; code/math/ocr words pick the axis. '
         "Omit for a general text assistant."
     ),
 )
@@ -322,17 +338,13 @@ def resolve_cmd(brief: str, out: str | None, backend: str, endpoint: str | None)
         "rather than being a deterministic function of the hardware alone."
     ),
 )
-def report_cmd(
-    task: str | None, headroom: float, out: str | None, fmt: str, live: bool
-) -> None:
+def report_cmd(task: str | None, headroom: float, out: str | None, fmt: str, live: bool) -> None:
     """Recommend the best engine(s) for this hardware and task; emit MD + JSON."""
     hw = _detect.available_memory()
     compute = _detect.compute_profile()
     entries = _catalog.load_catalog()
     load = _detect.server_load() if live else None
-    rep = _recommend_engines(
-        hw, entries, task=task, headroom=headroom, compute=compute, load=load
-    )
+    rep = _recommend_engines(hw, entries, task=task, headroom=headroom, compute=compute, load=load)
 
     if out:
         md_path, json_path = _write_report(rep, out)
@@ -348,6 +360,7 @@ def report_cmd(
 # usages subgroup — the sev7n usage catalog (task profiles + families)
 # ---------------------------------------------------------------------------
 
+
 @main.group("usages")
 def usages_group() -> None:
     """Browse and resolve the sev7n usage catalog (task profiles + families)."""
@@ -360,16 +373,24 @@ def usages_list() -> None:
 
     click.echo("Families (usages that can share one model):")
     frows = [
-        {"id": f["id"], "name": f["name"],
-         "members": ", ".join(f["members"]), "summary": f["summary"][:48]}
+        {
+            "id": f["id"],
+            "name": f["name"],
+            "members": ", ".join(f["members"]),
+            "summary": f["summary"][:48],
+        }
         for f in _usages.list_families()
     ]
     click.echo(_fmt_table(frows, ["id", "name", "members", "summary"]))
 
     click.echo("\nProfiles:")
     prows = [
-        {"name": p["name"], "family": p["family"] or "-",
-         "status": p["status"], "summary": p["summary"][:52]}
+        {
+            "name": p["name"],
+            "family": p["family"] or "-",
+            "status": p["status"],
+            "summary": p["summary"][:52],
+        }
         for p in _usages.list_usages()
     ]
     click.echo(_fmt_table(prows, ["name", "family", "status", "summary"]))
@@ -388,8 +409,9 @@ def usages_show(name: str) -> None:
         sys.exit(1)
 
     brief = prof.get("brief", {})
-    click.echo(f"{prof['name']}  [{prof.get('status', 'stable')}, family "
-               f"{prof.get('family', '-')}]")
+    click.echo(
+        f"{prof['name']}  [{prof.get('status', 'stable')}, family {prof.get('family', '-')}]"
+    )
     click.echo(f"  {prof.get('summary', '')}\n")
     click.echo(prof.get("description", "").strip() + "\n")
     click.echo("Needs (selection criteria):")
@@ -414,12 +436,16 @@ def _echo_resolved(descriptor: dict[str, Any], out: str | None) -> None:
             tps = section.get("est_tokens_per_s")
             extra = f", ~{tps:.0f} tok/s" if isinstance(tps, (int, float)) else ""
             chosen.append(f"{kind}={section['model']} ({ram} GB{extra})")
-    click.echo(f"{label}: backend {descriptor.get('backend')}  "
-               + ("  ".join(chosen) if chosen else "no model resolved"))
+    click.echo(
+        f"{label}: backend {descriptor.get('backend')}  "
+        + ("  ".join(chosen) if chosen else "no model resolved")
+    )
     if descriptor.get("status") == "scaffold":
         click.echo("  NOTE: scaffolded profile — resolvable now, downstream wiring pending.")
-    click.echo("  NOTE: machine-specific — the chosen model lives only in the "
-               "generated file; keep it gitignored, never commit.")
+    click.echo(
+        "  NOTE: machine-specific — the chosen model lives only in the "
+        "generated file; keep it gitignored, never commit."
+    )
     if out:
         from . import engine as _engine
 
@@ -431,15 +457,30 @@ def _echo_resolved(descriptor: dict[str, Any], out: str | None) -> None:
 
 @usages_group.command("resolve")
 @click.argument("name", required=False)
-@click.option("--family", "family_id", type=str, default=None,
-              help="Resolve a whole family (F1/F2/F3) to one model instead of a profile.")
-@click.option("--backend", type=click.Choice(["auto", "ollama", "vllm"]), default="auto",
-              show_default=True, help="Serving backend; 'auto' picks per hardware.")
+@click.option(
+    "--family",
+    "family_id",
+    type=str,
+    default=None,
+    help="Resolve a whole family (F1/F2/F3) to one model instead of a profile.",
+)
+@click.option(
+    "--backend",
+    type=click.Choice(["auto", "ollama", "vllm"]),
+    default="auto",
+    show_default=True,
+    help="Serving backend; 'auto' picks per hardware.",
+)
 @click.option("--endpoint", type=str, default=None, help="Override the server base URL.")
-@click.option("--out", type=str, default=None,
-              help="Write the generated engine file here (gitignored, machine-specific).")
-def usages_resolve(name: str | None, family_id: str | None, backend: str,
-                   endpoint: str | None, out: str | None) -> None:
+@click.option(
+    "--out",
+    type=str,
+    default=None,
+    help="Write the generated engine file here (gitignored, machine-specific).",
+)
+def usages_resolve(
+    name: str | None, family_id: str | None, backend: str, endpoint: str | None, out: str | None
+) -> None:
     """Resolve a profile (or --family) into this machine's model — best-engine decides.
 
     Reads only the usage's needs, probes the hardware, and picks the concrete
@@ -453,11 +494,9 @@ def usages_resolve(name: str | None, family_id: str | None, backend: str,
         sys.exit(1)
     try:
         if family_id:
-            descriptor = _usages.resolve_family(
-                family_id, backend=backend, endpoint=endpoint)
+            descriptor = _usages.resolve_family(family_id, backend=backend, endpoint=endpoint)
         else:
-            descriptor = _usages.resolve_usage(
-                name, backend=backend, endpoint=endpoint)  # type: ignore[arg-type]
+            descriptor = _usages.resolve_usage(name, backend=backend, endpoint=endpoint)  # type: ignore[arg-type]
     except (KeyError, ValueError) as exc:
         click.echo(f"resolve failed: {exc}", err=True)
         sys.exit(1)
@@ -467,6 +506,7 @@ def usages_resolve(name: str | None, family_id: str | None, backend: str,
 # ---------------------------------------------------------------------------
 # catalog subgroup
 # ---------------------------------------------------------------------------
+
 
 @main.group("catalog")
 def catalog_group() -> None:
@@ -480,27 +520,34 @@ def catalog_show() -> None:
     rows = []
     for e in entries:
         bench = e.get("benchmarks") or {}
-        rows.append({
-            "id": e.get("id", "-"),
-            "kind": e.get("kind", "-"),
-            "size_b": e.get("size_b", "-"),
-            "quant": e.get("quant", "-"),
-            "disk_gb": e.get("disk_gb", "-"),
-            "ram_gb": e.get("ram_gb", "-"),
-            "general": bench.get("general") or "-",
-            "vision": bench.get("vision") or "-",
-        })
+        rows.append(
+            {
+                "id": e.get("id", "-"),
+                "kind": e.get("kind", "-"),
+                "size_b": e.get("size_b", "-"),
+                "quant": e.get("quant", "-"),
+                "disk_gb": e.get("disk_gb", "-"),
+                "ram_gb": e.get("ram_gb", "-"),
+                "general": bench.get("general") or "-",
+                "vision": bench.get("vision") or "-",
+            }
+        )
     cols = ["id", "kind", "size_b", "quant", "disk_gb", "ram_gb", "general", "vision"]
     click.echo(_fmt_table(rows, cols))
 
 
 @catalog_group.command("update")
 @click.option(
-    "--limit", type=int, default=None,
+    "--limit",
+    type=int,
+    default=None,
     help="Fetch at most N models (handy for a quick refresh or a smoke test).",
 )
 @click.option(
-    "--timeout", type=float, default=30.0, show_default=True,
+    "--timeout",
+    type=float,
+    default=30.0,
+    show_default=True,
     help="Per-request network timeout, in seconds.",
 )
 def catalog_update(limit: int | None, timeout: float) -> None:
@@ -535,6 +582,7 @@ def catalog_update(limit: int | None, timeout: float) -> None:
 # hardware subgroup
 # ---------------------------------------------------------------------------
 
+
 @main.group("hardware")
 def hardware_group() -> None:
     """Manage the hardware chip table."""
@@ -546,13 +594,15 @@ def hardware_show() -> None:
     entries = _hardware.load_hardware()
     rows = []
     for e in entries:
-        rows.append({
-            "chip": e.get("chip", "-"),
-            "vendor": e.get("vendor", "-"),
-            "memory_gb": e.get("memory_gb", "-"),
-            "ollama_usable_gb": e.get("ollama_usable_gb", "-"),
-            "source": e.get("source", "-"),
-        })
+        rows.append(
+            {
+                "chip": e.get("chip", "-"),
+                "vendor": e.get("vendor", "-"),
+                "memory_gb": e.get("memory_gb", "-"),
+                "ollama_usable_gb": e.get("ollama_usable_gb", "-"),
+                "source": e.get("source", "-"),
+            }
+        )
     click.echo(_fmt_table(rows, ["chip", "vendor", "memory_gb", "ollama_usable_gb", "source"]))
 
 
@@ -583,11 +633,20 @@ def hardware_update() -> None:
 # Phase 0b — pull, validate, env (fully implemented)
 # ---------------------------------------------------------------------------
 
+
 @main.command("pull")
-@click.option("--keep-failed", is_flag=True, default=False,
-              help="Do not remove failed models after a gate failure.")
-@click.option("--vllm", is_flag=True, default=False,
-              help="Print the vLLM serve command for the HuggingFace model instead of pulling.")
+@click.option(
+    "--keep-failed",
+    is_flag=True,
+    default=False,
+    help="Do not remove failed models after a gate failure.",
+)
+@click.option(
+    "--vllm",
+    is_flag=True,
+    default=False,
+    help="Print the vLLM serve command for the HuggingFace model instead of pulling.",
+)
 @click.option(
     "--application",
     type=click.Choice(_VALID_APPLICATIONS),
@@ -605,8 +664,7 @@ def hardware_update() -> None:
         "estimated below this is tried only after comfortable ones."
     ),
 )
-def pull_cmd(keep_failed: bool, vllm: bool, application: str | None,
-             min_tps: float) -> None:
+def pull_cmd(keep_failed: bool, vllm: bool, application: str | None, min_tps: float) -> None:
     """Pull the best model and run Ralph validation gates.
 
     Detects hardware, ranks candidates, pulls the top model, runs both the
@@ -765,10 +823,15 @@ def env_cmd() -> None:
 # command group (named task profiles like text2sql) -- "usage" would be a
 # one-letter, easily-mistyped collision with a completely different concept.
 
+
 @main.command("activity")
 @click.option(
-    "--format", "fmt", type=click.Choice(["table", "json"]), default="table",
-    show_default=True, help="What to print to stdout.",
+    "--format",
+    "fmt",
+    type=click.Choice(["table", "json"]),
+    default="table",
+    show_default=True,
+    help="What to print to stdout.",
 )
 def activity_cmd(fmt: str) -> None:
     """Summarize the local activity/cost ledger (calls, cost, by user/model, errors).
@@ -790,9 +853,11 @@ def activity_cmd(fmt: str) -> None:
 
     cost = summary["total_cost_usd"]
     cost_str = f"${cost:.4f}" if cost is not None else "unknown (unpriced model in the mix)"
-    click.echo(f"Total calls: {summary['total_calls']}   "
-               f"Total cost: {cost_str}   "
-               f"Error rate: {summary['error_rate']:.1%}")
+    click.echo(
+        f"Total calls: {summary['total_calls']}   "
+        f"Total cost: {cost_str}   "
+        f"Error rate: {summary['error_rate']:.1%}"
+    )
     click.echo()
     click.echo("By user:")
     click.echo(_fmt_table(summary["by_user"], ["user", "calls", "cost_usd"]))

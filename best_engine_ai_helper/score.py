@@ -25,11 +25,11 @@ import os_helper as osh
 # Maps an application keyword to an ordered list of benchmark keys to try.
 # The first non-null value found in a catalog entry is used as the score.
 _APP_BENCH_PRIORITY: dict[str, list[str]] = {
-    "code":       ["code", "general"],
-    "math":       ["math", "general"],
-    "ocr":        ["ocr", "vision", "general"],
-    "vision":     ["vision", "general"],
-    "chat":       ["general"],
+    "code": ["code", "general"],
+    "math": ["math", "general"],
+    "ocr": ["ocr", "vision", "general"],
+    "vision": ["vision", "general"],
+    "chat": ["general"],
     "generalist": ["general"],
 }
 
@@ -219,9 +219,7 @@ def effective_budget(
     if hw.get("unified_gb"):
         pool = float(hw["unified_gb"])  # type: ignore[arg-type]
         cap = (
-            _APPLE_GPU_FRACTION_LARGE
-            if pool > _APPLE_SMALL_POOL_GB
-            else _APPLE_GPU_FRACTION_SMALL
+            _APPLE_GPU_FRACTION_LARGE if pool > _APPLE_SMALL_POOL_GB else _APPLE_GPU_FRACTION_SMALL
         )
         available = pool * cap
     elif hw.get("vram_gb"):

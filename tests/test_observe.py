@@ -18,9 +18,15 @@ from best_engine_ai_helper import llm, observe
 
 def _event(**overrides: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
-        "backend": "ollama", "model": "qwen3:8b", "kind": "llm",
-        "in_chars": 400, "images": 0, "out_chars": 400,
-        "latency_ms": 12.3, "ok": True, "error": None,
+        "backend": "ollama",
+        "model": "qwen3:8b",
+        "kind": "llm",
+        "in_chars": 400,
+        "images": 0,
+        "out_chars": 400,
+        "latency_ms": 12.3,
+        "ok": True,
+        "error": None,
     }
     base.update(overrides)
     return base
@@ -52,7 +58,8 @@ def test_estimate_cost_usd_free_local_unpriced_cloud_and_priced_cloud(
 
     # A priced model computes from the chars-per-token heuristic.
     monkeypatch.setattr(
-        observe, "_load_pricing",
+        observe,
+        "_load_pricing",
         lambda: {"gpt-4o": {"input_per_1m": 2.5, "output_per_1m": 10.0}},
     )
     cost = observe.estimate_cost_usd(
@@ -90,8 +97,12 @@ def test_summary_on_empty_ledger_is_zero_not_none() -> None:
     ledger = observe.Ledger(":memory:")
     summary = ledger.summary()
     assert summary == {
-        "total_calls": 0, "total_cost_usd": 0.0, "error_rate": 0.0,
-        "by_user": [], "by_model": [], "recent_errors": [],
+        "total_calls": 0,
+        "total_cost_usd": 0.0,
+        "error_rate": 0.0,
+        "by_user": [],
+        "by_model": [],
+        "recent_errors": [],
     }
     ledger.close()
 
@@ -104,10 +115,14 @@ def test_enable_registers_an_llm_observer_and_is_idempotent(tmp_path: Any) -> No
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(
             "requests.post",
-            lambda *a, **k: type("R", (), {
-                "json": lambda self: {"response": "hi"},
-                "raise_for_status": lambda self: None,
-            })(),
+            lambda *a, **k: type(
+                "R",
+                (),
+                {
+                    "json": lambda self: {"response": "hi"},
+                    "raise_for_status": lambda self: None,
+                },
+            )(),
         )
         mp.setenv("SPREZZATURE_LLM_BACKEND", "ollama")
         llm.chat("hello", model="qwen3:8b")

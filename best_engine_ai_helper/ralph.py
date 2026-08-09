@@ -37,6 +37,7 @@ from . import i18n
 # Generic driver
 # ---------------------------------------------------------------------------
 
+
 def ralph_loop(
     source: Any,
     *,
@@ -140,6 +141,7 @@ def ralph_loop(
 # Eyeball loop (visual quality)
 # ---------------------------------------------------------------------------
 
+
 def eyeball_loop(
     source: str,
     *,
@@ -205,11 +207,13 @@ def eyeball_loop(
     def inspect(png: bytes) -> str:
         """Critique the rendered PNG using the configured VLM."""
         # The critique prompt embeds the PNG and asks for structured feedback
-        return str(llm_chat(
-            i18n.prompt("eyeball_critique", "user"),
-            system=i18n.prompt("eyeball_critique", "system"),
-            images=[png],
-        ))
+        return str(
+            llm_chat(
+                i18n.prompt("eyeball_critique", "user"),
+                system=i18n.prompt("eyeball_critique", "system"),
+                images=[png],
+            )
+        )
 
     def apply_fix(src: str, critique: str) -> str:
         """Generate an edited source that addresses the critique."""
@@ -246,6 +250,7 @@ def eyeball_loop(
 # Prose loop (writing charter)
 # ---------------------------------------------------------------------------
 
+
 def _split_paragraphs(text: str) -> list[str]:
     """
     Split text into paragraphs on blank lines, stripping leading/trailing space.
@@ -262,6 +267,7 @@ def _split_paragraphs(text: str) -> list[str]:
     """
     # Two or more newlines delimit paragraph boundaries
     import re
+
     parts = re.split(r"\n{2,}", text.strip())
     return [p.strip() for p in parts if p.strip()]
 
@@ -340,7 +346,9 @@ def prose_loop(
 
             # Fix: ask the model to revise only the seam sentences
             fix_prompt = i18n.prompt("prose_fix", "user").format(
-                charter=charter, a=a, b=b,
+                charter=charter,
+                a=a,
+                b=b,
                 critique=json.dumps(seam_verdict.get("reasons", [])),
             )
             fix_raw = llm_chat(

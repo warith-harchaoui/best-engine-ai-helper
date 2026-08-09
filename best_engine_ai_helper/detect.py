@@ -94,10 +94,21 @@ def chip_name() -> str | None:
 # are the per-chip figures Apple lists; higher-binned variants of the same
 # name share the ceiling closely enough for planning. Source: apple-specs.
 _APPLE_BANDWIDTH_GBS: dict[str, float] = {
-    "M1 Ultra": 800.0, "M1 Max": 400.0, "M1 Pro": 200.0, "M1": 68.0,
-    "M2 Ultra": 800.0, "M2 Max": 400.0, "M2 Pro": 200.0, "M2": 100.0,
-    "M3 Ultra": 800.0, "M3 Max": 300.0, "M3 Pro": 150.0, "M3": 100.0,
-    "M4 Max": 546.0, "M4 Pro": 273.0, "M4": 120.0,
+    "M1 Ultra": 800.0,
+    "M1 Max": 400.0,
+    "M1 Pro": 200.0,
+    "M1": 68.0,
+    "M2 Ultra": 800.0,
+    "M2 Max": 400.0,
+    "M2 Pro": 200.0,
+    "M2": 100.0,
+    "M3 Ultra": 800.0,
+    "M3 Max": 300.0,
+    "M3 Pro": 150.0,
+    "M3": 100.0,
+    "M4 Max": 546.0,
+    "M4 Pro": 273.0,
+    "M4": 120.0,
 }
 
 # NVIDIA discrete-GPU memory bandwidth in GB/s, by board name, from NVIDIA's
@@ -109,21 +120,41 @@ _APPLE_BANDWIDTH_GBS: dict[str, float] = {
 # server. Source: NVIDIA spec sheets / TechPowerUp GPU database.
 _NVIDIA_BANDWIDTH_GBS: dict[str, float] = {
     # Datacenter / workstation.
-    "H100 SXM": 3350.0, "H100 NVL": 3938.0, "H100 PCIe": 2000.0,
+    "H100 SXM": 3350.0,
+    "H100 NVL": 3938.0,
+    "H100 PCIe": 2000.0,
     "H200": 4800.0,
-    "A100 80GB": 2039.0, "A100 40GB": 1555.0,
-    "L40S": 864.0, "L40": 864.0, "L4": 300.0,
-    "A40": 696.0, "A30": 933.0, "A10": 600.0,
+    "A100 80GB": 2039.0,
+    "A100 40GB": 1555.0,
+    "L40S": 864.0,
+    "L40": 864.0,
+    "L4": 300.0,
+    "A40": 696.0,
+    "A30": 933.0,
+    "A10": 600.0,
     "T4": 320.0,
-    "RTX 6000 Ada": 960.0, "RTX 5000 Ada": 576.0, "RTX 4000 Ada": 360.0,
+    "RTX 6000 Ada": 960.0,
+    "RTX 5000 Ada": 576.0,
+    "RTX 4000 Ada": 360.0,
     # Consumer RTX 40 series.
-    "RTX 4090": 1008.0, "RTX 4080 SUPER": 736.0, "RTX 4080": 716.8,
-    "RTX 4070 Ti SUPER": 672.0, "RTX 4070 Ti": 504.2, "RTX 4070 SUPER": 504.2,
-    "RTX 4070": 504.2, "RTX 4060 Ti": 288.0, "RTX 4060": 272.0,
+    "RTX 4090": 1008.0,
+    "RTX 4080 SUPER": 736.0,
+    "RTX 4080": 716.8,
+    "RTX 4070 Ti SUPER": 672.0,
+    "RTX 4070 Ti": 504.2,
+    "RTX 4070 SUPER": 504.2,
+    "RTX 4070": 504.2,
+    "RTX 4060 Ti": 288.0,
+    "RTX 4060": 272.0,
     # Consumer RTX 30 series.
-    "RTX 3090 Ti": 1008.0, "RTX 3090": 936.2, "RTX 3080 Ti": 912.4,
-    "RTX 3080": 760.3, "RTX 3070 Ti": 608.3, "RTX 3070": 448.0,
-    "RTX 3060 Ti": 448.0, "RTX 3060": 360.0,
+    "RTX 3090 Ti": 1008.0,
+    "RTX 3090": 936.2,
+    "RTX 3080 Ti": 912.4,
+    "RTX 3080": 760.3,
+    "RTX 3070 Ti": 608.3,
+    "RTX 3070": 448.0,
+    "RTX 3060 Ti": 448.0,
+    "RTX 3060": 360.0,
 }
 
 # AMD discrete-GPU memory bandwidth in GB/s, by board name, from AMD's
@@ -131,12 +162,22 @@ _NVIDIA_BANDWIDTH_GBS: dict[str, float] = {
 # `os_helper.amd_gpus()` reads from `rocm-smi`. Source: AMD spec sheets /
 # TechPowerUp GPU database.
 _AMD_BANDWIDTH_GBS: dict[str, float] = {
-    "MI300X": 5300.0, "MI300A": 5300.0, "MI250X": 3277.0, "MI250": 3277.0,
-    "MI210": 1638.0, "MI100": 1229.0,
-    "RX 7900 XTX": 960.0, "RX 7900 XT": 800.0, "RX 7900 GRE": 576.0,
-    "RX 7800 XT": 624.1, "RX 7700 XT": 432.0,
-    "RX 6950 XT": 576.0, "RX 6900 XT": 512.0, "RX 6800 XT": 512.0,
-    "RX 6800": 512.0, "RX 6700 XT": 384.0,
+    "MI300X": 5300.0,
+    "MI300A": 5300.0,
+    "MI250X": 3277.0,
+    "MI250": 3277.0,
+    "MI210": 1638.0,
+    "MI100": 1229.0,
+    "RX 7900 XTX": 960.0,
+    "RX 7900 XT": 800.0,
+    "RX 7900 GRE": 576.0,
+    "RX 7800 XT": 624.1,
+    "RX 7700 XT": 432.0,
+    "RX 6950 XT": 576.0,
+    "RX 6900 XT": 512.0,
+    "RX 6800 XT": 512.0,
+    "RX 6800": 512.0,
+    "RX 6700 XT": 384.0,
 }
 
 
@@ -287,8 +328,7 @@ def available_memory() -> dict[str, float | None]:
         vram_gb = round(total, 1) if total > 0 else None
 
     osh.info(
-        f"Memory detected — unified: {unified_gb} GB, "
-        f"vram: {vram_gb} GB, ram: {ram_gb:.1f} GB"
+        f"Memory detected — unified: {unified_gb} GB, vram: {vram_gb} GB, ram: {ram_gb:.1f} GB"
     )
     return {
         "unified_gb": unified_gb,

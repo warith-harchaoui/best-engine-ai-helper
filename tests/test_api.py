@@ -29,7 +29,12 @@ def test_system_endpoint_shape(client: TestClient) -> None:
     assert res.status_code == 200
     data = res.json()
     assert set(data) == {
-        "platform", "chip_vendor", "memory", "compute", "memory_budget_gb", "hardware",
+        "platform",
+        "chip_vendor",
+        "memory",
+        "compute",
+        "memory_budget_gb",
+        "hardware",
     }
     assert set(data["memory"]) == {"unified_gb", "vram_gb", "ram_gb"}
     assert set(data["compute"]) == {"accelerator", "chip", "bandwidth_gbs"}
@@ -38,8 +43,16 @@ def test_system_endpoint_shape(client: TestClient) -> None:
     # live load: cpu.percent, available_ram_gb, disk, gpu_utilization_percent),
     # distinct from the AI-throughput-derived "compute" above.
     assert set(data["hardware"]) == {
-        "platform", "cpu", "ram_gb", "available_ram_gb", "disk", "gpu_vendor", "gpus",
-        "gpu_utilization_percent", "apple_chip", "apple_unified_gb",
+        "platform",
+        "cpu",
+        "ram_gb",
+        "available_ram_gb",
+        "disk",
+        "gpu_vendor",
+        "gpus",
+        "gpu_utilization_percent",
+        "apple_chip",
+        "apple_unified_gb",
     }
 
 
@@ -49,8 +62,15 @@ def test_recommend_endpoint(client: TestClient) -> None:
     llm_only = client.post("/api/recommend", json={}).json()
     assert llm_only["task"]["kinds"] == ["llm"] and "vlm" not in llm_only["recommendations"]
     chosen = llm_only["recommendations"]["llm"]["chosen"]
-    assert {"id", "kind", "ram_gb", "score", "fits", "structured_output",
-            "est_tokens_per_s"} <= chosen.keys()
+    assert {
+        "id",
+        "kind",
+        "ram_gb",
+        "score",
+        "fits",
+        "structured_output",
+        "est_tokens_per_s",
+    } <= chosen.keys()
 
     # A vision task adds a VLM and echoes the headroom.
     vision = client.post(
@@ -67,13 +87,16 @@ def test_recommend_endpoint(client: TestClient) -> None:
     # default (the base `{}` request above has no "server_load" key at all).
     assert "server_load" not in llm_only
     live = client.post("/api/recommend", json={"live": True}).json()
-    assert {"available_ram_gb", "cpu_percent", "disk_free_gb", "disk_percent_used",
-            "running_engines"} <= live["server_load"].keys()
+    assert {
+        "available_ram_gb",
+        "cpu_percent",
+        "disk_free_gb",
+        "disk_percent_used",
+        "running_engines",
+    } <= live["server_load"].keys()
 
 
-def test_activity_endpoint_empty_and_populated(
-    client: TestClient, tmp_path: Path
-) -> None:
+def test_activity_endpoint_empty_and_populated(client: TestClient, tmp_path: Path) -> None:
     from unittest.mock import patch
 
     from best_engine_ai_helper import llm, observe
@@ -87,8 +110,12 @@ def test_activity_endpoint_empty_and_populated(
 
     empty = client.get("/api/activity").json()
     assert empty == {
-        "total_calls": 0, "total_cost_usd": 0.0, "error_rate": 0.0,
-        "by_user": [], "by_model": [], "recent_errors": [],
+        "total_calls": 0,
+        "total_cost_usd": 0.0,
+        "error_rate": 0.0,
+        "by_user": [],
+        "by_model": [],
+        "recent_errors": [],
     }
 
     with patch("requests.post") as p:

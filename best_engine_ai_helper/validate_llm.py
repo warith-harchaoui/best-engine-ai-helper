@@ -60,6 +60,7 @@ _WRITING_CHARTER_EXCERPT = i18n.prompt("writing_charter_excerpt", "text")
 # Validation entry point
 # ---------------------------------------------------------------------------
 
+
 def validate(llm_chat: Callable[..., Any]) -> bool:
     """
     Run the prose-loop gate on both text fixtures.
