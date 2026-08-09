@@ -105,9 +105,15 @@ All notable changes to best-engine-ai-helper are documented here.
   flags either line either way, which is how this passed CI unnoticed; an
   older local mypy (1.20) still catches it. Moved the ignore to the line it
   actually covers, with a comment explaining why it's needed.
-- 32 files were reformatted (`ruff format .`) and CI now runs
-  `ruff format --check .` alongside `ruff check .`, so formatting drift
-  is caught going forward instead of silently accumulating.
+- **`ruff`/`mypy` were unpinned (`ruff>=0.5`, `mypy>=1.10`) in
+  `requirements-dev.txt`, so CI silently drifted to newer versions than the
+  local dev environment.** Two concrete bites: mypy 2.3 (CI) missed the
+  misattributed `type: ignore` above that mypy 1.20 (local) caught, and
+  ruff 0.16 promoted Markdown formatting from preview-only to stable, so
+  adding `ruff format --check .` to CI below failed on `README.md`/
+  `LISEZMOI.md`/`EXAMPLES.md`'s embedded Python code fences even though
+  they were never touched locally. Pinned both (`ruff==0.15.21`,
+  `mypy==1.20.2`) to keep CI and local checks looking at the same rules.
 
 ## [1.1.0] - 2026-08-06
 
