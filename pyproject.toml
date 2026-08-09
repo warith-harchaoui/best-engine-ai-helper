@@ -15,9 +15,13 @@ dependencies = [
     # Best-effort language ID for recommend.parse_task's task-description
     # quality check: offline, deterministic, no model call.
     "langdetect>=1.0.9",
-    # >=2.1.0 for os_helper.hardware_utils (cpu/ram/gpu facts): detect.py
-    # delegates ALL raw hardware probing there instead of doing it directly.
-    "os-helper>=2.1.0,<3",
+    # >=2.3.0 for os_helper.hardware_utils's live-load fields (hardware_info()'s
+    # cpu.percent / available_ram_gb / disk / gpu_utilization_percent, plus the
+    # standalone cpu_percent()/available_ram_gb()/disk_usage_gb()/
+    # gpu_utilization_percent() functions) that detect.server_load() reads —
+    # the `--live` CLI/API flag. detect.py delegates ALL raw hardware probing
+    # to os_helper instead of doing it directly.
+    "os-helper>=2.3.0,<3",
     "pyyaml>=6.0",
     "requests>=2.31",
 ]
