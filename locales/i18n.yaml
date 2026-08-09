@@ -1,12 +1,14 @@
-# Human-language source of truth for best-engine-ai-helper's GUI.
-# Code refers to the keys under `gui:`; this file owns the wording.
-# See references/CODING.md section 21.3.
+# Human-language source of truth for best-engine-ai-helper.
+# `gui:` -> GUI strings (fr/en). `prompts:` -> model-facing prompts
+# (English only; see meta.model_prompt_locale and CODING.md section 21.3.3).
+# Code refers to these keys; this file owns the wording.
 
 meta:
   default_locale: fr
   supported_locales:
   - fr
   - en
+  model_prompt_locale: en
 gui:
   meta_description:
     fr: Caractéristiques matérielles de cette machine et meilleur moteur local (LLM / VLM) pour une tâche
@@ -181,3 +183,162 @@ gui:
   unit_tps:
     fr: tok/s
     en: tok/s
+prompts:
+  eyeball_critique:
+    system: 'You are a strict visual-quality reviewer. Examine the image and write a
+
+      structured critique under these exact headings:
+
+
+      Layout, Contrast, Hierarchy, Spacing, Accessibility, Colors, Text readability,
+
+      Overall verdict.
+
+
+      For each heading, give one or two sentences. Be specific: name the element,
+
+      its position, and the concrete problem. If a heading has no issues, write
+
+      "No issues." Do not add headings beyond the list above.'
+    user: Critique this image. Use only the headings listed in the system prompt.
+  eyeball_verdict:
+    user: 'Given this critique, decide whether the artifact is ready to ship.
+
+
+      Respond ONLY with a JSON object following this schema exactly:
+
+
+      {{"ship": <true|false>, "blocking": [<list of short blocking issues>], "score": <0.0-1.0>}}
+
+
+      "ship" is true only when there are no blocking issues and the score exceeds 0.7.
+
+      "blocking" lists the one-line labels of unresolved problems; empty list if none.
+
+      "score" is your overall quality estimate from 0 (broken) to 1 (perfect).
+
+
+      Critique:
+
+      {critique}
+
+      '
+  eyeball_fix:
+    system: 'You are a code editor. You receive a visual artifact source and a critique.
+
+      Edit the source to address every blocking complaint in the critique.
+
+      Change nothing the critique did not raise.
+
+      Return ONLY the full revised source. No explanation, no markdown fences.'
+    user: 'CURRENT SOURCE:
+
+      {source}
+
+
+      REVIEWER CRITIQUE:
+
+      {critique}
+
+      '
+  prose_seam:
+    system: "You are a writing-quality reviewer enforcing a strict prose charter.\nExamine the junction\
+      \ between paragraph A and paragraph B.\nReturn ONLY a JSON object with this schema:\n\n{{\"needs_fix\"\
+      : <true|false>,\n  \"reasons\": [<list of short reason labels>]}}\n\nPossible reasons: \"echoed-words\"\
+      , \"bolted-on-transition\", \"logic-gap\",\n\"A-does-not-call-for-B\", \"charter-violation\".\n\
+      Set needs_fix to true only when at least one reason applies."
+    user: 'CHARTER EXCERPT:
+
+      {charter}
+
+
+      PARAGRAPH A:
+
+      {a}
+
+
+      PARAGRAPH B:
+
+      {b}
+
+      '
+  prose_fix:
+    system: 'You are a prose editor. Revise the junction between paragraph A and paragraph B
+
+      to fix the reasons listed in the critique. Touch only the last sentence of A
+
+      and the first sentence of B unless the problem is deeper.
+
+      Return ONLY a JSON object: {{"a": "<revised paragraph A>", "b": "<revised paragraph B>"}}
+
+      No explanation, no markdown.'
+    user: 'CHARTER EXCERPT:
+
+      {charter}
+
+
+      PARAGRAPH A:
+
+      {a}
+
+
+      PARAGRAPH B:
+
+      {b}
+
+
+      CRITIQUE:
+
+      {critique}
+
+      '
+  vlm_gate_critique:
+    system: 'You are a visual-quality reviewer for data visualizations. Examine the chart
+
+      image carefully. Identify any of these concrete defects:
+
+      1. Low contrast between a bar and its background (accessibility fail).
+
+      2. Truncated or clipped axis labels that are cut off at the canvas edge.
+
+      3. Missing or illegible text.
+
+      4. Overlapping elements.
+
+
+      List the defects you find. Be specific: name the element and the problem.
+
+      If you find no defects, say so explicitly.'
+    user: Describe any visual defects in this chart. Focus on contrast, clipping, and legibility.
+  vlm_gate_verdict:
+    system: 'You are a pass/fail gate for a chart quality test. The chart has two known
+
+      seeded defects. Your task is to decide whether the reviewer''s critique
+
+      identifies at least one defect.
+
+
+      Respond ONLY with a JSON object: {"pass": <true|false>, "reason": "<one sentence>"}
+
+
+      "pass" is true if the critique mentions contrast, clipping, labels, or any
+
+      accessibility problem. "pass" is false if the critique says the chart is fine.'
+    user: 'REVIEWER CRITIQUE:
+
+      {critique}
+
+      '
+  writing_charter_excerpt:
+    text: 'Rule 5 (English): No punctuation dashes. No em dash and no en dash used as an
+
+      aside; rewrite with commas, colons, semicolons, parentheses, or short sentences.
+
+      Hyphens in compound words stay.
+
+
+      Rule (French): Banned transitions: "Par ailleurs", "De plus", "Autrement dit",
+
+      "En outre". Rewrite with a sentence that shows the logical connection explicitly.
+
+      No em dash or en dash as a punctuation aside.'

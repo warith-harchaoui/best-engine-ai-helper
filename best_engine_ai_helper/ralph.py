@@ -26,107 +26,12 @@ from typing import Any
 
 import os_helper as osh
 
-# ---------------------------------------------------------------------------
-# Prompts used by the eyeball and prose variants
-# ---------------------------------------------------------------------------
+from . import i18n
 
-# System prompt for the visual critique step: asks the VLM to evaluate the
-# rendered artifact under fixed bold headings so the verdict step can parse
-# structured output from the free-form critique.
-_EYEBALL_CRITIQUE_SYSTEM = """\
-You are a strict visual-quality reviewer. Examine the image and write a
-structured critique under these exact headings:
-
-Layout, Contrast, Hierarchy, Spacing, Accessibility, Colors, Text readability,
-Overall verdict.
-
-For each heading, give one or two sentences. Be specific: name the element,
-its position, and the concrete problem. If a heading has no issues, write
-"No issues." Do not add headings beyond the list above.\
-"""
-
-_EYEBALL_CRITIQUE_PROMPT = "Critique this image. Use only the headings listed in the system prompt."
-
-# Verdict prompt: asks the VLM to return a machine-readable pass/fail object
-# so the generic driver can decide whether to continue iterating.
-_EYEBALL_VERDICT_PROMPT = """\
-Given this critique, decide whether the artifact is ready to ship.
-
-Respond ONLY with a JSON object following this schema exactly:
-
-{{"ship": <true|false>, "blocking": [<list of short blocking issues>], "score": <0.0-1.0>}}
-
-"ship" is true only when there are no blocking issues and the score exceeds 0.7.
-"blocking" lists the one-line labels of unresolved problems; empty list if none.
-"score" is your overall quality estimate from 0 (broken) to 1 (perfect).
-
-Critique:
-{critique}
-"""
-
-# Prompt used by apply_fix in the eyeball loop: feeds the critique back to a
-# text model to produce an edited source.
-_EYEBALL_FIX_SYSTEM = """\
-You are a code editor. You receive a visual artifact source and a critique.
-Edit the source to address every blocking complaint in the critique.
-Change nothing the critique did not raise.
-Return ONLY the full revised source. No explanation, no markdown fences.\
-"""
-_EYEBALL_FIX_PROMPT = """\
-CURRENT SOURCE:
-{source}
-
-REVIEWER CRITIQUE:
-{critique}
-"""
-
-# Prose loop: seam inspection prompt.
-_PROSE_SEAM_SYSTEM = """\
-You are a writing-quality reviewer enforcing a strict prose charter.
-Examine the junction between paragraph A and paragraph B.
-Return ONLY a JSON object with this schema:
-
-{{"needs_fix": <true|false>,
-  "reasons": [<list of short reason labels>]}}
-
-Possible reasons: "echoed-words", "bolted-on-transition", "logic-gap",
-"A-does-not-call-for-B", "charter-violation".
-Set needs_fix to true only when at least one reason applies.\
-"""
-
-_PROSE_SEAM_PROMPT = """\
-CHARTER EXCERPT:
-{charter}
-
-PARAGRAPH A:
-{a}
-
-PARAGRAPH B:
-{b}
-"""
-
-# Prose fix prompt: asks the text model to return two revised paragraphs as JSON.
-_PROSE_FIX_SYSTEM = """\
-You are a prose editor. Revise the junction between paragraph A and paragraph B
-to fix the reasons listed in the critique. Touch only the last sentence of A
-and the first sentence of B unless the problem is deeper.
-Return ONLY a JSON object: {{"a": "<revised paragraph A>", "b": "<revised paragraph B>"}}
-No explanation, no markdown.\
-"""
-_PROSE_FIX_PROMPT = """\
-CHARTER EXCERPT:
-{charter}
-
-PARAGRAPH A:
-{a}
-
-PARAGRAPH B:
-{b}
-
-CRITIQUE:
-{critique}
-"""
-
+# All prompt text (system + user templates for the eyeball and prose variants)
+# lives in locales/i18n.yaml's `prompts:` namespace, authored in English
+# (meta.model_prompt_locale) — see i18n.py and CODING.md section 21.3. This
+# module only fills in the `{placeholder}` fields via str.format at call time.
 
 # ---------------------------------------------------------------------------
 # Generic driver
@@ -301,19 +206,19 @@ def eyeball_loop(
         """Critique the rendered PNG using the configured VLM."""
         # The critique prompt embeds the PNG and asks for structured feedback
         return str(llm_chat(
-            _EYEBALL_CRITIQUE_PROMPT,
-            system=_EYEBALL_CRITIQUE_SYSTEM,
+            i18n.prompt("eyeball_critique", "user"),
+            system=i18n.prompt("eyeball_critique", "system"),
             images=[png],
         ))
 
     def apply_fix(src: str, critique: str) -> str:
         """Generate an edited source that addresses the critique."""
-        prompt = _EYEBALL_FIX_PROMPT.format(source=src, critique=critique)
-        return str(llm_chat(prompt, system=_EYEBALL_FIX_SYSTEM))
+        prompt = i18n.prompt("eyeball_fix", "user").format(source=src, critique=critique)
+        return str(llm_chat(prompt, system=i18n.prompt("eyeball_fix", "system")))
 
     def verdict(critique: str) -> dict[str, Any]:
         """Ask the VLM for a structured ship/no-ship decision."""
-        prompt = _EYEBALL_VERDICT_PROMPT.format(critique=critique)
+        prompt = i18n.prompt("eyeball_verdict", "user").format(critique=critique)
         raw = llm_chat(prompt, json_schema={"type": "object"})
         # llm.chat parses JSON when json_schema is provided; fall back gracefully
         if isinstance(raw, dict):
@@ -415,10 +320,10 @@ def prose_loop(
         # Slide an overlapping window over every adjacent pair
         for n in range(len(paras) - 1):
             a, b = paras[n], paras[n + 1]
-            seam_prompt = _PROSE_SEAM_PROMPT.format(charter=charter, a=a, b=b)
+            seam_prompt = i18n.prompt("prose_seam", "user").format(charter=charter, a=a, b=b)
             raw = llm_chat(
                 seam_prompt,
-                system=_PROSE_SEAM_SYSTEM,
+                system=i18n.prompt("prose_seam", "system"),
                 json_schema={"type": "object"},
             )
             # Parse the seam verdict; treat malformed responses as "no fix needed"
@@ -434,13 +339,13 @@ def prose_loop(
                 continue
 
             # Fix: ask the model to revise only the seam sentences
-            fix_prompt = _PROSE_FIX_PROMPT.format(
+            fix_prompt = i18n.prompt("prose_fix", "user").format(
                 charter=charter, a=a, b=b,
                 critique=json.dumps(seam_verdict.get("reasons", [])),
             )
             fix_raw = llm_chat(
                 fix_prompt,
-                system=_PROSE_FIX_SYSTEM,
+                system=i18n.prompt("prose_fix", "system"),
                 json_schema={"type": "object"},
             )
             if isinstance(fix_raw, dict):

@@ -14,11 +14,11 @@ differ. ``GUI_HTML`` is the French render, kept as a module constant for
 callers and tests that want the default page directly.
 
 Every user-facing string is authored once, in ``locales/i18n.yaml`` (package
-root's ``gui:`` namespace) — this module never hardcodes wording. It loads
-that file, maps its stable semantic keys onto the template's ``{{TOKEN}}``
-placeholders and the JavaScript ``T`` object, and falls back to the
-``meta.default_locale`` declared in the YAML (French) for any language the
-file does not cover.
+root's ``gui:`` namespace, loaded through :mod:`best_engine_ai_helper.i18n`)
+— this module never hardcodes wording. It maps that file's stable semantic
+keys onto the template's ``{{TOKEN}}`` placeholders and the JavaScript ``T``
+object, and falls back to the ``meta.default_locale`` declared in the YAML
+(French) for any language the file does not cover.
 
 Visual language matches the sprezzature-figures gallery
 (https://harchaoui.org/warith/sprezzature/figures.html): Roboto / Roboto
@@ -34,18 +34,10 @@ Warith Harchaoui <warith.harchaoui@deraison.ai>
 
 from __future__ import annotations
 
-import functools
 import html
 import json
-from pathlib import Path
-from typing import Any
 
-import yaml
-
-# Root of the installed package; locales/i18n.yaml sits next to pyproject.toml,
-# same convention as models.yaml / hardware.yaml / usages.yaml (see catalog.py).
-_PACKAGE_ROOT = Path(__file__).resolve().parent.parent
-_LOCALES_PATH = _PACKAGE_ROOT / "locales" / "i18n.yaml"
+from . import i18n
 
 # ---------------------------------------------------------------------------
 # Template-token <-> locale-key maps
@@ -120,42 +112,11 @@ _JS_NAME_TO_KEY: dict[str, str] = {
 }
 
 
-@functools.lru_cache(maxsize=1)
-def _locale_meta() -> dict[str, Any]:
-    """Parse and cache ``locales/i18n.yaml``'s ``meta`` block."""
-    return _locale_document_raw()["meta"]  # type: ignore[no-any-return]
-
-
-@functools.lru_cache(maxsize=1)
-def _locale_gui_strings() -> dict[str, dict[str, str]]:
-    """Parse and cache ``locales/i18n.yaml``'s ``gui`` block."""
-    return _locale_document_raw()["gui"]  # type: ignore[no-any-return]
-
-
-def _locale_document_raw() -> dict[str, Any]:
-    """Load ``locales/i18n.yaml`` from disk (uncached; called once per cached accessor).
-
-    Returns
-    -------
-    dict
-        The full parsed document (``meta`` + ``gui`` top-level keys).
-
-    Raises
-    ------
-    RuntimeError
-        If the file is missing its required ``gui`` section.
-    """
-    raw: dict[str, Any] = yaml.safe_load(_LOCALES_PATH.read_text(encoding="utf-8")) or {}
-    if "gui" not in raw:
-        raise RuntimeError(f"{_LOCALES_PATH} is missing the required 'gui' section")
-    return raw
-
-
 # Default language when the query string names none or an unknown one — read
 # from the YAML's own declared default so the file stays the single source of
 # truth for locale metadata (see references/CODING.md section 21.3.4).
-_DEFAULT_LANG: str = str(_locale_meta()["default_locale"])
-_SUPPORTED_LANGS: set[str] = set(_locale_meta()["supported_locales"])
+_DEFAULT_LANG: str = str(i18n.meta()["default_locale"])
+_SUPPORTED_LANGS: set[str] = set(i18n.meta()["supported_locales"])
 
 
 def _strings_for(lang: str) -> dict[str, dict[str, str]]:
@@ -174,7 +135,7 @@ def _strings_for(lang: str) -> dict[str, dict[str, str]]:
         to ``_DEFAULT_LANG``'s value, then to the bare key itself — the file
         should never omit an entry, but a page must never 500 over copy.
     """
-    gui = _locale_gui_strings()
+    gui = i18n.gui_strings()
 
     def pick(key: str) -> str:
         entry = gui.get(key, {})

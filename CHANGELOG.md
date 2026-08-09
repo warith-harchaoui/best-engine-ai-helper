@@ -13,10 +13,16 @@ All notable changes to best-engine-ai-helper are documented here.
   (`cli.py` + `cli_argparse.py`), FastAPI GUI/HTTP API (`api.py`), and MCP
   server (`mcp.py`) — no skill surface.
 - **`locales/i18n.yaml` is now the single source of truth for every
-  GUI-visible string.** `gui.py` no longer hardcodes its French/English label
-  tables; it loads them from the new `locales/i18n.yaml` (`gui:` namespace,
-  57 semantic keys, `meta.default_locale` / `meta.supported_locales` drive
-  fallback). Wording is unchanged; only where it lives changed.
+  GUI-visible string AND every model-facing prompt template.** New shared
+  loader `i18n.py` (`meta()` / `gui_strings()` / `prompt(key, field)`).
+  `gui.py` no longer hardcodes its French/English label tables (`gui:`
+  namespace, 57 semantic keys, `meta.default_locale` / `meta.supported_locales`
+  drive fallback). `ralph.py` (eyeball + prose Ralph loops), `validate_vlm.py`,
+  and `validate_llm.py` no longer hardcode their system/user prompt strings
+  either — they live under `prompts:`, authored in English
+  (`meta.model_prompt_locale`) since these are model instructions, not GUI
+  copy that needs translating (see CODING.md section 21.3.3). Wording is
+  unchanged in every case; only where it lives changed.
 - **`references/CODING.md` refreshed from its canonical gist**, with one
   deliberate, documented deviation: the gist's "Agent Skills" section (and
   every skill-specific delivery-surface reference) is dropped, since this
