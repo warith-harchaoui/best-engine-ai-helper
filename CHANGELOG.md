@@ -2,7 +2,7 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
-## [Unreleased]
+## [1.2.0] - 2026-08-09
 
 ### Added
 
@@ -98,6 +98,16 @@ All notable changes to best-engine-ai-helper are documented here.
   `dict[str, object]`).
 - Two undocumented FastAPI route handlers (`api.py`'s `root()` and `gui()`)
   now carry a one-line docstring.
+- **A misattributed `# type: ignore[arg-type]` in `cli.py`/`cli_argparse.py`**
+  sat on the `headroom=` line instead of `kind=k` (the actual mismatch: `k`
+  is `str`, `rank()` expects `Literal["llm", "vlm"]`, narrowed only by the
+  CLI's own `choices=`/`typer.Option`, not by mypy). A newer mypy no longer
+  flags either line either way, which is how this passed CI unnoticed; an
+  older local mypy (1.20) still catches it. Moved the ignore to the line it
+  actually covers, with a comment explaining why it's needed.
+- 32 files were reformatted (`ruff format .`) and CI now runs
+  `ruff format --check .` alongside `ruff check .`, so formatting drift
+  is caught going forward instead of silently accumulating.
 
 ## [1.1.0] - 2026-08-06
 

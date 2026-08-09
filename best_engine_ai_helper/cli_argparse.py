@@ -146,8 +146,11 @@ def _handle_recommend(ns: argparse.Namespace) -> int:
         ranked = _score.rank(
             hw,
             entries,
-            kind=k,
-            headroom=ns.headroom,  # type: ignore[arg-type]
+            # `k` is `str` at the type level; argparse's `choices=`, not
+            # mypy, enforces it is actually "llm" or "vlm", so `rank`'s
+            # Literal["llm", "vlm"] can't narrow it statically.
+            kind=k,  # type: ignore[arg-type]
+            headroom=ns.headroom,
             application=ns.application,
             load=load,
         )
