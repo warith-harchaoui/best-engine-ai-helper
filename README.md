@@ -14,7 +14,7 @@ A minimal browser GUI (`best-engine-ai-helper gui`) covers the read-only half of
 
 - Python 3.10 or later
 - [Ollama](https://ollama.com) (needed for `pull`, `validate`, `env`; not for `detect`, `recommend`, or `report`)
-- os-helper (hardware detection), PyYAML, click, requests (installed automatically)
+- os-helper (hardware detection), PyYAML, click, requests, langdetect (installed automatically)
 - Optional: `fastapi` + `uvicorn` for the browser GUI (`pip install 'best-engine-ai-helper[api]'`)
 
 ## Install
@@ -128,10 +128,13 @@ best-engine-ai-helper hardware show
 
 # Launch the browser GUI (requires the [api] extra)
 best-engine-ai-helper gui
+
+# Who's calling what, and at what cost (local SQLite ledger)
+best-engine-ai-helper activity
 ```
 
-The same `/api/system` and `/api/recommend` endpoints are also reachable as
-MCP tools for any MCP-aware agent host:
+The same `/api/system`, `/api/recommend`, and `/api/activity` endpoints are
+also reachable as MCP tools for any MCP-aware agent host:
 
 ```sh
 pip install "best-engine-ai-helper[mcp]"
@@ -152,6 +155,28 @@ recommendation as `report`, with no terminal needed. The page is bilingual
 
 See [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) for the full write-up, the JSON API it's built on, and
 how the favicon / touch-icon set is generated from `assets/logo.png`.
+
+## Activity ledger
+
+Every `llm.chat()` call — from this tool's own `pull`/`validate` gates, or from
+any downstream project that imports `best_engine_ai_helper.llm` — can be
+recorded to a local, append-only SQLite ledger (`~/.best-engine-ai-helper/usage.db`):
+who called it (`BEST_ENGINE_USER` env var, else the OS login name), which
+model and backend, latency, success/failure, and an estimated cost for paid
+backends (always `0.0` for local Ollama/vLLM). Built for the "one company,
+several users on a shared machine" case: answer "who is calling what, how
+often, at what cost" without a separate telemetry stack. Local only — no
+network call, no third-party service.
+
+```sh
+best-engine-ai-helper activity              # table
+best-engine-ai-helper activity --format json
+```
+
+The CLI, GUI, and MCP server all enable recording by default; opt out with
+`BEST_ENGINE_NO_LEDGER=1`. The GUI's **Activity** section and `GET /api/activity`
+read the same ledger. See `best_engine_ai_helper.observe` for the library API
+(`enable()`, `as_user(name)`, `Ledger.summary()`).
 
 ## How selection works
 
@@ -203,6 +228,19 @@ alternative when one is nearly as strong. Bigger is not automatically better: a
 leaves headroom and runs several times faster.
 
 When nothing fits, the tool falls back to the smallest model and says so.
+
+### 5. Live server load (optional, `--live`)
+
+The four factors above describe the machine's *theoretical* capacity. Add
+`--live` (`recommend`/`report`; `live: true` on `POST /api/recommend`) to also
+weigh what else is happening on it *right now*: current free RAM, CPU/GPU/disk
+usage, and how many engines (Ollama models, vLLM servers) are already running.
+A busy or already-loaded machine gets a smaller, more realistic budget than an
+idle one with identical hardware. Off by default — it adds a short live probe
+(~0.1-0.5s: `nvidia-smi`/`ioreg`, a local Ollama ping, a `psutil` sample) and
+makes the recommendation depend on this exact moment rather than being a
+deterministic function of the hardware alone, which matters for reproducible
+reports and CI.
 
 **Sources.** Apple Metal working-set cap (Apple developer docs / apple-specs);
 inference-memory breakdown weights + KV (15-20%) + overhead (5-10%) (local-LLM

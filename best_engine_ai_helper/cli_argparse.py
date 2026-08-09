@@ -49,6 +49,7 @@ import os_helper as osh
 from . import catalog as _catalog
 from . import detect as _detect
 from . import hardware as _hardware
+from . import observe as _observe
 from . import score as _score
 from .cli import _VALID_APPLICATIONS, _fmt_table
 from .recommend import recommend as _recommend_engines
@@ -127,7 +128,7 @@ def _handle_recommend(ns: argparse.Namespace) -> int:
     Parameters
     ----------
     ns : argparse.Namespace
-        Parsed CLI arguments: `kind`, `headroom`, `application`, `min_tps`.
+        Parsed CLI arguments: `kind`, `headroom`, `application`, `min_tps`, `live`.
 
     Returns
     -------
@@ -137,12 +138,14 @@ def _handle_recommend(ns: argparse.Namespace) -> int:
     hw = _detect.available_memory()
     bandwidth = _detect.compute_profile().get("bandwidth_gbs")
     entries = _catalog.load_catalog()
+    load = _detect.server_load() if ns.live else None
 
     kinds: list[str] = ["llm", "vlm"] if ns.kind == "both" else [ns.kind]
 
     for k in kinds:
         ranked = _score.rank(
-            hw, entries, kind=k, headroom=ns.headroom, application=ns.application  # type: ignore[arg-type]
+            hw, entries, kind=k, headroom=ns.headroom,  # type: ignore[arg-type]
+            application=ns.application, load=load,
         )
         header = f"\n=== {k.upper()} candidates"
         if ns.application:
@@ -238,7 +241,7 @@ def _handle_report(ns: argparse.Namespace) -> int:
     Parameters
     ----------
     ns : argparse.Namespace
-        Parsed CLI arguments: `task`, `headroom`, `out`, `format`.
+        Parsed CLI arguments: `task`, `headroom`, `out`, `format`, `live`.
 
     Returns
     -------
@@ -248,7 +251,10 @@ def _handle_report(ns: argparse.Namespace) -> int:
     hw = _detect.available_memory()
     compute = _detect.compute_profile()
     entries = _catalog.load_catalog()
-    rep = _recommend_engines(hw, entries, task=ns.task, headroom=ns.headroom, compute=compute)
+    load = _detect.server_load() if ns.live else None
+    rep = _recommend_engines(
+        hw, entries, task=ns.task, headroom=ns.headroom, compute=compute, load=load
+    )
 
     if ns.out:
         md_path, json_path = _write_report(rep, ns.out)
@@ -725,6 +731,53 @@ def _handle_env(_ns: argparse.Namespace) -> int:
     return 0
 
 
+def _handle_activity(ns: argparse.Namespace) -> int:
+    """
+    Summarize the local activity/cost ledger (calls, cost, by user/model, errors).
+
+    Named "activity", not "usage": this repo already has a plural `usages`
+    command group (named task profiles like text2sql) -- "usage" would be a
+    one-letter, easily-mistyped collision with a completely different concept.
+
+    Parameters
+    ----------
+    ns : argparse.Namespace
+        Parsed CLI arguments: `format`.
+
+    Returns
+    -------
+    int
+        Process exit code (always 0).
+    """
+    ledger = _observe.active_ledger() or _observe.Ledger()
+    summary = ledger.summary()
+
+    if ns.format == "json":
+        _emit(json.dumps(summary, indent=2))
+        return 0
+
+    if summary["total_calls"] == 0:
+        _emit("No calls recorded yet.")
+        return 0
+
+    cost = summary["total_cost_usd"]
+    cost_str = f"${cost:.4f}" if cost is not None else "unknown (unpriced model in the mix)"
+    _emit(f"Total calls: {summary['total_calls']}   "
+          f"Total cost: {cost_str}   "
+          f"Error rate: {summary['error_rate']:.1%}")
+    _emit("")
+    _emit("By user:")
+    _emit(_fmt_table(summary["by_user"], ["user", "calls", "cost_usd"]))
+    _emit("")
+    _emit("By model:")
+    _emit(_fmt_table(summary["by_model"], ["model", "calls", "cost_usd"]))
+    if summary["recent_errors"]:
+        _emit("")
+        _emit("Recent errors:")
+        _emit(_fmt_table(summary["recent_errors"], ["ts", "user", "model", "error"]))
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # Parser construction
 # ---------------------------------------------------------------------------
@@ -775,6 +828,11 @@ def build_parser() -> argparse.ArgumentParser:
                          "default kind-based rule.")
     p.add_argument("--min-tps", type=float, default=_score.COMFORT_TPS,
                     help=f"Comfort throughput floor in tokens/s (default: {_score.COMFORT_TPS}).")
+    p.add_argument("--live", action="store_true",
+                    help="Also weigh CURRENT server load (free RAM, CPU/GPU/disk usage, "
+                         "already-running engines), not just theoretical capacity. Off by "
+                         "default: adds a live probe (~0.1-0.5s) and makes the result depend "
+                         "on this exact moment rather than the hardware alone.")
     p.set_defaults(func=_handle_recommend)
 
     p = sub.add_parser("resolve", help="Resolve a usage brief into a machine-specific engine file.")
@@ -794,6 +852,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", default=None, help="Path stem to write <stem>.md and <stem>.json.")
     p.add_argument("--format", dest="format", choices=["md", "json"], default="md",
                     help="What to print to stdout (default: md).")
+    p.add_argument("--live", action="store_true",
+                    help="Also weigh CURRENT server load (free RAM, CPU/GPU/disk usage, "
+                         "already-running engines), not just theoretical capacity. Off by "
+                         "default: adds a live probe (~0.1-0.5s) and makes the result depend "
+                         "on this exact moment rather than the hardware alone.")
     p.set_defaults(func=_handle_report)
 
     _add_usages_group(sub)
@@ -823,6 +886,13 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("env", help="Print the env block for ~/.zshrc or sourcing.").set_defaults(
         func=_handle_env
     )
+
+    p = sub.add_parser(
+        "activity", help="Summarize the local activity/cost ledger."
+    )
+    p.add_argument("--format", dest="format", choices=["table", "json"], default="table",
+                    help="What to print to stdout (default: table).")
+    p.set_defaults(func=_handle_activity)
 
     return parser
 
@@ -925,6 +995,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     # level, logs go to stderr so stdout (JSON, tables) stays clean/pipeable.
     level = {0: logging.WARNING, 1: logging.INFO}.get(ns.verbose, logging.DEBUG)
     osh.init_logging(level=level, stdout=False)
+    # Local-only activity/cost ledger (see observe.py and the `usage` command);
+    # opt out with BEST_ENGINE_NO_LEDGER=1.
+    if not os.environ.get("BEST_ENGINE_NO_LEDGER"):
+        _observe.enable()
 
     return cast(int, ns.func(ns))
 

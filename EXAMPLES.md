@@ -91,6 +91,25 @@ and estimated tokens/s, a lighter/faster alternative when one is close, the full
 ranked candidate table, and the sourced rationale. Print JSON instead of
 Markdown with `--format json` (omit `--out` to only print).
 
+Add `--live` to also weigh the machine's CURRENT load (free RAM, CPU/GPU/disk
+usage, already-running engines), not just its theoretical capacity:
+
+```sh
+best-engine-ai-helper report --task "write python code" --live
+# ...
+# ## Server load (live, at recommendation time)
+#
+# - Available RAM: 50.3 GB
+# - CPU: 43%, GPU: 3%
+# - Disk free: 41.5 GB (96% used)
+# - Already-running engines: 0
+# ...
+```
+
+Off by default: it adds a short live probe (~0.1-0.5s) and makes the result
+depend on this exact moment rather than being a deterministic function of the
+hardware alone.
+
 ---
 
 ## resolve
@@ -317,6 +336,40 @@ curl -s -X POST http://127.0.0.1:8000/api/recommend \
 ```
 
 See [GUI.md](GUI.md) for screenshots and the full write-up.
+
+---
+
+## activity
+
+Summarize the local activity/cost ledger — who called what, how often, at
+what cost. Populated by any command (or downstream project) that calls
+`llm.chat()`; nothing to show until then.
+
+```sh
+best-engine-ai-helper activity
+# No calls recorded yet.
+
+best-engine-ai-helper pull   # calls the model via the Ralph validation gates
+
+best-engine-ai-helper activity
+# Total calls: 4   Total cost: $0.0000   Error rate: 0.0%
+#
+# By user:
+# user              calls  cost_usd
+# ----              -----  --------
+# warithharchaoui   4      0.0
+#
+# By model:
+# model      calls  cost_usd
+# -----      -----  --------
+# qwen3:8b   4      0.0
+
+best-engine-ai-helper activity --format json
+```
+
+Local only (`~/.best-engine-ai-helper/usage.db`), no network call. Disable
+recording entirely with `BEST_ENGINE_NO_LEDGER=1`, or attribute calls to a
+specific person on a shared machine with `BEST_ENGINE_USER=alice`.
 
 ---
 

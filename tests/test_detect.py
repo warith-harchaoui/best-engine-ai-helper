@@ -161,3 +161,69 @@ def test_available_memory_public_contract_on_this_machine() -> None:
     assert isinstance(mem["ram_gb"], float) and mem["ram_gb"] > 0
     for key in ("unified_gb", "vram_gb"):
         assert mem[key] is None or (isinstance(mem[key], float) and mem[key] > 0)
+
+
+def test_server_load_reshapes_hardware_info(monkeypatch: pytest.MonkeyPatch) -> None:
+    import os_helper as osh
+
+    monkeypatch.setattr(
+        osh, "hardware_info",
+        lambda: {
+            "cpu": {"percent": 42.0},
+            "available_ram_gb": 12.3,
+            "disk": {"free_gb": 55.0, "percent_used": 80.0},
+            "gpu_utilization_percent": 7.0,
+        },
+    )
+    monkeypatch.setattr(detect, "_running_engines", lambda: 2)
+    load = detect.server_load()
+    assert load == {
+        "available_ram_gb": 12.3,
+        "cpu_percent": 42.0,
+        "gpu_percent": 7.0,
+        "disk_free_gb": 55.0,
+        "disk_percent_used": 80.0,
+        "running_engines": 2,
+    }
+
+
+def test_running_engines_counts_ollama_ps_and_vllm_processes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FakeResponse:
+        ok = True
+
+        def json(self) -> dict:
+            return {"models": [{"name": "qwen3:8b"}, {"name": "gemma3:12b"}]}
+
+    monkeypatch.setattr("requests.get", lambda url, timeout: _FakeResponse())
+
+    class _FakeProc:
+        def __init__(self, cmdline: list[str]) -> None:
+            self.info = {"cmdline": cmdline}
+
+    import psutil
+
+    monkeypatch.setattr(
+        psutil, "process_iter",
+        lambda fields: iter([
+            _FakeProc(["python", "-m", "vllm.entrypoints.openai.api_server"]),
+            _FakeProc(["some-other-process"]),
+        ]),
+    )
+    # 2 Ollama-loaded models + 1 matching vLLM process.
+    assert detect._running_engines() == 3
+
+
+def test_running_engines_fails_soft_when_nothing_is_running(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _raise(*args: object, **kwargs: object) -> None:
+        raise ConnectionError("no daemon")
+
+    monkeypatch.setattr("requests.get", _raise)
+
+    import psutil
+
+    monkeypatch.setattr(psutil, "process_iter", lambda fields: iter([]))
+    assert detect._running_engines() == 0

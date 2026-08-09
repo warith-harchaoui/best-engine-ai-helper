@@ -12,6 +12,9 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "click>=8.1",
+    # Best-effort language ID for recommend.parse_task's task-description
+    # quality check: offline, deterministic, no model call.
+    "langdetect>=1.0.9",
     # >=2.1.0 for os_helper.hardware_utils (cpu/ram/gpu facts): detect.py
     # delegates ALL raw hardware probing there instead of doing it directly.
     "os-helper>=2.1.0,<3",
@@ -51,7 +54,7 @@ where = ["."]
 include = ["best_engine_ai_helper*"]
 
 [tool.setuptools.package-data]
-"*" = ["models.yaml", "hardware.yaml", "usages.yaml", "locales/i18n.yaml"]
+"*" = ["models.yaml", "hardware.yaml", "usages.yaml", "locales/i18n.yaml", "pricing.yaml"]
 "best_engine_ai_helper" = ["static/**"]
 
 [tool.ruff]

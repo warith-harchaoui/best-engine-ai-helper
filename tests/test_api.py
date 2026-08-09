@@ -8,6 +8,8 @@ used elsewhere rather than making the extra mandatory for the base test run.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 fastapi = pytest.importorskip("fastapi")
@@ -32,10 +34,12 @@ def test_system_endpoint_shape(client: TestClient) -> None:
     assert set(data["memory"]) == {"unified_gb", "vram_gb", "ram_gb"}
     assert set(data["compute"]) == {"accelerator", "chip", "bandwidth_gbs"}
     assert data["memory_budget_gb"] > 0
-    # "hardware" is the raw os_helper snapshot (cores, model names, VRAM),
+    # "hardware" is the raw os_helper snapshot (cores, model names, VRAM, plus
+    # live load: cpu.percent, available_ram_gb, disk, gpu_utilization_percent),
     # distinct from the AI-throughput-derived "compute" above.
     assert set(data["hardware"]) == {
-        "platform", "cpu", "ram_gb", "gpu_vendor", "gpus", "apple_chip", "apple_unified_gb",
+        "platform", "cpu", "ram_gb", "available_ram_gb", "disk", "gpu_vendor", "gpus",
+        "gpu_utilization_percent", "apple_chip", "apple_unified_gb",
     }
 
 
@@ -58,6 +62,44 @@ def test_recommend_endpoint(client: TestClient) -> None:
 
     # A malformed body is a 422.
     assert client.post("/api/recommend", json={"headroom": "nope"}).status_code == 422
+
+    # `live: true` includes a real server-load snapshot in the report; off by
+    # default (the base `{}` request above has no "server_load" key at all).
+    assert "server_load" not in llm_only
+    live = client.post("/api/recommend", json={"live": True}).json()
+    assert {"available_ram_gb", "cpu_percent", "disk_free_gb", "disk_percent_used",
+            "running_engines"} <= live["server_load"].keys()
+
+
+def test_activity_endpoint_empty_and_populated(
+    client: TestClient, tmp_path: Path
+) -> None:
+    from unittest.mock import patch
+
+    from best_engine_ai_helper import llm, observe
+
+    # Enabled up front, at a tmp path: `/api/activity` falls back to opening
+    # the DEFAULT-path ledger read-only when none is active (so a plain
+    # `uvicorn api:app`, with no CLI/MCP auto-enable, still sees history) —
+    # without this, the "empty" check below would touch the real
+    # ~/.best-engine-ai-helper/usage.db instead of this test's tmp_path.
+    ledger = observe.enable(str(tmp_path / "usage.db"))
+
+    empty = client.get("/api/activity").json()
+    assert empty == {
+        "total_calls": 0, "total_cost_usd": 0.0, "error_rate": 0.0,
+        "by_user": [], "by_model": [], "recent_errors": [],
+    }
+
+    with patch("requests.post") as p:
+        p.return_value.json.return_value = {"response": "hi"}
+        p.return_value.raise_for_status.return_value = None
+        llm.chat("hello", model="qwen3:8b")
+
+    data = client.get("/api/activity").json()
+    assert data["total_calls"] == 1
+    assert data["by_model"] == [{"model": "qwen3:8b", "calls": 1, "cost_usd": 0.0}]
+    ledger.close()
 
 
 def test_gui_is_bilingual_and_escaped(client: TestClient) -> None:

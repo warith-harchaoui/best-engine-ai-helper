@@ -13,6 +13,7 @@ Commands:
   pull            Pull the best model and run Ralph validation gates.
   validate        Run Ralph gates on the already-configured model.
   env             Print the env block for ~/.zshrc or sourcing.
+  activity        Summarize the local activity/cost ledger.
 
 Author
 ------
@@ -33,6 +34,7 @@ import os_helper as osh
 from . import catalog as _catalog
 from . import detect as _detect
 from . import hardware as _hardware
+from . import observe as _observe
 from . import score as _score
 from .recommend import recommend as _recommend_engines
 from .recommend import to_markdown as _report_markdown
@@ -94,6 +96,12 @@ def main(verbose: int) -> None:
     # pipeable. Default keeps only warnings and errors; -v adds info, -vv debug.
     level = {0: logging.WARNING, 1: logging.INFO}.get(verbose, logging.DEBUG)
     osh.init_logging(level=level, stdout=False)
+    # Local-only activity/cost ledger (see observe.py and the `usage` command);
+    # opt out with BEST_ENGINE_NO_LEDGER=1. No-op for commands that never call
+    # llm.chat (detect, catalog show, ...) — nothing is written unless a model
+    # is actually called.
+    if not os.environ.get("BEST_ENGINE_NO_LEDGER"):
+        _observe.enable()
 
 
 # ---------------------------------------------------------------------------
@@ -161,17 +169,30 @@ _VALID_APPLICATIONS = ["code", "math", "ocr", "vision", "chat", "generalist"]
         "estimated below this decodes too slowly to recommend (shown comfy=NO)."
     ),
 )
+@click.option(
+    "--live",
+    is_flag=True,
+    default=False,
+    help=(
+        "Also weigh CURRENT server load (free RAM, CPU/GPU/disk usage, already-"
+        "running engines), not just theoretical capacity. Off by default: it adds "
+        "a live probe (~0.1-0.5s) and makes the result depend on this exact moment "
+        "rather than being a deterministic function of the hardware alone."
+    ),
+)
 def recommend_cmd(kind: str, headroom: float, application: str | None,
-                  min_tps: float) -> None:
+                  min_tps: float, live: bool) -> None:
     """Print ranked model candidates for this hardware (dry run, no pull)."""
     hw = _detect.available_memory()
     bandwidth = _detect.compute_profile().get("bandwidth_gbs")
     entries = _catalog.load_catalog()
+    load = _detect.server_load() if live else None
 
     kinds: list[str] = ["llm", "vlm"] if kind == "both" else [kind]
 
     for k in kinds:
-        ranked = _score.rank(hw, entries, kind=k, headroom=headroom, application=application)  # type: ignore[arg-type]
+        ranked = _score.rank(hw, entries, kind=k, headroom=headroom,  # type: ignore[arg-type]
+                              application=application, load=load)
         header = f"\n=== {k.upper()} candidates"
         if application:
             header += f" [{application}]"
@@ -290,12 +311,28 @@ def resolve_cmd(brief: str, out: str | None, backend: str, endpoint: str | None)
     show_default=True,
     help="What to print to stdout.",
 )
-def report_cmd(task: str | None, headroom: float, out: str | None, fmt: str) -> None:
+@click.option(
+    "--live",
+    is_flag=True,
+    default=False,
+    help=(
+        "Also weigh CURRENT server load (free RAM, CPU/GPU/disk usage, already-"
+        "running engines), not just theoretical capacity. Off by default: it adds "
+        "a live probe (~0.1-0.5s) and makes the result depend on this exact moment "
+        "rather than being a deterministic function of the hardware alone."
+    ),
+)
+def report_cmd(
+    task: str | None, headroom: float, out: str | None, fmt: str, live: bool
+) -> None:
     """Recommend the best engine(s) for this hardware and task; emit MD + JSON."""
     hw = _detect.available_memory()
     compute = _detect.compute_profile()
     entries = _catalog.load_catalog()
-    rep = _recommend_engines(hw, entries, task=task, headroom=headroom, compute=compute)
+    load = _detect.server_load() if live else None
+    rep = _recommend_engines(
+        hw, entries, task=task, headroom=headroom, compute=compute, load=load
+    )
 
     if out:
         md_path, json_path = _write_report(rep, out)
@@ -719,3 +756,50 @@ def env_cmd() -> None:
 
     # Print the env block for the user to inspect or pipe to a shell
     click.echo(env_path.read_text(encoding="utf-8"), nl=False)
+
+
+# ---------------------------------------------------------------------------
+# activity
+# ---------------------------------------------------------------------------
+# Named "activity", not "usage": this repo already has a plural `usages`
+# command group (named task profiles like text2sql) -- "usage" would be a
+# one-letter, easily-mistyped collision with a completely different concept.
+
+@main.command("activity")
+@click.option(
+    "--format", "fmt", type=click.Choice(["table", "json"]), default="table",
+    show_default=True, help="What to print to stdout.",
+)
+def activity_cmd(fmt: str) -> None:
+    """Summarize the local activity/cost ledger (calls, cost, by user/model, errors).
+
+    Reads ~/.best-engine-ai-helper/usage.db, populated by other commands in
+    this session (or a prior one) that called a model — nothing to show until
+    then. Disable recording with BEST_ENGINE_NO_LEDGER=1.
+    """
+    ledger = _observe.active_ledger() or _observe.Ledger()
+    summary = ledger.summary()
+
+    if fmt == "json":
+        click.echo(json.dumps(summary, indent=2))
+        return
+
+    if summary["total_calls"] == 0:
+        click.echo("No calls recorded yet.")
+        return
+
+    cost = summary["total_cost_usd"]
+    cost_str = f"${cost:.4f}" if cost is not None else "unknown (unpriced model in the mix)"
+    click.echo(f"Total calls: {summary['total_calls']}   "
+               f"Total cost: {cost_str}   "
+               f"Error rate: {summary['error_rate']:.1%}")
+    click.echo()
+    click.echo("By user:")
+    click.echo(_fmt_table(summary["by_user"], ["user", "calls", "cost_usd"]))
+    click.echo()
+    click.echo("By model:")
+    click.echo(_fmt_table(summary["by_model"], ["model", "calls", "cost_usd"]))
+    if summary["recent_errors"]:
+        click.echo()
+        click.echo("Recent errors:")
+        click.echo(_fmt_table(summary["recent_errors"], ["ts", "user", "model", "error"]))

@@ -52,6 +52,47 @@ def test_effective_budget_priority_and_headroom() -> None:
     ) == pytest.approx(24.0)
 
 
+def test_effective_budget_is_load_aware() -> None:
+    hw = {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}  # load-blind budget: 36.0 GB
+
+    # `load=None` (the default) reproduces the load-blind figure exactly.
+    assert score.effective_budget(hw) == pytest.approx(36.0)
+
+    # Live free RAM below the theoretical budget caps it.
+    assert score.effective_budget(hw, load={"available_ram_gb": 10.0}) == pytest.approx(10.0)
+    # Live free RAM above the theoretical budget changes nothing.
+    assert score.effective_budget(hw, load={"available_ram_gb": 80.0}) == pytest.approx(36.0)
+
+    # A saturated CPU derates further, on top of (not instead of) the memory cap.
+    busy = score.effective_budget(hw, load={"cpu_percent": 90.0})
+    assert busy == pytest.approx(36.0 * score._CPU_BUSY_DERATE)
+
+    # A nearly-full disk derates further too; both penalties compound.
+    busy_and_low_disk = score.effective_budget(
+        hw, load={"cpu_percent": 90.0, "disk_free_gb": 2.0}
+    )
+    assert busy_and_low_disk == pytest.approx(
+        36.0 * score._CPU_BUSY_DERATE * score._DISK_LOW_DERATE
+    )
+
+    # Below the busy/low-disk thresholds, no extra derating applies.
+    idle = score.effective_budget(hw, load={"cpu_percent": 10.0, "disk_free_gb": 500.0})
+    assert idle == pytest.approx(36.0)
+
+
+def test_rank_and_select_forward_load_to_effective_budget() -> None:
+    hw = {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}
+    catalog = [SMALL_LLM, MID_LLM, LARGE_LLM]
+
+    # A tight live-RAM cap should disqualify the otherwise-comfortable mid model.
+    tight = {"available_ram_gb": 3.0}
+    ranked = score.rank(hw, catalog, kind="llm", load=tight)
+    assert {r["id"]: r["_fits"] for r in ranked} == {
+        "small-llm": True, "mid-llm": False, "large-llm": False,
+    }
+    assert score.select(hw, catalog, kind="llm", load=tight)["id"] == "small-llm"
+
+
 def test_select_picks_best_that_fits_and_falls_back() -> None:
     small = {"unified_gb": 24.0, "vram_gb": None, "ram_gb": 24.0}  # budget 7.92 GB
     large = {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}  # budget 36.0 GB
