@@ -198,8 +198,12 @@ def recommend_cmd(
         ranked = _score.rank(
             hw,
             entries,
-            kind=k,
-            headroom=headroom,  # type: ignore[arg-type]
+            # `k` is `str` at the type level; the CLI framework, not mypy,
+            # enforces it is actually "llm" or "vlm" (see the choices on
+            # `kind` above), so `rank`'s Literal["llm", "vlm"] can't narrow
+            # it statically.
+            kind=k,  # type: ignore[arg-type]
+            headroom=headroom,
             application=application,
             load=load,
         )
