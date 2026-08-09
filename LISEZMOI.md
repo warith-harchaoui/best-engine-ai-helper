@@ -37,6 +37,14 @@ lecture seule de ce flux (les caractéristiques matérielles et la recommandatio
 défaut, anglais via `/gui?lang=en`, avec un lien d'en-tête pour basculer. Voir
 [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) (en anglais).
 
+## Documentation
+
+[💻 Documentation](https://harchaoui.org/warith/ai-helpers/docs/best-engine-ai-helper-doc/)
+
+[🗺️ Paysage](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/PAYSAGE.md)
+
+[📋 Exemples](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXAMPLES.md)
+
 ## Prérequis
 
 - Python 3.10 ou ultérieur
@@ -434,6 +442,10 @@ best-engine écrit les modèles retenus dans le `llm.engine*.yaml` gitignoré de
 nouvelle résolution re-décide si le matériel change. Ajouter un profil = quelques lignes dans
 `usages.yaml` ; un *overlay* utilisateur dans `~/.best-engine-ai-helper/usages_cache.yaml`
 surcharge par nom.
+
+## Auteur
+
+[Warith HARCHAOUI](https://linkedin.com/in/warith-harchaoui)
 
 ## Remerciements
 
