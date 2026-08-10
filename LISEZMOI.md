@@ -42,7 +42,7 @@ défaut, anglais via `/gui?lang=en`, avec un lien d'en-tête pour basculer. Voir
 - Python 3.10 ou ultérieur
 - [Ollama](https://ollama.com) (nécessaire uniquement pour `pull`, `validate` et `env` ; pas
   requis pour `detect`, `recommend` ou `report`)
-- os-helper (détection matérielle), PyYAML, click, requests (installés automatiquement)
+- os-helper (détection matérielle), PyYAML, click, requests, langdetect (installés automatiquement)
 - Optionnel : `fastapi` + `uvicorn` pour la GUI navigateur
   (`pip install 'best-engine-ai-helper[api]'`)
 
@@ -157,10 +157,13 @@ best-engine-ai-helper hardware show
 
 # Lancer la GUI navigateur (nécessite l'extra [api])
 best-engine-ai-helper gui
+
+# Qui appelle quoi, et à quel coût (journal SQLite local)
+best-engine-ai-helper activity
 ```
 
-Les mêmes points d'accès `/api/system` et `/api/recommend` sont aussi
-accessibles comme outils MCP pour tout hôte agentique compatible :
+Les mêmes points d'accès `/api/system`, `/api/recommend` et `/api/activity`
+sont aussi accessibles comme outils MCP pour tout hôte agentique compatible :
 
 ```sh
 pip install "best-engine-ai-helper[mcp]"
@@ -182,6 +185,30 @@ lien d'en-tête pour basculer.
 
 Voir [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) pour le détail complet, l'API JSON sous-jacente et comment le jeu
 d'icônes (favicon / touch-icon) est généré à partir de `assets/logo.png`.
+
+## Journal d'activité
+
+Chaque appel `llm.chat()` (depuis les contrôles `pull`/`validate` de cet outil,
+ou depuis tout projet en aval qui importe `best_engine_ai_helper.llm`) peut
+être enregistré dans un journal SQLite local, en ajout seul
+(`~/.best-engine-ai-helper/usage.db`) : qui a appelé (variable d'environnement
+`BEST_ENGINE_USER`, sinon le nom de connexion du système), quel modèle et
+backend, la latence, le succès ou l'échec, et un coût estimé pour les backends
+payants (toujours `0,0` pour Ollama/vLLM en local). Pensé pour le cas « une
+entreprise, plusieurs utilisateurs sur une machine partagée » : répondre à
+« qui appelle quoi, combien de fois, à quel coût » sans pile de télémétrie
+séparée. Local uniquement : aucun appel réseau, aucun service tiers.
+
+```sh
+best-engine-ai-helper activity              # tableau
+best-engine-ai-helper activity --format json
+```
+
+Le CLI, la GUI et le serveur MCP activent l'enregistrement par défaut ;
+désactivable avec `BEST_ENGINE_NO_LEDGER=1`. La section **Activité** de la GUI
+et `GET /api/activity` lisent le même journal. Voir
+`best_engine_ai_helper.observe` pour l'API bibliothèque (`enable()`,
+`as_user(nom)`, `Ledger.summary()`).
 
 ## Comment fonctionne la sélection
 
@@ -226,6 +253,17 @@ là où un modèle 8-14B laisse de la marge et va plusieurs fois plus vite.
 
 Quand aucun modèle ne tient, l'outil sélectionne le plus petit du catalogue et le signale.
 
+### 5. Charge serveur en direct (optionnel, `--live`)
+
+Les quatre facteurs ci-dessus décrivent la capacité *théorique* de la machine. Ajouter
+`--live` (`recommend`/`report` ; `live: true` sur `POST /api/recommend`) pèse aussi ce qui
+s'y passe *en ce moment* : RAM libre actuelle, usage CPU/GPU/disque, et le nombre de moteurs
+déjà lancés (modèles Ollama, serveurs vLLM). Une machine chargée obtient un budget plus
+réaliste qu'une machine identique mais inactive. Désactivé par défaut : cela ajoute une
+sonde en direct (~0,1-0,5 s : `nvidia-smi`/`ioreg`, un ping Ollama local, un échantillon
+`psutil`) et rend la recommandation dépendante de cet instant précis plutôt que d'être une
+fonction déterministe du seul matériel, ce qui compte pour des rapports reproductibles et la CI.
+
 ## Commandes disponibles
 
 | Commande | Description |
@@ -241,6 +279,7 @@ Quand aucun modèle ne tient, l'outil sélectionne le plus petit du catalogue et
 | `validate` | Exécute les contrôles Ralph sur le modèle actuellement configuré |
 | `env` | Affiche le bloc d'exports shell prêt pour `~/.zshrc` |
 | `gui` | Lance la GUI navigateur (nécessite l'extra `[api]`) |
+| `activity` | Résume le journal local d'activité/coût (appels, coût, par utilisateur/modèle, erreurs) |
 | `usages list` | Liste les profils d'usage et les familles (besoins uniquement, jamais de modèle) |
 | `usages show <profil>` | Affiche les besoins d'un profil (tâche, *structured output*, planchers) |
 | `usages resolve <profil>` | Résout un profil (ou `--family`) vers le modèle que best-engine choisit ici |

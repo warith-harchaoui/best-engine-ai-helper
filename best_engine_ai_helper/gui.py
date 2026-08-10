@@ -68,7 +68,11 @@ _HTML_TOKEN_TO_KEY: dict[str, str] = {
     "TASK_PLACEHOLDER": "task_placeholder",
     "RUN_BTN": "run_button",
     "HEADROOM": "headroom_label",
+    "LIVE_LABEL": "live_toggle_label",
     "FOOTER_NOTE": "footer_note",
+    "ACTIVITY_H2": "activity_heading",
+    "ACTIVITY_P": "activity_subtitle",
+    "ACTIVITY_LOADING": "activity_loading",
 }
 _JS_NAME_TO_KEY: dict[str, str] = {
     "detecting": "detecting",
@@ -105,6 +109,22 @@ _JS_NAME_TO_KEY: dict[str, str] = {
     "thFits": "th_fits",
     "thTps": "th_tps",
     "task": "task_prefix",
+    "language": "language_prefix",
+    "serverLoad": "server_load_label",
+    "ramFree": "ram_free_label",
+    "diskFree": "disk_free_label",
+    "runningEngines": "running_engines_label",
+    "activityLoading": "activity_loading",
+    "activityFail": "activity_failed",
+    "noActivity": "no_activity",
+    "unknownCost": "unknown_cost",
+    "thCalls": "th_calls",
+    "thCost": "th_cost",
+    "calls": "calls_label",
+    "totalCost": "total_cost_label",
+    "errorRate": "error_rate_label",
+    "byUser": "by_user_label",
+    "byModel": "by_model_label",
     "genericAssistant": "generic_assistant",
     "matched": "matched_keywords",
     "needs": "needs_label",
@@ -287,6 +307,13 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
                             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue
                             dark:border-neutral-600 dark:bg-neutral-950 dark:text-neutral-100" />
             </label>
+            <label class="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-600
+                          dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
+              <input id="live" type="checkbox"
+                     class="rounded border-neutral-300 text-brand-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue
+                            dark:border-neutral-600" />
+              {{LIVE_LABEL}}
+            </label>
             <span id="status" class="text-xs text-neutral-500 dark:text-neutral-400" role="status" aria-live="polite"></span>
           </div>
         </div>
@@ -297,6 +324,25 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
     <section id="results-section" class="border-t border-neutral-200/70 dark:border-neutral-800">
       <div class="mx-auto max-w-4xl px-5 py-10">
         <div id="results" class="space-y-4"></div>
+      </div>
+    </section>
+
+    <!-- 4) Activity ledger -->
+    <section class="border-t border-neutral-200/70 dark:border-neutral-800">
+      <div class="mx-auto max-w-4xl px-5 py-10">
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="text-2xl font-bold tracking-tight">{{ACTIVITY_H2}}</h2>
+          <button id="refresh-activity"
+                  class="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium
+                         hover:border-brand-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue
+                         dark:border-neutral-600">
+            {{REFRESH}}
+          </button>
+        </div>
+        <p class="mb-4 max-w-2xl text-sm text-neutral-600 dark:text-neutral-300">{{ACTIVITY_P}}</p>
+        <div id="activity" class="rounded-xl border border-neutral-200 bg-white p-5 text-sm shadow-sm dark:border-neutral-800 dark:bg-neutral-950">
+          <p class="text-neutral-500 dark:text-neutral-400">{{ACTIVITY_LOADING}}</p>
+        </div>
       </div>
     </section>
   </main>
@@ -380,6 +426,67 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
     $("refresh-system").addEventListener("click", loadSystem);
     loadSystem();
 
+    // --- 4) Activity ledger ------------------------------------------------
+    async function loadActivity() {
+      $("activity").innerHTML =
+        `<p class="text-neutral-500 dark:text-neutral-400">${T.activityLoading}</p>`;
+      try {
+        const res = await fetch("/api/activity");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        renderActivity(await res.json());
+      } catch (err) {
+        $("activity").innerHTML =
+          `<p class="text-red-600 dark:text-red-400">${T.activityFail}${err}</p>`;
+      }
+    }
+
+    function activityRow(row, keyName) {
+      const cost = row.cost_usd != null ? `$${row.cost_usd.toFixed(4)}` : T.unknownCost;
+      return `
+        <tr class="border-t border-neutral-200 dark:border-neutral-800">
+          <td class="py-1.5 pr-3 font-mono">${row[keyName]}</td>
+          <td class="py-1.5 pr-3">${row.calls}</td>
+          <td class="py-1.5">${cost}</td>
+        </tr>`;
+    }
+
+    function activityTable(title, rows, keyName) {
+      if (!rows.length) return "";
+      return `
+        <div class="mt-4">
+          <h3 class="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">${title}</h3>
+          <table class="w-full text-left text-xs">
+            <thead><tr class="text-neutral-500 dark:text-neutral-400">
+              <th class="pb-1 pr-3 font-medium">${keyName}</th>
+              <th class="pb-1 pr-3 font-medium">${T.thCalls}</th>
+              <th class="pb-1 font-medium">${T.thCost}</th>
+            </tr></thead>
+            <tbody>${rows.map((r) => activityRow(r, keyName)).join("")}</tbody>
+          </table>
+        </div>`;
+    }
+
+    function renderActivity(data) {
+      if (!data.total_calls) {
+        $("activity").innerHTML =
+          `<p class="text-neutral-500 dark:text-neutral-400">${T.noActivity}</p>`;
+        return;
+      }
+      const cost = data.total_cost_usd != null ? `$${data.total_cost_usd.toFixed(4)}` : T.unknownCost;
+      const parts = [`
+        <p>
+          <span class="font-semibold">${data.total_calls}</span> ${T.calls} ·
+          ${T.totalCost} <span class="font-semibold">${cost}</span> ·
+          ${T.errorRate} <span class="font-semibold">${(data.error_rate * 100).toFixed(1)}%</span>
+        </p>`];
+      parts.push(activityTable(T.byUser, data.by_user, "user"));
+      parts.push(activityTable(T.byModel, data.by_model, "model"));
+      $("activity").innerHTML = parts.join("");
+    }
+
+    $("refresh-activity").addEventListener("click", loadActivity);
+    loadActivity();
+
     // --- 2 & 3) Recommendation -------------------------------------------
     $("run-recommend").addEventListener("click", runRecommend);
     $("task").addEventListener("keydown", (e) => {
@@ -397,6 +504,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
     async function runRecommend() {
       const task = $("task").value.trim() || null;
       const headroom = Number($("headroom").value) || 0.85;
+      const live = $("live").checked;
       $("run-recommend").disabled = true;
       status(T.analyzing);
       $("results").innerHTML = "";
@@ -404,7 +512,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
         const res = await fetch("/api/recommend", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ task, headroom }),
+          body: JSON.stringify({ task, headroom, live }),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
         const report = await res.json();
@@ -488,9 +596,22 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
       parts.push(`
         <div class="rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-sm dark:border-neutral-800 dark:bg-neutral-900">
           <p><span class="text-neutral-500 dark:text-neutral-400">${T.task}</span> ${task.input ? task.input : T.genericAssistant}</p>
+          ${task.language ? `<p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">${T.language} ${task.language}</p>` : ""}
           ${task.matched && task.matched.length ? `<p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">${T.matched} ${task.matched.join(", ")}</p>` : ""}
           <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">${T.needs} ${task.kinds.map((k) => k.toUpperCase()).join(", ")}</p>
         </div>`);
+
+      const load = report.server_load;
+      if (load) {
+        const gpuPart = load.gpu_percent != null ? `, GPU ${Math.round(load.gpu_percent)}%` : "";
+        parts.push(`
+          <div class="mt-3 rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-xs text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
+            <span class="font-medium text-neutral-700 dark:text-neutral-300">${T.serverLoad}</span>
+            ${fmt1(load.available_ram_gb)} ${T.gb} ${T.ramFree}, CPU ${Math.round(load.cpu_percent)}%${gpuPart},
+            ${T.diskFree} ${fmt1(load.disk_free_gb)} ${T.gb} (${Math.round(load.disk_percent_used)}%),
+            ${T.runningEngines} ${load.running_engines}
+          </div>`);
+      }
 
       const kindBlocks = Object.entries(report.recommendations || {});
       const gridClass = kindBlocks.length > 1 ? "mt-4 grid gap-4 sm:grid-cols-2" : "mt-4 grid gap-4";

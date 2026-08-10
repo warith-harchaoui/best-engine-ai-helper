@@ -69,9 +69,21 @@ gui:
   headroom_label:
     fr: Marge mémoire
     en: Memory headroom
+  live_toggle_label:
+    fr: Charge serveur en direct
+    en: Live server load
   footer_note:
     fr: local uniquement, aucune télémétrie
     en: local only, no telemetry
+  activity_heading:
+    fr: Activité
+    en: Activity
+  activity_subtitle:
+    fr: Journal local des appels (utilisateur, modèle, coût) — voir la commande `activity`.
+    en: Local call ledger (user, model, cost) — see the `activity` command.
+  activity_loading:
+    fr: Chargement…
+    en: Loading…
   detect_failed:
     fr: 'Détection impossible : '
     en: 'Detection failed: '
@@ -171,6 +183,51 @@ gui:
   task_prefix:
     fr: 'Tâche :'
     en: 'Task:'
+  language_prefix:
+    fr: 'Langue détectée :'
+    en: 'Detected language:'
+  server_load_label:
+    fr: 'Charge serveur :'
+    en: 'Server load:'
+  ram_free_label:
+    fr: RAM libre
+    en: RAM free
+  disk_free_label:
+    fr: disque libre
+    en: disk free
+  running_engines_label:
+    fr: 'moteurs déjà lancés :'
+    en: 'already-running engines:'
+  activity_failed:
+    fr: 'Échec du chargement : '
+    en: 'Failed to load: '
+  no_activity:
+    fr: Aucun appel enregistré pour le moment.
+    en: No calls recorded yet.
+  unknown_cost:
+    fr: coût inconnu
+    en: unknown cost
+  th_calls:
+    fr: appels
+    en: calls
+  th_cost:
+    fr: coût
+    en: cost
+  calls_label:
+    fr: appels
+    en: calls
+  total_cost_label:
+    fr: 'Coût total :'
+    en: 'Total cost:'
+  error_rate_label:
+    fr: 'Taux d''erreur :'
+    en: 'Error rate:'
+  by_user_label:
+    fr: Par utilisateur
+    en: By user
+  by_model_label:
+    fr: Par modèle
+    en: By model
   generic_assistant:
     fr: assistant texte généraliste
     en: general-purpose text assistant

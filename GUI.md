@@ -65,26 +65,43 @@ an eGPU or closing memory-heavy apps.
 ### 2. Describe the task → best engine(s)
 
 Type a free-text task (the same kind of phrase `report --task "..."` takes)
-and the page shows, per model kind the task needs (LLM for text, VLM when
-anything visual is mentioned): the detected keywords and benchmark axis, the
-chosen model with its RAM footprint / benchmark score / estimated tokens per
-second, a lighter alternative when one is nearly as strong, and the full
-ranked candidate table behind a disclosure toggle.
+and the page shows the detected language, the matched keywords and benchmark
+axis, then per model kind the task needs (LLM for text, VLM when anything
+visual is mentioned): the chosen model with its RAM footprint / benchmark
+score / estimated tokens per second, a lighter alternative when one is nearly
+as strong, and the full ranked candidate table behind a disclosure toggle.
+Leaving the box empty, or typing text with no detectable language (symbols or
+digits only), logs a warning server-side and falls back to a generic
+text-assistant profile — see `recommend.parse_task`.
 
 ![Recommendation results](assets/screenshots/gui-recommendation.png)
 
 The memory headroom (default `0.85`) is editable next to the button, matching
-`report --headroom`.
+`report --headroom`. The **live server load** checkbox next to it matches
+`report --live`: checked, the recommendation also weighs current free RAM,
+CPU/GPU/disk usage, and already-running engines, and the result panel gets an
+extra line showing that snapshot. Unchecked (the default), the recommendation
+is a deterministic function of the hardware alone.
+
+### 3. Activity (local call ledger)
+
+Total calls, estimated total cost, error rate, and per-user / per-model
+breakdowns from the local SQLite ledger (`~/.best-engine-ai-helper/usage.db`,
+see the README's "Activity ledger"). Empty until something calls
+`llm.chat()` — this tool's own `pull`/`validate` gates, or any downstream
+project that imports `best_engine_ai_helper.llm` and has recording enabled. A
+**Refresh** button re-fetches without reloading the page.
 
 ## HTTP surface
 
-The GUI is a client of two JSON endpoints, usable directly (e.g. from another
-tool, or `curl`):
+The GUI is a client of three JSON endpoints, usable directly (e.g. from
+another tool, or `curl`):
 
 | Method | Path | Body | Returns |
 |--------|------|------|---------|
 | `GET`  | `/api/system` | (none) | hardware + compute profile + `memory_budget_gb` |
-| `POST` | `/api/recommend` | `{"task": str \| null, "headroom": float}` | the same report `recommend()` / `report` produce, as JSON |
+| `POST` | `/api/recommend` | `{"task": str \| null, "headroom": float, "live": bool}` | the same report `recommend()` / `report` produce, as JSON |
+| `GET`  | `/api/activity` | (none) | ledger summary: `total_calls`, `total_cost_usd`, `error_rate`, `by_user`, `by_model`, `recent_errors` |
 
 ```sh
 curl -s http://127.0.0.1:8000/api/system | python3 -m json.tool

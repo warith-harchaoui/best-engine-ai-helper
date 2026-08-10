@@ -1,0 +1,31 @@
+# Cost table for best_engine_ai_helper.observe's usage ledger.
+#
+# USD per 1 million tokens, published list prices as of this writing. Local
+# backends (ollama, vllm) are never priced here -- they are hardcoded free in
+# observe.py, since there is no paid API call to price. This table exists
+# only for the day mode: cloud calls actually reach a paid provider (see the
+# `cloud` branch); until then it has no effect on `main`.
+#
+# Update when a provider changes pricing; each entry's cost is an estimate
+# (character-based token approximation, see observe.py's _CHARS_PER_TOKEN)
+# until real provider `usage` token counts are wired in.
+
+models:
+  gpt-4o:
+    input_per_1m: 2.50
+    output_per_1m: 10.00
+  gpt-4o-mini:
+    input_per_1m: 0.15
+    output_per_1m: 0.60
+  claude-3-5-sonnet:
+    input_per_1m: 3.00
+    output_per_1m: 15.00
+  claude-3-5-haiku:
+    input_per_1m: 0.80
+    output_per_1m: 4.00
+  gemini-1.5-pro:
+    input_per_1m: 1.25
+    output_per_1m: 5.00
+  gemini-1.5-flash:
+    input_per_1m: 0.075
+    output_per_1m: 0.30

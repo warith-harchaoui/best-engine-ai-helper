@@ -144,6 +144,38 @@ def test_chat_json_fallback_and_errors(monkeypatch: pytest.MonkeyPatch) -> None:
         _llm.chat("x")
 
 
+def test_observers_receive_success_and_failure_events(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SPREZZATURE_LLM_BACKEND", "ollama")
+    events: list[dict[str, Any]] = []
+    _llm.add_observer(events.append)
+    try:
+        with patch("requests.post", return_value=_resp({"response": "hi"})):
+            _llm.chat("say hi", model="qwen3:8b")
+        assert len(events) == 1
+        ok_event = events[0]
+        assert ok_event["ok"] is True and ok_event["error"] is None
+        assert ok_event["backend"] == "ollama" and ok_event["model"] == "qwen3:8b"
+        assert ok_event["kind"] == "llm" and ok_event["in_chars"] == len("say hi")
+        assert ok_event["out_chars"] == len("hi") and ok_event["latency_ms"] >= 0
+
+        with patch("requests.post", side_effect=requests.ConnectionError("down")):
+            with pytest.raises(RuntimeError):
+                _llm.chat("x", images=[b"png"])
+        assert len(events) == 2
+        fail_event = events[1]
+        assert fail_event["ok"] is False and "down" in fail_event["error"]
+        assert fail_event["kind"] == "vlm" and fail_event["out_chars"] == 0
+
+        # A raising observer must not break the caller.
+        _llm.add_observer(lambda e: (_ for _ in ()).throw(RuntimeError("boom")))
+        with patch("requests.post", return_value=_resp({"response": "ok"})):
+            assert _llm.chat("y") == "ok"
+    finally:
+        _llm.clear_observers()
+
+
 def test_embed_ollama_only(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SPREZZATURE_LLM_BACKEND", "ollama")
     with patch("requests.post", return_value=_resp({"embedding": [0.1, 0.2]})):

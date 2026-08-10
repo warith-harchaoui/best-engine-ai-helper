@@ -35,6 +35,15 @@ SPREZZATURE_LLM_API_KEY
     API key for servers that require one. Empty string by default (most local
     servers do not require authentication).
 
+Observability
+-------------
+Every :func:`chat` call fans a small event dict out to any observer registered
+via :func:`add_observer` (backend, model, kind, char counts, latency, success/
+error). No observer is registered by default. :mod:`best_engine_ai_helper.observe`
+provides a SQLite-backed sink (call ``observe.enable()``) that turns this into
+a queryable local activity/cost ledger, surfaced by the ``usage`` CLI command
+and the ``/api/usage`` endpoint.
+
 Author
 ------
 Warith Harchaoui <warith.harchaoui@deraison.ai>
@@ -46,6 +55,8 @@ import base64
 import copy
 import json
 import os
+import time
+from collections.abc import Callable
 from typing import Any
 
 import os_helper as osh
@@ -59,6 +70,44 @@ import os_helper as osh
 # server. Cloud providers (and Anthropic/Gemini's own formats) arrive on the
 # 'cloud' branch.
 _OPENAI_COMPATIBLE = frozenset({"vllm", "openai"})
+
+# ---------------------------------------------------------------------------
+# Observability seam
+# ---------------------------------------------------------------------------
+# Every call to `chat` funnels through here; registered observers get a small
+# event dict so monitoring (the SQLite ledger in `observe.py`, a dashboard, a
+# custom sink) can be built on top without changing `chat`'s behaviour. No
+# observer is registered by default, so this is a no-op until something opts
+# in (see `observe.enable()`).
+_OBSERVERS: list[Callable[[dict[str, Any]], None]] = []
+
+
+def add_observer(fn: Callable[[dict[str, Any]], None]) -> None:
+    """
+    Register a per-call observer; it receives the event dict :func:`chat` emits.
+
+    Parameters
+    ----------
+    fn : callable
+        Called with one event dict after every :func:`chat` call, success or
+        failure. Must not raise — an exception is caught and logged, never
+        propagated, so a broken observer can't take down inference.
+    """
+    _OBSERVERS.append(fn)
+
+
+def clear_observers() -> None:
+    """Remove all registered observers (chiefly for tests, or to disable)."""
+    _OBSERVERS.clear()
+
+
+def _emit(event: dict[str, Any]) -> None:
+    """Fan an event out to every registered observer; a raising observer never breaks the caller."""
+    for fn in _OBSERVERS:
+        try:
+            fn(event)
+        except Exception as exc:  # noqa: BLE001 — observability must not break inference
+            osh.warning(f"LLM observer raised, ignoring: {exc!r}")
 
 
 def _backend() -> str:
@@ -646,41 +695,60 @@ def chat(
         f"chat via {backend}: model={resolved_model}, "
         f"images={len(images) if images else 0}, json={json_mode}"
     )
+    resolved_kind = kind or ("vlm" if images else "llm")
 
-    if transport == "ollama":
-        raw = _chat_ollama(
-            prompt,
-            system=system,
-            images=images,
-            json_schema=json_schema,
-            model=resolved_model,
-            temperature=temperature,
-            base_url=base_url,
-        )
-    elif transport == "openai":
-        raw = _chat_openai(
-            prompt,
-            system=system,
-            images=images,
-            json_schema=json_schema,
-            model=resolved_model,
-            temperature=temperature,
-            base_url=base_url,
-        )
-    elif transport == "langchain":
-        raw = _chat_langchain(
-            prompt,
-            system=system,
-            images=images,
-            json_schema=json_schema,
-            model=resolved_model,
-            temperature=temperature,
-        )
-    else:
-        osh.error(f"Unknown backend: {backend!r}")
-        raise ValueError(
-            f"Unknown backend: {backend!r}. Valid values: 'ollama', 'vllm', 'openai', 'langchain'."
-        )
+    t0 = time.perf_counter()
+    try:
+        if transport == "ollama":
+            raw = _chat_ollama(
+                prompt,
+                system=system,
+                images=images,
+                json_schema=json_schema,
+                model=resolved_model,
+                temperature=temperature,
+                base_url=base_url,
+            )
+        elif transport == "openai":
+            raw = _chat_openai(
+                prompt,
+                system=system,
+                images=images,
+                json_schema=json_schema,
+                model=resolved_model,
+                temperature=temperature,
+                base_url=base_url,
+            )
+        elif transport == "langchain":
+            raw = _chat_langchain(
+                prompt,
+                system=system,
+                images=images,
+                json_schema=json_schema,
+                model=resolved_model,
+                temperature=temperature,
+            )
+        else:
+            osh.error(f"Unknown backend: {backend!r}")
+            raise ValueError(
+                f"Unknown backend: {backend!r}. Valid values: "
+                "'ollama', 'vllm', 'openai', 'langchain'."
+            )
+    except Exception as exc:
+        _emit({
+            "backend": backend, "model": resolved_model, "kind": resolved_kind,
+            "in_chars": len(prompt), "images": len(images) if images else 0,
+            "out_chars": 0, "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
+            "ok": False, "error": repr(exc),
+        })
+        raise
+
+    _emit({
+        "backend": backend, "model": resolved_model, "kind": resolved_kind,
+        "in_chars": len(prompt), "images": len(images) if images else 0,
+        "out_chars": len(raw), "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
+        "ok": True, "error": None,
+    })
 
     # Parse JSON when requested; fall back to raw string on parse failure
     if json_mode:

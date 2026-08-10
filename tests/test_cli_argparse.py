@@ -23,7 +23,7 @@ from best_engine_ai_helper.cli_argparse import build_parser, main
 
 EXPECTED_COMMANDS = {
     "detect", "recommend", "resolve", "report", "usages", "catalog",
-    "hardware", "pull", "validate", "gui", "env",
+    "hardware", "pull", "validate", "gui", "env", "activity",
 }
 
 
@@ -64,6 +64,42 @@ def test_recommend_kinds(capsys: pytest.CaptureFixture[str]) -> None:
     assert "LLM" in capsys.readouterr().out
     assert main(["recommend", "--kind", "vlm", "--headroom", "0.5"]) == 0
     assert "VLM" in capsys.readouterr().out
+    assert main(["recommend", "--kind", "llm", "--live"]) == 0
+    assert "LLM" in capsys.readouterr().out
+
+
+def test_report_live_includes_server_load_section(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["report", "--task", "write copy", "--live"]) == 0
+    assert "Server load (live, at recommendation time)" in capsys.readouterr().out
+
+
+def test_activity_empty_and_populated(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    from unittest.mock import patch
+
+    from best_engine_ai_helper import llm, observe
+
+    # Test-owned ledger enabled up front; see test_cli.py's equivalent test
+    # for why (avoids the "no active ledger" fallback touching the real path).
+    ledger = observe.enable(str(tmp_path / "usage.db"))
+
+    assert main(["activity"]) == 0
+    assert "No calls recorded yet." in capsys.readouterr().out
+
+    with patch("requests.post") as p:
+        p.return_value.json.return_value = {"response": "hi"}
+        p.return_value.raise_for_status.return_value = None
+        llm.chat("hello", model="qwen3:8b")
+
+    assert main(["activity"]) == 0
+    out = capsys.readouterr().out
+    assert "Total calls: 1" in out and "qwen3:8b" in out
+
+    assert main(["activity", "--format", "json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["total_calls"] == 1 and data["total_cost_usd"] == 0.0
+    ledger.close()
 
 
 def test_report_markdown_json_and_write_files(

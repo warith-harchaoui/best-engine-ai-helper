@@ -29,6 +29,7 @@ def test_read_only_commands_smoke(runner: CliRunner) -> None:
         (["recommend", "--kind", "llm"], "LLM"),
         (["recommend", "--kind", "vlm"], "VLM"),
         (["recommend", "--headroom", "0.5"], ""),
+        (["recommend", "--live"], ""),
         (["catalog", "show"], "qwen3-vl:8b"),
         (["hardware", "show"], "Apple M2 Max"),
     ]
@@ -36,6 +37,45 @@ def test_read_only_commands_smoke(runner: CliRunner) -> None:
         result = runner.invoke(main, args)
         assert result.exit_code == 0, f"{args} -> {result.exit_code}\n{result.output}"
         assert result.output.strip() and needle in result.output, args
+
+
+def test_report_live_includes_server_load_section(runner: CliRunner) -> None:
+    result = runner.invoke(main, ["report", "--task", "write copy", "--live"])
+    assert result.exit_code == 0
+    assert "Server load (live, at recommendation time)" in result.stdout
+
+
+def test_activity_empty_and_populated(runner: CliRunner, tmp_path: Path) -> None:
+    from unittest.mock import patch
+
+    from best_engine_ai_helper import llm, observe
+
+    # A test-owned ledger, enabled up front, so `activity_cmd`'s "no active
+    # ledger -> open the default path" fallback never touches the real
+    # ~/.best-engine-ai-helper/usage.db (conftest's autouse fixture sets
+    # BEST_ENGINE_NO_LEDGER=1, so `main()`'s own auto-enable stays a no-op).
+    ledger = observe.enable(str(tmp_path / "usage.db"))
+
+    empty = runner.invoke(main, ["activity"])
+    assert empty.exit_code == 0 and "No calls recorded yet." in empty.stdout
+
+    empty_json = runner.invoke(main, ["activity", "--format", "json"])
+    assert json.loads(empty_json.stdout)["total_calls"] == 0
+
+    # Record one call, then check both output formats reflect it.
+    with patch("requests.post") as p:
+        p.return_value.json.return_value = {"response": "hi"}
+        p.return_value.raise_for_status.return_value = None
+        llm.chat("hello", model="qwen3:8b")
+
+    table = runner.invoke(main, ["activity"])
+    assert table.exit_code == 0
+    assert "Total calls: 1" in table.stdout and "qwen3:8b" in table.stdout
+
+    as_json = runner.invoke(main, ["activity", "--format", "json"])
+    data = json.loads(as_json.stdout)
+    assert data["total_calls"] == 1 and data["total_cost_usd"] == 0.0
+    ledger.close()
 
 
 def test_detect_emits_valid_json(runner: CliRunner) -> None:
@@ -51,7 +91,10 @@ def test_report_prints_markdown_json_and_writes_files(
     md = runner.invoke(main, ["report", "--task", "write python code"])
     assert md.exit_code == 0 and "# Best local engine" in md.output
     js = runner.invoke(main, ["report", "--format", "json"])
-    assert js.exit_code == 0 and "recommendations" in json.loads(js.output)
+    # No --task here: parse_task logs a WARNING (see recommend.py), and
+    # CliRunner's `.output` merges stdout+stderr, so parse strictly from
+    # `.stdout` — the CLI's real machine-readable-JSON contract is stdout only.
+    assert js.exit_code == 0 and "recommendations" in json.loads(js.stdout)
     out = runner.invoke(main, ["report", "--out", str(tmp_path / "r")])
     assert out.exit_code == 0
     assert (tmp_path / "r.md").is_file() and (tmp_path / "r.json").is_file()

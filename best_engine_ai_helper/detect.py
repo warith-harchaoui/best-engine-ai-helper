@@ -295,3 +295,136 @@ def available_memory() -> dict[str, float | None]:
         "vram_gb": vram_gb,
         "ram_gb": ram_gb,
     }
+
+
+# ---------------------------------------------------------------------------
+# Live server load — current, not total, capacity
+# ---------------------------------------------------------------------------
+# `available_memory` and `compute_profile` describe the machine's STATIC
+# capacity: total memory pools, accelerator identity. Two machines with
+# identical capacity behave very differently if one is idle and the other is
+# already serving three models or mid-compile — the realistic budget for
+# "one more model" depends on what else is happening RIGHT NOW. The live
+# metrics themselves (CPU%, free RAM, disk usage, GPU utilization) are generic
+# cross-platform facts and live in `os_helper.hardware_utils`, same as every
+# other raw probe this module wraps; only the Ollama/vLLM-specific
+# "how many engines are already serving" count is AI-domain-specific enough
+# to stay here.
+
+# Ollama's REST base URL, same default/env-var as llm.py's `_base_url()` (not
+# imported from there to avoid a cross-module private-name dependency for one
+# constant).
+_OLLAMA_BASE_URL_ENV = "SPREZZATURE_LLM_BASE_URL"
+_OLLAMA_BASE_URL_DEFAULT = "http://localhost:11434"
+
+
+def _running_engines() -> int:
+    """Best-effort count of already-serving local inference engines.
+
+    Sums Ollama's currently loaded models (queried via its ``/api/ps``
+    endpoint — the source of truth, since one ``ollama serve`` daemon can
+    hold several models resident at once, so a process count would
+    undercount) and running vLLM server processes (each normally serves
+    exactly one model, so a process count is accurate there). Both probes
+    fail soft to 0 — neither engine running is the common case, not an error.
+
+    Returns
+    -------
+    int
+        Number of currently loaded/serving models across both engines.
+    """
+    count = 0
+
+    try:
+        import os
+
+        import requests
+
+        base_url = os.environ.get(_OLLAMA_BASE_URL_ENV, _OLLAMA_BASE_URL_DEFAULT).rstrip("/")
+        resp = requests.get(f"{base_url}/api/ps", timeout=1.0)
+        if resp.ok:
+            count += len(resp.json().get("models", []))
+    except Exception as exc:  # noqa: BLE001 — Ollama not running is the common case
+        osh.debug(f"Ollama /api/ps unreachable (probably not running): {exc}")
+
+    try:
+        import psutil
+
+        for proc in psutil.process_iter(["cmdline"]):
+            try:
+                cmdline = " ".join(proc.info.get("cmdline") or []).lower()
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+            if "vllm" in cmdline and ("serve" in cmdline or "api_server" in cmdline):
+                count += 1
+    except Exception as exc:  # noqa: BLE001 — process enumeration must not break detection
+        osh.debug(f"vLLM process scan failed: {exc}")
+
+    return count
+
+
+def server_load() -> dict[str, Any]:
+    """
+    Snapshot the machine's CURRENT load — as opposed to its static capacity.
+
+    Requires an os-helper release whose ``hardware_info()`` includes the live
+    fields ``cpu.percent`` / ``available_ram_gb`` / ``disk`` /
+    ``gpu_utilization_percent`` (added alongside this function; not yet in a
+    published os-helper release as of this writing — bump the ``os-helper``
+    pin in ``pyproject.toml`` once one ships, or this raises ``KeyError`` on
+    a fresh install).
+
+    Feeds :func:`score.effective_budget`'s optional ``load`` parameter, so a
+    recommendation reflects what else is happening on this machine right now:
+    another process (or an already-running engine) can hold memory the static
+    hardware totals from :func:`available_memory` know nothing about.
+
+    Returns
+    -------
+    dict[str, Any]
+        ``available_ram_gb`` : float
+            Free system RAM right now.
+        ``cpu_percent`` : float
+            Instantaneous CPU utilization, 0-100.
+        ``gpu_percent`` : float or None
+            Live discrete-GPU utilization, 0-100; None on Apple Silicon,
+            CPU-only machines, or when the vendor CLI is unavailable.
+        ``disk_free_gb`` : float
+            Free space on the disk holding the home directory (where model
+            caches live).
+        ``disk_percent_used`` : float
+            0-100.
+        ``running_engines`` : int
+            Best-effort count of already-loaded Ollama models plus running
+            vLLM server processes.
+
+    Examples
+    --------
+    >>> load = server_load()
+    >>> load["available_ram_gb"] >= 0
+    True
+    >>> 0 <= load["cpu_percent"] <= 100
+    True
+    >>> load["running_engines"] >= 0
+    True
+    """
+    # One aggregate call: `hardware_info()` already samples every live figure
+    # this needs (plus static facts this function doesn't use), so calling it
+    # once avoids redundant vendor-detection/subprocess probes that four
+    # separate osh.* calls would each repeat.
+    info = osh.hardware_info()
+    load = {
+        "available_ram_gb": info["available_ram_gb"],
+        "cpu_percent": info["cpu"]["percent"],
+        "gpu_percent": info["gpu_utilization_percent"],
+        "disk_free_gb": info["disk"]["free_gb"],
+        "disk_percent_used": info["disk"]["percent_used"],
+        "running_engines": _running_engines(),
+    }
+    osh.info(
+        f"Server load — RAM free: {load['available_ram_gb']} GB, "
+        f"CPU: {load['cpu_percent']}%, GPU: {load['gpu_percent']}%, "
+        f"disk free: {load['disk_free_gb']} GB, "
+        f"running engines: {load['running_engines']}"
+    )
+    return load

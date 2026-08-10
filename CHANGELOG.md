@@ -4,6 +4,66 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Local activity/cost ledger (`observe.py`), the first piece of the `cloud`
+  branch's Phase 6.1 monitoring plan landed on `main`.** `llm.chat()` gained
+  an observer seam (`add_observer`/`_emit`, ported from the `cloud` branch —
+  cloud-agnostic, so it lands here independent of the rest of that branch):
+  every call fans a small event out to registered observers. `observe.py`'s
+  `Ledger` is the first consumer — a local, append-only SQLite database
+  (`~/.best-engine-ai-helper/usage.db`) recording who called what (
+  `BEST_ENGINE_USER` env var, else the OS login name; `observe.as_user(name)`
+  for scoped attribution, e.g. per-request in a shared server), which
+  model/backend, latency, success/failure, and an estimated cost (bundled
+  `pricing.yaml`; always `0.0` for local Ollama/vLLM, `None` — never
+  fabricated — for an unpriced cloud model). Built for the "one company,
+  several users" case. New `activity` CLI command (table/JSON), `GET
+  /api/activity`, and a GUI **Activity** section all read the same ledger.
+  Enabled by default in the CLI, API, and MCP server; opt out with
+  `BEST_ENGINE_NO_LEDGER=1`. **Scope note:** this repo's own commands rarely
+  call `llm.chat()` themselves (only the `pull`/`validate` Ralph gates do) —
+  the ledger's real value comes once downstream projects that import
+  `best_engine_ai_helper.llm` also call `observe.enable()`; that's a
+  per-project follow-up, not something this change does for the whole suite
+  automatically. Cost accounting for actual paid-provider calls, and the
+  remaining Phase 6.2 (Anthropic/Gemini transports) and 6.5 (NSFW safety)
+  work, stay on the `cloud` branch until finished.
+- **Task-description quality check in `recommend.parse_task`.** A missing or
+  blank task now logs a loud warning instead of silently defaulting to a
+  generic profile: "activity and cost monitoring cannot attribute this call
+  to a job without one." Also runs best-effort language detection
+  (`langdetect`, new core dependency, fully offline) on the task text; a
+  string with no detectable language (symbols/digits only) warns too. The
+  parsed report now carries a `language` field, surfaced in the CLI Markdown
+  report and the GUI results panel. Detection confidence is deliberately NOT
+  used as a "clean text" signal — `langdetect` can be confidently *wrong* on
+  a short phrase (e.g. "write SQL queries" detects as French at 99.9%
+  confidence), not merely uncertain.
+- **Live server-load awareness, opt-in via `--live`.** `detect.server_load()`
+  snapshots current free RAM, CPU/GPU utilization, disk usage, and how many
+  local engines (Ollama models, vLLM processes) are already running.
+  `score.effective_budget()` (and `rank()`/`select()`) accept an optional
+  `load` parameter: when given, the recommendation's memory budget is capped
+  at what is actually free right now (not just the theoretical accelerator
+  pool) and further derated when the CPU is saturated or disk space is low.
+  Off by default everywhere (`recommend()`'s `load=None`, CLI's `--live`
+  flag on `recommend`/`report`, API's `live: bool = False` on
+  `POST /api/recommend`, GUI's "live server load" checkbox) — it adds a
+  ~0.1-0.5s probe and makes the result depend on the exact moment it ran
+  rather than being a deterministic function of the hardware alone, which
+  matters for reproducible reports and CI. The report gains a `server_load`
+  key (and a Markdown/GUI section) only when `--live` is used.
+  **Cross-repo note:** the underlying generic live-metric probes
+  (`cpu_percent`, `available_ram_gb`, `disk_usage_gb`,
+  `gpu_utilization_percent` — including an Apple Silicon GPU-utilization
+  read via `ioreg`'s `IOAccelerator` node, which needs no `powermetrics`/sudo)
+  were added to `os-helper`'s `hardware_utils.py`, matching that module's own
+  "raw facts belong here, AI-domain interpretation belongs to the consumer"
+  split. They are not yet in a published os-helper release; the `os-helper`
+  pin in `pyproject.toml` needs bumping once one ships, or `server_load()`
+  raises on a fresh install.
+
 ### Changed
 
 - **Repository no longer distributed as a Claude/OpenCode Agent Skill.**
