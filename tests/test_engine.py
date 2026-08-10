@@ -147,16 +147,36 @@ def test_resolve_defaults_to_local_mode() -> None:
     assert eng["mode"] == "local"
 
 
-def test_resolve_cloud_mode_is_deferred() -> None:
-    # The `mode` field is recognised (forward-compatible), but cloud resolution
-    # ships on the 'cloud' branch — asking for it now fails loudly, not silently.
-    with pytest.raises(NotImplementedError, match="cloud"):
+def test_resolve_cloud_mode_builds_provider_plus_local_fallback() -> None:
+    eng = engine.resolve(
+        {"mode": "cloud", "provider": "mistral", "model": "mistral-large-latest",
+         "kind": "llm", "task": "x"},
+        catalog=_CATALOG, hw=_HW, compute=_COMPUTE,
+    )
+    assert eng["mode"] == "cloud" and eng["backend"] == "mistral"
+    assert eng["base_url"] == "https://api.mistral.ai/v1"
+    assert eng["llm"]["model"] == "mistral-large-latest" and eng["llm"]["cloud"] is True
+    # A local fallback is resolved from the SAME brief (paid -> local direction).
+    assert eng["fallback"] is not None and eng["fallback"]["backend"] in {"ollama", "vllm"}
+
+
+def test_resolve_cloud_mode_needs_a_model() -> None:
+    with pytest.raises(ValueError, match="model"):
         engine.resolve(
-            {"kind": "llm", "mode": "cloud", "task": "x"},
-            catalog=_CATALOG,
-            hw=_HW,
-            compute=_COMPUTE,
+            {"mode": "cloud", "provider": "openai", "kind": "llm", "task": "x"},
+            catalog=_CATALOG, hw=_HW, compute=_COMPUTE,
         )
+
+
+def test_resolve_cloud_respects_explicit_base_url_and_api_key_env() -> None:
+    eng = engine.resolve(
+        {"mode": "cloud", "provider": "anthropic", "model": "claude-3-5-sonnet",
+         "base_url": "https://my-proxy.example.com", "api_key_env": "MY_ANTHROPIC_KEY",
+         "kind": "llm", "task": "x"},
+        catalog=_CATALOG, hw=_HW, compute=_COMPUTE,
+    )
+    assert eng["base_url"] == "https://my-proxy.example.com"
+    assert eng["api_key_env"] == "MY_ANTHROPIC_KEY"
 
 
 def test_chat_engine_routes_backend_and_base_url(monkeypatch) -> None:
@@ -168,13 +188,13 @@ def test_chat_engine_routes_backend_and_base_url(monkeypatch) -> None:
         captured.clear()
         captured.update(kw)
         captured["fn"] = "ollama"
-        return "ok"
+        return "ok", {"in_tokens": None, "out_tokens": None}
 
     def _fake_openai(prompt, **kw):
         captured.clear()
         captured.update(kw)
         captured["fn"] = "openai"
-        return "ok"
+        return "ok", {"in_tokens": None, "out_tokens": None}
 
     monkeypatch.setattr(llm, "_chat_ollama", _fake_ollama)
     monkeypatch.setattr(llm, "_chat_openai", _fake_openai)

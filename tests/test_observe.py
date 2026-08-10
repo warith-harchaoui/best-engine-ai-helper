@@ -69,6 +69,25 @@ def test_estimate_cost_usd_free_local_unpriced_cloud_and_priced_cloud(
     assert cost == pytest.approx(2.5 + 10.0)
 
 
+def test_estimate_cost_usd_prefers_real_tokens_over_char_heuristic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        observe, "_load_pricing",
+        lambda: {"mistral-small-latest": {"input_per_1m": 0.10, "output_per_1m": 0.30}},
+    )
+    # in_chars/out_chars would heuristically suggest far more tokens than the
+    # provider actually reports; the real in_tokens/out_tokens must win.
+    event = _event(
+        backend="mistral", model="mistral-small-latest",
+        in_chars=10_000, out_chars=10_000, in_tokens=33, out_tokens=5,
+    )
+    cost = observe.estimate_cost_usd(event)
+    # estimate_cost_usd rounds to 6 decimals; compare with the same rounding
+    # rather than pytest.approx's tight default tolerance at this magnitude.
+    assert cost == round(33 / 1_000_000 * 0.10 + 5 / 1_000_000 * 0.30, 6)
+
+
 def test_ledger_record_and_summary_across_users_and_models() -> None:
     ledger = observe.Ledger(":memory:")
     with observe.as_user("alice"):

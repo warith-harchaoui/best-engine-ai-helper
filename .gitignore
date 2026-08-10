@@ -16,4 +16,6 @@ htmlcov/
 .private/
 # best-engine writes the machine-specific chosen models here (per-machine, never commit)
 llm.engine*.yaml
+# Real cloud API keys (see settings.yaml.example); os_helper.get_config reads
+# this from the current directory in llm._cloud_api_key. Never commit it.
 settings.yaml

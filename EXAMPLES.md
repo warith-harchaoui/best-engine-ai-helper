@@ -122,7 +122,7 @@ that `ensure` / `llm.chat` read at call time.
 Commit a hardware-independent `llm.brief.yaml` in the repo:
 
 ```yaml
-mode: local             # local (default; cloud is coming on the cloud branch)
+mode: local             # local (default) or cloud
 kind: both              # llm | vlm | both
 headroom: 0.5           # max fraction of usable accelerator memory (clamped to 0.5)
 min_tps: 15             # comfort throughput floor (tokens/s)
@@ -132,9 +132,32 @@ task: >-
   the table's own language, and sanity-check the rendered chart image.
 ```
 
-`mode: local` is the default and the only backend family supported today; a
-`mode: cloud` brief (paid provider with a local fallback) is planned for a future
-`cloud` branch and is not resolvable yet.
+`mode: local` is the default. `mode: cloud` resolves a paid provider PLUS a
+local fallback from the same brief (paid -> local on failure):
+
+```yaml
+mode: cloud
+provider: mistral        # openai | mistral | openrouter | together | azure |
+                         # anthropic | gemini (anthropic/gemini use their own
+                         # wire formats; the rest speak OpenAI-compatible)
+model: mistral-large-latest
+api_key_env: MISTRAL_API_KEY   # name of the env var holding the key — never
+                                # the key value itself, never persisted
+structured_output: true
+task: extract structured line items from an invoice PDF's OCR text
+```
+
+```sh
+export MISTRAL_API_KEY=...     # your key, in the shell, never committed
+best-engine-ai-helper resolve --brief llm.brief.yaml --out llm.engine.yaml
+```
+
+The resulting engine's `fallback` is resolved from the SAME brief, so
+`llm.chat(engine=...)` degrades to the always-available local model if the
+paid call fails. See `llm.chat`'s `pseudonymize=` (scrub personal data before
+it reaches the cloud, via the local fallback engine) and `safety=` (NSFW/
+policy scanning, on by default for a cloud engine) keywords for the rest of
+the cloud-call safety net.
 
 Resolve it, per machine (the backend is chosen for the hardware: **vLLM on a
 discrete GPU, Ollama otherwise**):
