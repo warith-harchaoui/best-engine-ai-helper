@@ -27,7 +27,7 @@ before first paint so there's no flash.
 ## Install and run
 
 ```sh
-pip install 'best-engine-ai-helper[api]'
+pip install best-engine-ai-helper
 best-engine-ai-helper gui
 # open http://127.0.0.1:8000/gui
 ```

@@ -249,18 +249,11 @@ def test_validate_and_env_require_configuration(
     assert main(["env"]) == 1
 
 
-def test_gui_requires_api_extra_when_uvicorn_missing(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    import builtins
+def test_gui_command_binds(monkeypatch: pytest.MonkeyPatch) -> None:
+    import uvicorn
 
-    real_import = builtins.__import__
-
-    def _no_uvicorn(name: str, *a: object, **k: object) -> object:
-        if name == "uvicorn":
-            raise ImportError("no uvicorn")
-        return real_import(name, *a, **k)  # type: ignore[arg-type]
-
-    monkeypatch.setattr(builtins, "__import__", _no_uvicorn)
-    assert main(["gui"]) == 1
-    assert "[api] extra" in capsys.readouterr().err
+    calls: dict[str, object] = {}
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kw: calls.update(app=app, **kw))
+    assert main(["gui", "--host", "0.0.0.0", "--port", "9000"]) == 0
+    assert calls["app"] == "best_engine_ai_helper.api:app"
+    assert (calls["host"], calls["port"]) == ("0.0.0.0", 9000)

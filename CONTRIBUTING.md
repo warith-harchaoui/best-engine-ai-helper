@@ -30,7 +30,7 @@ Every Python file follows the mandate in [CODING.md](CODING.md):
 Run the same checks CI runs before opening a pull request:
 
 ```sh
-pip install -e ".[api]" -r requirements-dev.txt
+pip install -e "." -r requirements-dev.txt
 python -m pip check                                  # dependency set is coherent
 ruff check .                                         # style + import order
 mypy best_engine_ai_helper                           # types

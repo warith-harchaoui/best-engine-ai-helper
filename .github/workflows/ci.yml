@@ -1,12 +1,15 @@
 name: ci
 
-# Deterministic gate: install the package (with the [mcp] extra, which pulls in
-# [api] too, so the FastAPI GUI surface AND the MCP surface are both importable
-# under --doctest-modules) + dev deps, verify the dependency set is coherent
-# (pip check), then ruff lint, mypy types, and pytest with a coverage floor on
-# the supported Python versions. The tests never call a live model daemon (the
-# pull / validate model loops are covered by mocked / fall-through tests), so CI
-# needs no Ollama.
+# Deterministic gate: install the package (fastapi/uvicorn/fastapi-mcp are core
+# dependencies, so the GUI/HTTP-API surface AND the MCP surface are both
+# importable under --doctest-modules with no extra) + dev deps, verify the
+# dependency set is coherent (pip check), then ruff lint, mypy types, and
+# pytest with a coverage floor on the supported Python versions. The [cloud]/
+# [filtered] extras are deliberately NOT installed here — the tests exercise
+# their "not installed" and "installed" branches by monkeypatching
+# sys.modules, not by pulling in the real (heavy) packages. The tests never
+# call a live model daemon (the pull / validate model loops are covered by
+# mocked / fall-through tests), so CI needs no Ollama.
 
 "on":
   push:
@@ -31,7 +34,7 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[mcp]" -r requirements-dev.txt
+          pip install -e "." -r requirements-dev.txt
       - name: Pip check
         # Catch incompatible pinned dependencies before they bite at runtime.
         run: python -m pip check

@@ -13,11 +13,7 @@ description to get the best local engine(s) for it. It is bilingual —
 French by default, English at ``GET /gui?lang=en`` — with a header link to
 switch between the two.
 
-Install the extra to get the runtime dependencies::
-
-    pip install 'best-engine-ai-helper[api]'
-
-Then run the app with any ASGI server::
+Run the app with any ASGI server::
 
     uvicorn best_engine_ai_helper.api:app --port 8000
     # or: best-engine-ai-helper gui
@@ -32,18 +28,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-try:
-    from fastapi import FastAPI
-    from fastapi.responses import HTMLResponse, RedirectResponse
-    from fastapi.staticfiles import StaticFiles
-    from pydantic import BaseModel
-except ImportError as exc:  # pragma: no cover
-    raise ImportError(
-        "The FastAPI HTTP surface requires the [api] extra. "
-        "Install with: pip install 'best-engine-ai-helper[api]'"
-    ) from exc
-
 import os_helper as osh
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from . import catalog as _catalog
 from . import detect as _detect

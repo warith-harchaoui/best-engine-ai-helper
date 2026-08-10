@@ -1,21 +1,15 @@
 """Smoke test for the MCP surface (`best_engine_ai_helper.mcp`).
 
-Gated on the ``mcp`` extra (FastAPI + fastapi-mcp). Importing
+FastAPI + fastapi-mcp are core dependencies. Importing
 `best_engine_ai_helper.mcp` mounts an MCP endpoint onto the FastAPI app; we
 check the endpoint is wired and that the HTTP API keeps serving alongside it.
-Skips cleanly when the extra isn't installed, so the default suite is
-unaffected.
 """
 
 from __future__ import annotations
 
-import pytest
+from starlette import testclient as starlette_testclient
 
-pytest.importorskip("fastapi")
-pytest.importorskip("fastapi_mcp")
-starlette_testclient = pytest.importorskip("starlette.testclient")
-
-from best_engine_ai_helper import mcp as mcp_module  # noqa: E402
+from best_engine_ai_helper import mcp as mcp_module
 
 
 def test_mcp_endpoint_is_mounted() -> None:

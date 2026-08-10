@@ -249,14 +249,20 @@ def test_shape_schema_for_ollama() -> None:
 
 
 def test_chat_anthropic_builds_payload_and_extracts_usage() -> None:
-    resp = _resp({
-        "content": [{"type": "text", "text": "bonjour"}],
-        "usage": {"input_tokens": 12, "output_tokens": 3},
-    })
+    resp = _resp(
+        {
+            "content": [{"type": "text", "text": "bonjour"}],
+            "usage": {"input_tokens": 12, "output_tokens": 3},
+        }
+    )
     with patch("requests.post", return_value=resp) as post:
         text, usage = _llm._chat_anthropic(
-            "salut", system="Be brief", images=None, json_schema=None,
-            model="claude-3-5-sonnet-20241022", temperature=0.2,
+            "salut",
+            system="Be brief",
+            images=None,
+            json_schema=None,
+            model="claude-3-5-sonnet-20241022",
+            temperature=0.2,
             api_key="sk-ant-test",
         )
     assert text == "bonjour" and usage == {"in_tokens": 12, "out_tokens": 3}
@@ -269,14 +275,21 @@ def test_chat_anthropic_builds_payload_and_extracts_usage() -> None:
 
 
 def test_chat_anthropic_with_images_and_malformed_response() -> None:
-    resp = _resp({
-        "content": [{"type": "text", "text": "described"}],
-        "usage": {"input_tokens": 5, "output_tokens": 2},
-    })
+    resp = _resp(
+        {
+            "content": [{"type": "text", "text": "described"}],
+            "usage": {"input_tokens": 5, "output_tokens": 2},
+        }
+    )
     with patch("requests.post", return_value=resp) as post:
         _llm._chat_anthropic(
-            "describe", system=None, images=[b"\xff\xd8fakejpeg"], json_schema=None,
-            model="claude-3-5-sonnet-20241022", temperature=0.2, api_key="k",
+            "describe",
+            system=None,
+            images=[b"\xff\xd8fakejpeg"],
+            json_schema=None,
+            model="claude-3-5-sonnet-20241022",
+            temperature=0.2,
+            api_key="k",
         )
     content = post.call_args[1]["json"]["messages"][0]["content"]
     assert content[0]["type"] == "text" and content[1]["source"]["media_type"] == "image/jpeg"
@@ -284,25 +297,40 @@ def test_chat_anthropic_with_images_and_malformed_response() -> None:
     with patch("requests.post", return_value=_resp({"content": []})):
         with pytest.raises(RuntimeError, match="Malformed Anthropic"):
             _llm._chat_anthropic(
-                "x", system=None, images=None, json_schema=None,
-                model="claude-3-5-sonnet-20241022", temperature=0.2, api_key="k",
+                "x",
+                system=None,
+                images=None,
+                json_schema=None,
+                model="claude-3-5-sonnet-20241022",
+                temperature=0.2,
+                api_key="k",
             )
 
 
 def test_chat_gemini_builds_payload_and_extracts_usage() -> None:
-    resp = _resp({
-        "candidates": [{"content": {"parts": [{"text": "hola"}]}}],
-        "usageMetadata": {"promptTokenCount": 7, "candidatesTokenCount": 4},
-    })
+    resp = _resp(
+        {
+            "candidates": [{"content": {"parts": [{"text": "hola"}]}}],
+            "usageMetadata": {"promptTokenCount": 7, "candidatesTokenCount": 4},
+        }
+    )
     schema = {"type": "object", "properties": {"k": {"type": "string"}}, "$defs": {}, "title": "X"}
     with patch("requests.post", return_value=resp) as post:
         text, usage = _llm._chat_gemini(
-            "hi", system="persona", images=[b"png"], json_schema=schema,
-            model="gemini-1.5-pro", temperature=0.2, api_key="g-key",
+            "hi",
+            system="persona",
+            images=[b"png"],
+            json_schema=schema,
+            model="gemini-1.5-pro",
+            temperature=0.2,
+            api_key="g-key",
         )
     assert text == "hola" and usage == {"in_tokens": 7, "out_tokens": 4}
     url, kw = post.call_args[0][0], post.call_args[1]
-    assert url == "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent"
+    assert (
+        url
+        == "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent"
+    )
     assert kw["params"] == {"key": "g-key"}
     assert kw["json"]["systemInstruction"]["parts"][0]["text"] == "persona"
     parts = kw["json"]["contents"][0]["parts"]
@@ -316,8 +344,13 @@ def test_chat_gemini_malformed_response_raises() -> None:
     with patch("requests.post", return_value=_resp({"candidates": []})):
         with pytest.raises(RuntimeError, match="Malformed Gemini"):
             _llm._chat_gemini(
-                "x", system=None, images=None, json_schema=None,
-                model="gemini-1.5-pro", temperature=0.2, api_key="k",
+                "x",
+                system=None,
+                images=None,
+                json_schema=None,
+                model="gemini-1.5-pro",
+                temperature=0.2,
+                api_key="k",
             )
 
 
@@ -327,12 +360,15 @@ def test_mistral_routes_through_openai_compatible_transport(
     # Mistral speaks the OpenAI Chat Completions wire format, so it never needs
     # its own transport function — only membership in _OPENAI_COMPATIBLE.
     assert "mistral" in _llm._OPENAI_COMPATIBLE
-    resp = _resp({
-        "choices": [{"message": {"content": "bonjour"}}],
-        "usage": {"prompt_tokens": 10, "completion_tokens": 2},
-    })
+    resp = _resp(
+        {
+            "choices": [{"message": {"content": "bonjour"}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 2},
+        }
+    )
     eng = {
-        "backend": "mistral", "base_url": "https://api.mistral.ai/v1",
+        "backend": "mistral",
+        "base_url": "https://api.mistral.ai/v1",
         "api_key_env": "MISTRAL_API_KEY",
         "llm": {"model": "mistral-large-latest", "cloud": True},
     }
@@ -481,10 +517,14 @@ def test_chat_pseudonymizes_cloud_prompt_and_restores_response(
 
     monkeypatch.setattr(_llm, "_chat_openai", _fake_openai)
     eng = {
-        "backend": "openai", "base_url": "https://api.openai.com/v1",
+        "backend": "openai",
+        "base_url": "https://api.openai.com/v1",
         "llm": {"model": "gpt-4o", "cloud": True},
-        "fallback": {"backend": "ollama", "base_url": "http://localhost:11434",
-                     "llm": {"model": "qwen3:8b"}},
+        "fallback": {
+            "backend": "ollama",
+            "base_url": "http://localhost:11434",
+            "llm": {"model": "qwen3:8b"},
+        },
     }
     out = _llm.chat("Bonjour Marie", engine=eng, kind="llm", pseudonymize=True, safety=False)
     assert captured["prompt"] == "Bonjour Claudine"  # the CLOUD call saw the scrubbed prompt
@@ -493,8 +533,11 @@ def test_chat_pseudonymizes_cloud_prompt_and_restores_response(
 
 def test_chat_pseudonymize_warns_without_a_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_llm, "_chat_openai", lambda prompt, **kw: (prompt, {}))
-    eng = {"backend": "openai", "base_url": "https://api.openai.com/v1",
-           "llm": {"model": "gpt-4o", "cloud": True}}  # no "fallback" key
+    eng = {
+        "backend": "openai",
+        "base_url": "https://api.openai.com/v1",
+        "llm": {"model": "gpt-4o", "cloud": True},
+    }  # no "fallback" key
     out = _llm.chat("hi", engine=eng, kind="llm", pseudonymize=True, safety=False)
     assert out == "hi"  # sent unscrubbed, no crash
 
@@ -514,15 +557,19 @@ def test_chat_safety_defaults_on_for_both_local_and_cloud(
 
     monkeypatch.setattr(safety, "check_text", _fake_check_text)
     monkeypatch.setattr(_llm, "_chat_openai", lambda prompt, **kw: ("ok", {}))
-    cloud_eng = {"backend": "openai", "base_url": "https://api.openai.com/v1",
-                 "llm": {"model": "gpt-4o", "cloud": True}}
+    cloud_eng = {
+        "backend": "openai",
+        "base_url": "https://api.openai.com/v1",
+        "llm": {"model": "gpt-4o", "cloud": True},
+    }
     _llm.chat("hi", engine=cloud_eng, kind="llm")
     assert calls == ["outbound", "inbound"]  # scanned both ways, no explicit safety= needed
 
     calls.clear()
     monkeypatch.setattr(_llm, "_chat_ollama", lambda prompt, **kw: ("ok", {}))
     local_eng = {
-        "backend": "ollama", "base_url": "http://localhost:11434",
+        "backend": "ollama",
+        "base_url": "http://localhost:11434",
         "llm": {"model": "qwen3:8b"},
     }
     _llm.chat("hi", engine=local_eng, kind="llm")

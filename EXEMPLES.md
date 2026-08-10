@@ -130,7 +130,7 @@ que lisent `ensure` et `llm.chat` au moment de l'appel.
 Committez un `llm.brief.yaml` indépendant du matériel dans le dépôt :
 
 ```yaml
-mode: local             # local (par défaut ; cloud à venir sur la branche cloud)
+mode: local             # local (par défaut) ou cloud
 kind: both              # llm | vlm | both
 headroom: 0.5           # fraction maximale de la mémoire accélératrice utilisable (plafonnée à 0.5)
 min_tps: 15             # plancher de débit confortable (tokens/s)
@@ -140,10 +140,38 @@ task: >-
   the table's own language, and sanity-check the rendered chart image.
 ```
 
-`mode: local` est la valeur par défaut et la seule famille de backend prise
-en charge aujourd'hui ; un brief `mode: cloud` (fournisseur payant avec repli
-local) est prévu pour une future branche `cloud` et n'est pas encore
-résolvable.
+`mode: local` est la valeur par défaut. `mode: cloud` résout un fournisseur
+payant plus un repli local à partir du même brief (payant vers local en cas
+d'échec) :
+
+```yaml
+mode: cloud
+provider: mistral        # openai | mistral | openrouter | together | azure |
+                         # anthropic | gemini (anthropic/gemini ont leur
+                         # propre format, les autres parlent OpenAI-compatible)
+model: mistral-large-latest
+api_key_env: MISTRAL_API_KEY   # nom de la variable d'environnement qui
+                                # porte la clé — jamais la clé elle-même
+structured_output: true
+task: extraire les lignes structurées d'un texte OCR de facture
+```
+
+```sh
+export MISTRAL_API_KEY=...     # votre clé, dans le shell, jamais committée
+best-engine-ai-helper resolve --brief llm.brief.yaml --out llm.engine.yaml
+```
+
+Le `fallback` du moteur résultant est résolu à partir du MÊME brief, si bien
+que `llm.chat(engine=...)` retombe sur le modèle local toujours disponible en
+cas d'échec de l'appel payant. Voir les paramètres `pseudonymize=`
+(anonymise les données personnelles avant qu'elles n'atteignent le cloud, via
+le moteur local de repli) et `safety=` (filtrage NSFW/politique de contenu,
+activé par défaut pour chaque moteur, local ou cloud) de `llm.chat` pour le
+reste du filet de sécurité de l'appel cloud. Le retry/cache/pseudonymisation
+nécessitent l'extra `[cloud]` (`pip install 'best-engine-ai-helper[cloud]'`) ;
+les vrais classifieurs NSFW/toxicité de `safety=` nécessitent `[filtered]` —
+les deux se dégradent proprement (retry simple, pas de cache, heuristique par
+mots-clés) plutôt que d'échouer en leur absence.
 
 Résolvez-le, par machine (le backend est choisi selon le matériel : **vLLM
 sur un GPU discret, Ollama sinon**) :
@@ -332,10 +360,9 @@ print(to_markdown(report))                                # rapport lisible par 
 ## gui
 
 Lance l'interface graphique dans le navigateur (état du matériel + tâche →
-meilleur moteur). Nécessite l'extra `[api]` :
+meilleur moteur) :
 
 ```sh
-pip install 'best-engine-ai-helper[api]'
 best-engine-ai-helper gui
 # Serving GUI at http://127.0.0.1:8000/gui
 ```

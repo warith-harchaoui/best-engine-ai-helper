@@ -9,7 +9,7 @@ placeholder), or ``warn`` (log only, pass through unchanged). Every decision
 is logged via ``os_helper`` regardless of action, so a warn-mode deployment
 still keeps a full audit trail.
 
-Real classifiers are optional (the ``[safety]`` extra): Detoxify for text, a
+Real classifiers are optional (the ``[filtered]`` extra): Detoxify for text, a
 CLIP-based NSFW image classifier for images. Absent them, text scanning falls
 back to a deterministic keyword heuristic — crude, but it never silently
 no-ops. Image scanning has no comparable safe heuristic (a wrong guess is
@@ -17,7 +17,7 @@ worse than an honest "I don't know"), so it degrades to ``"unavailable"``
 rather than fabricate a verdict.
 
 Wired into :func:`best_engine_ai_helper.llm.chat` via its ``safety=`` keyword
-(defaults to True for a cloud engine, False for local): called on the
+(defaults to True for every engine, local or cloud): called on the
 outbound prompt/images and the inbound response.
 
 Default policy is deliberately ``warn``, not ``block``: this is a new
@@ -46,7 +46,7 @@ DEFAULT_THRESHOLD: float = 0.8
 # A crude, zero-dependency fallback so text scanning never silently no-ops
 # when Detoxify is not installed. NOT a substitute for a real classifier —
 # it only catches unambiguous, explicit phrases; most real violations will
-# pass through undetected. Install the `[safety]` extra for real coverage.
+# pass through undetected. Install the `[filtered]` extra for real coverage.
 _FALLBACK_TERMS: tuple[str, ...] = (
     "kill yourself",
     "child sexual abuse",
@@ -65,9 +65,7 @@ class SafetyViolation(RuntimeError):
         self.kind = kind
         self.score = score
         self.label = label
-        super().__init__(
-            f"safety block ({direction}, {kind}): label={label!r} score={score:.2f}"
-        )
+        super().__init__(f"safety block ({direction}, {kind}): label={label!r} score={score:.2f}")
 
 
 def _fallback_text_score(text: str) -> float:
@@ -90,7 +88,7 @@ def scan_text(text: str) -> dict[str, Any]:
     """
     Score ``text`` for toxic/NSFW content.
 
-    Uses Detoxify (the ``[safety]`` extra) when installed; falls back to a
+    Uses Detoxify (the ``[filtered]`` extra) when installed; falls back to a
     crude keyword heuristic otherwise (see the module docstring for why this
     is not a substitute for the real classifier).
 
@@ -122,9 +120,7 @@ def _cached_clip_classifier() -> Any:
     if _CLIP_CLASSIFIER is None:
         from transformers import pipeline
 
-        _CLIP_CLASSIFIER = pipeline(
-            "image-classification", model="Falconsai/nsfw_image_detection"
-        )
+        _CLIP_CLASSIFIER = pipeline("image-classification", model="Falconsai/nsfw_image_detection")
     return _CLIP_CLASSIFIER
 
 
@@ -132,7 +128,7 @@ def scan_image(image_bytes: bytes) -> dict[str, Any]:
     """
     Score an image for NSFW content.
 
-    Uses a CLIP-based NSFW detector (the ``[safety]`` extra, pulls in
+    Uses a CLIP-based NSFW detector (the ``[filtered]`` extra, pulls in
     ``transformers`` + ``Pillow`` + a torch backend) when installed. No
     heuristic fallback exists for images — a wrong guess is worse than an
     honest "unavailable" — so this degrades to that instead of fabricating a
@@ -237,7 +233,7 @@ def check_image(
     Same contract as :func:`check_text`. ``redact`` has no sensible
     image-level equivalent (there is nothing to substitute an image with),
     so it behaves like ``warn`` here. An ``"unavailable"`` backend (no
-    ``[safety]`` extra installed) never flags — an unknown verdict is not a
+    ``[filtered]`` extra installed) never flags — an unknown verdict is not a
     violation.
 
     Parameters

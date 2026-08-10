@@ -156,8 +156,12 @@ The resulting engine's `fallback` is resolved from the SAME brief, so
 `llm.chat(engine=...)` degrades to the always-available local model if the
 paid call fails. See `llm.chat`'s `pseudonymize=` (scrub personal data before
 it reaches the cloud, via the local fallback engine) and `safety=` (NSFW/
-policy scanning, on by default for a cloud engine) keywords for the rest of
-the cloud-call safety net.
+policy scanning, on by default for every engine, local or cloud) keywords for
+the rest of the cloud-call safety net. Retry/caching/pseudonymization need the
+`[cloud]` extra (`pip install 'best-engine-ai-helper[cloud]'`); real NSFW/
+toxicity classifiers for `safety=` need `[filtered]` — both degrade gracefully
+(a light retry, no caching, a keyword heuristic) rather than erroring when
+absent.
 
 Resolve it, per machine (the backend is chosen for the hardware: **vLLM on a
 discrete GPU, Ollama otherwise**):
@@ -336,11 +340,9 @@ print(to_markdown(report))                                # human-readable repor
 
 ## gui
 
-Launch the browser GUI (hardware snapshot + task → best engine). Requires the
-`[api]` extra:
+Launch the browser GUI (hardware snapshot + task → best engine):
 
 ```sh
-pip install 'best-engine-ai-helper[api]'
 best-engine-ai-helper gui
 # Serving GUI at http://127.0.0.1:8000/gui
 ```

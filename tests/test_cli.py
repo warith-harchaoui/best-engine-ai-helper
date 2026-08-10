@@ -11,7 +11,6 @@ config under ~/.best-engine-ai-helper.
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import pytest
@@ -354,18 +353,12 @@ def test_validate_runs_gates_when_configured(
     assert "pass" in result.output.lower()
 
 
-def test_gui_command_binds_and_needs_extra(
-    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    uvicorn = pytest.importorskip("uvicorn")
+def test_gui_command_binds(runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
+    import uvicorn
+
     calls: dict[str, object] = {}
     monkeypatch.setattr(uvicorn, "run", lambda app, **kw: calls.update(app=app, **kw))
     result = runner.invoke(main, ["gui", "--host", "0.0.0.0", "--port", "9000"])
     assert result.exit_code == 0
     assert calls["app"] == "best_engine_ai_helper.api:app"
     assert (calls["host"], calls["port"]) == ("0.0.0.0", 9000)
-    # Without the [api] extra, the command names the missing dependency.
-    monkeypatch.setitem(sys.modules, "uvicorn", None)
-    missing = runner.invoke(main, ["gui"])
-    assert missing.exit_code == 1
-    assert "[api]" in (missing.output or "") + (missing.stderr or "")

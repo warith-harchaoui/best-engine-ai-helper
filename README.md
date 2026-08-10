@@ -40,18 +40,23 @@ English via `/gui?lang=en`, with a header link to switch. See
 
 - Python 3.10 or later
 - [Ollama](https://ollama.com) (needed for `pull`, `validate`, `env`; not for `detect`, `recommend`, or `report`)
-- os-helper (hardware detection), PyYAML, click, requests, langdetect (installed automatically)
-- Optional: `fastapi` + `uvicorn` for the browser GUI (`pip install 'best-engine-ai-helper[api]'`)
+- Everything else — os-helper (hardware detection), PyYAML, click, requests,
+  langdetect, and the FastAPI/MCP surfaces (`fastapi`, `uvicorn`,
+  `fastapi-mcp`) — installs automatically; the CLI, GUI, HTTP API, and MCP
+  server are all part of the default install, nothing extra to opt into.
+- Optional: `[cloud]` for cloud-provider mode (retry, caching,
+  pseudonymization, an OS-keychain fallback for API keys) and `[filtered]`
+  for real NSFW/toxicity classifiers (Detoxify, a CLIP-based image model) —
+  see [EXAMPLES.md's `resolve`/`mode: cloud` section](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXAMPLES.md#resolve)
+  for the full story; both degrade gracefully (a keyword heuristic / an
+  "unavailable" verdict) when absent, never a hard failure.
 
 ## Installation
 
 The package is pure Python (Python 3.10+). The only platform-specific pieces
 are **Python itself** and the optional **Ollama** runtime (needed only for
-`pull` / `validate` / `env`, not for `detect`, `recommend`, `report`, or the
-GUI). Pick your OS below.
-
-Everywhere, `[api]` pulls in the browser-GUI extra (`fastapi` + `uvicorn`).
-Drop it (`pip install best-engine-ai-helper`) if you only want the CLI.
+`pull` / `validate` / `env`, not for `detect`, `recommend`, `report`, the GUI,
+or the MCP surface). Pick your OS below.
 
 ### 🍎 macOS
 
@@ -63,7 +68,7 @@ brew install python
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install 'best-engine-ai-helper[api]'
+pip install best-engine-ai-helper
 
 # 3. Optional: Ollama, only if you'll run `pull`
 brew install ollama          # then: ollama serve
@@ -83,7 +88,7 @@ sudo apt install -y python3 python3-venv python3-pip
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install 'best-engine-ai-helper[api]'
+pip install best-engine-ai-helper
 
 # 3. Optional: Ollama, only if you'll run `pull`
 curl -fsSL https://ollama.com/install.sh | sh   # then: ollama serve
@@ -103,22 +108,20 @@ winget install Python.Python.3.12
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-pip install "best-engine-ai-helper[api]"
+pip install best-engine-ai-helper
 
 # 3. Optional: Ollama, only if you'll run `pull`
 winget install Ollama.Ollama
 ```
 
-NVIDIA VRAM is detected via `nvidia-smi` (installed with the driver). Note the
-double quotes around `"...[api]"`: PowerShell needs them, single quotes won't
-expand the same way.
+NVIDIA VRAM is detected via `nvidia-smi` (installed with the driver).
 
 ### From source (any OS)
 
 ```sh
 git clone https://github.com/warith-harchaoui/best-engine-ai-helper
 cd best-engine-ai-helper
-pip install -e '.[api]'          # Windows PowerShell: pip install -e ".[api]"
+pip install -e .
 ```
 
 ### Verify the install
@@ -152,7 +155,7 @@ best-engine-ai-helper catalog show
 # Browse the hardware chip table
 best-engine-ai-helper hardware show
 
-# Launch the browser GUI (requires the [api] extra)
+# Launch the browser GUI
 best-engine-ai-helper gui
 
 # Who's calling what, and at what cost (local SQLite ledger)
@@ -163,7 +166,6 @@ The same `/api/system`, `/api/recommend`, and `/api/activity` endpoints are
 also reachable as MCP tools for any MCP-aware agent host:
 
 ```sh
-pip install "best-engine-ai-helper[mcp]"
 best-engine-ai-helper-mcp        # -> http://127.0.0.1:8000 (MCP at /mcp)
 ```
 

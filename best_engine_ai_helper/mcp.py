@@ -9,11 +9,7 @@ first-class tools — the same detect-then-recommend workflow the CLI's
 (https://github.com/tadata-org/fastapi_mcp): one wrapper publishes the whole
 existing HTTP surface, so the routes are never duplicated.
 
-Install the extra to pull in ``fastapi-mcp``::
-
-    pip install "best-engine-ai-helper[mcp]"
-
-Then run the server (HTTP API + MCP endpoint at ``/mcp``)::
+Run the server (HTTP API + MCP endpoint at ``/mcp``)::
 
     best-engine-ai-helper-mcp                 # console entry point
     python -m best_engine_ai_helper.mcp       # equivalent
@@ -25,12 +21,7 @@ Warith Harchaoui <warith.harchaoui@deraison.ai>
 
 from __future__ import annotations
 
-try:
-    from fastapi_mcp import FastApiMCP
-except ImportError as exc:  # pragma: no cover - exercised only without the extra
-    raise ImportError(
-        'The MCP surface needs the [mcp] extra: pip install "best-engine-ai-helper[mcp]"'
-    ) from exc
+from fastapi_mcp import FastApiMCP
 
 # Reuse the exact same FastAPI app: MCP is a thin wrapper on top, no new routes.
 from best_engine_ai_helper.api import app

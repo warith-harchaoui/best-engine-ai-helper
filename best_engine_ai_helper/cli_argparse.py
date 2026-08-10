@@ -707,17 +707,9 @@ def _handle_gui(ns: argparse.Namespace) -> int:
     Returns
     -------
     int
-        Process exit code (0 on a clean shutdown, 1 if the `[api]` extra is
-        missing).
+        Process exit code (always 0; ``uvicorn.run`` blocks until shutdown).
     """
-    try:
-        import uvicorn
-    except ImportError:
-        _emit_err(
-            "The GUI requires the [api] extra. Install with: "
-            "pip install 'best-engine-ai-helper[api]'"
-        )
-        return 1
+    import uvicorn
 
     _emit(f"Serving GUI at http://{ns.host}:{ns.port}/gui")
     uvicorn.run("best_engine_ai_helper.api:app", host=ns.host, port=ns.port)

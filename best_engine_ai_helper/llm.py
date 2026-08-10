@@ -101,9 +101,7 @@ import os_helper as osh
 # cloud provider (OpenAI itself, Mistral, OpenRouter, Together, Azure OpenAI).
 # Anthropic and Gemini use their own wire formats (`_chat_anthropic` /
 # `_chat_gemini`).
-_OPENAI_COMPATIBLE = frozenset(
-    {"vllm", "openai", "mistral", "openrouter", "together", "azure"}
-)
+_OPENAI_COMPATIBLE = frozenset({"vllm", "openai", "mistral", "openrouter", "together", "azure"})
 
 # Backends that are never local — used to decide whether privacy/safety
 # defaults apply and whether a backend can ever be "free" for cost purposes
@@ -771,14 +769,16 @@ def _chat_anthropic(
         for img_bytes in images:
             # JPEG starts with 0xFFD8; anything else is treated as PNG.
             media_type = "image/jpeg" if img_bytes[:2] == b"\xff\xd8" else "image/png"
-            parts.append({
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": media_type,
-                    "data": base64.b64encode(img_bytes).decode(),
-                },
-            })
+            parts.append(
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": media_type,
+                        "data": base64.b64encode(img_bytes).decode(),
+                    },
+                }
+            )
         content = parts
     else:
         content = user_prompt
@@ -883,9 +883,9 @@ def _chat_gemini(
 
     parts: list[dict[str, Any]] = [{"text": prompt}]
     for img_bytes in images or []:
-        parts.append({
-            "inlineData": {"mimeType": "image/png", "data": base64.b64encode(img_bytes).decode()}
-        })
+        parts.append(
+            {"inlineData": {"mimeType": "image/png", "data": base64.b64encode(img_bytes).decode()}}
+        )
 
     payload: dict[str, Any] = {
         "contents": [{"role": "user", "parts": parts}],
@@ -901,9 +901,7 @@ def _chat_gemini(
     url = f"{base}/models/{model}:generateContent"
 
     try:
-        resp = requests.post(
-            url, json=payload, params={"key": api_key or ""}, timeout=_timeout()
-        )
+        resp = requests.post(url, json=payload, params={"key": api_key or ""}, timeout=_timeout())
         resp.raise_for_status()
     except requests.RequestException as exc:
         osh.error(f"Gemini request failed:\n\t{url}\n\t{exc}")
@@ -1049,33 +1047,70 @@ _TRANSPORT_BY_BACKEND: dict[str, str] = {"anthropic": "anthropic", "gemini": "ge
 
 
 def _dispatch(
-    transport: str, prompt: str, *,
-    system: str | None, images: list[bytes] | None,
+    transport: str,
+    prompt: str,
+    *,
+    system: str | None,
+    images: list[bytes] | None,
     json_schema: dict[str, Any] | None,
-    model: str, temperature: float, base_url: str | None,
+    model: str,
+    temperature: float,
+    base_url: str | None,
     api_key: str | None,
 ) -> tuple[str, dict[str, int | None]]:
     """Run one transport call. Raises on failure; performs no logging/emit."""
     if transport == "ollama":
-        return _chat_ollama(prompt, system=system, images=images,
-                            json_schema=json_schema, model=model,
-                            temperature=temperature, base_url=base_url)
+        return _chat_ollama(
+            prompt,
+            system=system,
+            images=images,
+            json_schema=json_schema,
+            model=model,
+            temperature=temperature,
+            base_url=base_url,
+        )
     if transport == "openai":
-        return _chat_openai(prompt, system=system, images=images,
-                           json_schema=json_schema, model=model,
-                           temperature=temperature, base_url=base_url, api_key=api_key)
+        return _chat_openai(
+            prompt,
+            system=system,
+            images=images,
+            json_schema=json_schema,
+            model=model,
+            temperature=temperature,
+            base_url=base_url,
+            api_key=api_key,
+        )
     if transport == "anthropic":
-        return _chat_anthropic(prompt, system=system, images=images,
-                              json_schema=json_schema, model=model,
-                              temperature=temperature, base_url=base_url, api_key=api_key)
+        return _chat_anthropic(
+            prompt,
+            system=system,
+            images=images,
+            json_schema=json_schema,
+            model=model,
+            temperature=temperature,
+            base_url=base_url,
+            api_key=api_key,
+        )
     if transport == "gemini":
-        return _chat_gemini(prompt, system=system, images=images,
-                           json_schema=json_schema, model=model,
-                           temperature=temperature, base_url=base_url, api_key=api_key)
+        return _chat_gemini(
+            prompt,
+            system=system,
+            images=images,
+            json_schema=json_schema,
+            model=model,
+            temperature=temperature,
+            base_url=base_url,
+            api_key=api_key,
+        )
     if transport == "langchain":
-        return _chat_langchain(prompt, system=system, images=images,
-                              json_schema=json_schema, model=model,
-                              temperature=temperature)
+        return _chat_langchain(
+            prompt,
+            system=system,
+            images=images,
+            json_schema=json_schema,
+            model=model,
+            temperature=temperature,
+        )
     raise ValueError(
         f"Unknown backend: {transport!r}. "
         "Valid values: 'ollama', 'openai', 'anthropic', 'gemini', 'langchain'."
@@ -1114,8 +1149,13 @@ def _with_retry(fn: Callable[[], _RunResult], retries: int) -> _RunResult:
 
 
 def _cache_key_payload(
-    backend: str, model: str, kind: str, prompt: str, system: str | None,
-    json_schema: dict[str, Any] | None, temperature: float,
+    backend: str,
+    model: str,
+    kind: str,
+    prompt: str,
+    system: str | None,
+    json_schema: dict[str, Any] | None,
+    temperature: float,
     images: list[bytes] | None,
 ) -> dict[str, Any]:
     """The semantic signature of a call — what determines its result.
@@ -1126,8 +1166,13 @@ def _cache_key_payload(
     import hashlib
 
     return {
-        "backend": backend, "model": model, "kind": kind, "prompt": prompt,
-        "system": system, "temperature": temperature, "json_schema": json_schema,
+        "backend": backend,
+        "model": model,
+        "kind": kind,
+        "prompt": prompt,
+        "system": system,
+        "temperature": temperature,
+        "json_schema": json_schema,
         "images": [hashlib.sha256(i).hexdigest() for i in (images or [])],
     }
 
@@ -1197,7 +1242,7 @@ def chat(
         present, else ``llm``. Ignored when ``engine`` is None.
     cache : bool
         Memoize identical calls (same backend/model/prompt/schema/images) via
-        ``wallet-helper`` (the ``[cache]`` extra) so a repeated call never pays
+        ``wallet-helper`` (the ``[cloud]`` extra) so a repeated call never pays
         for the same cloud request twice. A no-op with a warning if the extra
         is not installed. Ignored on the legacy env path (no engine to key on).
     retries : int
@@ -1296,14 +1341,23 @@ def chat(
         cached = False
 
         def _run(
-            _t: str = transport, _p: str = send_prompt, _m: str = resolved_model,
-            _u: str | None = base_url, _k: str | None = api_key,
+            _t: str = transport,
+            _p: str = send_prompt,
+            _m: str = resolved_model,
+            _u: str | None = base_url,
+            _k: str | None = api_key,
         ) -> tuple[str, dict[str, int | None]]:
             return _with_retry(
                 lambda: _dispatch(
-                    _t, _p, system=system, images=images,
-                    json_schema=json_schema, model=_m, temperature=temperature,
-                    base_url=_u, api_key=_k,
+                    _t,
+                    _p,
+                    system=system,
+                    images=images,
+                    json_schema=json_schema,
+                    model=_m,
+                    temperature=temperature,
+                    base_url=_u,
+                    api_key=_k,
                 ),
                 retries,
             )
@@ -1317,8 +1371,14 @@ def chat(
                     raw, usage = _run()
                 else:
                     payload = _cache_key_payload(
-                        backend, resolved_model, resolved_kind, send_prompt, system,
-                        json_schema, temperature, images,
+                        backend,
+                        resolved_model,
+                        resolved_kind,
+                        send_prompt,
+                        system,
+                        json_schema,
+                        temperature,
+                        images,
                     )
                     (raw, usage), cached = _wh.default_wallet().call(
                         f"beh-llm:{backend}", payload, _run
@@ -1327,13 +1387,23 @@ def chat(
                 raw, usage = _run()
         except Exception as exc:  # noqa: BLE001 — fail over to the next engine
             last_exc = exc
-            _emit({
-                "backend": backend, "model": resolved_model, "kind": resolved_kind,
-                "in_chars": len(send_prompt), "images": len(images) if images else 0,
-                "out_chars": 0, "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
-                "ok": False, "error": repr(exc), "attempt": attempt, "cached": False,
-                "in_tokens": None, "out_tokens": None,
-            })
+            _emit(
+                {
+                    "backend": backend,
+                    "model": resolved_model,
+                    "kind": resolved_kind,
+                    "in_chars": len(send_prompt),
+                    "images": len(images) if images else 0,
+                    "out_chars": 0,
+                    "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
+                    "ok": False,
+                    "error": repr(exc),
+                    "attempt": attempt,
+                    "cached": False,
+                    "in_tokens": None,
+                    "out_tokens": None,
+                }
+            )
             continue
 
         # Restore pseudonymized spans in the response before anything else sees it.
@@ -1347,13 +1417,23 @@ def chat(
 
             _safety.check_text(raw, direction="inbound")
 
-        _emit({
-            "backend": backend, "model": resolved_model, "kind": resolved_kind,
-            "in_chars": len(send_prompt), "images": len(images) if images else 0,
-            "out_chars": len(raw), "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
-            "ok": True, "error": None, "attempt": attempt, "cached": cached,
-            "in_tokens": usage.get("in_tokens"), "out_tokens": usage.get("out_tokens"),
-        })
+        _emit(
+            {
+                "backend": backend,
+                "model": resolved_model,
+                "kind": resolved_kind,
+                "in_chars": len(send_prompt),
+                "images": len(images) if images else 0,
+                "out_chars": len(raw),
+                "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
+                "ok": True,
+                "error": None,
+                "attempt": attempt,
+                "cached": cached,
+                "in_tokens": usage.get("in_tokens"),
+                "out_tokens": usage.get("out_tokens"),
+            }
+        )
 
         # Parse JSON when requested; fall back to raw string on parse failure
         if json_mode:

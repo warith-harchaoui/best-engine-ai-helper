@@ -204,9 +204,9 @@ def estimate_cost_usd(event: dict[str, Any]) -> float | None:
     if out_tokens is None:
         out_tokens = float(event.get("out_chars", 0)) / _CHARS_PER_TOKEN
 
-    cost: float = float(in_tokens) / 1_000_000 * float(
-        pricing.get("input_per_1m", 0.0)
-    ) + float(out_tokens) / 1_000_000 * float(pricing.get("output_per_1m", 0.0))
+    cost: float = float(in_tokens) / 1_000_000 * float(pricing.get("input_per_1m", 0.0)) + float(
+        out_tokens
+    ) / 1_000_000 * float(pricing.get("output_per_1m", 0.0))
     return round(cost, 6)
 
 

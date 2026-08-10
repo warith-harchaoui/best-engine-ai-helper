@@ -131,8 +131,8 @@ def pseudonymize(
     entities = result.get("entities", []) if isinstance(result, dict) else []
 
     scrubbed = text
-    mapping: dict[str, str] = {}   # surrogate -> original
-    chosen: dict[str, str] = {}    # original -> surrogate (consistency)
+    mapping: dict[str, str] = {}  # surrogate -> original
+    chosen: dict[str, str] = {}  # original -> surrogate (consistency)
     used: set[str] = set()
 
     # Longest spans first, so a full name is replaced before any part of it.
@@ -171,20 +171,20 @@ def restore(text: str, mapping: dict[str, str]) -> str:
 
 
 def augment_with_presidio(text: str, entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Deterministic backstop (optional ``privacy`` extra): add Presidio+Faker hits.
+    """Deterministic backstop (optional ``cloud`` extra): add Presidio+Faker hits.
 
     Presidio (PII detection) + Faker (same-type surrogates) catch structured
     identifiers (emails, phones, card/IBAN, IPs) the LLM may miss, and add them to
     the entity list. Requires ``presidio-analyzer``, ``presidio-anonymizer`` and
-    ``Faker`` (the ``privacy`` extra) plus spaCy models; a no-op with a warning
+    ``Faker`` (the ``cloud`` extra) plus spaCy models; a no-op with a warning
     when they are absent. Full wiring lands in a later 6.4 step.
     """
     try:
         from presidio_analyzer import AnalyzerEngine  # noqa: F401
     except ImportError:
         osh.warning(
-            "augment_with_presidio needs the 'privacy' extra "
-            "(pip install 'best-engine-ai-helper[privacy]'); returning entities unchanged."
+            "augment_with_presidio needs the 'cloud' extra "
+            "(pip install 'best-engine-ai-helper[cloud]'); returning entities unchanged."
         )
         return entities
     # Deterministic Presidio+Faker augmentation is implemented in the next 6.4 step.

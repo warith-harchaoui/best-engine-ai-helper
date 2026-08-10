@@ -73,14 +73,19 @@ def test_estimate_cost_usd_prefers_real_tokens_over_char_heuristic(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        observe, "_load_pricing",
+        observe,
+        "_load_pricing",
         lambda: {"mistral-small-latest": {"input_per_1m": 0.10, "output_per_1m": 0.30}},
     )
     # in_chars/out_chars would heuristically suggest far more tokens than the
     # provider actually reports; the real in_tokens/out_tokens must win.
     event = _event(
-        backend="mistral", model="mistral-small-latest",
-        in_chars=10_000, out_chars=10_000, in_tokens=33, out_tokens=5,
+        backend="mistral",
+        model="mistral-small-latest",
+        in_chars=10_000,
+        out_chars=10_000,
+        in_tokens=33,
+        out_tokens=5,
     )
     cost = observe.estimate_cost_usd(event)
     # estimate_cost_usd rounds to 6 decimals; compare with the same rounding

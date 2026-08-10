@@ -9,17 +9,18 @@ from __future__ import annotations
 
 from best_engine_ai_helper import llm, privacy
 
-_ENGINE = {"backend": "ollama", "base_url": "http://localhost:11434",
-           "llm": {"model": "qwen3:8b"}}
+_ENGINE = {"backend": "ollama", "base_url": "http://localhost:11434", "llm": {"model": "qwen3:8b"}}
 
 
 def test_pseudonymize_and_restore_roundtrip(monkeypatch) -> None:
     text = "Marie lives in Lyon and works at Acme. Marie loves Lyon."
-    fake = {"entities": [
-        {"text": "Marie", "type": "person", "surrogate": "Claudine"},
-        {"text": "Lyon", "type": "city", "surrogate": "Paris"},
-        {"text": "Acme", "type": "organisation", "surrogate": "Globex"},
-    ]}
+    fake = {
+        "entities": [
+            {"text": "Marie", "type": "person", "surrogate": "Claudine"},
+            {"text": "Lyon", "type": "city", "surrogate": "Paris"},
+            {"text": "Acme", "type": "organisation", "surrogate": "Globex"},
+        ]
+    }
     monkeypatch.setattr(llm, "chat", lambda *a, **k: fake)
 
     scrubbed, mapping = privacy.pseudonymize(text, _ENGINE, locale="en_US")
@@ -41,11 +42,13 @@ def test_restore_handles_possessive_morphology() -> None:
 
 def test_pseudonymize_skips_noise(monkeypatch) -> None:
     # Empty / identical / too-short spans are ignored, not substituted.
-    fake = {"entities": [
-        {"text": "A", "type": "x", "surrogate": "B"},          # too short
-        {"text": "Bob", "type": "person", "surrogate": "Bob"},  # identical
-        {"text": "", "type": "x", "surrogate": "Z"},            # empty
-    ]}
+    fake = {
+        "entities": [
+            {"text": "A", "type": "x", "surrogate": "B"},  # too short
+            {"text": "Bob", "type": "person", "surrogate": "Bob"},  # identical
+            {"text": "", "type": "x", "surrogate": "Z"},  # empty
+        ]
+    }
     monkeypatch.setattr(llm, "chat", lambda *a, **k: fake)
     scrubbed, mapping = privacy.pseudonymize("A Bob here", _ENGINE)
     assert scrubbed == "A Bob here" and mapping == {}

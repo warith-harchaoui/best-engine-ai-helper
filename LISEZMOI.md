@@ -50,19 +50,23 @@ défaut, anglais via `/gui?lang=en`, avec un lien d'en-tête pour basculer. Voir
 - Python 3.10 ou ultérieur
 - [Ollama](https://ollama.com) (nécessaire uniquement pour `pull`, `validate` et `env` ; pas
   requis pour `detect`, `recommend` ou `report`)
-- os-helper (détection matérielle), PyYAML, click, requests, langdetect (installés automatiquement)
-- Optionnel : `fastapi` + `uvicorn` pour la GUI navigateur
-  (`pip install 'best-engine-ai-helper[api]'`)
+- Tout le reste — os-helper (détection matérielle), PyYAML, click, requests,
+  langdetect, ainsi que les surfaces FastAPI/MCP (`fastapi`, `uvicorn`,
+  `fastapi-mcp`) — s'installe automatiquement : la CLI, la GUI, l'API HTTP et
+  le serveur MCP font tous partie de l'installation par défaut, rien
+  d'optionnel à activer.
+- Optionnel : `[cloud]` pour le mode fournisseur cloud (retry, cache,
+  pseudonymisation, repli sur le trousseau OS pour les clés API) et
+  `[filtered]` pour de vrais classifieurs NSFW/toxicité (Detoxify, un modèle
+  image basé sur CLIP).
 
 ## Installation
 
 Le paquet est en Python pur (Python 3.10+). Les seuls éléments spécifiques à
 la plateforme sont **Python lui-même** et le runtime **Ollama** optionnel
 (nécessaire uniquement pour `pull` / `validate` / `env`, pas pour `detect`,
-`recommend`, `report` ni la GUI). Choisissez votre OS ci-dessous.
-
-Partout, `[api]` ajoute l'extra de la GUI navigateur (`fastapi` + `uvicorn`).
-Retirez-le (`pip install best-engine-ai-helper`) si vous ne voulez que la CLI.
+`recommend`, `report`, la GUI ni la surface MCP). Choisissez votre OS
+ci-dessous.
 
 ### 🍎 macOS
 
@@ -74,7 +78,7 @@ brew install python
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install 'best-engine-ai-helper[api]'
+pip install best-engine-ai-helper
 
 # 3. Optionnel : Ollama, uniquement si vous utiliserez `pull`
 brew install ollama          # puis : ollama serve
@@ -94,7 +98,7 @@ sudo apt install -y python3 python3-venv python3-pip
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install 'best-engine-ai-helper[api]'
+pip install best-engine-ai-helper
 
 # 3. Optionnel : Ollama, uniquement si vous utiliserez `pull`
 curl -fsSL https://ollama.com/install.sh | sh   # puis : ollama serve
@@ -114,22 +118,20 @@ winget install Python.Python.3.12
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-pip install "best-engine-ai-helper[api]"
+pip install best-engine-ai-helper
 
 # 3. Optionnel : Ollama, uniquement si vous utiliserez `pull`
 winget install Ollama.Ollama
 ```
 
-La VRAM NVIDIA est détectée via `nvidia-smi` (installé avec le pilote). Notez
-les guillemets doubles autour de `"...[api]"` : PowerShell les exige, les
-guillemets simples ne se comportent pas pareil.
+La VRAM NVIDIA est détectée via `nvidia-smi` (installé avec le pilote).
 
 ### Depuis les sources (tout OS)
 
 ```sh
 git clone https://github.com/warith-harchaoui/best-engine-ai-helper
 cd best-engine-ai-helper
-pip install -e '.[api]'          # Windows PowerShell : pip install -e ".[api]"
+pip install -e .
 ```
 
 ### Vérifier l'installation
@@ -163,7 +165,7 @@ best-engine-ai-helper catalog show
 # Parcourir la table des puces matérielles
 best-engine-ai-helper hardware show
 
-# Lancer la GUI navigateur (nécessite l'extra [api])
+# Lancer la GUI navigateur
 best-engine-ai-helper gui
 
 # Qui appelle quoi, et à quel coût (journal SQLite local)
@@ -174,7 +176,6 @@ Les mêmes points d'accès `/api/system`, `/api/recommend` et `/api/activity`
 sont aussi accessibles comme outils MCP pour tout hôte agentique compatible :
 
 ```sh
-pip install "best-engine-ai-helper[mcp]"
 best-engine-ai-helper-mcp        # -> http://127.0.0.1:8000 (MCP sur /mcp)
 ```
 
@@ -286,7 +287,7 @@ fonction déterministe du seul matériel, ce qui compte pour des rapports reprod
 | `pull` | Télécharge le meilleur modèle et exécute les contrôles Ralph |
 | `validate` | Exécute les contrôles Ralph sur le modèle actuellement configuré |
 | `env` | Affiche le bloc d'exports shell prêt pour `~/.zshrc` |
-| `gui` | Lance la GUI navigateur (nécessite l'extra `[api]`) |
+| `gui` | Lance la GUI navigateur |
 | `activity` | Résume le journal local d'activité/coût (appels, coût, par utilisateur/modèle, erreurs) |
 | `usages list` | Liste les profils d'usage et les familles (besoins uniquement, jamais de modèle) |
 | `usages show <profil>` | Affiche les besoins d'un profil (tâche, *structured output*, planchers) |
@@ -329,7 +330,7 @@ moteur résolu.
 1. **Versionner le brief** — `llm.brief.yaml` dans le dépôt, indépendant du matériel :
 
    ```yaml
-   mode: local             # local (défaut ; le mode cloud arrivera sur la branche cloud)
+   mode: local             # local (défaut) ou cloud
    kind: both              # llm | vlm | both
    headroom: 0.5           # fraction max de la mémoire accélérateur utilisable (plafonnée à 0,5)
    min_tps: 15             # plancher de débit confortable (jetons/s)
@@ -339,9 +340,13 @@ moteur résolu.
      analyse dans la langue de la table et vérifier l'image du graphique rendu.
    ```
 
-   `mode: local` est le défaut et la seule famille de backend gérée aujourd'hui ; un brief
-   `mode: cloud` (fournisseur payant avec repli local) est prévu pour une future branche
-   `cloud` et n'est pas encore résoluble.
+   `mode: local` est le défaut. `mode: cloud` résout un fournisseur payant plus
+   un repli local depuis le même brief (payant vers local en cas d'échec) —
+   voir [EXEMPLES.md → resolve](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXEMPLES.md#resolve)
+   pour un brief `mode: cloud` complet. Le retry/cache/pseudonymisation
+   nécessitent l'extra `[cloud]` ; les vrais classifieurs NSFW/toxicité de
+   `llm.chat(safety=...)` nécessitent `[filtered]` — les deux se dégradent
+   proprement plutôt que d'échouer en leur absence.
 
 2. **Le résoudre, par machine** — écrit un `llm.engine.yaml` gitignoré :
 

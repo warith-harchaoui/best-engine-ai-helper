@@ -1,9 +1,8 @@
 """
 Tests for best_engine_ai_helper.api (the FastAPI HTTP surface).
 
-Uses FastAPI's TestClient (no live server). The [api] extra is optional, so the
-whole module is skipped when fastapi is absent, matching the graceful-skip style
-used elsewhere rather than making the extra mandatory for the base test run.
+Uses FastAPI's TestClient (no live server). fastapi/uvicorn are core
+dependencies, so no skip-if-absent handling is needed here.
 """
 
 from __future__ import annotations
@@ -11,12 +10,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
-fastapi = pytest.importorskip("fastapi")
-
-from fastapi.testclient import TestClient  # noqa: E402
-
-from best_engine_ai_helper.api import app  # noqa: E402
+from best_engine_ai_helper.api import app
 
 
 @pytest.fixture()

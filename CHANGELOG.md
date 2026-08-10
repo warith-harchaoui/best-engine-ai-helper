@@ -2,6 +2,42 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
+## [1.3.1] - 2026-08-10
+
+Packaging restructuring: the CLI, GUI, HTTP API, and MCP server are now ALL
+part of the default install — `fastapi`, `uvicorn`, `fastapi-mcp`, and the
+`mcp` SDK moved from the `[api]`/`[mcp]` extras into core `dependencies`.
+Only two optional extras remain: `[cloud]` (cloud-provider mode: retry,
+caching, pseudonymization, an OS-keychain fallback for API keys — merges the
+former `cloud`/`cache`/`privacy`/`keyring` extras into one) and `[filtered]`
+(real NSFW/toxicity classifiers — renamed from `[safety]`, same contents).
+Nothing about runtime behavior changes; every optional dependency still
+degrades gracefully (a light retry, no caching, a keyword heuristic, an
+"unavailable" verdict) when its extra is absent.
+
+### Changed
+
+- `pyproject.toml`: `[api]` and `[mcp]` extras removed, their deps folded
+  into core `dependencies`; `[cloud]`, `[cache]`, `[privacy]`, `[keyring]`
+  merged into one `[cloud]` extra; `[safety]` renamed to `[filtered]`.
+  `psutil` added as an explicit core dependency (`detect.server_load()`
+  imports it directly; previously relied on it arriving transitively via
+  `os-helper`).
+- `requirements.txt` updated to mirror the new core dependency set.
+- Removed the now-dead `ImportError` guards in `api.py`, `mcp.py`,
+  `cli.py`'s `gui` command, and `cli_argparse.py`'s `_handle_gui` — fastapi/
+  uvicorn/fastapi-mcp/mcp are no longer optional, so the "extra not
+  installed" error paths were unreachable.
+- Docs (`README.md`, `LISEZMOI.md`, `GUI.md`, `EXAMPLES.md`, `EXEMPLES.md`,
+  `CONTRIBUTING.md`) and `ci.yml` updated to drop `[api]`/`[mcp]` install
+  instructions and point `[cache]`/`[privacy]`/`[keyring]`/`[safety]`
+  references at `[cloud]`/`[filtered]`. `EXEMPLES.md`/`LISEZMOI.md`'s
+  `mode: cloud` sections, stale since before the 1.3.0 merge (still said
+  cloud mode was unresolvable), now match `EXAMPLES.md`/`README.md`.
+- Fixed a stray `safety.py` docstring line that still said the `safety=`
+  default was cloud-only — it's been True for every engine, local or cloud,
+  since the 1.3.0 merge.
+
 ## [1.3.0] - 2026-08-10
 
 Merges the `cloud` branch: `mode: cloud` now actually works (it previously
