@@ -58,7 +58,9 @@ défaut, anglais via `/gui?lang=en`, avec un lien d'en-tête pour basculer. Voir
 - Optionnel : `[cloud]` pour le mode fournisseur cloud (retry, cache,
   pseudonymisation, repli sur le trousseau OS pour les clés API) et
   `[filtered]` pour de vrais classifieurs NSFW (un modèle DistilBERT pour le
-  texte, un modèle ViT pour l'image — tous deux via `transformers`).
+  texte ; le détecteur d'image basé sur CLIP de LAION, via `transformers`
+  pour l'encodeur CLIP et un modèle `onnxruntime` embarqué pour la tête de
+  classification).
 
 ## Installation
 
@@ -344,7 +346,7 @@ moteur résolu.
    un repli local depuis le même brief (payant vers local en cas d'échec) —
    voir [EXEMPLES.md → resolve](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXEMPLES.md#resolve)
    pour un brief `mode: cloud` complet. Le retry/cache/pseudonymisation
-   nécessitent l'extra `[cloud]` ; les vrais classifieurs NSFW/toxicité de
+   nécessitent l'extra `[cloud]` ; les vrais classifieurs NSFW de
    `llm.chat(safety=...)` nécessitent `[filtered]` — les deux se dégradent
    proprement plutôt que d'échouer en leur absence.
 

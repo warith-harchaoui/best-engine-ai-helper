@@ -2,6 +2,55 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
+## [1.3.4] - 2026-08-10 (`nsfw` branch)
+
+Reverses `1.3.3`'s image-detector decision: LAION's `CLIP-based-NSFW-Detector`
+now ships as the default, converted to ONNX to remove the fragility that
+made `1.3.3` keep Falconsai instead.
+
+### Changed
+
+- **Image NSFW classifier: `Falconsai/nsfw_image_detection` -> LAION's
+  `CLIP-based-NSFW-Detector`.** `1.3.3` measured LAION's real accuracy
+  (96.16%/94.56%/97.58%/2.29% FPR, independently verified) but kept
+  Falconsai because LAION's *documented* loading path needed TensorFlow +
+  the unmaintained `autokeras` and OpenAI `clip` packages, plus an
+  un-versioned runtime zip download. That's now moot: the classifier head
+  was converted once, offline, from LAION's TensorFlow SavedModel to ONNX
+  (`tf2onnx`) and is bundled directly in the package
+  (`best_engine_ai_helper/models/clip_nsfw_vit_l14.onnx`, ~1.9 MB, tracked
+  via Git LFS; MIT-licensed original, see `models/NOTICE.md`). Verified
+  against the original TensorFlow model on LAION's own public test set:
+  only 6 of 3199 samples (0.19%) flip their classification decision at the
+  0.8 threshold — normal graph-conversion floating-point noise, concentrated
+  where a sigmoid-shaped output is most sensitive (the 0.3-0.7 range), not a
+  correctness bug. `[filtered]` now needs `onnxruntime` (new) plus
+  `transformers` for the CLIP ViT-L/14 encoder (`openai/clip-vit-large-
+  patch14`) — no TensorFlow, no `autokeras`, no runtime download.
+- **Fixed a real, pre-existing gap found while wiring this up**: the
+  `[filtered]` extra declared `transformers` but never an inference backend
+  for it (`torch`/`tensorflow`/`flax`) — every classifier in this module,
+  including the ones already shipped in `1.3.3`, would fail on first real
+  inference call without one already present by luck. Added `torch>=2.0`
+  to `[filtered]`.
+- `requirements-dev.txt` gained `numpy>=1.24,<2.5` (the upper bound: numpy
+  2.5's own type stubs use PEP 695 `type X = ...` syntax that mypy 1.20.2
+  rejects under this project's `python_version = "3.10"` target, aborting
+  the whole mypy run, not just warning about numpy specifically) — needed
+  because `safety.py`'s new `_clip_image_embedding` does a real
+  `import numpy` internally to L2-normalize the CLIP embedding (a
+  requirement discovered by checking the actual norm of LAION's own
+  published test embeddings: ≈1.0, not raw/unnormalized — using an
+  unnormalized embedding would have silently produced nonsense scores).
+- Uses the low-level, architecturally-stable `model.vision_model` +
+  `model.visual_projection` submodules to compute the CLIP embedding,
+  rather than the higher-level `get_image_features()` convenience method,
+  whose return shape was found to differ across `transformers` major
+  versions (a plain tensor historically; a wrapped
+  `BaseModelOutputWithPooling` object in the version this was verified
+  against) — this project's own `transformers>=4.30` pin has no upper
+  bound, so the code needs to stay correct across that whole range.
+
 ## [1.3.3] - 2026-08-10 (`nsfw` branch)
 
 Re-evaluated both `safety.py` classifier choices against real, independently

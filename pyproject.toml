@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "best-engine-ai-helper"
-version = "1.3.3"
+version = "1.3.4"
 description = "Pick and pull the best local LLM/VLM for the current hardware."
 authors = [{name = "Warith Harchaoui", email = "warith.harchaoui@deraison.ai"}]
 license = {text = "BSD-3-Clause"}
@@ -57,12 +57,21 @@ cloud = [
     "keyring>=24",
 ]
 # NSFW / policy filtering for chat(safety=...) (safety.py): a DistilBERT model
-# fine-tuned for NSFW text and a ViT NSFW/normal image classifier, both via
-# transformers. Optional — text degrades to a crude keyword heuristic without
-# it; images degrade to "unavailable" (never a fabricated verdict) without
-# transformers/Pillow.
+# fine-tuned for NSFW text (via transformers), and LAION's CLIP-based NSFW
+# image detector -- transformers for the CLIP ViT-L/14 encoder, onnxruntime
+# for the bundled classifier head (models/clip_nsfw_vit_l14.onnx, no
+# TensorFlow/autokeras/runtime-download needed, see safety.py's module
+# docstring). Optional -- text degrades to a crude keyword heuristic without
+# it; images degrade to "unavailable" (never a fabricated verdict) without it.
 filtered = [
     "transformers>=4.30",
+    # transformers alone does not pull in an inference backend -- without
+    # this, both classifiers below load their tokenizer/config fine but
+    # fail at the first real inference call. CPU-friendly on every platform
+    # pip resolves a wheel for; a GPU install already on the machine (CUDA
+    # index, conda, etc.) is unaffected, this is just the floor version.
+    "torch>=2.0",
+    "onnxruntime>=1.17",
     "Pillow>=9.0",
 ]
 
@@ -81,7 +90,7 @@ include = ["best_engine_ai_helper*"]
 
 [tool.setuptools.package-data]
 "*" = ["models.yaml", "hardware.yaml", "usages.yaml", "locales/i18n.yaml", "pricing.yaml"]
-"best_engine_ai_helper" = ["static/**"]
+"best_engine_ai_helper" = ["static/**", "models/*.onnx", "models/NOTICE.md"]
 
 [tool.ruff]
 line-length = 100

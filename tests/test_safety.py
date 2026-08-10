@@ -1,13 +1,14 @@
 """
 Tests for best_engine_ai_helper.safety.
 
-Real classifiers (a DistilBERT NSFW text model, a ViT NSFW image model — both
-via ``transformers``) are optional and NOT installed for this test run — that
-path is exercised by monkeypatching ``sys.modules`` with a fake stand-in, so
+Real classifiers (a DistilBERT NSFW text model via ``transformers``; LAION's
+CLIP-based NSFW image detector via ``transformers`` + the bundled ONNX
+classifier head) are optional and NOT installed for this test run — that
+path is exercised by monkeypatching ``sys.modules`` with fake stand-ins, so
 the "extra installed" branch gets coverage without pulling in real model
-weights. The "extra absent" fallback paths (heuristic text scoring,
-"unavailable" image scoring) are exercised directly since that's the real
-state of this test environment.
+weights or a real ONNX runtime. The "extra absent" fallback paths (heuristic
+text scoring, "unavailable" image scoring) are exercised directly since
+that's the real state of this test environment.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ import sys
 from types import ModuleType
 from typing import Any
 
+import numpy as np
 import pytest
 
 from best_engine_ai_helper import safety
@@ -35,33 +37,85 @@ def test_scan_text_and_image_degradation_and_real_classifiers(
     assert unavailable == {"score": 0.0, "label": "unavailable", "backend": "unavailable"}
     monkeypatch.undo()
 
+    class _FakeImage:
+        def convert(self, mode: str) -> _FakeImage:
+            return self
+
     fake_pil_module = ModuleType("PIL")
     fake_pil_image_module = ModuleType("PIL.Image")
-    fake_pil_image_module.open = lambda buf: "fake-image-object"  # type: ignore[attr-defined]
+    fake_pil_image_module.open = lambda buf: _FakeImage()  # type: ignore[attr-defined]
     fake_pil_module.Image = fake_pil_image_module  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "PIL", fake_pil_module)
     monkeypatch.setitem(sys.modules, "PIL.Image", fake_pil_image_module)
 
-    # Text and image both load through `transformers.pipeline` now; the fake
-    # module dispatches on `task` the same way the real one dispatches on
-    # which model architecture it loads.
+    # Text loads through `transformers.pipeline`; the fake module dispatches
+    # on `task` the same way the real one dispatches on which architecture
+    # it loads.
     fake_transformers_module = ModuleType("transformers")
 
     def _fake_pipeline(task: str, model: str, **kw: Any) -> Any:
-        if task == "text-classification":
+        def _text_classifier(text: str) -> list[list[dict[str, Any]]]:
+            return [[{"label": "safe", "score": 0.05}, {"label": "nsfw", "score": 0.95}]]
 
-            def _text_classifier(text: str) -> list[list[dict[str, Any]]]:
-                return [[{"label": "safe", "score": 0.05}, {"label": "nsfw", "score": 0.95}]]
-
-            return _text_classifier
-
-        def _image_classifier(image: Any) -> list[dict[str, Any]]:
-            return [{"label": "normal", "score": 0.1}, {"label": "nsfw", "score": 0.95}]
-
-        return _image_classifier
+        return _text_classifier
 
     fake_transformers_module.pipeline = _fake_pipeline  # type: ignore[attr-defined]
+
+    # Image embedding loads through `transformers.CLIPModel`/`CLIPProcessor`,
+    # calling the low-level `vision_model` + `visual_projection` submodules
+    # directly (see safety.py's module docstring for why: the high-level
+    # `get_image_features()` convenience method's return shape changed
+    # across transformers versions).
+    class _FakeTensor:
+        def __init__(self, arr: Any) -> None:
+            self._arr = arr
+
+        def detach(self) -> _FakeTensor:
+            return self
+
+        def numpy(self) -> Any:
+            return self._arr
+
+    class _FakeVisionOutput:
+        def __init__(self, pooler_output: Any) -> None:
+            self.pooler_output = pooler_output
+
+    class _FakeClipModel:
+        def vision_model(self, pixel_values: Any) -> _FakeVisionOutput:
+            return _FakeVisionOutput(pooler_output="fake-pooled")
+
+        def visual_projection(self, pooler_output: Any) -> _FakeTensor:
+            return _FakeTensor(np.full((1, 768), 2.0))
+
+    class _FakeClipProcessor:
+        def __call__(self, images: Any, return_tensors: str) -> dict[str, Any]:
+            return {"pixel_values": "fake-pixel-values"}
+
+    fake_transformers_module.CLIPModel = type(  # type: ignore[attr-defined]
+        "CLIPModel", (), {"from_pretrained": staticmethod(lambda name: _FakeClipModel())}
+    )
+    fake_transformers_module.CLIPProcessor = type(  # type: ignore[attr-defined]
+        "CLIPProcessor", (), {"from_pretrained": staticmethod(lambda name: _FakeClipProcessor())}
+    )
     monkeypatch.setitem(sys.modules, "transformers", fake_transformers_module)
+
+    # The bundled ONNX classifier head loads through `onnxruntime`.
+    class _FakeOnnxInput:
+        name = "input_1"
+
+    class _FakeOnnxSession:
+        def __init__(self, path: str, providers: list[str]) -> None:
+            pass
+
+        def get_inputs(self) -> list[_FakeOnnxInput]:
+            return [_FakeOnnxInput()]
+
+        def run(self, output_names: Any, input_feed: dict[str, Any]) -> list[Any]:
+            return [np.array([[0.95]])]
+
+    fake_onnxruntime_module = ModuleType("onnxruntime")
+    fake_onnxruntime_module.InferenceSession = _FakeOnnxSession  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "onnxruntime", fake_onnxruntime_module)
 
     monkeypatch.setattr(safety, "_TEXT_CLASSIFIER", None)
     text_result = safety.scan_text("some text")
@@ -69,10 +123,15 @@ def test_scan_text_and_image_degradation_and_real_classifiers(
     assert safety._TEXT_CLASSIFIER is not None  # cached for reuse
     monkeypatch.setattr(safety, "_TEXT_CLASSIFIER", None)
 
-    monkeypatch.setattr(safety, "_CLIP_CLASSIFIER", None)
+    monkeypatch.setattr(safety, "_CLIP_MODEL", None)
+    monkeypatch.setattr(safety, "_CLIP_PROCESSOR", None)
+    monkeypatch.setattr(safety, "_ONNX_SESSION", None)
     image_result = safety.scan_image(b"fake-png-bytes")
     assert image_result == {"score": 0.95, "label": "nsfw", "backend": "clip"}
-    monkeypatch.setattr(safety, "_CLIP_CLASSIFIER", None)
+    assert safety._CLIP_MODEL is not None and safety._ONNX_SESSION is not None  # cached
+    monkeypatch.setattr(safety, "_CLIP_MODEL", None)
+    monkeypatch.setattr(safety, "_CLIP_PROCESSOR", None)
+    monkeypatch.setattr(safety, "_ONNX_SESSION", None)
 
 
 def _stub_score(score: float, label: str = "nsfw", backend: str = "heuristic") -> dict[str, Any]:

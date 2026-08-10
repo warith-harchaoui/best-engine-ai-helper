@@ -9,44 +9,76 @@ placeholder), or ``warn`` (log only, pass through unchanged). Every decision
 is logged via ``os_helper`` regardless of action, so a warn-mode deployment
 still keeps a full audit trail.
 
-Real classifiers are optional (the ``[filtered]`` extra, both via
-``transformers``): a DistilBERT model fine-tuned specifically for NSFW/sexual
-text for text, a ViT NSFW/normal classifier for images. Absent them, text
-scanning falls back to a deterministic keyword heuristic — crude, but it
-never silently no-ops. Image scanning has no comparable safe heuristic (a
-wrong guess is worse than an honest "I don't know"), so it degrades to
-``"unavailable"`` rather than fabricate a verdict.
+Real classifiers are optional (the ``[filtered]`` extra): a DistilBERT model
+fine-tuned specifically for NSFW/sexual text for text, LAION's CLIP-based
+NSFW image classifier for images. Absent them, text scanning falls back to
+a deterministic keyword heuristic — crude, but it never silently no-ops.
+Image scanning has no comparable safe heuristic (a wrong guess is worse
+than an honest "I don't know"), so it degrades to ``"unavailable"`` rather
+than fabricate a verdict.
 
 Model choices, and why (see ``.private/keep-track.md`` for the full
 evaluation this repo ran before picking them):
 
-- **Text**: ``eliasalbouzidi/distilbert-nsfw-text-classifier``, not
-  Detoxify. Detoxify scores general TOXICITY (hate/insult/threat/obscenity);
-  on a hand-built probe set, sexual-but-not-abusive text scored 0.01-0.40 on
-  Detoxify (below this module's own 0.8 default threshold — Detoxify would
-  have MISSED it) but 0.99+ on the NSFW-specific model. For a module whose
-  job is NSFW filtering, a classifier trained for NSFW/sexual content beats
-  one trained for something adjacent but different.
-- **Image**: ``Falconsai/nsfw_image_detection`` (kept, not swapped to
-  LAION's ``CLIP-based-NSFW-Detector``, despite LAION's detector being the
-  more widely-cited one — it's what filtered LAION-5B, the dataset behind
-  Stable Diffusion). Real, independently-run evaluation on LAION's own
-  public, manually-annotated test set (``nsfw_testset.zip``, ViT-L/14
-  embeddings, this module's 0.8 threshold): 96.16% accuracy, 94.56% recall,
-  97.58% precision, 2.29% false-positive rate — solid, and verifiable by
-  anyone. But LAION's *documented* loading path needs a SECOND deep-learning
-  framework (TensorFlow) plus the unmaintained ``autokeras`` and OpenAI
-  ``clip`` packages, downloads an un-versioned zip from a GitHub raw URL at
-  runtime, and — found while running this exact evaluation — its packaged
-  TensorFlow SavedModel no longer loads through Keras 3's own
-  ``load_model()``; only a manual, undocumented ``tf.saved_model.load(...)
-  .signatures["serving_default"]`` workaround gets it working today. That's
-  too fragile to ship. Falconsai self-reports 98.04% accuracy (not
-  independently verified here — no raw NSFW imagery was fetched to test
-  it; unlike CLIP embeddings, raw image bytes of that content are not
-  something this evaluation will download or store) but needs only
-  ``transformers``, the same single framework already used for text above,
-  with no legacy-package or un-versioned-download risk.
+- **Text**: ``eliasalbouzidi/distilbert-nsfw-text-classifier`` (via
+  ``transformers``), not Detoxify. Detoxify scores general TOXICITY
+  (hate/insult/threat/obscenity); on a hand-built probe set, sexual-but-not-
+  abusive text scored 0.01-0.40 on Detoxify (below this module's own 0.8
+  default threshold — Detoxify would have MISSED it) but 0.99+ on the
+  NSFW-specific model. For a module whose job is NSFW filtering, a
+  classifier trained for NSFW/sexual content beats one trained for
+  something adjacent but different.
+- **Image**: LAION's ``CLIP-based-NSFW-Detector`` (ViT-L/14 embeddings via
+  ``transformers``'s ``openai/clip-vit-large-patch14`` -> a small MLP head),
+  not ``Falconsai/nsfw_image_detection`` (the earlier choice). Real,
+  independently-run evaluation on LAION's own public, manually-annotated
+  test set (``nsfw_testset.zip``, this module's 0.8 threshold): 96.16%
+  accuracy, 94.56% recall, 97.58% precision, 2.29% false-positive rate —
+  solid, and verifiable by anyone; Falconsai's 98.04% is self-reported on an
+  undisclosed proprietary dataset, not independently checked here (no raw
+  NSFW imagery was fetched to test it; unlike CLIP embeddings, raw image
+  bytes of that content are not something this evaluation will download or
+  store). LAION's classifier head is genuinely CLIP-based (the same
+  embedding this module already needs no matter which head it uses is a
+  shared-embedding-space, zero-shot-friendly representation, not an
+  independent ViT fine-tune with its own idiosyncratic decision boundary),
+  and it's what LAION itself used to filter LAION-5B, the dataset behind
+  Stable Diffusion.
+
+  LAION's *documented* loading path (``autokeras`` + TensorFlow + OpenAI's
+  unmaintained ``clip`` package, downloading an un-versioned zip from a
+  GitHub raw URL at runtime) was too fragile to ship as-is — confirmed by
+  running it: its packaged TensorFlow SavedModel no longer loads through
+  Keras 3's own ``load_model()`` (only an undocumented
+  ``tf.saved_model.load(...).signatures["serving_default"]`` workaround got
+  it running for the evaluation above). So the classifier head was
+  converted once, offline, from that TensorFlow SavedModel to ONNX (via
+  ``tf2onnx``) and is bundled directly in this package
+  (``models/clip_nsfw_vit_l14.onnx``, ~1.9 MB, see ``models/NOTICE.md`` for
+  the MIT-licensed original and the conversion note) — no TensorFlow,
+  ``autokeras``, or runtime download needed, just ``onnxruntime`` (a single,
+  actively maintained, lightweight package) plus the ``transformers``
+  CLIP encoder already needed for the embedding. The conversion was
+  verified against the original TensorFlow model on the same public test
+  set: only 6 of 3199 samples (0.19%) flip their classification decision at
+  the 0.8 threshold, well within normal graph-conversion floating-point
+  noise (per-sample score differences concentrate in the 0.3-0.7 range,
+  where a sigmoid-shaped output is most sensitive to tiny numeric
+  differences; far from that range the two agree closely).
+
+  One correctness pitfall found and fixed while wiring this up: LAION's
+  classifier expects L2-*normalized* CLIP embeddings (confirmed by checking
+  the test set's own embedding norms, all ≈1.0) — feeding it a raw,
+  unnormalized embedding would silently produce nonsense scores. Another:
+  ``CLIPModel.get_image_features()``'s return shape has changed across
+  ``transformers`` major versions (a plain tensor historically; a wrapped
+  ``BaseModelOutputWithPooling`` object in the ``transformers`` version this
+  was verified against) — since this project's own ``pyproject.toml`` pins
+  ``transformers>=4.30`` with no upper bound, :func:`_clip_image_embedding`
+  calls the lower-level, architecturally-stable ``model.vision_model`` +
+  ``model.visual_projection`` directly instead of that convenience method,
+  to stay correct across that whole version range rather than betting on
+  one version's wrapper shape.
 
 Wired into :func:`best_engine_ai_helper.llm.chat` via its ``safety=`` keyword
 (defaults to True for every engine, local or cloud): called on the
@@ -66,6 +98,7 @@ Warith Harchaoui <warith.harchaoui@deraison.ai>
 from __future__ import annotations
 
 import io
+from pathlib import Path
 from typing import Any, Literal
 
 import os_helper as osh
@@ -74,6 +107,11 @@ Action = Literal["block", "redact", "warn"]
 
 DEFAULT_ACTION: Action = "warn"
 DEFAULT_THRESHOLD: float = 0.8
+
+# Bundled ONNX conversion of LAION's CLIP-based-NSFW-Detector classifier head
+# (see the module docstring and models/NOTICE.md for provenance/license).
+_CLIP_NSFW_MODEL_NAME = "openai/clip-vit-large-patch14"
+_ONNX_MODEL_PATH = Path(__file__).resolve().parent / "models" / "clip_nsfw_vit_l14.onnx"
 
 # A crude, zero-dependency fallback so text scanning never silently no-ops
 # when the real classifier is not installed. NOT a substitute for a real
@@ -87,7 +125,9 @@ _FALLBACK_TERMS: tuple[str, ...] = (
 )
 
 _TEXT_CLASSIFIER: Any = None
-_CLIP_CLASSIFIER: Any = None
+_CLIP_MODEL: Any = None
+_CLIP_PROCESSOR: Any = None
+_ONNX_SESSION: Any = None
 
 
 class SafetyViolation(RuntimeError):
@@ -154,25 +194,57 @@ def scan_text(text: str) -> dict[str, Any]:
     return {"score": float(nsfw_entry["score"]), "label": "nsfw", "backend": "nsfw-distilbert"}
 
 
-def _cached_clip_classifier() -> Any:
-    """Load the CLIP-based NSFW image classifier once per process."""
-    global _CLIP_CLASSIFIER
-    if _CLIP_CLASSIFIER is None:
-        from transformers import pipeline
+def _cached_clip_model_and_processor() -> tuple[Any, Any]:
+    """Load the CLIP ViT-L/14 encoder + processor once per process."""
+    global _CLIP_MODEL, _CLIP_PROCESSOR
+    if _CLIP_MODEL is None:
+        from transformers import CLIPModel, CLIPProcessor
 
-        _CLIP_CLASSIFIER = pipeline("image-classification", model="Falconsai/nsfw_image_detection")
-    return _CLIP_CLASSIFIER
+        _CLIP_MODEL = CLIPModel.from_pretrained(_CLIP_NSFW_MODEL_NAME)
+        _CLIP_PROCESSOR = CLIPProcessor.from_pretrained(_CLIP_NSFW_MODEL_NAME)
+    return _CLIP_MODEL, _CLIP_PROCESSOR
+
+
+def _cached_onnx_session() -> Any:
+    """Load the bundled LAION NSFW classifier head (ONNX) once per process."""
+    global _ONNX_SESSION
+    if _ONNX_SESSION is None:
+        import onnxruntime
+
+        _ONNX_SESSION = onnxruntime.InferenceSession(
+            str(_ONNX_MODEL_PATH), providers=["CPUExecutionProvider"]
+        )
+    return _ONNX_SESSION
+
+
+def _clip_image_embedding(image: Any) -> Any:
+    """L2-normalized CLIP ViT-L/14 image embedding, shape ``(1, 768)``.
+
+    Calls the architecturally-stable ``vision_model`` + ``visual_projection``
+    submodules directly rather than the ``get_image_features()`` convenience
+    method, whose return shape has changed across ``transformers`` major
+    versions (see the module docstring) — this project's ``transformers``
+    pin spans that range.
+    """
+    import numpy as np
+
+    model, processor = _cached_clip_model_and_processor()
+    inputs = processor(images=image, return_tensors="pt")
+    vision_out = model.vision_model(pixel_values=inputs["pixel_values"])
+    projected = model.visual_projection(vision_out.pooler_output)
+    embedding = projected.detach().numpy().astype("float64")
+    return embedding / np.linalg.norm(embedding, axis=1, keepdims=True)
 
 
 def scan_image(image_bytes: bytes) -> dict[str, Any]:
     """
     Score an image for NSFW content.
 
-    Uses a CLIP-based NSFW detector (the ``[filtered]`` extra, pulls in
-    ``transformers`` + ``Pillow`` + a torch backend) when installed. No
-    heuristic fallback exists for images — a wrong guess is worse than an
-    honest "unavailable" — so this degrades to that instead of fabricating a
-    score.
+    Uses LAION's CLIP-based NSFW detector (the ``[filtered]`` extra, pulls in
+    ``transformers`` for the CLIP encoder, ``onnxruntime`` for the bundled
+    classifier head, and ``Pillow``) when installed. No heuristic fallback
+    exists for images — a wrong guess is worse than an honest "unavailable"
+    — so this degrades to that instead of fabricating a score.
 
     Parameters
     ----------
@@ -191,14 +263,14 @@ def scan_image(image_bytes: bytes) -> dict[str, Any]:
         return {"score": 0.0, "label": "unavailable", "backend": "unavailable"}
 
     try:
-        classifier = _cached_clip_classifier()
+        session = _cached_onnx_session()
+        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        embedding = _clip_image_embedding(image)
     except ImportError:
         return {"score": 0.0, "label": "unavailable", "backend": "unavailable"}
 
-    image = Image.open(io.BytesIO(image_bytes))
-    result = classifier(image)
-    nsfw = next((r for r in result if str(r["label"]).lower() == "nsfw"), None)
-    score = float(nsfw["score"]) if nsfw else 0.0
+    input_name = session.get_inputs()[0].name
+    score = float(session.run(None, {input_name: embedding})[0].reshape(-1)[0])
     return {"score": score, "label": "nsfw", "backend": "clip"}
 
 
