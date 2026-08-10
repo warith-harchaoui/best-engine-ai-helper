@@ -158,8 +158,8 @@ paid call fails. See `llm.chat`'s `pseudonymize=` (scrub personal data before
 it reaches the cloud, via the local fallback engine) and `safety=` (NSFW/
 policy scanning, on by default for every engine, local or cloud) keywords for
 the rest of the cloud-call safety net. Retry/caching/pseudonymization need the
-`[cloud]` extra (`pip install 'best-engine-ai-helper[cloud]'`); real NSFW/
-toxicity classifiers for `safety=` need `[filtered]` — both degrade gracefully
+`[cloud]` extra (`pip install 'best-engine-ai-helper[cloud]'`); real NSFW
+classifiers for `safety=` need `[filtered]` — both degrade gracefully
 (a light retry, no caching, a keyword heuristic) rather than erroring when
 absent.
 

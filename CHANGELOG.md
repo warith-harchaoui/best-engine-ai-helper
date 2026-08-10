@@ -2,6 +2,45 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
+## [1.3.3] - 2026-08-10 (`nsfw` branch)
+
+Re-evaluated both `safety.py` classifier choices against real, independently
+run tests (not vendor claims) and swapped one of them.
+
+### Changed
+
+- **Text NSFW classifier: Detoxify -> `eliasalbouzidi/distilbert-nsfw-text-classifier`.**
+  Detoxify scores general toxicity (hate/insult/threat/obscenity), not
+  NSFW/sexual content specifically. On a hand-built probe set, sexual-but-
+  not-abusive text scored 0.01-0.40 on Detoxify (Detoxify's own default
+  threshold in this module is 0.8, so it would have MISSED these) but 0.99+
+  on the NSFW-specific model; both agreed on clean text (~0) and
+  toxic-and-sexual text (~0.99+). Also simplifies the `[filtered]` extra:
+  both the text and image classifiers now load through `transformers`
+  alone — the `detoxify` package is dropped entirely.
+
+### Evaluated and kept as-is
+
+- **Image NSFW classifier: `Falconsai/nsfw_image_detection` stays, LAION's
+  `CLIP-based-NSFW-Detector` was NOT swapped in**, despite being the more
+  widely-cited option (it filters LAION-5B, the dataset behind Stable
+  Diffusion). Ran LAION's ViT-L/14 model for real against its own public,
+  manually-annotated test set (`nsfw_testset.zip`): 96.16% accuracy, 94.56%
+  recall, 97.58% precision, 2.29% false-positive rate at this module's 0.8
+  threshold — solid, and independently verifiable by anyone. But its
+  *documented* loading path needs a second deep-learning framework
+  (TensorFlow) plus the unmaintained `autokeras` and OpenAI `clip` packages,
+  and downloads an un-versioned zip from a GitHub raw URL at runtime; worse,
+  its packaged TensorFlow SavedModel no longer loads through Keras 3's own
+  `load_model()` — only an undocumented `tf.saved_model.load(...)
+  .signatures["serving_default"]` workaround got it running for this
+  evaluation. Falconsai self-reports 98.04% accuracy (not independently
+  verified — no real NSFW imagery was fetched for this evaluation; unlike
+  CLIP embeddings, raw image bytes of that content are not something this
+  project will download or store) but needs only `transformers`, matching
+  the text classifier above, with no legacy-framework or fragile-download
+  risk. See `safety.py`'s module docstring for the full writeup.
+
 ## [1.3.2] - 2026-08-10
 
 Test suite consolidation: no runtime behavior changes, test-only. The suite

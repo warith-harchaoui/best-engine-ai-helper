@@ -9,12 +9,44 @@ placeholder), or ``warn`` (log only, pass through unchanged). Every decision
 is logged via ``os_helper`` regardless of action, so a warn-mode deployment
 still keeps a full audit trail.
 
-Real classifiers are optional (the ``[filtered]`` extra): Detoxify for text, a
-CLIP-based NSFW image classifier for images. Absent them, text scanning falls
-back to a deterministic keyword heuristic — crude, but it never silently
-no-ops. Image scanning has no comparable safe heuristic (a wrong guess is
-worse than an honest "I don't know"), so it degrades to ``"unavailable"``
-rather than fabricate a verdict.
+Real classifiers are optional (the ``[filtered]`` extra, both via
+``transformers``): a DistilBERT model fine-tuned specifically for NSFW/sexual
+text for text, a ViT NSFW/normal classifier for images. Absent them, text
+scanning falls back to a deterministic keyword heuristic — crude, but it
+never silently no-ops. Image scanning has no comparable safe heuristic (a
+wrong guess is worse than an honest "I don't know"), so it degrades to
+``"unavailable"`` rather than fabricate a verdict.
+
+Model choices, and why (see ``.private/keep-track.md`` for the full
+evaluation this repo ran before picking them):
+
+- **Text**: ``eliasalbouzidi/distilbert-nsfw-text-classifier``, not
+  Detoxify. Detoxify scores general TOXICITY (hate/insult/threat/obscenity);
+  on a hand-built probe set, sexual-but-not-abusive text scored 0.01-0.40 on
+  Detoxify (below this module's own 0.8 default threshold — Detoxify would
+  have MISSED it) but 0.99+ on the NSFW-specific model. For a module whose
+  job is NSFW filtering, a classifier trained for NSFW/sexual content beats
+  one trained for something adjacent but different.
+- **Image**: ``Falconsai/nsfw_image_detection`` (kept, not swapped to
+  LAION's ``CLIP-based-NSFW-Detector``, despite LAION's detector being the
+  more widely-cited one — it's what filtered LAION-5B, the dataset behind
+  Stable Diffusion). Real, independently-run evaluation on LAION's own
+  public, manually-annotated test set (``nsfw_testset.zip``, ViT-L/14
+  embeddings, this module's 0.8 threshold): 96.16% accuracy, 94.56% recall,
+  97.58% precision, 2.29% false-positive rate — solid, and verifiable by
+  anyone. But LAION's *documented* loading path needs a SECOND deep-learning
+  framework (TensorFlow) plus the unmaintained ``autokeras`` and OpenAI
+  ``clip`` packages, downloads an un-versioned zip from a GitHub raw URL at
+  runtime, and — found while running this exact evaluation — its packaged
+  TensorFlow SavedModel no longer loads through Keras 3's own
+  ``load_model()``; only a manual, undocumented ``tf.saved_model.load(...)
+  .signatures["serving_default"]`` workaround gets it working today. That's
+  too fragile to ship. Falconsai self-reports 98.04% accuracy (not
+  independently verified here — no raw NSFW imagery was fetched to test
+  it; unlike CLIP embeddings, raw image bytes of that content are not
+  something this evaluation will download or store) but needs only
+  ``transformers``, the same single framework already used for text above,
+  with no legacy-package or un-versioned-download risk.
 
 Wired into :func:`best_engine_ai_helper.llm.chat` via its ``safety=`` keyword
 (defaults to True for every engine, local or cloud): called on the
@@ -44,16 +76,17 @@ DEFAULT_ACTION: Action = "warn"
 DEFAULT_THRESHOLD: float = 0.8
 
 # A crude, zero-dependency fallback so text scanning never silently no-ops
-# when Detoxify is not installed. NOT a substitute for a real classifier —
-# it only catches unambiguous, explicit phrases; most real violations will
-# pass through undetected. Install the `[filtered]` extra for real coverage.
+# when the real classifier is not installed. NOT a substitute for a real
+# classifier — it only catches unambiguous, explicit phrases; most real
+# violations will pass through undetected. Install the `[filtered]` extra
+# for real coverage.
 _FALLBACK_TERMS: tuple[str, ...] = (
     "kill yourself",
     "child sexual abuse",
     "bomb making instructions",
 )
 
-_DETOXIFY_MODEL: Any = None
+_TEXT_CLASSIFIER: Any = None
 _CLIP_CLASSIFIER: Any = None
 
 
@@ -69,28 +102,35 @@ class SafetyViolation(RuntimeError):
 
 
 def _fallback_text_score(text: str) -> float:
-    """Best-effort text score without Detoxify: 1.0 on an explicit hit, else 0.0."""
+    """Best-effort text score without the real classifier: 1.0 on an explicit
+    hit, else 0.0."""
     lowered = text.lower()
     return 1.0 if any(term in lowered for term in _FALLBACK_TERMS) else 0.0
 
 
-def _cached_detoxify() -> Any:
-    """Load Detoxify once per process — model load is expensive."""
-    global _DETOXIFY_MODEL
-    if _DETOXIFY_MODEL is None:
-        from detoxify import Detoxify
+def _cached_nsfw_text_classifier() -> Any:
+    """Load the NSFW text classifier once per process — model load is expensive."""
+    global _TEXT_CLASSIFIER
+    if _TEXT_CLASSIFIER is None:
+        from transformers import pipeline
 
-        _DETOXIFY_MODEL = Detoxify("original")
-    return _DETOXIFY_MODEL
+        _TEXT_CLASSIFIER = pipeline(
+            "text-classification",
+            model="eliasalbouzidi/distilbert-nsfw-text-classifier",
+            top_k=None,
+        )
+    return _TEXT_CLASSIFIER
 
 
 def scan_text(text: str) -> dict[str, Any]:
     """
-    Score ``text`` for toxic/NSFW content.
+    Score ``text`` for NSFW/sexual content.
 
-    Uses Detoxify (the ``[filtered]`` extra) when installed; falls back to a
-    crude keyword heuristic otherwise (see the module docstring for why this
-    is not a substitute for the real classifier).
+    Uses a DistilBERT model fine-tuned specifically for NSFW text (the
+    ``[filtered]`` extra) when installed; falls back to a crude keyword
+    heuristic otherwise (see the module docstring for why this is not a
+    substitute for the real classifier — and why this classifier, not a
+    general toxicity one, was chosen for this module's job).
 
     Parameters
     ----------
@@ -100,18 +140,18 @@ def scan_text(text: str) -> dict[str, Any]:
     Returns
     -------
     dict
-        ``{"score": float in [0, 1], "label": str, "backend": "detoxify" |
-        "heuristic"}``.
+        ``{"score": float in [0, 1], "label": str, "backend": "nsfw-distilbert"
+        | "heuristic"}``.
     """
     try:
-        import detoxify  # noqa: F401
+        import transformers  # noqa: F401
     except ImportError:
-        return {"score": _fallback_text_score(text), "label": "toxicity", "backend": "heuristic"}
+        return {"score": _fallback_text_score(text), "label": "nsfw", "backend": "heuristic"}
 
-    model = _cached_detoxify()
-    result = model.predict(text)
-    label, score = max(result.items(), key=lambda kv: kv[1])
-    return {"score": float(score), "label": str(label), "backend": "detoxify"}
+    classifier = _cached_nsfw_text_classifier()
+    result = classifier(text)[0]
+    nsfw_entry = next(r for r in result if r["label"] == "nsfw")
+    return {"score": float(nsfw_entry["score"]), "label": "nsfw", "backend": "nsfw-distilbert"}
 
 
 def _cached_clip_classifier() -> Any:

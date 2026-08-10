@@ -1,12 +1,13 @@
 """
 Tests for best_engine_ai_helper.safety.
 
-Real classifiers (Detoxify, the CLIP-based image model) are optional and NOT
-installed for this test run — that path is exercised by monkeypatching
-``sys.modules`` with fake stand-ins, so the "extra installed" branch gets
-coverage without pulling in torch/transformers weights. The "extra absent"
-fallback paths (heuristic text scoring, "unavailable" image scoring) are
-exercised directly since that's the real state of this test environment.
+Real classifiers (a DistilBERT NSFW text model, a ViT NSFW image model — both
+via ``transformers``) are optional and NOT installed for this test run — that
+path is exercised by monkeypatching ``sys.modules`` with a fake stand-in, so
+the "extra installed" branch gets coverage without pulling in real model
+weights. The "extra absent" fallback paths (heuristic text scoring,
+"unavailable" image scoring) are exercised directly since that's the real
+state of this test environment.
 """
 
 from __future__ import annotations
@@ -34,23 +35,6 @@ def test_scan_text_and_image_degradation_and_real_classifiers(
     assert unavailable == {"score": 0.0, "label": "unavailable", "backend": "unavailable"}
     monkeypatch.undo()
 
-    fake_detoxify_module = ModuleType("detoxify")
-
-    class _FakeDetoxify:
-        def __init__(self, variant: str) -> None:
-            self.variant = variant
-
-        def predict(self, text: str) -> dict[str, float]:
-            return {"toxicity": 0.91, "insult": 0.2}
-
-    fake_detoxify_module.Detoxify = _FakeDetoxify  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "detoxify", fake_detoxify_module)
-    monkeypatch.setattr(safety, "_DETOXIFY_MODEL", None)
-    detoxify_result = safety.scan_text("some text")
-    assert detoxify_result == {"score": 0.91, "label": "toxicity", "backend": "detoxify"}
-    assert safety._DETOXIFY_MODEL is not None  # cached for reuse
-    monkeypatch.setattr(safety, "_DETOXIFY_MODEL", None)
-
     fake_pil_module = ModuleType("PIL")
     fake_pil_image_module = ModuleType("PIL.Image")
     fake_pil_image_module.open = lambda buf: "fake-image-object"  # type: ignore[attr-defined]
@@ -58,25 +42,40 @@ def test_scan_text_and_image_degradation_and_real_classifiers(
     monkeypatch.setitem(sys.modules, "PIL", fake_pil_module)
     monkeypatch.setitem(sys.modules, "PIL.Image", fake_pil_image_module)
 
+    # Text and image both load through `transformers.pipeline` now; the fake
+    # module dispatches on `task` the same way the real one dispatches on
+    # which model architecture it loads.
     fake_transformers_module = ModuleType("transformers")
 
-    def _fake_pipeline(task: str, model: str) -> Any:
-        def _classifier(image: Any) -> list[dict[str, Any]]:
+    def _fake_pipeline(task: str, model: str, **kw: Any) -> Any:
+        if task == "text-classification":
+
+            def _text_classifier(text: str) -> list[list[dict[str, Any]]]:
+                return [[{"label": "safe", "score": 0.05}, {"label": "nsfw", "score": 0.95}]]
+
+            return _text_classifier
+
+        def _image_classifier(image: Any) -> list[dict[str, Any]]:
             return [{"label": "normal", "score": 0.1}, {"label": "nsfw", "score": 0.95}]
 
-        return _classifier
+        return _image_classifier
 
     fake_transformers_module.pipeline = _fake_pipeline  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "transformers", fake_transformers_module)
+
+    monkeypatch.setattr(safety, "_TEXT_CLASSIFIER", None)
+    text_result = safety.scan_text("some text")
+    assert text_result == {"score": 0.95, "label": "nsfw", "backend": "nsfw-distilbert"}
+    assert safety._TEXT_CLASSIFIER is not None  # cached for reuse
+    monkeypatch.setattr(safety, "_TEXT_CLASSIFIER", None)
+
     monkeypatch.setattr(safety, "_CLIP_CLASSIFIER", None)
-    clip_result = safety.scan_image(b"fake-png-bytes")
-    assert clip_result == {"score": 0.95, "label": "nsfw", "backend": "clip"}
+    image_result = safety.scan_image(b"fake-png-bytes")
+    assert image_result == {"score": 0.95, "label": "nsfw", "backend": "clip"}
     monkeypatch.setattr(safety, "_CLIP_CLASSIFIER", None)
 
 
-def _stub_score(
-    score: float, label: str = "toxicity", backend: str = "heuristic"
-) -> dict[str, Any]:
+def _stub_score(score: float, label: str = "nsfw", backend: str = "heuristic") -> dict[str, Any]:
     return {"score": score, "label": label, "backend": backend}
 
 

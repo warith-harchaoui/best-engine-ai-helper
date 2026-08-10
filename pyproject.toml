@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "best-engine-ai-helper"
-version = "1.3.2"
+version = "1.3.3"
 description = "Pick and pull the best local LLM/VLM for the current hardware."
 authors = [{name = "Warith Harchaoui", email = "warith.harchaoui@deraison.ai"}]
 license = {text = "BSD-3-Clause"}
@@ -56,12 +56,12 @@ cloud = [
     "Faker>=25",
     "keyring>=24",
 ]
-# NSFW / policy filtering for chat(safety=...) (safety.py): Detoxify for text,
-# a CLIP-based classifier (via transformers) for images. Both optional — text
-# degrades to a crude keyword heuristic without Detoxify; images degrade to
-# "unavailable" (never a fabricated verdict) without transformers/Pillow.
+# NSFW / policy filtering for chat(safety=...) (safety.py): a DistilBERT model
+# fine-tuned for NSFW text and a ViT NSFW/normal image classifier, both via
+# transformers. Optional — text degrades to a crude keyword heuristic without
+# it; images degrade to "unavailable" (never a fabricated verdict) without
+# transformers/Pillow.
 filtered = [
-    "detoxify>=0.5",
     "transformers>=4.30",
     "Pillow>=9.0",
 ]

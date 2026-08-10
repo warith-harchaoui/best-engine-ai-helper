@@ -57,8 +57,8 @@ défaut, anglais via `/gui?lang=en`, avec un lien d'en-tête pour basculer. Voir
   d'optionnel à activer.
 - Optionnel : `[cloud]` pour le mode fournisseur cloud (retry, cache,
   pseudonymisation, repli sur le trousseau OS pour les clés API) et
-  `[filtered]` pour de vrais classifieurs NSFW/toxicité (Detoxify, un modèle
-  image basé sur CLIP).
+  `[filtered]` pour de vrais classifieurs NSFW (un modèle DistilBERT pour le
+  texte, un modèle ViT pour l'image — tous deux via `transformers`).
 
 ## Installation
 

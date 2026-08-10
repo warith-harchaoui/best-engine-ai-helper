@@ -46,8 +46,9 @@ English via `/gui?lang=en`, with a header link to switch. See
   server are all part of the default install, nothing extra to opt into.
 - Optional: `[cloud]` for cloud-provider mode (retry, caching,
   pseudonymization, an OS-keychain fallback for API keys) and `[filtered]`
-  for real NSFW/toxicity classifiers (Detoxify, a CLIP-based image model) —
-  see [EXAMPLES.md's `resolve`/`mode: cloud` section](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXAMPLES.md#resolve)
+  for real NSFW classifiers (a DistilBERT text model, a ViT image model —
+  both via `transformers`) — see [EXAMPLES.md's `resolve`/`mode: cloud`
+  section](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXAMPLES.md#resolve)
   for the full story; both degrade gracefully (a keyword heuristic / an
   "unavailable" verdict) when absent, never a hard failure.
 
