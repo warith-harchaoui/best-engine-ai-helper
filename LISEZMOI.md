@@ -43,7 +43,7 @@ défaut, anglais via `/gui?lang=en`, avec un lien d'en-tête pour basculer. Voir
 
 [🗺️ Paysage](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/PAYSAGE.md)
 
-[📋 Exemples](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXAMPLES.md)
+[📋 Exemples](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXEMPLES.md)
 
 ## Prérequis
 
@@ -178,8 +178,8 @@ pip install "best-engine-ai-helper[mcp]"
 best-engine-ai-helper-mcp        # -> http://127.0.0.1:8000 (MCP sur /mcp)
 ```
 
-Voir [EXAMPLES.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXAMPLES.md) pour des recettes complètes avec exemples de sortie, et
-[GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) pour la GUI navigateur.
+Voir [EXEMPLES.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXEMPLES.md) pour des recettes complètes avec exemples de sortie
+et [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) pour la GUI navigateur.
 
 ## GUI
 
