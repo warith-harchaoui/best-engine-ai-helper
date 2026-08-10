@@ -30,15 +30,19 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
         curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy only the package files needed for installation; this layer is cached
-# independently from the source code so repeated builds are fast.
+# requirements.txt first (core deps only) so this layer caches independently
+# of source changes; the package itself is installed once the source is in
+# place, right below.
 WORKDIR /app
-COPY pyproject.toml requirements.txt ./
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY pyproject.toml ./
 COPY best_engine_ai_helper/ ./best_engine_ai_helper/
 COPY models.yaml hardware.yaml ./
 
-# Install the package and its runtime dependencies from wheels.
-# The [dev] extra is intentionally excluded so the image stays small.
+# Install the package itself from the source now in place. The [dev] extra
+# is intentionally excluded so the image stays small.
 RUN pip install --no-cache-dir -e .
 
 # --- final ------------------------------------------------------------------
