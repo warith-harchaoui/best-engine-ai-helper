@@ -1,10 +1,10 @@
 """
 End-to-end scenario tests.
 
-These walk realistic workflows across module seams — detect -> catalog ->
-score -> recommend -> emit; refresh -> load; pull -> env -> config resolve — so
-they catch integration bugs the per-module unit tests can't, and double as
-executable documentation of how the pieces fit together. Only true I/O
+Walks realistic workflows across module seams — detect -> catalog -> score ->
+recommend -> emit; refresh -> load -> rank; pull -> env -> config resolve —
+so it catches integration bugs the per-module unit tests can't, and doubles
+as executable documentation of how the pieces fit together. Only true I/O
 boundaries (the ApXML network fetch) are stubbed.
 """
 
@@ -17,9 +17,9 @@ import best_engine_ai_helper.recommend as recommend
 from best_engine_ai_helper import catalog, config, detect, pull, score
 
 
-def test_recommendation_report_pipeline_on_real_catalog(tmp_path: Path) -> None:
-    # The full report path the CLI's `report` command runs: real detection, real
-    # bundled catalog, ranked recommendation, Markdown + JSON emitted to disk.
+def test_end_to_end_scenarios(tmp_path: Path, monkeypatch) -> None:
+    # The full report path the CLI's `report` command runs: real detection,
+    # real bundled catalog, ranked recommendation, Markdown + JSON to disk.
     hw = detect.available_memory()
     compute = detect.compute_profile()
     entries = catalog.load_catalog()
@@ -37,8 +37,6 @@ def test_recommendation_report_pipeline_on_real_catalog(tmp_path: Path) -> None:
     assert md_path.is_file() and "# Best local engine" in md_path.read_text()
     assert json.loads(json_path.read_text())["memory_budget_gb"] > 0
 
-
-def test_catalog_refresh_then_appears_in_recommendation(tmp_path: Path, monkeypatch) -> None:
     # A `catalog update` refresh writes the cache; the merged catalog then
     # carries the new model, and the recommender can rank it.
     cache = tmp_path / "catalog_cache.yaml"
@@ -53,16 +51,13 @@ def test_catalog_refresh_then_appears_in_recommendation(tmp_path: Path, monkeypa
     catalog.write_cache(
         catalog.normalize_apxml_specs([spec], fetched_at="2026-08-01"), cache_path=cache
     )
-
     merged = catalog.load_catalog()
     assert any(e["id"] == "scenario-vlm" for e in merged)
-    hw = {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}
-    assert "scenario-vlm" in {r["id"] for r in score.rank(hw, merged, kind="vlm")}
+    synthetic_hw = {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}
+    assert "scenario-vlm" in {r["id"] for r in score.rank(synthetic_hw, merged, kind="vlm")}
 
-
-def test_pull_writes_env_then_config_resolves_it(tmp_path: Path, monkeypatch) -> None:
-    # The tail of the pull workflow: write_env persists the chosen tags, and the
-    # config resolver reads them back with no env vars set.
+    # The tail of the pull workflow: write_env persists the chosen tags, and
+    # the config resolver reads them back with no env vars set.
     pull.write_env("qwen3:8b", "gemma3:12b", "ollama", "http://localhost:11434", user_dir=tmp_path)
     monkeypatch.setattr(config, "_USER_DIR", tmp_path)
     for var in (

@@ -5,7 +5,9 @@ Uses Click's CliRunner, so no real subprocess or server is spawned. The
 read-only commands run against real detection and the bundled catalog; the
 side-effectful ones (refresh, pull, validate) have their network / detection /
 ollama layer patched so the tests stay offline and never touch the real user
-config under ~/.best-engine-ai-helper.
+config under ~/.best-engine-ai-helper. Each test groups several related
+commands/scenarios into one functional check rather than one test per
+command, so the suite stays small while covering the same ground.
 """
 
 from __future__ import annotations
@@ -20,8 +22,7 @@ from click.testing import CliRunner
 from best_engine_ai_helper.cli import main
 
 
-def test_read_only_commands_smoke(runner: CliRunner) -> None:
-    # Each read-only command exits 0 and prints its headline content.
+def test_read_only_and_report_commands(runner: CliRunner, tmp_path: Path) -> None:
     cases = [
         (["detect"], "platform"),
         (["recommend"], ""),
@@ -37,11 +38,37 @@ def test_read_only_commands_smoke(runner: CliRunner) -> None:
         assert result.exit_code == 0, f"{args} -> {result.exit_code}\n{result.output}"
         assert result.output.strip() and needle in result.output, args
 
+    live = runner.invoke(main, ["report", "--task", "write copy", "--live"])
+    assert live.exit_code == 0
+    assert "Server load (live, at recommendation time)" in live.stdout
 
-def test_report_live_includes_server_load_section(runner: CliRunner) -> None:
-    result = runner.invoke(main, ["report", "--task", "write copy", "--live"])
-    assert result.exit_code == 0
-    assert "Server load (live, at recommendation time)" in result.stdout
+    data = json.loads(runner.invoke(main, ["detect"]).output)
+    assert {"platform", "chip_vendor", "memory"} <= data.keys()
+    assert set(data["memory"]) == {"unified_gb", "vram_gb", "ram_gb"}
+    assert data["memory"]["ram_gb"] > 0
+
+    md = runner.invoke(main, ["report", "--task", "write python code"])
+    assert md.exit_code == 0 and "# Best local engine" in md.output
+    # No --task here: parse_task logs a WARNING (see recommend.py), and
+    # CliRunner's `.output` merges stdout+stderr, so parse strictly from
+    # `.stdout` — the CLI's real machine-readable-JSON contract is stdout only.
+    js = runner.invoke(main, ["report", "--format", "json"])
+    assert js.exit_code == 0 and "recommendations" in json.loads(js.stdout)
+    out = runner.invoke(main, ["report", "--out", str(tmp_path / "r")])
+    assert out.exit_code == 0
+    assert (tmp_path / "r.md").is_file() and (tmp_path / "r.json").is_file()
+
+    brief = tmp_path / "llm.brief.yaml"
+    brief.write_text(yaml.safe_dump({"kind": "llm", "task": "write python code"}))
+    engine_out = tmp_path / "llm.engine.yaml"
+    resolved = runner.invoke(main, ["resolve", "--brief", str(brief), "--out", str(engine_out)])
+    assert resolved.exit_code == 0
+    assert f"Wrote {engine_out}" in resolved.output
+    assert engine_out.is_file() and "backend" in yaml.safe_load(engine_out.read_text())
+
+    missing = runner.invoke(main, ["resolve", "--brief", str(tmp_path / "nope.yaml")])
+    assert missing.exit_code == 1
+    assert "not found" in missing.output
 
 
 def test_activity_empty_and_populated(runner: CliRunner, tmp_path: Path) -> None:
@@ -77,106 +104,47 @@ def test_activity_empty_and_populated(runner: CliRunner, tmp_path: Path) -> None
     ledger.close()
 
 
-def test_detect_emits_valid_json(runner: CliRunner) -> None:
-    data = json.loads(runner.invoke(main, ["detect"]).output)
-    assert {"platform", "chip_vendor", "memory"} <= data.keys()
-    assert set(data["memory"]) == {"unified_gb", "vram_gb", "ram_gb"}
-    assert data["memory"]["ram_gb"] > 0
+def test_usages_subcommands(runner: CliRunner, tmp_path: Path) -> None:
+    listing = runner.invoke(main, ["usages", "list"])
+    assert listing.exit_code == 0
+    assert "Families" in listing.output and "Profiles" in listing.output
+    assert "text2sql" in listing.output and "F1" in listing.output
 
+    shown = runner.invoke(main, ["usages", "show", "text2sql"])
+    assert shown.exit_code == 0
+    assert "Needs (selection criteria):" in shown.output
+    assert "structured_output" in shown.output
 
-def test_report_prints_markdown_json_and_writes_files(runner: CliRunner, tmp_path: Path) -> None:
-    md = runner.invoke(main, ["report", "--task", "write python code"])
-    assert md.exit_code == 0 and "# Best local engine" in md.output
-    js = runner.invoke(main, ["report", "--format", "json"])
-    # No --task here: parse_task logs a WARNING (see recommend.py), and
-    # CliRunner's `.output` merges stdout+stderr, so parse strictly from
-    # `.stdout` — the CLI's real machine-readable-JSON contract is stdout only.
-    assert js.exit_code == 0 and "recommendations" in json.loads(js.stdout)
-    out = runner.invoke(main, ["report", "--out", str(tmp_path / "r")])
-    assert out.exit_code == 0
-    assert (tmp_path / "r.md").is_file() and (tmp_path / "r.json").is_file()
+    unknown_show = runner.invoke(main, ["usages", "show", "not-a-real-profile"])
+    assert unknown_show.exit_code == 1
 
-
-def test_resolve_cmd_writes_engine_file(runner: CliRunner, tmp_path: Path) -> None:
-    brief = tmp_path / "llm.brief.yaml"
-    brief.write_text(yaml.safe_dump({"kind": "llm", "task": "write python code"}))
     out = tmp_path / "llm.engine.yaml"
-    result = runner.invoke(main, ["resolve", "--brief", str(brief), "--out", str(out)])
-    assert result.exit_code == 0
-    assert f"Wrote {out}" in result.output
-    assert out.is_file() and "backend" in yaml.safe_load(out.read_text())
-
-
-def test_resolve_cmd_missing_brief_errors(runner: CliRunner, tmp_path: Path) -> None:
-    result = runner.invoke(main, ["resolve", "--brief", str(tmp_path / "nope.yaml")])
-    assert result.exit_code == 1
-    assert "not found" in result.output
-
-
-# ---------------------------------------------------------------------------
-# usages subgroup — the sev7n usage catalog (task profiles + families).
-# ---------------------------------------------------------------------------
-
-
-def test_usages_list_prints_families_and_profiles(runner: CliRunner) -> None:
-    result = runner.invoke(main, ["usages", "list"])
-    assert result.exit_code == 0
-    assert "Families" in result.output and "Profiles" in result.output
-    assert "text2sql" in result.output and "F1" in result.output
-
-
-def test_usages_show_known_profile(runner: CliRunner) -> None:
-    result = runner.invoke(main, ["usages", "show", "text2sql"])
-    assert result.exit_code == 0
-    assert "Needs (selection criteria):" in result.output
-    assert "structured_output" in result.output
-
-
-def test_usages_show_unknown_profile_errors(runner: CliRunner) -> None:
-    result = runner.invoke(main, ["usages", "show", "not-a-real-profile"])
-    assert result.exit_code == 1
-
-
-def test_usages_resolve_profile_writes_engine(runner: CliRunner, tmp_path: Path) -> None:
-    out = tmp_path / "llm.engine.yaml"
-    result = runner.invoke(main, ["usages", "resolve", "text2sql", "--out", str(out)])
-    assert result.exit_code == 0
-    assert "text2sql: backend" in result.output
+    resolved = runner.invoke(main, ["usages", "resolve", "text2sql", "--out", str(out)])
+    assert resolved.exit_code == 0
+    assert "text2sql: backend" in resolved.output
     assert out.is_file()
 
+    family = runner.invoke(main, ["usages", "resolve", "--family", "F1"])
+    assert family.exit_code == 0
+    assert "F1: backend" in family.output
 
-def test_usages_resolve_family(runner: CliRunner) -> None:
-    result = runner.invoke(main, ["usages", "resolve", "--family", "F1"])
-    assert result.exit_code == 0
-    assert "F1: backend" in result.output
+    no_target = runner.invoke(main, ["usages", "resolve"])
+    assert no_target.exit_code == 1
+    assert "NAME or --family" in no_target.output
 
-
-def test_usages_resolve_requires_name_or_family(runner: CliRunner) -> None:
-    result = runner.invoke(main, ["usages", "resolve"])
-    assert result.exit_code == 1
-    assert "NAME or --family" in result.output
-
-
-def test_usages_resolve_unknown_profile_errors(runner: CliRunner) -> None:
-    result = runner.invoke(main, ["usages", "resolve", "not-a-real-profile"])
-    assert result.exit_code == 1
-    assert "resolve failed" in result.output
+    unknown_resolve = runner.invoke(main, ["usages", "resolve", "not-a-real-profile"])
+    assert unknown_resolve.exit_code == 1
+    assert "resolve failed" in unknown_resolve.output
 
 
-# ---------------------------------------------------------------------------
-# catalog update / hardware update — offline via patched fetch / detection.
-# ---------------------------------------------------------------------------
-
-
-def test_catalog_update_writes_and_empty_feed_fails(
+def test_catalog_and_hardware_update(
     runner: CliRunner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from best_engine_ai_helper import catalog
+    from best_engine_ai_helper import catalog, hardware
     from best_engine_ai_helper.sources import apxml
 
     cache = tmp_path / "catalog_cache.yaml"
     monkeypatch.setattr(catalog, "_CACHE_PATH", cache)
-
     monkeypatch.setattr(
         apxml,
         "fetch_open_weight_models",
@@ -202,15 +170,8 @@ def test_catalog_update_writes_and_empty_feed_fails(
     empty = runner.invoke(main, ["catalog", "update"])
     assert empty.exit_code != 0 and not cache.exists()
 
-
-def test_hardware_update_records_or_reports_nothing(
-    runner: CliRunner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    from best_engine_ai_helper import hardware
-
-    cache = tmp_path / "hardware_cache.yaml"
-    monkeypatch.setattr(hardware, "_HW_CACHE_PATH", cache)
-
+    hw_cache = tmp_path / "hardware_cache.yaml"
+    monkeypatch.setattr(hardware, "_HW_CACHE_PATH", hw_cache)
     monkeypatch.setattr(
         hardware,
         "detect_local_entry",
@@ -223,19 +184,15 @@ def test_hardware_update_records_or_reports_nothing(
             "fetched_at": "2026-08-01",
         },
     )
-    ok = runner.invoke(main, ["hardware", "update"])
-    assert ok.exit_code == 0 and yaml.safe_load(cache.read_text())[0]["chip"] == "Apple M2 Max"
+    hw_ok = runner.invoke(main, ["hardware", "update"])
+    assert hw_ok.exit_code == 0
+    assert yaml.safe_load(hw_cache.read_text())[0]["chip"] == "Apple M2 Max"
 
     # Nothing detectable -> cache untouched, non-zero exit.
-    cache.unlink()
+    hw_cache.unlink()
     monkeypatch.setattr(hardware, "detect_local_entry", lambda *a, **k: None)
-    none = runner.invoke(main, ["hardware", "update"])
-    assert none.exit_code != 0 and not cache.exists()
-
-
-# ---------------------------------------------------------------------------
-# pull / validate / env — ollama + gates patched, so no downloads or network.
-# ---------------------------------------------------------------------------
+    hw_none = runner.invoke(main, ["hardware", "update"])
+    assert hw_none.exit_code != 0 and not hw_cache.exists()
 
 
 def _patch_gates(monkeypatch: pytest.MonkeyPatch, vlm: bool, prose: bool) -> None:
@@ -246,29 +203,23 @@ def _patch_gates(monkeypatch: pytest.MonkeyPatch, vlm: bool, prose: bool) -> Non
     monkeypatch.setattr(validate_llm, "validate", lambda chat: prose)
 
 
-def test_pull_writes_env_when_both_gates_pass(
+def test_pull_validate_env(
     runner: CliRunner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from best_engine_ai_helper import pull
+    from best_engine_ai_helper import catalog, detect, pull, validate_llm, validate_vlm
 
     _patch_gates(monkeypatch, vlm=True, prose=True)
     written: dict[str, object] = {}
     monkeypatch.setattr(
         pull, "write_env", lambda **kw: (written.update(kw), tmp_path / "env.sh")[1]
     )
-    result = runner.invoke(main, ["pull"])
-    assert result.exit_code == 0 and "Both gates passed" in result.output
+    passed = runner.invoke(main, ["pull"])
+    assert passed.exit_code == 0 and "Both gates passed" in passed.output
     assert written["text_model"]  # the chosen tag was persisted
 
-
-def test_pull_prefers_comfortable_over_fits_but_slow(
-    runner: CliRunner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
     # On an M2-Max-like machine a 48 GB model fits memory but crawls (~5 tok/s);
     # a 10 GB model clears the comfort floor (~26 tok/s). pull must try the
     # comfortable model first even though the slow one scores higher.
-    from best_engine_ai_helper import catalog, detect, pull
-
     monkeypatch.setattr(
         detect, "available_memory", lambda: {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}
     )
@@ -297,68 +248,46 @@ def test_pull_prefers_comfortable_over_fits_but_slow(
             },
         ],
     )
-    _patch_gates(monkeypatch, vlm=True, prose=True)
     pulled: list[str] = []
     monkeypatch.setattr(pull, "ollama_pull", lambda tag, **k: (pulled.append(tag), True)[1])
     monkeypatch.setattr(pull, "write_env", lambda **kw: tmp_path / "env.sh")
-    result = runner.invoke(main, ["pull"])
-    assert result.exit_code == 0
+    comfortable = runner.invoke(main, ["pull"])
+    assert comfortable.exit_code == 0
     assert pulled[0] == "small-fast"  # comfortable model tried first, not big-slow
 
-
-def test_pull_removes_failed_model_and_exits_nonzero(
-    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from best_engine_ai_helper import pull
-
-    _patch_gates(monkeypatch, vlm=False, prose=True)  # VLM gate fails
+    # A failed VLM gate removes the candidate and exits non-zero.
+    _patch_gates(monkeypatch, vlm=False, prose=True)
     removed: list[str] = []
     monkeypatch.setattr(pull, "ollama_rm", lambda tag: (removed.append(tag), True)[1])
-    result = runner.invoke(main, ["pull"])
-    assert result.exit_code == 1 and removed  # failed candidates are cleaned up
+    failed = runner.invoke(main, ["pull"])
+    assert failed.exit_code == 1 and removed  # failed candidates are cleaned up
 
-
-def test_pull_vllm_prints_serve_command_without_downloading(
-    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from best_engine_ai_helper import pull
-
+    # --vllm prints the serve command without ever calling ollama_pull.
     monkeypatch.setattr(pull, "ollama_pull", lambda *a, **k: pytest.fail("--vllm must not pull"))
-    result = runner.invoke(main, ["pull", "--vllm"])
-    assert result.exit_code == 0 and "vllm serve" in result.output
+    vllm = runner.invoke(main, ["pull", "--vllm"])
+    assert vllm.exit_code == 0 and "vllm serve" in vllm.output
 
-
-def test_validate_and_env_require_configuration(
-    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
-) -> None:
+    # validate/env with nothing configured: both explain what to run.
     monkeypatch.delenv("BEST_LLM_TEXT", raising=False)
     monkeypatch.delenv("SPREZZATURE_LLM_TEXT", raising=False)
-    # With nothing configured, both commands explain what to run and exit non-zero.
     for cmd in (["validate"], ["env"]):
-        result = runner.invoke(main, cmd)
-        combined = (result.output or "") + (result.stderr or "")
-        assert result.exit_code != 0 and combined.strip()
+        unconfigured = runner.invoke(main, cmd)
+        combined = (unconfigured.output or "") + (unconfigured.stderr or "")
+        assert unconfigured.exit_code != 0 and combined.strip()
 
-
-def test_validate_runs_gates_when_configured(
-    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from best_engine_ai_helper import validate_llm, validate_vlm
-
+    # validate with a model configured and both gates passing.
     monkeypatch.setenv("BEST_LLM_TEXT", "qwen3:8b")
     monkeypatch.setattr(validate_vlm, "validate", lambda chat: True)
     monkeypatch.setattr(validate_llm, "validate", lambda chat: True)
-    result = runner.invoke(main, ["validate"])
-    assert result.exit_code == 0
-    assert "pass" in result.output.lower()
+    configured = runner.invoke(main, ["validate"])
+    assert configured.exit_code == 0
+    assert "pass" in configured.output.lower()
 
-
-def test_gui_command_binds(runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
     import uvicorn
 
-    calls: dict[str, object] = {}
-    monkeypatch.setattr(uvicorn, "run", lambda app, **kw: calls.update(app=app, **kw))
-    result = runner.invoke(main, ["gui", "--host", "0.0.0.0", "--port", "9000"])
-    assert result.exit_code == 0
-    assert calls["app"] == "best_engine_ai_helper.api:app"
-    assert (calls["host"], calls["port"]) == ("0.0.0.0", 9000)
+    gui_calls: dict[str, object] = {}
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kw: gui_calls.update(app=app, **kw))
+    gui_result = runner.invoke(main, ["gui", "--host", "0.0.0.0", "--port", "9000"])
+    assert gui_result.exit_code == 0
+    assert gui_calls["app"] == "best_engine_ai_helper.api:app"
+    assert (gui_calls["host"], gui_calls["port"]) == ("0.0.0.0", 9000)

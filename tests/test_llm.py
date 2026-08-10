@@ -2,13 +2,17 @@
 Tests for best_engine_ai_helper.llm.
 
 Every backend call is mocked (requests.post or a fake LangChain class), so no
-Ollama or OpenAI server is needed. Covers the three backends' payload shapes,
-JSON-mode parsing and its fallback, error translation, embeddings, and the
-Ollama schema shaper that flattens discriminated unions.
+Ollama or OpenAI server is needed. Each test below is a functional grouping —
+multiple related scenarios asserted sequentially in one function — rather
+than one test per narrow variation, so the suite stays small while still
+exercising every payload shape, error path, and optional-dependency
+degradation the module supports.
 """
 
 from __future__ import annotations
 
+import sys
+from types import ModuleType
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -25,7 +29,9 @@ def _resp(json_value: dict[str, Any]) -> MagicMock:
     return r
 
 
-def test_chat_ollama_builds_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_chat_local_transports_payloads_and_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Ollama: plain prompt, then images without an explicit model select the
+    # vision model, with json_schema passed through as Ollama's grammar `format`.
     monkeypatch.setenv("SPREZZATURE_LLM_BACKEND", "ollama")
     monkeypatch.setenv("SPREZZATURE_LLM_TEXT", "qwen3:8b")
     monkeypatch.setenv("SPREZZATURE_LLM_VISION", "qwen3-vl:72b")
@@ -37,100 +43,12 @@ def test_chat_ollama_builds_payload(monkeypatch: pytest.MonkeyPatch) -> None:
     assert payload["model"] == "qwen3:8b" and payload["prompt"] == "say hello"
     assert payload["stream"] is False and payload["system"] == "be brief"
 
-    # Images with no explicit model select the vision model; json_schema is
-    # passed through as Ollama's grammar-constrained `format`.
     schema = {"type": "object", "properties": {"k": {"type": "integer"}}}
     with patch("requests.post", return_value=_resp({"response": '{"k": 1}'})) as post2:
         assert _llm.chat("describe", images=[b"\x89PNG"], json_schema=schema) == {"k": 1}
     p2 = post2.call_args[1]["json"]
     assert p2["model"] == "qwen3-vl:72b" and p2["format"] == schema
 
-
-def test_chat_openai_builds_payload(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SPREZZATURE_LLM_BACKEND", "openai")
-    resp = _resp({"choices": [{"message": {"content": "hi"}}]})
-
-    with patch("requests.post", return_value=resp) as post:
-        assert _llm.chat("hi there") == "hi"
-    assert "/v1/chat/completions" in post.call_args[0][0]
-
-    # Images become data-URI content parts; json_schema becomes a structured
-    # response_format.
-    with patch("requests.post", return_value=resp) as post2:
-        _llm.chat("describe", images=[b"\x89PNG"], json_schema={"type": "object"})
-    payload = post2.call_args[1]["json"]
-    user = next(m for m in payload["messages"] if m["role"] == "user")
-    part = next(p for p in user["content"] if p.get("type") == "image_url")
-    assert part["image_url"]["url"].startswith("data:image/png;base64,")
-    assert payload["response_format"]["type"] == "json_schema"
-
-
-def test_chat_langchain_backend(monkeypatch: pytest.MonkeyPatch) -> None:
-    import sys
-    import types
-
-    monkeypatch.setenv("SPREZZATURE_LLM_BACKEND", "langchain")
-    monkeypatch.delenv("SPREZZATURE_LLM_BASE_URL", raising=False)  # default -> :11434 -> ChatOllama
-
-    class _FakeLLM:
-        def __init__(self, **kw: Any) -> None: ...
-        def invoke(self, msgs: Any) -> Any:
-            return type("Msg", (), {"content": "hi from langchain"})()
-
-    # langchain_ollama is an optional extra not installed here; inject a stub so
-    # the default-URL branch is covered without depending on the real package
-    # (mirrors the langchain_openai stub below).
-    fake_module = types.ModuleType("langchain_ollama")
-    fake_module.ChatOllama = _FakeLLM  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "langchain_ollama", fake_module)
-    assert _llm.chat("hello", system="sys") == "hi from langchain"
-
-
-def test_chat_langchain_openai_branch_and_image_guard(monkeypatch: pytest.MonkeyPatch) -> None:
-    import sys
-    import types
-
-    monkeypatch.setenv("SPREZZATURE_LLM_BACKEND", "langchain")
-    monkeypatch.setenv("SPREZZATURE_LLM_BASE_URL", "http://remote-host:9000")  # -> ChatOpenAI
-
-    class _FakeOpenAI:
-        def __init__(self, **kw: Any) -> None: ...
-        def invoke(self, msgs: Any) -> Any:
-            return type("Msg", (), {"content": '{"ok": true}'})()
-
-    # langchain_openai is an optional extra not installed here; inject a stub so
-    # the OpenAI-URL branch is covered without depending on the real package.
-    fake_module = types.ModuleType("langchain_openai")
-    fake_module.ChatOpenAI = _FakeOpenAI  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "langchain_openai", fake_module)
-    # json_schema on langchain is a portable system-prompt hint; the JSON parses.
-    assert _llm.chat("q", json_schema={"type": "object"}) == {"ok": True}
-    # Images aren't uniform across langchain backends -> a clear RuntimeError.
-    with pytest.raises(RuntimeError, match="Images"):
-        _llm.chat("q", images=[b"\x89PNG"])
-
-
-def test_chat_openai_auth_and_malformed(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SPREZZATURE_LLM_BACKEND", "openai")
-    monkeypatch.setenv("SPREZZATURE_LLM_API_KEY", "secret")  # -> Authorization header
-    captured: dict[str, Any] = {}
-
-    def _capture(*a: Any, **k: Any) -> MagicMock:
-        captured.update(k)
-        return _resp({"choices": []})  # malformed: no message -> RuntimeError
-
-    with patch("requests.post", _capture):
-        with pytest.raises(RuntimeError):
-            _llm.chat("x")
-    assert captured["headers"]["Authorization"] == "Bearer secret"
-    # A transport failure is also translated to RuntimeError.
-    with patch("requests.post", side_effect=requests.Timeout("slow")):
-        with pytest.raises(RuntimeError):
-            _llm.chat("x")
-
-
-def test_chat_json_fallback_and_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SPREZZATURE_LLM_BACKEND", "ollama")
     # JSON mode but the model returns non-JSON -> raw string, not a crash.
     with patch("requests.post", return_value=_resp({"response": "not json"})):
         assert _llm.chat("x", json_schema={"type": "object"}) == "not json"
@@ -143,10 +61,73 @@ def test_chat_json_fallback_and_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(ValueError, match="Unknown"):
         _llm.chat("x")
 
+    # OpenAI-compatible: plain prompt, then images become data-URI content
+    # parts and json_schema becomes a structured response_format.
+    monkeypatch.setenv("SPREZZATURE_LLM_BACKEND", "openai")
+    resp = _resp({"choices": [{"message": {"content": "hi"}}]})
+    with patch("requests.post", return_value=resp) as post3:
+        assert _llm.chat("hi there") == "hi"
+    assert "/v1/chat/completions" in post3.call_args[0][0]
 
-def test_observers_receive_success_and_failure_events(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    with patch("requests.post", return_value=resp) as post4:
+        _llm.chat("describe", images=[b"\x89PNG"], json_schema={"type": "object"})
+    p4 = post4.call_args[1]["json"]
+    user = next(m for m in p4["messages"] if m["role"] == "user")
+    part = next(p for p in user["content"] if p.get("type") == "image_url")
+    assert part["image_url"]["url"].startswith("data:image/png;base64,")
+    assert p4["response_format"]["type"] == "json_schema"
+
+    # Auth header from SPREZZATURE_LLM_API_KEY, malformed response ->
+    # RuntimeError, and a transport timeout -> RuntimeError too.
+    monkeypatch.setenv("SPREZZATURE_LLM_API_KEY", "secret")
+    captured: dict[str, Any] = {}
+
+    def _capture(*a: Any, **k: Any) -> MagicMock:
+        captured.update(k)
+        return _resp({"choices": []})  # malformed: no message -> RuntimeError
+
+    with patch("requests.post", _capture):
+        with pytest.raises(RuntimeError):
+            _llm.chat("x")
+    assert captured["headers"]["Authorization"] == "Bearer secret"
+    with patch("requests.post", side_effect=requests.Timeout("slow")):
+        with pytest.raises(RuntimeError):
+            _llm.chat("x")
+
+
+def test_chat_langchain_backend_observers_and_embed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SPREZZATURE_LLM_BACKEND", "langchain")
+    monkeypatch.delenv("SPREZZATURE_LLM_BASE_URL", raising=False)  # default -> :11434 -> ChatOllama
+
+    class _FakeOllamaLLM:
+        def __init__(self, **kw: Any) -> None: ...
+        def invoke(self, msgs: Any) -> Any:
+            return type("Msg", (), {"content": "hi from langchain"})()
+
+    # langchain_ollama / langchain_openai are optional extras not installed
+    # here; inject stubs so both URL branches are covered without the real
+    # packages.
+    fake_ollama_module = ModuleType("langchain_ollama")
+    fake_ollama_module.ChatOllama = _FakeOllamaLLM  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "langchain_ollama", fake_ollama_module)
+    assert _llm.chat("hello", system="sys") == "hi from langchain"
+
+    monkeypatch.setenv("SPREZZATURE_LLM_BASE_URL", "http://remote-host:9000")  # -> ChatOpenAI
+
+    class _FakeOpenAI:
+        def __init__(self, **kw: Any) -> None: ...
+        def invoke(self, msgs: Any) -> Any:
+            return type("Msg", (), {"content": '{"ok": true}'})()
+
+    fake_openai_module = ModuleType("langchain_openai")
+    fake_openai_module.ChatOpenAI = _FakeOpenAI  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "langchain_openai", fake_openai_module)
+    # json_schema on langchain is a portable system-prompt hint; the JSON parses.
+    assert _llm.chat("q", json_schema={"type": "object"}) == {"ok": True}
+    # Images aren't uniform across langchain backends -> a clear RuntimeError.
+    with pytest.raises(RuntimeError, match="Images"):
+        _llm.chat("q", images=[b"\x89PNG"])
+
     monkeypatch.setenv("SPREZZATURE_LLM_BACKEND", "ollama")
     events: list[dict[str, Any]] = []
     _llm.add_observer(events.append)
@@ -175,16 +156,12 @@ def test_observers_receive_success_and_failure_events(
     finally:
         _llm.clear_observers()
 
-
-def test_embed_ollama_only(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SPREZZATURE_LLM_BACKEND", "ollama")
+    # Embeddings: happy path, missing field -> RuntimeError, unsupported backend.
     with patch("requests.post", return_value=_resp({"embedding": [0.1, 0.2]})):
         assert _llm.embed("hi") == [0.1, 0.2]
-    # Missing field is a RuntimeError.
     with patch("requests.post", return_value=_resp({})):
         with pytest.raises(RuntimeError):
             _llm.embed("hi")
-    # Other backends aren't supported for embeddings.
     monkeypatch.setenv("SPREZZATURE_LLM_BACKEND", "openai")
     with pytest.raises(NotImplementedError):
         _llm.embed("hi")
@@ -242,13 +219,18 @@ def test_shape_schema_for_ollama() -> None:
     )
     assert nullable["properties"]["note"]["type"] == "string"
 
+    # A dangling/cyclic $ref degrades to a permissive stub rather than crashing.
+    cyclic = _llm._shape_schema_for_ollama(
+        {"type": "object", "properties": {"self": {"$ref": "#/$defs/Missing"}}}
+    )
+    assert cyclic["properties"]["self"] == {"type": "object"}
 
-# ---------------------------------------------------------------------------
-# Cloud transports: Anthropic, Gemini, Mistral (OpenAI-compatible)
-# ---------------------------------------------------------------------------
 
-
-def test_chat_anthropic_builds_payload_and_extracts_usage() -> None:
+def test_cloud_transports_anthropic_gemini_mistral(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    # Anthropic: payload shape + usage extraction, images as base64 source
+    # parts, and a malformed response raising a clear RuntimeError.
     resp = _resp(
         {
             "content": [{"type": "text", "text": "bonjour"}],
@@ -273,15 +255,7 @@ def test_chat_anthropic_builds_payload_and_extracts_usage() -> None:
     assert kw["json"]["system"] == "Be brief"
     assert kw["json"]["messages"][0]["content"] == "salut"
 
-
-def test_chat_anthropic_with_images_and_malformed_response() -> None:
-    resp = _resp(
-        {
-            "content": [{"type": "text", "text": "described"}],
-            "usage": {"input_tokens": 5, "output_tokens": 2},
-        }
-    )
-    with patch("requests.post", return_value=resp) as post:
+    with patch("requests.post", return_value=resp) as post_img:
         _llm._chat_anthropic(
             "describe",
             system=None,
@@ -291,7 +265,7 @@ def test_chat_anthropic_with_images_and_malformed_response() -> None:
             temperature=0.2,
             api_key="k",
         )
-    content = post.call_args[1]["json"]["messages"][0]["content"]
+    content = post_img.call_args[1]["json"]["messages"][0]["content"]
     assert content[0]["type"] == "text" and content[1]["source"]["media_type"] == "image/jpeg"
 
     with patch("requests.post", return_value=_resp({"content": []})):
@@ -306,41 +280,37 @@ def test_chat_anthropic_with_images_and_malformed_response() -> None:
                 api_key="k",
             )
 
-
-def test_chat_gemini_builds_payload_and_extracts_usage() -> None:
-    resp = _resp(
+    # Gemini: payload shape + usage extraction (including $defs/title stripped
+    # from the schema it receives), and a malformed response.
+    gresp = _resp(
         {
             "candidates": [{"content": {"parts": [{"text": "hola"}]}}],
             "usageMetadata": {"promptTokenCount": 7, "candidatesTokenCount": 4},
         }
     )
-    schema = {"type": "object", "properties": {"k": {"type": "string"}}, "$defs": {}, "title": "X"}
-    with patch("requests.post", return_value=resp) as post:
-        text, usage = _llm._chat_gemini(
+    gschema = {"type": "object", "properties": {"k": {"type": "string"}}, "$defs": {}, "title": "X"}
+    with patch("requests.post", return_value=gresp) as gpost:
+        gtext, gusage = _llm._chat_gemini(
             "hi",
             system="persona",
             images=[b"png"],
-            json_schema=schema,
+            json_schema=gschema,
             model="gemini-1.5-pro",
             temperature=0.2,
             api_key="g-key",
         )
-    assert text == "hola" and usage == {"in_tokens": 7, "out_tokens": 4}
-    url, kw = post.call_args[0][0], post.call_args[1]
-    assert (
-        url
-        == "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent"
+    assert gtext == "hola" and gusage == {"in_tokens": 7, "out_tokens": 4}
+    gurl, gkw = gpost.call_args[0][0], gpost.call_args[1]
+    assert gurl == (
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent"
     )
-    assert kw["params"] == {"key": "g-key"}
-    assert kw["json"]["systemInstruction"]["parts"][0]["text"] == "persona"
-    parts = kw["json"]["contents"][0]["parts"]
-    assert parts[0]["text"] == "hi" and "inlineData" in parts[1]
-    # $defs/title are stripped from the schema Gemini receives.
-    resp_schema = kw["json"]["generationConfig"]["responseSchema"]
+    assert gkw["params"] == {"key": "g-key"}
+    assert gkw["json"]["systemInstruction"]["parts"][0]["text"] == "persona"
+    gparts = gkw["json"]["contents"][0]["parts"]
+    assert gparts[0]["text"] == "hi" and "inlineData" in gparts[1]
+    resp_schema = gkw["json"]["generationConfig"]["responseSchema"]
     assert "$defs" not in resp_schema and "title" not in resp_schema
 
-
-def test_chat_gemini_malformed_response_raises() -> None:
     with patch("requests.post", return_value=_resp({"candidates": []})):
         with pytest.raises(RuntimeError, match="Malformed Gemini"):
             _llm._chat_gemini(
@@ -353,14 +323,11 @@ def test_chat_gemini_malformed_response_raises() -> None:
                 api_key="k",
             )
 
-
-def test_mistral_routes_through_openai_compatible_transport(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
-) -> None:
-    # Mistral speaks the OpenAI Chat Completions wire format, so it never needs
-    # its own transport function — only membership in _OPENAI_COMPATIBLE.
+    # Mistral speaks the OpenAI Chat Completions wire format, so it never
+    # needs its own transport function -- only membership in
+    # _OPENAI_COMPATIBLE, routed end to end through chat(engine=...).
     assert "mistral" in _llm._OPENAI_COMPATIBLE
-    resp = _resp(
+    mresp = _resp(
         {
             "choices": [{"message": {"content": "bonjour"}}],
             "usage": {"prompt_tokens": 10, "completion_tokens": 2},
@@ -376,76 +343,57 @@ def test_mistral_routes_through_openai_compatible_transport(
     # must never leak into a test asserting on the ENV VAR path specifically.
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("MISTRAL_API_KEY", "mistral-secret")
-    with patch("requests.post", return_value=resp) as post:
+    with patch("requests.post", return_value=mresp) as mpost:
         out = _llm.chat("salut", engine=eng, kind="llm")
     assert out == "bonjour"
-    url, kw = post.call_args[0][0], post.call_args[1]
-    assert url == "https://api.mistral.ai/v1/chat/completions"
-    assert kw["headers"]["Authorization"] == "Bearer mistral-secret"
-    assert kw["json"]["model"] == "mistral-large-latest"
+    murl, mkw = mpost.call_args[0][0], mpost.call_args[1]
+    assert murl == "https://api.mistral.ai/v1/chat/completions"
+    assert mkw["headers"]["Authorization"] == "Bearer mistral-secret"
+    assert mkw["json"]["model"] == "mistral-large-latest"
 
 
-# ---------------------------------------------------------------------------
-# Cloud API key resolution
-# ---------------------------------------------------------------------------
-
-
-def test_cloud_api_key_reads_settings_yaml_in_cwd(
+def test_cloud_api_key_retry_cache_pseudonymize_and_safety_wiring(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Any
 ) -> None:
     # os_helper.get_config's own precedence: settings.yaml in the CURRENT
-    # directory wins over a plain env var — verified by setting both to
-    # different values and checking the file wins.
-    (tmp_path / "settings.yaml").write_text("MY_KEY_ENV: from-settings-yaml\n")
-    monkeypatch.chdir(tmp_path)
+    # directory wins over a plain env var.
+    settings_dir = tmp_path / "with_settings"
+    settings_dir.mkdir()
+    (settings_dir / "settings.yaml").write_text("MY_KEY_ENV: from-settings-yaml\n")
+    monkeypatch.chdir(settings_dir)
     monkeypatch.setenv("MY_KEY_ENV", "from-env")
     assert _llm._cloud_api_key({"api_key_env": "MY_KEY_ENV"}) == "from-settings-yaml"
 
-
-def test_cloud_api_key_empty_string_in_settings_yaml_means_off(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
-) -> None:
-    # settings.yaml.example ships every key as "" ("empty ⇒ cloud stays off"):
-    # a present-but-empty value must resolve to "", not fall through to a
-    # possibly-set env var — the file's explicit "off" wins.
-    (tmp_path / "settings.yaml").write_text('MY_KEY_ENV: ""\n')
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("MY_KEY_ENV", "from-env")
+    # settings.yaml.example ships every key as "" ("empty means cloud stays
+    # off"): a present-but-empty value must resolve to "", not fall through to
+    # a possibly-set env var -- the file's explicit "off" wins.
+    empty_dir = tmp_path / "empty_settings"
+    empty_dir.mkdir()
+    (empty_dir / "settings.yaml").write_text('MY_KEY_ENV: ""\n')
+    monkeypatch.chdir(empty_dir)
     assert _llm._cloud_api_key({"api_key_env": "MY_KEY_ENV"}) == ""
 
-
-def test_cloud_api_key_env_var_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MY_KEY_ENV", "from-env")
+    # No settings.yaml in cwd -> plain env var wins.
+    no_settings_dir = tmp_path / "no_settings"
+    no_settings_dir.mkdir()
+    monkeypatch.chdir(no_settings_dir)
     assert _llm._cloud_api_key({"api_key_env": "MY_KEY_ENV"}) == "from-env"
 
-
-def test_cloud_api_key_falls_back_to_keyring(monkeypatch: pytest.MonkeyPatch) -> None:
-    import sys
-    from types import ModuleType
-
+    # No env var either -> falls back to the OS keychain via keyring, when
+    # installed.
     monkeypatch.delenv("MY_KEY_ENV", raising=False)
     fake_keyring = ModuleType("keyring")
     fake_keyring.get_password = lambda service, key: "from-keyring"  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "keyring", fake_keyring)
     assert _llm._cloud_api_key({"api_key_env": "MY_KEY_ENV"}) == "from-keyring"
 
-
-def test_cloud_api_key_empty_when_nothing_configured(monkeypatch: pytest.MonkeyPatch) -> None:
-    import sys
-
-    monkeypatch.delenv("MY_KEY_ENV", raising=False)
+    # Nothing configured anywhere, and keyring absent -> empty string, never
+    # a crash, for a missing api_key_env, a None engine, or an empty dict too.
     monkeypatch.setitem(sys.modules, "keyring", None)  # simulate not installed
     assert _llm._cloud_api_key({"api_key_env": "MY_KEY_ENV"}) == ""
     assert _llm._cloud_api_key(None) == ""
     assert _llm._cloud_api_key({}) == ""
 
-
-# ---------------------------------------------------------------------------
-# Retry and cache
-# ---------------------------------------------------------------------------
-
-
-def test_chat_retries_without_tenacity_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
     attempts = {"n": 0}
 
     def _flaky(*a: Any, **kw: Any) -> MagicMock:
@@ -458,11 +406,6 @@ def test_chat_retries_without_tenacity_then_succeeds(monkeypatch: pytest.MonkeyP
     with patch("requests.post", side_effect=_flaky):
         out = _llm.chat("hi", model="qwen3:8b", retries=3)
     assert out == "ok" and attempts["n"] == 3
-
-
-def test_chat_cache_uses_wallet_helper_when_installed(monkeypatch: pytest.MonkeyPatch) -> None:
-    import sys
-    from types import ModuleType
 
     calls = {"n": 0}
 
@@ -480,27 +423,11 @@ def test_chat_cache_uses_wallet_helper_when_installed(monkeypatch: pytest.Monkey
         out = _llm.chat("hi", engine=eng, kind="llm", cache=True)
     assert out == "cached-path" and calls["n"] == 1
 
-
-def test_chat_cache_warns_and_runs_uncached_without_wallet_helper(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import sys
-
     monkeypatch.setitem(sys.modules, "wallet_helper", None)  # simulate not installed
-    eng = {"backend": "ollama", "base_url": "http://localhost:11434", "llm": {"model": "qwen3:8b"}}
     with patch("requests.post", return_value=_resp({"response": "uncached"})):
         out = _llm.chat("hi", engine=eng, kind="llm", cache=True)
     assert out == "uncached"
 
-
-# ---------------------------------------------------------------------------
-# Privacy (pseudonymization) and safety wiring
-# ---------------------------------------------------------------------------
-
-
-def test_chat_pseudonymizes_cloud_prompt_and_restores_response(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
     from best_engine_ai_helper import privacy
 
     def _fake_pseudonymize(text: str, engine: Any, **kw: Any) -> tuple[str, dict[str, str]]:
@@ -530,21 +457,16 @@ def test_chat_pseudonymizes_cloud_prompt_and_restores_response(
     assert captured["prompt"] == "Bonjour Claudine"  # the CLOUD call saw the scrubbed prompt
     assert out == "Bonjour Marie"  # the caller sees the restored response
 
-
-def test_chat_pseudonymize_warns_without_a_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    # No local fallback to scrub with -> warns, sends unscrubbed, no crash.
     monkeypatch.setattr(_llm, "_chat_openai", lambda prompt, **kw: (prompt, {}))
-    eng = {
+    eng_no_fallback = {
         "backend": "openai",
         "base_url": "https://api.openai.com/v1",
         "llm": {"model": "gpt-4o", "cloud": True},
-    }  # no "fallback" key
-    out = _llm.chat("hi", engine=eng, kind="llm", pseudonymize=True, safety=False)
-    assert out == "hi"  # sent unscrubbed, no crash
+    }
+    out2 = _llm.chat("hi", engine=eng_no_fallback, kind="llm", pseudonymize=True, safety=False)
+    assert out2 == "hi"
 
-
-def test_chat_safety_defaults_on_for_both_local_and_cloud(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
     # NSFW/policy scanning is a content-policy concern independent of who is
     # billed -- on by default for every engine, not just cloud ones.
     from best_engine_ai_helper import safety
@@ -579,15 +501,10 @@ def test_chat_safety_defaults_on_for_both_local_and_cloud(
     _llm.chat("hi", engine=local_eng, kind="llm", safety=False)
     assert calls == []  # explicit opt-out still works
 
-
-def test_chat_safety_block_propagates_as_safetyviolation(monkeypatch: pytest.MonkeyPatch) -> None:
-    from best_engine_ai_helper import safety
-
+    # A block-action violation propagates as SafetyViolation, not swallowed.
     def _blocking_check(text: str, *, direction: str, **kw: Any) -> dict[str, Any]:
         raise safety.SafetyViolation(direction, "text", 0.99, "toxicity")
 
     monkeypatch.setattr(safety, "check_text", _blocking_check)
-    monkeypatch.setattr(_llm, "_chat_ollama", lambda prompt, **kw: ("ok", {}))
-    eng = {"backend": "ollama", "base_url": "http://localhost:11434", "llm": {"model": "qwen3:8b"}}
     with pytest.raises(safety.SafetyViolation):
-        _llm.chat("hi", engine=eng, kind="llm", safety=True)
+        _llm.chat("hi", engine=local_eng, kind="llm", safety=True)

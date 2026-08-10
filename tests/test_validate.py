@@ -17,9 +17,7 @@ from best_engine_ai_helper import ralph, validate_llm, validate_vlm
 pytest.importorskip("PIL")  # validate_vlm renders its fixture with Pillow
 
 
-def test_validate_llm_gate_passes_only_when_violations_removed(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_validate_llm_and_vlm_gates(monkeypatch: pytest.MonkeyPatch) -> None:
     stub_chat = lambda *a, **k: ""  # noqa: E731 - the gate ignores it once prose_loop is stubbed
 
     # Both fixtures cleaned (em dash and "Par ailleurs" gone) -> gate passes.
@@ -39,8 +37,6 @@ def test_validate_llm_gate_passes_only_when_violations_removed(
     monkeypatch.setattr(ralph, "prose_loop", lambda text, **kw: text.replace("—", ","))
     assert validate_llm.validate(stub_chat) is False
 
-
-def test_validate_vlm_gate_reads_the_verdict() -> None:
     def _chat(passes: bool) -> Any:
         def chat(_prompt: str, **kw: Any) -> Any:
             if kw.get("images"):

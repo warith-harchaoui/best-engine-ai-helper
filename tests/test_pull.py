@@ -16,18 +16,6 @@ import pytest
 from best_engine_ai_helper import pull as _pull
 
 
-def test_write_env_writes_env_sh_and_config_json(tmp_path: Path) -> None:
-    nested = tmp_path / "a" / "b"  # also proves the directory is created
-    env_path = _pull.write_env(
-        "qwen3:8b", "gemma3:12b", "ollama", "http://localhost:11434", user_dir=nested
-    )
-    assert env_path.name == "env.sh" and env_path.exists()
-    sh = env_path.read_text()
-    assert "BEST_LLM_TEXT=qwen3:8b" in sh and "BEST_LLM_BACKEND=ollama" in sh
-    config = json.loads((nested / "config.json").read_text())
-    assert config["BEST_LLM_TEXT"] == "qwen3:8b" and config["BEST_LLM_VISION"] == "gemma3:12b"
-
-
 class _FakeProc:
     def __init__(self, lines: list[str], returncode: int) -> None:
         self.stdout = iter(lines)
@@ -37,7 +25,18 @@ class _FakeProc:
         return self.returncode
 
 
-def test_ollama_pull_streams_and_reports_status(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_write_env_and_ollama_pull_rm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    nested = tmp_path / "a" / "b"  # also proves the directory is created
+    env_path = _pull.write_env(
+        "qwen3:8b", "gemma3:12b", "ollama", "http://localhost:11434", user_dir=nested
+    )
+    assert env_path.name == "env.sh" and env_path.exists()
+    sh = env_path.read_text()
+    assert "BEST_LLM_TEXT=qwen3:8b" in sh and "BEST_LLM_BACKEND=ollama" in sh
+    written_config = json.loads((nested / "config.json").read_text())
+    assert written_config["BEST_LLM_TEXT"] == "qwen3:8b"
+    assert written_config["BEST_LLM_VISION"] == "gemma3:12b"
+
     # Success: progress is streamed to the sink and True is returned.
     monkeypatch.setattr(
         _pull.subprocess, "Popen", lambda *a, **k: _FakeProc(["10%\n", "done\n"], 0)
@@ -58,8 +57,6 @@ def test_ollama_pull_streams_and_reports_status(monkeypatch: pytest.MonkeyPatch)
     with pytest.raises(FileNotFoundError):
         _pull.ollama_pull("x", out=io.StringIO())
 
-
-def test_ollama_rm_reports_status(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_pull.subprocess, "run", lambda *a, **k: type("R", (), {"returncode": 0})())
     assert _pull.ollama_rm("x") is True
     monkeypatch.setattr(_pull.subprocess, "run", lambda *a, **k: type("R", (), {"returncode": 1})())

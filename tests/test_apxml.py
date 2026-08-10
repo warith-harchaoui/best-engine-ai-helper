@@ -36,70 +36,38 @@ _MODEL_OBJ = {
 
 
 def _compact(obj: dict) -> str:
-    """
-    Serialise an object the way ApXML streams it: no whitespace between tokens.
-
-    Parameters
-    ----------
-    obj : dict
-        Object to serialise.
-
-    Returns
-    -------
-    str
-        Compact JSON, so the ``"num_of_params":"..."`` anchor matches.
-    """
+    """Serialise an object the way ApXML streams it: no whitespace between tokens."""
     return json.dumps(obj, separators=(",", ":"))
 
 
 def _rsc_page(payload: str) -> str:
-    """
-    Wrap a payload string in a Next.js ``self.__next_f.push`` script call.
-
-    Parameters
-    ----------
-    payload : str
-        The logical RSC payload to embed.
-
-    Returns
-    -------
-    str
-        HTML fragment carrying the payload as one escaped chunk.
-    """
+    """Wrap a payload string in a Next.js ``self.__next_f.push`` script call."""
     # json.dumps gives us exactly the escaping the real page uses per chunk.
     escaped = json.dumps(payload)[1:-1]
     return f'<script>self.__next_f.push([1,"{escaped}"])</script>'
 
 
-def test_reconstruct_rsc_payload_unescapes_and_joins() -> None:
+def test_rsc_parsing_and_field_normalization() -> None:
     html = _rsc_page("ab\ncd") + _rsc_page('e"f')
     assert apxml._reconstruct_rsc_payload(html) == 'ab\ncde"f'
 
-
-def test_parse_directory_slugs_dedupes_and_orders() -> None:
-    html = (
+    directory_html = (
         '<a href="/models/qwen3-8b">x</a>'
         '<a href="/models/qwen3-8b">y</a>'
         '<a href="/models/glm-5">z</a>'
     )
-    assert apxml.parse_directory_slugs(html) == ["qwen3-8b", "glm-5"]
+    assert apxml.parse_directory_slugs(directory_html) == ["qwen3-8b", "glm-5"]
 
-
-def test_hf_id_from_weights_url() -> None:
     hf = apxml._hf_id_from_weights_url
     assert hf("https://huggingface.co/Qwen/Qwen3.5-9B") == "Qwen/Qwen3.5-9B"
     assert hf("https://huggingface.co/Qwen/Qwen3.5-9B/tree/main") == "Qwen/Qwen3.5-9B"
     assert hf("https://example.com/model") is None
     assert hf(None) is None
 
-
-def test_parse_model_page_normalizes_fields() -> None:
     # A leading i18n label map (with the same key names but no numeric value)
     # must not be mistaken for the real spec object.
     labels = '{"modality":"Modality","architecture":"Architecture"}'
-    html = _rsc_page(labels + _compact(_MODEL_OBJ))
-
-    spec = apxml.parse_model_page(html)
+    spec = apxml.parse_model_page(_rsc_page(labels + _compact(_MODEL_OBJ)))
     assert spec is not None
     assert spec["slug"] == "qwen35-9b"
     assert spec["kind"] == "vlm"  # multimodal -> vision-capable
@@ -112,15 +80,10 @@ def test_parse_model_page_normalizes_fields() -> None:
     assert spec["context_length"] == 262144
     assert spec["open_weights"] is True
 
+    text_only = dict(_MODEL_OBJ, modality="text")
+    text_spec = apxml.parse_model_page(_rsc_page(_compact(text_only)))
+    assert text_spec is not None and text_spec["kind"] == "llm"
 
-def test_parse_model_page_text_only_is_llm() -> None:
-    obj = dict(_MODEL_OBJ, modality="text")
-    spec = apxml.parse_model_page(_rsc_page(_compact(obj)))
-    assert spec is not None
-    assert spec["kind"] == "llm"
-
-
-def test_parse_model_page_returns_none_without_model() -> None:
     assert apxml.parse_model_page("<html>no payload here</html>") is None
 
 

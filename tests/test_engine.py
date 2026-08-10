@@ -3,8 +3,8 @@ Tests for best_engine_ai_helper.engine — the brief -> engine resolution flow.
 
 Synthetic catalog + injected hardware, so nothing depends on the real machine,
 Ollama, or the network. Covers the backend rule, the headroom clamp, the
-Ollama-tag vs vLLM-HuggingFace-id split, the file round-trip, and the
-``ensure`` missing-file policy.
+Ollama-tag vs vLLM-HuggingFace-id split, mode: cloud, the file round-trip, and
+the ``ensure`` missing-file policy.
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ _BRIEF = {
 }
 
 
-def test_default_backend_rule(monkeypatch) -> None:
+def test_resolve_local_mode_backend_and_headroom(monkeypatch: pytest.MonkeyPatch) -> None:
     # vLLM only on a real discrete GPU; Ollama for Apple, Intel iGPU, and CPU.
     monkeypatch.setattr(detect, "chip_vendor", lambda: "nvidia")
     assert engine.default_backend() == "vllm"
@@ -59,31 +59,28 @@ def test_default_backend_rule(monkeypatch) -> None:
         monkeypatch.setattr(detect, "chip_vendor", lambda v=cpu_like: v)
         assert engine.default_backend() == "ollama"
 
-
-def test_resolve_ollama_uses_tags_and_clamps_headroom() -> None:
-    eng = engine.resolve(_BRIEF, backend="ollama", catalog=_CATALOG, hw=_HW, compute=_COMPUTE)
-    assert eng["backend"] == "ollama"
-    assert eng["base_url"] == "http://localhost:11434"
+    ollama_eng = engine.resolve(
+        _BRIEF, backend="ollama", catalog=_CATALOG, hw=_HW, compute=_COMPUTE
+    )
+    assert ollama_eng["backend"] == "ollama"
+    assert ollama_eng["base_url"] == "http://localhost:11434"
     # Brief asked for 0.9 headroom; the resolver clamps it to the 0.5 ceiling.
-    assert eng["headroom"] == 0.5
+    assert ollama_eng["headroom"] == 0.5
     # Ollama uses the pull tag (not the HF id). mid-vlm (general 74) is the
     # leanest model within 3 points of the best, so it wins the text slot too.
-    assert eng["llm"]["model"] == "mid-vlm"
-    assert eng["vlm"]["model"] == "mid-vlm"
-    assert eng["serve"] == ["ollama pull mid-vlm"]
+    assert ollama_eng["llm"]["model"] == "mid-vlm"
+    assert ollama_eng["vlm"]["model"] == "mid-vlm"
+    assert ollama_eng["serve"] == ["ollama pull mid-vlm"]
+    assert ollama_eng["mode"] == "local"
 
-
-def test_resolve_vllm_uses_huggingface_ids() -> None:
-    eng = engine.resolve(_BRIEF, backend="vllm", catalog=_CATALOG, hw=_HW, compute=_COMPUTE)
-    assert eng["backend"] == "vllm"
-    assert eng["base_url"] == "http://localhost:8000/v1"
+    vllm_eng = engine.resolve(_BRIEF, backend="vllm", catalog=_CATALOG, hw=_HW, compute=_COMPUTE)
+    assert vllm_eng["backend"] == "vllm"
+    assert vllm_eng["base_url"] == "http://localhost:8000/v1"
     # vLLM serves the HuggingFace id, not the Ollama tag.
-    assert eng["llm"]["model"] == "org/Mid-VLM"
-    assert eng["serve"] == ["vllm serve org/Mid-VLM --port 8000"]
+    assert vllm_eng["llm"]["model"] == "org/Mid-VLM"
+    assert vllm_eng["serve"] == ["vllm serve org/Mid-VLM --port 8000"]
 
-
-def test_resolve_endpoint_override() -> None:
-    eng = engine.resolve(
+    endpoint_eng = engine.resolve(
         _BRIEF,
         backend="vllm",
         endpoint="http://gpu-box:8001/v1",
@@ -91,11 +88,13 @@ def test_resolve_endpoint_override() -> None:
         hw=_HW,
         compute=_COMPUTE,
     )
-    assert eng["base_url"] == "http://gpu-box:8001/v1"
-    assert eng["serve"] == ["vllm serve org/Mid-VLM --port 8001"]
+    assert endpoint_eng["base_url"] == "http://gpu-box:8001/v1"
+    assert endpoint_eng["serve"] == ["vllm serve org/Mid-VLM --port 8001"]
 
 
-def test_write_and_load_engine_roundtrip(tmp_path) -> None:
+def test_engine_file_roundtrip_ensure_and_model_for(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     eng = engine.resolve(_BRIEF, backend="ollama", catalog=_CATALOG, hw=_HW, compute=_COMPUTE)
     path = engine.write_engine(eng, tmp_path / engine.ENGINE_NAME)
     text = path.read_text()
@@ -104,50 +103,40 @@ def test_write_and_load_engine_roundtrip(tmp_path) -> None:
     assert loaded["backend"] == "ollama"
     assert loaded["llm"]["model"] == "mid-vlm"
 
-
-def test_ensure_loads_existing_engine(tmp_path, monkeypatch) -> None:
     # An engine file already on disk is used as-is; resolve must NOT run.
-    eng = engine.resolve(_BRIEF, backend="ollama", catalog=_CATALOG, hw=_HW, compute=_COMPUTE)
-    engine.write_engine(eng, tmp_path / engine.ENGINE_NAME)
-
-    def _boom(*a, **k):
+    def _boom(*a: object, **k: object) -> None:
         raise AssertionError("resolve() must not be called when the engine exists")
 
     monkeypatch.setattr(engine, "resolve", _boom)
     got = engine.ensure(tmp_path)
     assert got["backend"] == "ollama"
 
-
-def test_ensure_resolves_from_brief_when_engine_missing(tmp_path, monkeypatch) -> None:
-    (tmp_path / engine.BRIEF_NAME).write_text("kind: llm\ntask: write copy\n")
+    other_dir = tmp_path / "other"
+    other_dir.mkdir()
+    (other_dir / engine.BRIEF_NAME).write_text("kind: llm\ntask: write copy\n")
     stub = {"backend": "ollama", "base_url": "x", "llm": {"model": "qwen3:8b"}}
     monkeypatch.setattr(engine, "resolve", lambda *a, **k: stub)
-    got = engine.ensure(tmp_path)
-    assert got["llm"]["model"] == "qwen3:8b"
-    # It persisted the resolved engine file for next time.
-    assert (tmp_path / engine.ENGINE_NAME).is_file()
+    resolved = engine.ensure(other_dir)
+    assert resolved["llm"]["model"] == "qwen3:8b"
+    assert (other_dir / engine.ENGINE_NAME).is_file()  # persisted for next time
 
-
-def test_ensure_raises_loudly_without_brief(tmp_path) -> None:
     # No engine and no committed brief: a real bug, so fail loud (not a default).
+    empty_dir = tmp_path / "empty"
+    empty_dir.mkdir()
     with pytest.raises(RuntimeError, match="no brief"):
-        engine.ensure(tmp_path)
+        engine.ensure(empty_dir)
 
-
-def test_model_for_returns_backend_url_model() -> None:
-    eng = engine.resolve(_BRIEF, backend="vllm", catalog=_CATALOG, hw=_HW, compute=_COMPUTE)
-    backend, base_url, model = engine.model_for(eng, "llm")
+    monkeypatch.undo()  # restore the real engine.resolve for model_for's own resolve call
+    model_for_eng = engine.resolve(
+        _BRIEF, backend="vllm", catalog=_CATALOG, hw=_HW, compute=_COMPUTE
+    )
+    backend, base_url, model = engine.model_for(model_for_eng, "llm")
     assert backend == "vllm" and base_url.endswith("/v1") and model == "org/Mid-VLM"
     with pytest.raises(KeyError):
         engine.model_for({"backend": "ollama", "base_url": "x"}, "vlm")
 
 
-def test_resolve_defaults_to_local_mode() -> None:
-    eng = engine.resolve(_BRIEF, backend="ollama", catalog=_CATALOG, hw=_HW, compute=_COMPUTE)
-    assert eng["mode"] == "local"
-
-
-def test_resolve_cloud_mode_builds_provider_plus_local_fallback() -> None:
+def test_resolve_cloud_mode() -> None:
     eng = engine.resolve(
         {
             "mode": "cloud",
@@ -166,8 +155,6 @@ def test_resolve_cloud_mode_builds_provider_plus_local_fallback() -> None:
     # A local fallback is resolved from the SAME brief (paid -> local direction).
     assert eng["fallback"] is not None and eng["fallback"]["backend"] in {"ollama", "vllm"}
 
-
-def test_resolve_cloud_mode_needs_a_model() -> None:
     with pytest.raises(ValueError, match="model"):
         engine.resolve(
             {"mode": "cloud", "provider": "openai", "kind": "llm", "task": "x"},
@@ -176,9 +163,7 @@ def test_resolve_cloud_mode_needs_a_model() -> None:
             compute=_COMPUTE,
         )
 
-
-def test_resolve_cloud_respects_explicit_base_url_and_api_key_env() -> None:
-    eng = engine.resolve(
+    proxied = engine.resolve(
         {
             "mode": "cloud",
             "provider": "anthropic",
@@ -192,11 +177,11 @@ def test_resolve_cloud_respects_explicit_base_url_and_api_key_env() -> None:
         hw=_HW,
         compute=_COMPUTE,
     )
-    assert eng["base_url"] == "https://my-proxy.example.com"
-    assert eng["api_key_env"] == "MY_ANTHROPIC_KEY"
+    assert proxied["base_url"] == "https://my-proxy.example.com"
+    assert proxied["api_key_env"] == "MY_ANTHROPIC_KEY"
 
 
-def test_chat_engine_routes_backend_and_base_url(monkeypatch) -> None:
+def test_chat_engine_routes_backend_and_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
     # chat(engine=...) must read backend/base_url/model from the descriptor and
     # map a vLLM backend to the OpenAI-compatible transport.
     captured: dict = {}

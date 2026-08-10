@@ -30,15 +30,13 @@ def script() -> ModuleType:
     return module
 
 
-def test_composite_is_square_rgba_over_cream(script: ModuleType) -> None:
+def test_composite_and_full_icon_set(script: ModuleType, tmp_path: Path) -> None:
     assert script._SOURCE.is_file()  # the source logo must exist to build from
     img = script._composite(64)
     assert img.size == (64, 64) and img.mode == "RGBA"
     # A corner pixel sits outside the scaled glove, so it is the cream backing.
     assert img.getpixel((0, 0)) == script._BG
 
-
-def test_main_writes_every_icon_at_the_right_size(script: ModuleType, tmp_path: Path) -> None:
     script._OUT_DIR = tmp_path
     script.main()
     sized = {
@@ -49,13 +47,9 @@ def test_main_writes_every_icon_at_the_right_size(script: ModuleType, tmp_path: 
         "android-chrome-512x512.png": (512, 512),
     }
     for name, size in sized.items():
-        with Image.open(tmp_path / name) as img:
-            assert img.size == size, name
+        with Image.open(tmp_path / name) as icon:
+            assert icon.size == size, name
 
-
-def test_icon_formats_are_platform_correct(script: ModuleType, tmp_path: Path) -> None:
-    script._OUT_DIR = tmp_path
-    script.main()
     # iOS paints transparency black, so the apple-touch icon must be opaque.
     with Image.open(tmp_path / "apple-touch-icon.png") as apple:
         assert apple.mode == "RGB"

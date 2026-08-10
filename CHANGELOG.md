@@ -2,6 +2,27 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
+## [1.3.2] - 2026-08-10
+
+Test suite consolidation: no runtime behavior changes, test-only. The suite
+had grown to 263 pytest items (many narrow, single-assertion unit tests) —
+consolidated into 99 broader functional tests, each walking several related
+scenarios sequentially in one function body instead of one function per
+scenario. Coverage improved slightly (92.05% -> 92.55%) in the process,
+since a few genuinely uncovered lines got picked up along the way:
+`mcp.main()` (44% -> 94% covered — was entirely untested) and
+`privacy.augment_with_presidio` plus a couple of `pseudonymize`'s
+disambiguation branches (80% -> 98%). `test_cli_argparse.py` in particular
+went from 30 collected items (12 of them a `--help` parametrize sweep) down
+to 4, since it exists only to prove the argparse twin mirrors `cli.py`'s
+click surface — deep business-logic coverage stays in `test_cli.py` and the
+library-level test files.
+
+### Fixed
+
+- `requirements.txt` pinned `os-helper>=2.3.0` without the `<3` upper bound
+  `pyproject.toml`'s `dependencies` carries — now consistent.
+
 ## [1.3.1] - 2026-08-10
 
 Packaging restructuring: the CLI, GUI, HTTP API, and MCP server are now ALL

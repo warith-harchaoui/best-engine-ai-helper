@@ -17,7 +17,7 @@ import yaml
 from best_engine_ai_helper import catalog
 
 
-def test_load_catalog_seed_invariants() -> None:
+def test_load_catalog_seed_and_cache_overlay(tmp_path: Path, monkeypatch) -> None:
     entries = catalog.load_catalog()
     assert len(entries) > 0
     ids = [e["id"] for e in entries]
@@ -30,8 +30,6 @@ def test_load_catalog_seed_invariants() -> None:
         assert e["kind"] in ("llm", "vlm", "embed")
         assert float(e["ram_gb"]) > 0
 
-
-def test_load_catalog_cache_overlays_seed(tmp_path: Path, monkeypatch) -> None:
     def _entry(general: int, note: str, fetched: str | None) -> str:
         return textwrap.dedent(f"""\
             - id: test-model:1b
@@ -48,18 +46,14 @@ def test_load_catalog_cache_overlays_seed(tmp_path: Path, monkeypatch) -> None:
     cache.write_text(_entry(99, "cache override", "2026-07-28"))
     monkeypatch.setattr(catalog, "_CACHE_PATH", cache)
 
-    entries = catalog.load_catalog(catalog_path=seed)
-    assert len(entries) == 1  # same id -> overwritten, not duplicated
-    assert entries[0]["benchmarks"]["general"] == 99
-    assert entries[0]["notes"] == "cache override"
+    overlaid = catalog.load_catalog(catalog_path=seed)
+    assert len(overlaid) == 1  # same id -> overwritten, not duplicated
+    assert overlaid[0]["benchmarks"]["general"] == 99
+    assert overlaid[0]["notes"] == "cache override"
 
-
-def test_load_catalog_missing_seed_raises(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         catalog.load_catalog(catalog_path=tmp_path / "does_not_exist.yaml")
 
-
-def test_estimate_ram_applies_quant_overhead() -> None:
     # Known quants use their overhead factor; unknown quants fall back to 1.15.
     for disk, quant, expected in [
         (6.1, "Q4_K_M", 6.832),
@@ -85,7 +79,7 @@ def _apxml_spec() -> dict:
     }
 
 
-def test_normalize_apxml_spec_maps_and_filters() -> None:
+def test_normalize_apxml_spec_and_write_cache(tmp_path: Path) -> None:
     entry = catalog.normalize_apxml_spec(_apxml_spec(), "2026-08-01")
     assert entry["id"] == "qwen3-8b" and entry["kind"] == "llm"
     assert entry["quant"] == "Q4_K_M" and entry["source"] == "apxml"
@@ -103,8 +97,6 @@ def test_normalize_apxml_spec_maps_and_filters() -> None:
         )
     ] == ["qwen3-8b"]
 
-
-def test_write_cache_creates_and_merges_by_id(tmp_path: Path) -> None:
     cache = tmp_path / "catalog_cache.yaml"
     catalog.write_cache(
         catalog.normalize_apxml_specs([_apxml_spec()], fetched_at="2026-08-01"), cache_path=cache

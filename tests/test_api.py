@@ -20,10 +20,10 @@ def client() -> TestClient:
     return TestClient(app)
 
 
-def test_system_endpoint_shape(client: TestClient) -> None:
-    res = client.get("/api/system")
-    assert res.status_code == 200
-    data = res.json()
+def test_system_and_recommend_endpoints(client: TestClient) -> None:
+    system = client.get("/api/system")
+    assert system.status_code == 200
+    data = system.json()
     assert set(data) == {
         "platform",
         "chip_vendor",
@@ -51,22 +51,14 @@ def test_system_endpoint_shape(client: TestClient) -> None:
         "apple_unified_gb",
     }
 
-
-def test_recommend_endpoint(client: TestClient) -> None:
     # No task -> LLM-only; the chosen candidate carries the fields the GUI reads
     # (including structured_output).
     llm_only = client.post("/api/recommend", json={}).json()
     assert llm_only["task"]["kinds"] == ["llm"] and "vlm" not in llm_only["recommendations"]
     chosen = llm_only["recommendations"]["llm"]["chosen"]
-    assert {
-        "id",
-        "kind",
-        "ram_gb",
-        "score",
-        "fits",
-        "structured_output",
-        "est_tokens_per_s",
-    } <= chosen.keys()
+    assert {"id", "kind", "ram_gb", "score", "fits", "structured_output", "est_tokens_per_s"} <= (
+        chosen.keys()
+    )
 
     # A vision task adds a VLM and echoes the headroom.
     vision = client.post(
@@ -92,7 +84,7 @@ def test_recommend_endpoint(client: TestClient) -> None:
     } <= live["server_load"].keys()
 
 
-def test_activity_endpoint_empty_and_populated(client: TestClient, tmp_path: Path) -> None:
+def test_activity_gui_and_static_endpoints(client: TestClient, tmp_path: Path) -> None:
     from unittest.mock import patch
 
     from best_engine_ai_helper import llm, observe
@@ -119,13 +111,11 @@ def test_activity_endpoint_empty_and_populated(client: TestClient, tmp_path: Pat
         p.return_value.raise_for_status.return_value = None
         llm.chat("hello", model="qwen3:8b")
 
-    data = client.get("/api/activity").json()
-    assert data["total_calls"] == 1
-    assert data["by_model"] == [{"model": "qwen3:8b", "calls": 1, "cost_usd": 0.0}]
+    activity_data = client.get("/api/activity").json()
+    assert activity_data["total_calls"] == 1
+    assert activity_data["by_model"] == [{"model": "qwen3:8b", "calls": 1, "cost_usd": 0.0}]
     ledger.close()
 
-
-def test_gui_is_bilingual_and_escaped(client: TestClient) -> None:
     fr = client.get("/gui")
     assert fr.status_code == 200 and "text/html" in fr.headers["content-type"]
     assert '<html lang="fr"' in fr.text and "Meilleur moteur local" in fr.text
@@ -140,8 +130,6 @@ def test_gui_is_bilingual_and_escaped(client: TestClient) -> None:
     # An unknown language falls back to French rather than erroring.
     assert '<html lang="fr"' in client.get("/gui", params={"lang": "zz"}).text
 
-
-def test_root_redirect_and_static_assets(client: TestClient) -> None:
     redirect = client.get("/", follow_redirects=False)
     assert redirect.status_code in (307, 308) and redirect.headers["location"] == "/gui"
     assert client.get("/static/icons/favicon.ico").status_code == 200

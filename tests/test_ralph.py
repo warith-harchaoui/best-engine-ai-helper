@@ -53,7 +53,7 @@ def test_ralph_loop_converges_caps_and_stops_on_noop() -> None:
     assert len(once) == 1 and seen == [0]
 
 
-def test_prose_loop_noop_and_fix() -> None:
+def test_prose_and_eyeball_loops() -> None:
     # A model that reports no seam issue returns the text unchanged; a
     # single-paragraph text has no seam to check.
     def clean(_p: str, **kw: Any) -> Any:
@@ -76,8 +76,6 @@ def test_prose_loop_noop_and_fix() -> None:
 
     assert ralph.prose_loop(text, charter="No machine tics.", llm_chat=fixer) != text
 
-
-def test_eyeball_loop_ships_on_clean_verdict() -> None:
     # A faked renderer avoids real rendering; the VLM critique + verdict ship on
     # the first pass, so the loop records exactly one iteration.
     def fake_chat(prompt: str, **kw: Any) -> Any:
@@ -87,18 +85,17 @@ def test_eyeball_loop_ships_on_clean_verdict() -> None:
             return {"ship": True, "blocking": [], "score": 0.9}
         return prompt  # fix path, not reached once the verdict ships
 
-    src, hist = ralph.eyeball_loop(
+    _src, ship_hist = ralph.eyeball_loop(
         '{"mark": "bar"}',
         kind="vega",
         llm_chat=fake_chat,
         renderers={"vega": lambda s: b"\x89PNG-fake"},
     )
-    assert len(hist) == 1 and hist[0][2]["ship"] is True
+    assert len(ship_hist) == 1 and ship_hist[0][2]["ship"] is True
 
-
-def test_eyeball_loop_iterates_and_parses_string_verdict() -> None:
-    # The verdict never ships, so the fix path runs each iteration; the verdict
-    # arrives as a JSON *string* (not a dict), exercising the parse branch.
+    # The verdict never ships, so the fix path runs each iteration; the
+    # verdict arrives as a JSON *string* (not a dict), exercising the parse
+    # branch.
     fixes = {"n": 0}
 
     def chat(prompt: str, **kw: Any) -> Any:
@@ -109,12 +106,12 @@ def test_eyeball_loop_iterates_and_parses_string_verdict() -> None:
         fixes["n"] += 1
         return f"{prompt}_fix{fixes['n']}"  # a fresh source each pass
 
-    _src, hist = ralph.eyeball_loop(
+    _src2, no_ship_hist = ralph.eyeball_loop(
         '{"mark": "bar"}',
         kind="vega",
         llm_chat=chat,
         renderers={"vega": lambda s: b"PNG"},
         max_iters=2,
     )
-    assert len(hist) == 2 and all(h[2]["ship"] is False for h in hist)
+    assert len(no_ship_hist) == 2 and all(h[2]["ship"] is False for h in no_ship_hist)
     assert fixes["n"] >= 1  # the fix path ran

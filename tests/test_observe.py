@@ -32,22 +32,17 @@ def _event(**overrides: Any) -> dict[str, Any]:
     return base
 
 
-def test_current_user_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_current_user_and_cost_estimation(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("BEST_ENGINE_USER", raising=False)
     os_name = observe.current_user()
     assert os_name  # the OS login name, whatever it is on this machine
 
     monkeypatch.setenv("BEST_ENGINE_USER", "carol")
     assert observe.current_user() == "carol"
-
     with observe.as_user("dave"):
         assert observe.current_user() == "dave"  # scope wins over the env var
     assert observe.current_user() == "carol"  # scope released after the block
 
-
-def test_estimate_cost_usd_free_local_unpriced_cloud_and_priced_cloud(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
     # Local backends are always free, regardless of the pricing table.
     assert observe.estimate_cost_usd(_event(backend="ollama")) == 0.0
     assert observe.estimate_cost_usd(_event(backend="vllm")) == 0.0
@@ -62,24 +57,20 @@ def test_estimate_cost_usd_free_local_unpriced_cloud_and_priced_cloud(
         "_load_pricing",
         lambda: {"gpt-4o": {"input_per_1m": 2.5, "output_per_1m": 10.0}},
     )
-    cost = observe.estimate_cost_usd(
+    heuristic_cost = observe.estimate_cost_usd(
         _event(backend="openai", model="gpt-4o", in_chars=4_000_000, out_chars=4_000_000)
     )
     # 4_000_000 chars / 4 chars-per-token = 1_000_000 tokens each side.
-    assert cost == pytest.approx(2.5 + 10.0)
+    assert heuristic_cost == pytest.approx(2.5 + 10.0)
 
-
-def test_estimate_cost_usd_prefers_real_tokens_over_char_heuristic(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    # in_chars/out_chars would heuristically suggest far more tokens than the
+    # provider actually reports; the real in_tokens/out_tokens must win.
     monkeypatch.setattr(
         observe,
         "_load_pricing",
         lambda: {"mistral-small-latest": {"input_per_1m": 0.10, "output_per_1m": 0.30}},
     )
-    # in_chars/out_chars would heuristically suggest far more tokens than the
-    # provider actually reports; the real in_tokens/out_tokens must win.
-    event = _event(
+    real_token_event = _event(
         backend="mistral",
         model="mistral-small-latest",
         in_chars=10_000,
@@ -87,14 +78,25 @@ def test_estimate_cost_usd_prefers_real_tokens_over_char_heuristic(
         in_tokens=33,
         out_tokens=5,
     )
-    cost = observe.estimate_cost_usd(event)
+    real_cost = observe.estimate_cost_usd(real_token_event)
     # estimate_cost_usd rounds to 6 decimals; compare with the same rounding
     # rather than pytest.approx's tight default tolerance at this magnitude.
-    assert cost == round(33 / 1_000_000 * 0.10 + 5 / 1_000_000 * 0.30, 6)
+    assert real_cost == round(33 / 1_000_000 * 0.10 + 5 / 1_000_000 * 0.30, 6)
 
 
-def test_ledger_record_and_summary_across_users_and_models() -> None:
+def test_ledger_record_summary_and_enable(tmp_path: Any) -> None:
     ledger = observe.Ledger(":memory:")
+
+    empty_summary = ledger.summary()
+    assert empty_summary == {
+        "total_calls": 0,
+        "total_cost_usd": 0.0,
+        "error_rate": 0.0,
+        "by_user": [],
+        "by_model": [],
+        "recent_errors": [],
+    }
+
     with observe.as_user("alice"):
         ledger.record(_event(model="qwen3:8b", ok=True))
         ledger.record(_event(model="qwen3:8b", ok=False, error="boom"))
@@ -105,33 +107,15 @@ def test_ledger_record_and_summary_across_users_and_models() -> None:
     assert summary["total_calls"] == 3
     assert summary["total_cost_usd"] == 0.0  # all local -> free
     assert summary["error_rate"] == pytest.approx(1 / 3, abs=1e-4)
-
     by_user = {row["user"]: row["calls"] for row in summary["by_user"]}
     assert by_user == {"alice": 2, "bob": 1}
     by_model = {row["model"]: row["calls"] for row in summary["by_model"]}
     assert by_model == {"qwen3:8b": 2, "gemma3:12b": 1}
-
     assert len(summary["recent_errors"]) == 1
     assert summary["recent_errors"][0]["user"] == "alice"
     assert summary["recent_errors"][0]["error"] == "boom"
     ledger.close()
 
-
-def test_summary_on_empty_ledger_is_zero_not_none() -> None:
-    ledger = observe.Ledger(":memory:")
-    summary = ledger.summary()
-    assert summary == {
-        "total_calls": 0,
-        "total_cost_usd": 0.0,
-        "error_rate": 0.0,
-        "by_user": [],
-        "by_model": [],
-        "recent_errors": [],
-    }
-    ledger.close()
-
-
-def test_enable_registers_an_llm_observer_and_is_idempotent(tmp_path: Any) -> None:
     ledger1 = observe.enable(str(tmp_path / "usage.db"))
     ledger2 = observe.enable(str(tmp_path / "somewhere-else.db"))
     assert ledger1 is ledger2  # second call is a no-op, returns the same ledger
@@ -142,10 +126,7 @@ def test_enable_registers_an_llm_observer_and_is_idempotent(tmp_path: Any) -> No
             lambda *a, **k: type(
                 "R",
                 (),
-                {
-                    "json": lambda self: {"response": "hi"},
-                    "raise_for_status": lambda self: None,
-                },
+                {"json": lambda self: {"response": "hi"}, "raise_for_status": lambda self: None},
             )(),
         )
         mp.setenv("SPREZZATURE_LLM_BACKEND", "ollama")
