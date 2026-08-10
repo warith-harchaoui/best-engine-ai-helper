@@ -16,12 +16,24 @@ from best_engine_ai_helper import engine, llm
 
 # Two structured-capable models with both an Ollama tag and a vLLM HF id.
 _CATALOG = [
-    {"id": "small-llm", "kind": "llm", "size_b": 3, "ram_gb": 2.5,
-     "benchmarks": {"general": 70}, "structured_output": True,
-     "vllm_id": "org/Small-LLM"},
-    {"id": "mid-vlm", "kind": "vlm", "size_b": 8, "ram_gb": 6.0,
-     "benchmarks": {"general": 74, "vision": 80}, "structured_output": True,
-     "vllm_id": "org/Mid-VLM"},
+    {
+        "id": "small-llm",
+        "kind": "llm",
+        "size_b": 3,
+        "ram_gb": 2.5,
+        "benchmarks": {"general": 70},
+        "structured_output": True,
+        "vllm_id": "org/Small-LLM",
+    },
+    {
+        "id": "mid-vlm",
+        "kind": "vlm",
+        "size_b": 8,
+        "ram_gb": 6.0,
+        "benchmarks": {"general": 74, "vision": 80},
+        "structured_output": True,
+        "vllm_id": "org/Mid-VLM",
+    },
 ]
 # Unified 64 GB -> budget 64 * 0.75 * 0.5 = 24 GB; both models fit on either
 # backend. No bandwidth, so throughput is not estimated and the comfort gate
@@ -29,8 +41,12 @@ _CATALOG = [
 _HW = {"unified_gb": 64.0, "vram_gb": None, "ram_gb": 64.0}
 _COMPUTE = {"accelerator": "gpu-metal", "chip": "Apple M2", "bandwidth_gbs": None}
 
-_BRIEF = {"kind": "both", "headroom": 0.9, "min_tps": 15,
-          "task": "summarize a transcript and read a chart image"}
+_BRIEF = {
+    "kind": "both",
+    "headroom": 0.9,
+    "min_tps": 15,
+    "task": "summarize a transcript and read a chart image",
+}
 
 
 def test_default_backend_rule(monkeypatch) -> None:
@@ -45,8 +61,7 @@ def test_default_backend_rule(monkeypatch) -> None:
 
 
 def test_resolve_ollama_uses_tags_and_clamps_headroom() -> None:
-    eng = engine.resolve(_BRIEF, backend="ollama", catalog=_CATALOG,
-                         hw=_HW, compute=_COMPUTE)
+    eng = engine.resolve(_BRIEF, backend="ollama", catalog=_CATALOG, hw=_HW, compute=_COMPUTE)
     assert eng["backend"] == "ollama"
     assert eng["base_url"] == "http://localhost:11434"
     # Brief asked for 0.9 headroom; the resolver clamps it to the 0.5 ceiling.
@@ -59,8 +74,7 @@ def test_resolve_ollama_uses_tags_and_clamps_headroom() -> None:
 
 
 def test_resolve_vllm_uses_huggingface_ids() -> None:
-    eng = engine.resolve(_BRIEF, backend="vllm", catalog=_CATALOG,
-                         hw=_HW, compute=_COMPUTE)
+    eng = engine.resolve(_BRIEF, backend="vllm", catalog=_CATALOG, hw=_HW, compute=_COMPUTE)
     assert eng["backend"] == "vllm"
     assert eng["base_url"] == "http://localhost:8000/v1"
     # vLLM serves the HuggingFace id, not the Ollama tag.
@@ -69,15 +83,20 @@ def test_resolve_vllm_uses_huggingface_ids() -> None:
 
 
 def test_resolve_endpoint_override() -> None:
-    eng = engine.resolve(_BRIEF, backend="vllm", endpoint="http://gpu-box:8001/v1",
-                         catalog=_CATALOG, hw=_HW, compute=_COMPUTE)
+    eng = engine.resolve(
+        _BRIEF,
+        backend="vllm",
+        endpoint="http://gpu-box:8001/v1",
+        catalog=_CATALOG,
+        hw=_HW,
+        compute=_COMPUTE,
+    )
     assert eng["base_url"] == "http://gpu-box:8001/v1"
     assert eng["serve"] == ["vllm serve org/Mid-VLM --port 8001"]
 
 
 def test_write_and_load_engine_roundtrip(tmp_path) -> None:
-    eng = engine.resolve(_BRIEF, backend="ollama", catalog=_CATALOG,
-                         hw=_HW, compute=_COMPUTE)
+    eng = engine.resolve(_BRIEF, backend="ollama", catalog=_CATALOG, hw=_HW, compute=_COMPUTE)
     path = engine.write_engine(eng, tmp_path / engine.ENGINE_NAME)
     text = path.read_text()
     assert "do NOT commit" in text  # the gitignore reminder header is present
@@ -88,8 +107,7 @@ def test_write_and_load_engine_roundtrip(tmp_path) -> None:
 
 def test_ensure_loads_existing_engine(tmp_path, monkeypatch) -> None:
     # An engine file already on disk is used as-is; resolve must NOT run.
-    eng = engine.resolve(_BRIEF, backend="ollama", catalog=_CATALOG,
-                         hw=_HW, compute=_COMPUTE)
+    eng = engine.resolve(_BRIEF, backend="ollama", catalog=_CATALOG, hw=_HW, compute=_COMPUTE)
     engine.write_engine(eng, tmp_path / engine.ENGINE_NAME)
 
     def _boom(*a, **k):
@@ -117,8 +135,7 @@ def test_ensure_raises_loudly_without_brief(tmp_path) -> None:
 
 
 def test_model_for_returns_backend_url_model() -> None:
-    eng = engine.resolve(_BRIEF, backend="vllm", catalog=_CATALOG,
-                         hw=_HW, compute=_COMPUTE)
+    eng = engine.resolve(_BRIEF, backend="vllm", catalog=_CATALOG, hw=_HW, compute=_COMPUTE)
     backend, base_url, model = engine.model_for(eng, "llm")
     assert backend == "vllm" and base_url.endswith("/v1") and model == "org/Mid-VLM"
     with pytest.raises(KeyError):
@@ -126,52 +143,40 @@ def test_model_for_returns_backend_url_model() -> None:
 
 
 def test_resolve_defaults_to_local_mode() -> None:
-    eng = engine.resolve(_BRIEF, backend="ollama", catalog=_CATALOG,
-                         hw=_HW, compute=_COMPUTE)
+    eng = engine.resolve(_BRIEF, backend="ollama", catalog=_CATALOG, hw=_HW, compute=_COMPUTE)
     assert eng["mode"] == "local"
 
 
-def test_resolve_cloud_primary_with_local_fallback(monkeypatch) -> None:
-    # cloud branch: mode: cloud resolves a provider primary + an embedded local
-    # fallback (paid -> local). Force the fallback backend to be hardware-independent.
-    monkeypatch.setattr(engine, "default_backend", lambda: "ollama")
-    brief = {"kind": "both", "mode": "cloud", "provider": "openai",
-             "model": "gpt-4o", "api_key_env": "OPENAI_API_KEY",
-             "task": "summarize a transcript and read a chart"}
-    eng = engine.resolve(brief, catalog=_CATALOG, hw=_HW, compute=_COMPUTE)
-    assert eng["mode"] == "cloud" and eng["backend"] == "openai"
-    assert eng["base_url"] == "https://api.openai.com/v1"
-    assert eng["api_key_env"] == "OPENAI_API_KEY"  # key referenced by NAME only
-    assert eng["llm"]["model"] == "gpt-4o" and eng["llm"]["cloud"] is True
-    # Embedded local backup, resolved from the same brief.
-    assert eng["fallback"]["mode"] == "local"
-    assert eng["fallback"]["backend"] == "ollama"
-    assert eng["fallback"]["llm"]["model"] == "mid-vlm"
+def test_resolve_cloud_mode_builds_provider_plus_local_fallback() -> None:
+    eng = engine.resolve(
+        {"mode": "cloud", "provider": "mistral", "model": "mistral-large-latest",
+         "kind": "llm", "task": "x"},
+        catalog=_CATALOG, hw=_HW, compute=_COMPUTE,
+    )
+    assert eng["mode"] == "cloud" and eng["backend"] == "mistral"
+    assert eng["base_url"] == "https://api.mistral.ai/v1"
+    assert eng["llm"]["model"] == "mistral-large-latest" and eng["llm"]["cloud"] is True
+    # A local fallback is resolved from the SAME brief (paid -> local direction).
+    assert eng["fallback"] is not None and eng["fallback"]["backend"] in {"ollama", "vllm"}
 
 
-def test_resolve_cloud_requires_a_model() -> None:
-    with pytest.raises(ValueError, match="needs a 'model'"):
-        engine.resolve({"mode": "cloud", "provider": "openai", "task": "x"},
-                       catalog=_CATALOG, hw=_HW, compute=_COMPUTE)
+def test_resolve_cloud_mode_needs_a_model() -> None:
+    with pytest.raises(ValueError, match="model"):
+        engine.resolve(
+            {"mode": "cloud", "provider": "openai", "kind": "llm", "task": "x"},
+            catalog=_CATALOG, hw=_HW, compute=_COMPUTE,
+        )
 
 
-def test_chat_emits_observation_event(monkeypatch) -> None:
-    # The 6.0a seam: every chat() call fans a small event out to observers.
-    events: list[dict] = []
-    monkeypatch.setattr(llm, "_chat_ollama", lambda prompt, **kw: "hello there")
-    llm.clear_observers()
-    llm.add_observer(events.append)
-    try:
-        eng = {"backend": "ollama", "base_url": "http://localhost:11434",
-               "llm": {"model": "qwen3:8b"}}
-        llm.chat("hi", engine=eng, kind="llm")
-    finally:
-        llm.clear_observers()
-    assert len(events) == 1
-    ev = events[0]
-    assert ev["ok"] is True and ev["backend"] == "ollama"
-    assert ev["model"] == "qwen3:8b" and ev["kind"] == "llm"
-    assert ev["out_chars"] == len("hello there") and ev["latency_ms"] >= 0
+def test_resolve_cloud_respects_explicit_base_url_and_api_key_env() -> None:
+    eng = engine.resolve(
+        {"mode": "cloud", "provider": "anthropic", "model": "claude-3-5-sonnet",
+         "base_url": "https://my-proxy.example.com", "api_key_env": "MY_ANTHROPIC_KEY",
+         "kind": "llm", "task": "x"},
+        catalog=_CATALOG, hw=_HW, compute=_COMPUTE,
+    )
+    assert eng["base_url"] == "https://my-proxy.example.com"
+    assert eng["api_key_env"] == "MY_ANTHROPIC_KEY"
 
 
 def test_chat_engine_routes_backend_and_base_url(monkeypatch) -> None:
@@ -183,61 +188,34 @@ def test_chat_engine_routes_backend_and_base_url(monkeypatch) -> None:
         captured.clear()
         captured.update(kw)
         captured["fn"] = "ollama"
-        return "ok"
+        return "ok", {"in_tokens": None, "out_tokens": None}
 
     def _fake_openai(prompt, **kw):
         captured.clear()
         captured.update(kw)
         captured["fn"] = "openai"
-        return "ok"
+        return "ok", {"in_tokens": None, "out_tokens": None}
 
     monkeypatch.setattr(llm, "_chat_ollama", _fake_ollama)
     monkeypatch.setattr(llm, "_chat_openai", _fake_openai)
 
-    vllm_eng = {"backend": "vllm", "base_url": "http://gpu:8000/v1",
-                "llm": {"model": "org/Text"}, "vlm": {"model": "org/Vision"}}
+    vllm_eng = {
+        "backend": "vllm",
+        "base_url": "http://gpu:8000/v1",
+        "llm": {"model": "org/Text"},
+        "vlm": {"model": "org/Vision"},
+    }
     llm.chat("hi", engine=vllm_eng, kind="llm")
     assert captured["fn"] == "openai"
     assert captured["model"] == "org/Text"
     assert captured["base_url"] == "http://gpu:8000/v1"
 
-    ollama_eng = {"backend": "ollama", "base_url": "http://localhost:11434",
-                  "llm": {"model": "qwen3:8b"}}
+    ollama_eng = {
+        "backend": "ollama",
+        "base_url": "http://localhost:11434",
+        "llm": {"model": "qwen3:8b"},
+    }
     llm.chat("hi", engine=ollama_eng)
     assert captured["fn"] == "ollama"
     assert captured["model"] == "qwen3:8b"
     assert captured["base_url"] == "http://localhost:11434"
-
-
-def test_chat_fails_over_paid_to_local(monkeypatch) -> None:
-    # A cloud engine carries an embedded local fallback; when the paid call fails,
-    # chat() degrades to the local model (paid -> local) and reports both attempts.
-    calls: list = []
-
-    def _fake_dispatch(transport, backend, prompt, *, model, **kw):
-        calls.append((backend, model))
-        if backend == "openai":
-            raise RuntimeError("cloud is down")
-        return "local answer"
-
-    monkeypatch.setattr(llm, "_dispatch", _fake_dispatch)
-    events: list[dict] = []
-    llm.clear_observers()
-    llm.add_observer(events.append)
-    try:
-        cloud_eng = {
-            "backend": "openai", "base_url": "https://api.openai.com/v1",
-            "llm": {"model": "gpt-4o"},
-            "fallback": {"backend": "ollama", "base_url": "http://localhost:11434",
-                         "llm": {"model": "qwen3:8b"}},
-        }
-        out = llm.chat("hi", engine=cloud_eng, kind="llm")
-    finally:
-        llm.clear_observers()
-
-    assert out == "local answer"
-    assert calls == [("openai", "gpt-4o"), ("ollama", "qwen3:8b")]
-    # Attempt 0 failed (paid), attempt 1 succeeded (local) — both observed.
-    assert events[0]["ok"] is False and events[0]["attempt"] == 0
-    won = events[-1]
-    assert won["ok"] is True and won["attempt"] == 1 and won["backend"] == "ollama"

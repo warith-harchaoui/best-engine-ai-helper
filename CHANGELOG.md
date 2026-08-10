@@ -2,7 +2,177 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
-## [Unreleased]
+## [Unreleased] (`cloud` branch)
+
+Rebuilt on top of `main`'s `1.2.0` (this branch previously sat at the old
+`main`/`cloud` merge-base, `6ac009c`, unaware of everything landed on `main`
+since — skills removal, `locales/i18n.yaml`, `langdetect`, `--live`
+server-load awareness, and the `observe.py` activity/cost ledger). Every
+cloud-specific addition below builds on that shared foundation, so the
+eventual `cloud` -> `main` merge only needs to add what follows.
+
+### Added
+
+- **Anthropic and Gemini transports** (`llm._chat_anthropic`,
+  `llm._chat_gemini`), closing the last TODO from the original cloud-phase
+  commit. Every OpenAI-compatible provider (OpenAI, **Mistral**, OpenRouter,
+  Together, Azure OpenAI) already worked via `_chat_openai`; Mistral is now
+  in `_OPENAI_COMPATIBLE` and `engine._CLOUD_BASE_URLS`.
+- **Real, provider-reported token counts for cost accounting.** Every
+  transport (including Ollama's `prompt_eval_count`/`eval_count`) now returns
+  `(text, usage)`; the `chat()` event gains `in_tokens`/`out_tokens` when the
+  provider reports them. `observe.estimate_cost_usd` should be extended to
+  prefer these over its char-count heuristic once this branch reaches `main`
+  (currently a `main`-side change, tracked separately — this branch only
+  produces the real numbers).
+- **`llm._cloud_api_key`**: resolves a cloud engine's API key from the env
+  var named in its `api_key_env` field, falling back to the OS keychain via
+  the optional `keyring` extra. The key VALUE is never read from or written
+  to the engine descriptor itself.
+- **Failover chain, retry, and cache** (`llm._engine_chain`, `_with_retry`,
+  `_cache_key_payload`): `chat(engine=..., retries=N, cache=True)`. A cloud
+  engine's embedded local `fallback` is tried automatically on failure
+  (paid -> local); `cache=True` memoizes identical calls via the optional
+  `wallet-helper` extra so a repeated call never pays for the same cloud
+  request twice.
+- **`privacy.py` wired into `chat(..., pseudonymize=True)`**: scrubs personal
+  data from the prompt with the engine's local fallback before a cloud send,
+  restores it in the response. No-op on a local engine, or with a loud
+  warning if the cloud engine has no local fallback to scrub with.
+- **`safety.py` (Phase 6.5, new): NSFW/policy scanning**, wired into
+  `chat(..., safety=...)` (defaults to on for a cloud engine, off for local).
+  Scans the outbound prompt/images and the inbound response; `action`
+  policy is `block` (raise `SafetyViolation`) / `redact` (text only) / `warn`
+  (log, pass through — the default, since this has no track record on real
+  traffic yet). Detoxify (text) and a CLIP-based classifier (images, via
+  `transformers`) are optional (`[safety]` extra); absent them, text scanning
+  degrades to a crude keyword heuristic (never silently no-ops) and image
+  scanning degrades to `"unavailable"` (never a fabricated verdict).
+- `engine.resolve(mode="cloud")` now actually resolves instead of raising
+  `NotImplementedError` — provider + model (+ optional `base_url`/
+  `api_key_env`) plus a local `fallback` from the same brief.
+
+### Verification
+
+Everything above is covered by mocked tests (no network call, no API key,
+no paid request) — 260 passed, 91.9% coverage, ruff/mypy clean. Real
+provider wire-format correctness (payload shapes, auth headers, response
+parsing) is verified against each provider's documented API shape; an actual
+live call (e.g. against Mistral) still needs a real API key to confirm end
+to end and has not been run.
+
+## [1.2.0] - 2026-08-09
+
+### Added
+
+- **Local activity/cost ledger (`observe.py`), the first piece of the `cloud`
+  branch's Phase 6.1 monitoring plan landed on `main`.** `llm.chat()` gained
+  an observer seam (`add_observer`/`_emit`, ported from the `cloud` branch —
+  cloud-agnostic, so it lands here independent of the rest of that branch):
+  every call fans a small event out to registered observers. `observe.py`'s
+  `Ledger` is the first consumer — a local, append-only SQLite database
+  (`~/.best-engine-ai-helper/usage.db`) recording who called what (
+  `BEST_ENGINE_USER` env var, else the OS login name; `observe.as_user(name)`
+  for scoped attribution, e.g. per-request in a shared server), which
+  model/backend, latency, success/failure, and an estimated cost (bundled
+  `pricing.yaml`; always `0.0` for local Ollama/vLLM, `None` — never
+  fabricated — for an unpriced cloud model). Built for the "one company,
+  several users" case. New `activity` CLI command (table/JSON), `GET
+  /api/activity`, and a GUI **Activity** section all read the same ledger.
+  Enabled by default in the CLI, API, and MCP server; opt out with
+  `BEST_ENGINE_NO_LEDGER=1`. **Scope note:** this repo's own commands rarely
+  call `llm.chat()` themselves (only the `pull`/`validate` Ralph gates do) —
+  the ledger's real value comes once downstream projects that import
+  `best_engine_ai_helper.llm` also call `observe.enable()`; that's a
+  per-project follow-up, not something this change does for the whole suite
+  automatically. Cost accounting for actual paid-provider calls, and the
+  remaining Phase 6.2 (Anthropic/Gemini transports) and 6.5 (NSFW safety)
+  work, stay on the `cloud` branch until finished.
+- **Task-description quality check in `recommend.parse_task`.** A missing or
+  blank task now logs a loud warning instead of silently defaulting to a
+  generic profile: "activity and cost monitoring cannot attribute this call
+  to a job without one." Also runs best-effort language detection
+  (`langdetect`, new core dependency, fully offline) on the task text; a
+  string with no detectable language (symbols/digits only) warns too. The
+  parsed report now carries a `language` field, surfaced in the CLI Markdown
+  report and the GUI results panel. Detection confidence is deliberately NOT
+  used as a "clean text" signal — `langdetect` can be confidently *wrong* on
+  a short phrase (e.g. "write SQL queries" detects as French at 99.9%
+  confidence), not merely uncertain.
+- **Live server-load awareness, opt-in via `--live`.** `detect.server_load()`
+  snapshots current free RAM, CPU/GPU utilization, disk usage, and how many
+  local engines (Ollama models, vLLM processes) are already running.
+  `score.effective_budget()` (and `rank()`/`select()`) accept an optional
+  `load` parameter: when given, the recommendation's memory budget is capped
+  at what is actually free right now (not just the theoretical accelerator
+  pool) and further derated when the CPU is saturated or disk space is low.
+  Off by default everywhere (`recommend()`'s `load=None`, CLI's `--live`
+  flag on `recommend`/`report`, API's `live: bool = False` on
+  `POST /api/recommend`, GUI's "live server load" checkbox) — it adds a
+  ~0.1-0.5s probe and makes the result depend on the exact moment it ran
+  rather than being a deterministic function of the hardware alone, which
+  matters for reproducible reports and CI. The report gains a `server_load`
+  key (and a Markdown/GUI section) only when `--live` is used.
+  **Cross-repo note:** the underlying generic live-metric probes
+  (`cpu_percent`, `available_ram_gb`, `disk_usage_gb`,
+  `gpu_utilization_percent` — including an Apple Silicon GPU-utilization
+  read via `ioreg`'s `IOAccelerator` node, which needs no `powermetrics`/sudo)
+  were added to `os-helper`'s `hardware_utils.py`, matching that module's own
+  "raw facts belong here, AI-domain interpretation belongs to the consumer"
+  split. They are not yet in a published os-helper release; the `os-helper`
+  pin in `pyproject.toml` needs bumping once one ships, or `server_load()`
+  raises on a fresh install.
+
+### Changed
+
+- **Repository no longer distributed as a Claude/OpenCode Agent Skill.**
+  Removed `skills/best-engine-ai-helper/` (the skill packaging README) and
+  `TRIGGERS.md` (an orphaned natural-language trigger catalog that existed
+  only to back that skill's routing). The project ships as a library, CLI
+  (`cli.py` + `cli_argparse.py`), FastAPI GUI/HTTP API (`api.py`), and MCP
+  server (`mcp.py`) — no skill surface.
+- **`locales/i18n.yaml` is now the single source of truth for every
+  GUI-visible string AND every model-facing prompt template.** New shared
+  loader `i18n.py` (`meta()` / `gui_strings()` / `prompt(key, field)`).
+  `gui.py` no longer hardcodes its French/English label tables (`gui:`
+  namespace, 57 semantic keys, `meta.default_locale` / `meta.supported_locales`
+  drive fallback). `ralph.py` (eyeball + prose Ralph loops), `validate_vlm.py`,
+  and `validate_llm.py` no longer hardcode their system/user prompt strings
+  either — they live under `prompts:`, authored in English
+  (`meta.model_prompt_locale`) since these are model instructions, not GUI
+  copy that needs translating (see CODING.md section 21.3.3). Wording is
+  unchanged in every case; only where it lives changed.
+- **`references/CODING.md` refreshed from its canonical gist**, with one
+  deliberate, documented deviation: the gist's "Agent Skills" section (and
+  every skill-specific delivery-surface reference) is dropped, since this
+  project does not ship one. Root `CODING.md` rewritten as a short pointer to
+  the mirror plus the standard's key bullets (now including the
+  `locales/i18n.yaml` and multi-surface-delegation rules). `CONTRIBUTING.md`'s
+  mirrored bullet list updated to match.
+
+### Fixed
+
+- **`gui.py` mypy strict compliance** for the new locale-loading code path
+  (`_locale_meta` / `_locale_gui_strings` typed precisely instead of a bare
+  `dict[str, object]`).
+- Two undocumented FastAPI route handlers (`api.py`'s `root()` and `gui()`)
+  now carry a one-line docstring.
+- **A misattributed `# type: ignore[arg-type]` in `cli.py`/`cli_argparse.py`**
+  sat on the `headroom=` line instead of `kind=k` (the actual mismatch: `k`
+  is `str`, `rank()` expects `Literal["llm", "vlm"]`, narrowed only by the
+  CLI's own `choices=`/`typer.Option`, not by mypy). A newer mypy no longer
+  flags either line either way, which is how this passed CI unnoticed; an
+  older local mypy (1.20) still catches it. Moved the ignore to the line it
+  actually covers, with a comment explaining why it's needed.
+- **`ruff`/`mypy` were unpinned (`ruff>=0.5`, `mypy>=1.10`) in
+  `requirements-dev.txt`, so CI silently drifted to newer versions than the
+  local dev environment.** Two concrete bites: mypy 2.3 (CI) missed the
+  misattributed `type: ignore` above that mypy 1.20 (local) caught, and
+  ruff 0.16 promoted Markdown formatting from preview-only to stable, so
+  adding `ruff format --check .` to CI below failed on `README.md`/
+  `LISEZMOI.md`/`EXAMPLES.md`'s embedded Python code fences even though
+  they were never touched locally. Pinned both (`ruff==0.15.21`,
+  `mypy==1.20.2`) to keep CI and local checks looking at the same rules.
 
 ## [1.1.0] - 2026-08-06
 
@@ -94,9 +264,7 @@ All notable changes to best-engine-ai-helper are documented here.
 - **Mypy CI regression from the `kinds`/usage-catalog work.** `recommend()`'s
   `kinds` parameter and `engine._kinds_from_brief` now return
   `list[Literal["llm", "vlm"]]` instead of `list[str]`, matching what `rank()`
-  expects; `llm._dispatch`, `llm._cache_key_payload` and the retry closure in
-  `llm.chat` gained the parameter annotations mypy was missing; `chat`'s
-  JSON-mode return is explicitly cast from `json.loads`.
+  expects.
 - **Mypy + CI collection regressions from the argparse CLI / MCP work.**
   `cli_argparse.py`'s `_score.rank` call, its three `_add_*_group` helpers
   (missing `_SubParsersAction` type argument), and `main`'s `ns.func(ns)`

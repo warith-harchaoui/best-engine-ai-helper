@@ -49,11 +49,11 @@ _VLLM_URL = "http://localhost:8000/v1"
 
 _VALID_BACKENDS = ("ollama", "vllm")
 
-# Default API roots for cloud providers, used when a cloud brief does not pin its
-# own base_url. (cloud branch — the transport, keys, and cost accounting build on
-# this in later Phase 6 steps.)
+# Default API roots for cloud providers, used when a cloud brief does not pin
+# its own base_url.
 _CLOUD_BASE_URLS = {
     "openai": "https://api.openai.com/v1",
+    "mistral": "https://api.mistral.ai/v1",
     "openrouter": "https://openrouter.ai/api/v1",
     "together": "https://api.together.xyz/v1",
     "anthropic": "https://api.anthropic.com",
@@ -135,10 +135,10 @@ def resolve(
 
     - ``local`` (default) -> a hardware-specific descriptor: the backend chosen
       for this machine (Ollama/vLLM) plus the model per kind.
-    - ``cloud`` -> **not available yet.** Cloud providers (with a paid → local
-      fallback), plus cost, failover, pseudonymization and NSFW safety, ship on
-      the ``cloud`` branch; ``mode: cloud`` raises until then. The field is
-      recognised now so briefs can declare intent forward-compatibly.
+    - ``cloud`` -> a provider descriptor (``provider``, ``model``, optional
+      ``base_url``/``api_key_env``) plus a local ``fallback`` resolved from the
+      SAME brief, so a failed paid call degrades to the always-available local
+      model (paid -> local, the safe direction). See :func:`_resolve_cloud`.
 
     Parameters
     ----------
@@ -163,9 +163,7 @@ def resolve(
     spec = load_brief(brief)
     mode = str(spec.get("mode", "local")).strip().lower()
     if mode == "cloud":
-        return _resolve_cloud(
-            spec, endpoint=endpoint, catalog=catalog, hw=hw, compute=compute
-        )
+        return _resolve_cloud(spec, endpoint=endpoint, catalog=catalog, hw=hw, compute=compute)
     if mode != "local":
         osh.warning(f"Unknown brief mode {mode!r}; treating as 'local'.")
     return _resolve_local(
@@ -275,15 +273,36 @@ def _resolve_cloud(
     The primary is declarative (provider, model, base_url, api-key env *name*);
     the ``fallback`` is a full local descriptor resolved from the same brief, so
     a failed paid call can degrade to the always-available local model — the safe
-    direction (paid -> local). The cloud transport, keys, and cost accounting are
-    wired in later Phase 6 steps on this branch.
+    direction (paid -> local). ``llm.chat`` reads ``api_key_env`` to look the key
+    up (env var, then optionally the OS keychain via ``keyring``) — the key
+    VALUE is never read or stored here.
+
+    Parameters
+    ----------
+    spec : dict
+        The loaded brief with ``mode: cloud``. Requires ``provider`` (one of
+        :data:`_CLOUD_BASE_URLS`'s keys, or any OpenAI-compatible provider
+        name — an unknown one just means no default ``base_url``, still works
+        if the brief pins its own) and ``model``. Optional: ``vlm_model``,
+        ``base_url``, ``api_key_env``, ``structured_output``, ``kind``.
+    endpoint, catalog, hw, compute : optional
+        See :func:`resolve`.
+
+    Returns
+    -------
+    dict
+        Engine descriptor with ``mode: cloud``, ``backend`` = provider name,
+        per-kind ``model``/``structured_output``/``cloud: True``, and
+        ``fallback`` = a full local engine descriptor (or None if none could
+        be resolved).
     """
     provider = str(spec.get("provider", "openai")).strip().lower()
     model = spec.get("model")
     if not model:
         raise ValueError(
-            "A cloud brief needs a 'model' (e.g. gpt-4o, claude-3-5-sonnet). "
-            "Optionally add 'vlm_model', 'base_url', and 'api_key_env'."
+            "A cloud brief needs a 'model' (e.g. gpt-4o, mistral-large-latest, "
+            "claude-3-5-sonnet, gemini-1.5-pro). Optionally add 'vlm_model', "
+            "'base_url', and 'api_key_env'."
         )
     vlm_model = spec.get("vlm_model", model)
     kinds = _kinds_from_brief(spec.get("kind", "both"))
