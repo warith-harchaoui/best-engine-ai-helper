@@ -144,8 +144,12 @@ def _handle_recommend(ns: argparse.Namespace) -> int:
 
     for k in kinds:
         ranked = _score.rank(
-            hw, entries, kind=k, headroom=ns.headroom,  # type: ignore[arg-type]
-            application=ns.application, load=load,
+            hw,
+            entries,
+            kind=k,
+            headroom=ns.headroom,  # type: ignore[arg-type]
+            application=ns.application,
+            load=load,
         )
         header = f"\n=== {k.upper()} candidates"
         if ns.application:
@@ -156,21 +160,23 @@ def _handle_recommend(ns: argparse.Namespace) -> int:
         for e in ranked:
             tps = _score.estimated_tokens_per_second(e, bandwidth)
             comfy = bool(e.get("_fits")) and (tps is None or tps >= ns.min_tps)
-            rows.append({
-                "id": e.get("id", "-"),
-                "ram_gb": e.get("ram_gb", "-"),
-                "score": (
-                    e.get("benchmarks", {}).get("vision")
-                    if k == "vlm"
-                    else e.get("benchmarks", {}).get("general")
-                ) or "-",
-                "fits": "yes" if e.get("_fits") else "NO",
-                "tok/s": f"{tps:.0f}" if tps else "-",
-                "comfy": "yes" if comfy else "NO",
-                "notes": (e.get("notes") or "")[:40],
-            })
-        _emit(_fmt_table(
-            rows, ["id", "ram_gb", "score", "fits", "tok/s", "comfy", "notes"]))
+            rows.append(
+                {
+                    "id": e.get("id", "-"),
+                    "ram_gb": e.get("ram_gb", "-"),
+                    "score": (
+                        e.get("benchmarks", {}).get("vision")
+                        if k == "vlm"
+                        else e.get("benchmarks", {}).get("general")
+                    )
+                    or "-",
+                    "fits": "yes" if e.get("_fits") else "NO",
+                    "tok/s": f"{tps:.0f}" if tps else "-",
+                    "comfy": "yes" if comfy else "NO",
+                    "notes": (e.get("notes") or "")[:40],
+                }
+            )
+        _emit(_fmt_table(rows, ["id", "ram_gb", "score", "fits", "tok/s", "comfy", "notes"]))
 
     _emit()
     return 0
@@ -214,11 +220,7 @@ def _handle_resolve(ns: argparse.Namespace) -> int:
         _emit_err(f"resolve failed: {exc}")
         return 1
 
-    chosen = ", ".join(
-        f"{k}={descriptor[k]['model']}"
-        for k in ("llm", "vlm")
-        if descriptor.get(k)
-    )
+    chosen = ", ".join(f"{k}={descriptor[k]['model']}" for k in ("llm", "vlm") if descriptor.get(k))
     _emit(
         f"Wrote {out_path}\n"
         f"  backend: {descriptor['backend']}  ({chosen})\n"
@@ -290,16 +292,24 @@ def _handle_usages_list(_ns: argparse.Namespace) -> int:
 
     _emit("Families (usages that can share one model):")
     frows = [
-        {"id": f["id"], "name": f["name"],
-         "members": ", ".join(f["members"]), "summary": f["summary"][:48]}
+        {
+            "id": f["id"],
+            "name": f["name"],
+            "members": ", ".join(f["members"]),
+            "summary": f["summary"][:48],
+        }
         for f in _usages.list_families()
     ]
     _emit(_fmt_table(frows, ["id", "name", "members", "summary"]))
 
     _emit("\nProfiles:")
     prows = [
-        {"name": p["name"], "family": p["family"] or "-",
-         "status": p["status"], "summary": p["summary"][:52]}
+        {
+            "name": p["name"],
+            "family": p["family"] or "-",
+            "status": p["status"],
+            "summary": p["summary"][:52],
+        }
         for p in _usages.list_usages()
     ]
     _emit(_fmt_table(prows, ["name", "family", "status", "summary"]))
@@ -329,8 +339,7 @@ def _handle_usages_show(ns: argparse.Namespace) -> int:
         return 1
 
     brief = prof.get("brief", {})
-    _emit(f"{prof['name']}  [{prof.get('status', 'stable')}, family "
-          f"{prof.get('family', '-')}]")
+    _emit(f"{prof['name']}  [{prof.get('status', 'stable')}, family {prof.get('family', '-')}]")
     _emit(f"  {prof.get('summary', '')}\n")
     _emit(prof.get("description", "").strip() + "\n")
     _emit("Needs (selection criteria):")
@@ -365,12 +374,16 @@ def _echo_resolved(descriptor: dict[str, Any], out: str | None) -> None:
             tps = section.get("est_tokens_per_s")
             extra = f", ~{tps:.0f} tok/s" if isinstance(tps, (int, float)) else ""
             chosen.append(f"{kind}={section['model']} ({ram} GB{extra})")
-    _emit(f"{label}: backend {descriptor.get('backend')}  "
-          + ("  ".join(chosen) if chosen else "no model resolved"))
+    _emit(
+        f"{label}: backend {descriptor.get('backend')}  "
+        + ("  ".join(chosen) if chosen else "no model resolved")
+    )
     if descriptor.get("status") == "scaffold":
         _emit("  NOTE: scaffolded profile — resolvable now, downstream wiring pending.")
-    _emit("  NOTE: machine-specific — the chosen model lives only in the "
-          "generated file; keep it gitignored, never commit.")
+    _emit(
+        "  NOTE: machine-specific — the chosen model lives only in the "
+        "generated file; keep it gitignored, never commit."
+    )
     if out:
         from . import engine as _engine
 
@@ -435,16 +448,18 @@ def _handle_catalog_show(_ns: argparse.Namespace) -> int:
     rows = []
     for e in entries:
         bench = e.get("benchmarks") or {}
-        rows.append({
-            "id": e.get("id", "-"),
-            "kind": e.get("kind", "-"),
-            "size_b": e.get("size_b", "-"),
-            "quant": e.get("quant", "-"),
-            "disk_gb": e.get("disk_gb", "-"),
-            "ram_gb": e.get("ram_gb", "-"),
-            "general": bench.get("general") or "-",
-            "vision": bench.get("vision") or "-",
-        })
+        rows.append(
+            {
+                "id": e.get("id", "-"),
+                "kind": e.get("kind", "-"),
+                "size_b": e.get("size_b", "-"),
+                "quant": e.get("quant", "-"),
+                "disk_gb": e.get("disk_gb", "-"),
+                "ram_gb": e.get("ram_gb", "-"),
+                "general": bench.get("general") or "-",
+                "vision": bench.get("vision") or "-",
+            }
+        )
     cols = ["id", "kind", "size_b", "quant", "disk_gb", "ram_gb", "general", "vision"]
     _emit(_fmt_table(rows, cols))
     return 0
@@ -762,9 +777,11 @@ def _handle_activity(ns: argparse.Namespace) -> int:
 
     cost = summary["total_cost_usd"]
     cost_str = f"${cost:.4f}" if cost is not None else "unknown (unpriced model in the mix)"
-    _emit(f"Total calls: {summary['total_calls']}   "
-          f"Total cost: {cost_str}   "
-          f"Error rate: {summary['error_rate']:.1%}")
+    _emit(
+        f"Total calls: {summary['total_calls']}   "
+        f"Total cost: {cost_str}   "
+        f"Error rate: {summary['error_rate']:.1%}"
+    )
     _emit("")
     _emit("By user:")
     _emit(_fmt_table(summary["by_user"], ["user", "calls", "cost_usd"]))
@@ -800,13 +817,17 @@ def build_parser() -> argparse.ArgumentParser:
         from importlib.metadata import version as _pkg_version
 
         parser.add_argument(
-            "--version", action="version",
+            "--version",
+            action="version",
             version=f"%(prog)s {_pkg_version('best-engine-ai-helper')}",
         )
     except Exception:  # pragma: no cover — never fatal
         pass
     parser.add_argument(
-        "-v", "--verbose", action="count", default=0,
+        "-v",
+        "--verbose",
+        action="count",
+        default=0,
         help="Increase log verbosity: -v shows info, -vv also shows debug.",
     )
 
@@ -818,45 +839,80 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     p = sub.add_parser("recommend", help="Print ranked model candidates for this hardware.")
-    p.add_argument("--kind", choices=["llm", "vlm", "both"], default="both",
-                    help="Model type to recommend (default: both).")
-    p.add_argument("--headroom", type=float, default=0.85,
-                    help="Safety headroom fraction (0-1) applied to available memory "
-                         "(default: 0.85).")
-    p.add_argument("--application", choices=_VALID_APPLICATIONS, default=None,
-                    help="Target use-case; selects the benchmark axis. Omit for the "
-                         "default kind-based rule.")
-    p.add_argument("--min-tps", type=float, default=_score.COMFORT_TPS,
-                    help=f"Comfort throughput floor in tokens/s (default: {_score.COMFORT_TPS}).")
-    p.add_argument("--live", action="store_true",
-                    help="Also weigh CURRENT server load (free RAM, CPU/GPU/disk usage, "
-                         "already-running engines), not just theoretical capacity. Off by "
-                         "default: adds a live probe (~0.1-0.5s) and makes the result depend "
-                         "on this exact moment rather than the hardware alone.")
+    p.add_argument(
+        "--kind",
+        choices=["llm", "vlm", "both"],
+        default="both",
+        help="Model type to recommend (default: both).",
+    )
+    p.add_argument(
+        "--headroom",
+        type=float,
+        default=0.85,
+        help="Safety headroom fraction (0-1) applied to available memory (default: 0.85).",
+    )
+    p.add_argument(
+        "--application",
+        choices=_VALID_APPLICATIONS,
+        default=None,
+        help="Target use-case; selects the benchmark axis. Omit for the default kind-based rule.",
+    )
+    p.add_argument(
+        "--min-tps",
+        type=float,
+        default=_score.COMFORT_TPS,
+        help=f"Comfort throughput floor in tokens/s (default: {_score.COMFORT_TPS}).",
+    )
+    p.add_argument(
+        "--live",
+        action="store_true",
+        help="Also weigh CURRENT server load (free RAM, CPU/GPU/disk usage, "
+        "already-running engines), not just theoretical capacity. Off by "
+        "default: adds a live probe (~0.1-0.5s) and makes the result depend "
+        "on this exact moment rather than the hardware alone.",
+    )
     p.set_defaults(func=_handle_recommend)
 
     p = sub.add_parser("resolve", help="Resolve a usage brief into a machine-specific engine file.")
     p.add_argument("--brief", required=True, help="Path to the committed usage brief.")
-    p.add_argument("--out", default=None,
-                    help="Where to write the engine file "
-                         "(default: llm.engine.yaml beside the brief).")
-    p.add_argument("--backend", choices=["auto", "ollama", "vllm"], default="auto",
-                    help="Serving backend (default: auto).")
+    p.add_argument(
+        "--out",
+        default=None,
+        help="Where to write the engine file (default: llm.engine.yaml beside the brief).",
+    )
+    p.add_argument(
+        "--backend",
+        choices=["auto", "ollama", "vllm"],
+        default="auto",
+        help="Serving backend (default: auto).",
+    )
     p.add_argument("--endpoint", default=None, help="Override the server base URL.")
     p.set_defaults(func=_handle_resolve)
 
     p = sub.add_parser("report", help="Recommend the best engine(s) for a task; emit MD + JSON.")
     p.add_argument("--task", default=None, help="Free-text task description.")
-    p.add_argument("--headroom", type=float, default=0.85,
-                    help="Memory safety fraction on top of the accelerator cap (default: 0.85).")
+    p.add_argument(
+        "--headroom",
+        type=float,
+        default=0.85,
+        help="Memory safety fraction on top of the accelerator cap (default: 0.85).",
+    )
     p.add_argument("--out", default=None, help="Path stem to write <stem>.md and <stem>.json.")
-    p.add_argument("--format", dest="format", choices=["md", "json"], default="md",
-                    help="What to print to stdout (default: md).")
-    p.add_argument("--live", action="store_true",
-                    help="Also weigh CURRENT server load (free RAM, CPU/GPU/disk usage, "
-                         "already-running engines), not just theoretical capacity. Off by "
-                         "default: adds a live probe (~0.1-0.5s) and makes the result depend "
-                         "on this exact moment rather than the hardware alone.")
+    p.add_argument(
+        "--format",
+        dest="format",
+        choices=["md", "json"],
+        default="md",
+        help="What to print to stdout (default: md).",
+    )
+    p.add_argument(
+        "--live",
+        action="store_true",
+        help="Also weigh CURRENT server load (free RAM, CPU/GPU/disk usage, "
+        "already-running engines), not just theoretical capacity. Off by "
+        "default: adds a live probe (~0.1-0.5s) and makes the result depend "
+        "on this exact moment rather than the hardware alone.",
+    )
     p.set_defaults(func=_handle_report)
 
     _add_usages_group(sub)
@@ -864,14 +920,26 @@ def build_parser() -> argparse.ArgumentParser:
     _add_hardware_group(sub)
 
     p = sub.add_parser("pull", help="Pull the best model and run Ralph validation gates.")
-    p.add_argument("--keep-failed", action="store_true",
-                    help="Do not remove failed models after a gate failure.")
-    p.add_argument("--vllm", action="store_true",
-                    help="Print the vLLM serve command instead of pulling.")
-    p.add_argument("--application", choices=_VALID_APPLICATIONS, default=None,
-                    help="Target use-case; biases model selection.")
-    p.add_argument("--min-tps", type=float, default=_score.COMFORT_TPS,
-                    help=f"Comfort throughput floor in tokens/s (default: {_score.COMFORT_TPS}).")
+    p.add_argument(
+        "--keep-failed",
+        action="store_true",
+        help="Do not remove failed models after a gate failure.",
+    )
+    p.add_argument(
+        "--vllm", action="store_true", help="Print the vLLM serve command instead of pulling."
+    )
+    p.add_argument(
+        "--application",
+        choices=_VALID_APPLICATIONS,
+        default=None,
+        help="Target use-case; biases model selection.",
+    )
+    p.add_argument(
+        "--min-tps",
+        type=float,
+        default=_score.COMFORT_TPS,
+        help=f"Comfort throughput floor in tokens/s (default: {_score.COMFORT_TPS}).",
+    )
     p.set_defaults(func=_handle_pull)
 
     sub.add_parser(
@@ -887,11 +955,14 @@ def build_parser() -> argparse.ArgumentParser:
         func=_handle_env
     )
 
-    p = sub.add_parser(
-        "activity", help="Summarize the local activity/cost ledger."
+    p = sub.add_parser("activity", help="Summarize the local activity/cost ledger.")
+    p.add_argument(
+        "--format",
+        dest="format",
+        choices=["table", "json"],
+        default="table",
+        help="What to print to stdout (default: table).",
     )
-    p.add_argument("--format", dest="format", choices=["table", "json"], default="table",
-                    help="What to print to stdout (default: table).")
     p.set_defaults(func=_handle_activity)
 
     return parser
@@ -920,10 +991,18 @@ def _add_usages_group(sub: argparse._SubParsersAction[argparse.ArgumentParser]) 
 
     p = s.add_parser("resolve", help="Resolve a profile (or --family) into this machine's model.")
     p.add_argument("name", nargs="?", default=None, help="Usage profile name.")
-    p.add_argument("--family", dest="family", default=None,
-                    help="Resolve a whole family (F1/F2/F3) instead of a profile.")
-    p.add_argument("--backend", choices=["auto", "ollama", "vllm"], default="auto",
-                    help="Serving backend (default: auto).")
+    p.add_argument(
+        "--family",
+        dest="family",
+        default=None,
+        help="Resolve a whole family (F1/F2/F3) instead of a profile.",
+    )
+    p.add_argument(
+        "--backend",
+        choices=["auto", "ollama", "vllm"],
+        default="auto",
+        help="Serving backend (default: auto).",
+    )
     p.add_argument("--endpoint", default=None, help="Override the server base URL.")
     p.add_argument("--out", default=None, help="Write the generated engine file here.")
     p.set_defaults(func=_handle_usages_resolve)
@@ -948,8 +1027,12 @@ def _add_catalog_group(sub: argparse._SubParsersAction[argparse.ArgumentParser])
 
     p = s.add_parser("update", help="Refresh the catalog cache from the ApXML directory.")
     p.add_argument("--limit", type=int, default=None, help="Fetch at most N models.")
-    p.add_argument("--timeout", type=float, default=30.0,
-                    help="Per-request network timeout in seconds (default: 30.0).")
+    p.add_argument(
+        "--timeout",
+        type=float,
+        default=30.0,
+        help="Per-request network timeout in seconds (default: 30.0).",
+    )
     p.set_defaults(func=_handle_catalog_update)
 
 

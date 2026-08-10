@@ -75,9 +75,7 @@ def ollama_pull(tag: str, *, timeout: int = 600, out: IO[str] | None = None) -> 
         )
     except FileNotFoundError as exc:
         osh.error("ollama binary not found. Install from https://ollama.com")
-        raise FileNotFoundError(
-            "ollama binary not found. Install from https://ollama.com"
-        ) from exc
+        raise FileNotFoundError("ollama binary not found. Install from https://ollama.com") from exc
 
     # Stream output line by line so the user sees progress in real time
     assert proc.stdout is not None

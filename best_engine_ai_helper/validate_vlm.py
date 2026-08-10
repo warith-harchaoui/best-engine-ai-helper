@@ -33,6 +33,7 @@ from . import i18n
 # Reference fixture
 # ---------------------------------------------------------------------------
 
+
 def _make_fixture_png() -> bytes:
     """
     Render the reference fixture PNG in memory using Pillow.
@@ -55,9 +56,7 @@ def _make_fixture_png() -> bytes:
     try:
         from PIL import Image, ImageDraw
     except ImportError as exc:
-        raise ImportError(
-            "Pillow is required for validate_vlm. Run: pip install Pillow"
-        ) from exc
+        raise ImportError("Pillow is required for validate_vlm. Run: pip install Pillow") from exc
 
     width, height = 200, 150
     img = Image.new("RGB", (width, height), color=(255, 255, 255))
@@ -65,7 +64,7 @@ def _make_fixture_png() -> bytes:
 
     # Draw axes
     draw.line([(20, 120), (180, 120)], fill=(0, 0, 0), width=2)  # x-axis
-    draw.line([(20, 20), (20, 120)], fill=(0, 0, 0), width=2)    # y-axis
+    draw.line([(20, 20), (20, 120)], fill=(0, 0, 0), width=2)  # y-axis
 
     # Defect 1: near-white bar — very low contrast, accessibility fail
     draw.rectangle([(30, 80), (60, 120)], fill=(240, 240, 240))
@@ -88,6 +87,7 @@ def _make_fixture_png() -> bytes:
 # ---------------------------------------------------------------------------
 # Critique and verdict prompts live in locales/i18n.yaml under
 # prompts.vlm_gate_critique / prompts.vlm_gate_verdict (see i18n.py).
+
 
 def validate(llm_chat: Callable[..., Any]) -> bool:
     """
@@ -142,6 +142,7 @@ def validate(llm_chat: Callable[..., Any]) -> bool:
         verdict = raw
     else:
         import json
+
         try:
             verdict = json.loads(str(raw))
         except Exception:

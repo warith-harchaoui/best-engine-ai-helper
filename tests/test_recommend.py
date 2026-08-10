@@ -22,10 +22,18 @@ _CATALOG = [
     {"id": "tiny-llm", "kind": "llm", "ram_gb": 5.6, "benchmarks": {"general": 74}},
     {"id": "mid-llm", "kind": "llm", "ram_gb": 10.5, "benchmarks": {"general": 78}},
     {"id": "big-llm", "kind": "llm", "ram_gb": 48.0, "benchmarks": {"general": 87}},
-    {"id": "tiny-vlm", "kind": "vlm", "ram_gb": 6.8,
-     "benchmarks": {"general": 73, "vision": 80, "ocr": 78}},
-    {"id": "big-vlm", "kind": "vlm", "ram_gb": 52.0,
-     "benchmarks": {"general": 88, "vision": 91, "ocr": 85}},
+    {
+        "id": "tiny-vlm",
+        "kind": "vlm",
+        "ram_gb": 6.8,
+        "benchmarks": {"general": 73, "vision": 80, "ocr": 78},
+    },
+    {
+        "id": "big-vlm",
+        "kind": "vlm",
+        "ram_gb": 52.0,
+        "benchmarks": {"general": 88, "vision": 91, "ocr": 85},
+    },
 ]
 _HW = {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}
 _COMPUTE = {"accelerator": "gpu-metal", "chip": "Apple M2 Max", "bandwidth_gbs": 400.0}
@@ -72,8 +80,7 @@ def test_parse_task_records_language_for_a_clean_description(
 
 
 def test_recommend_report_is_coherent_and_json_serializable() -> None:
-    rep = recommend.recommend(_HW, _CATALOG, task="descriptions and image checks",
-                              compute=_COMPUTE)
+    rep = recommend.recommend(_HW, _CATALOG, task="descriptions and image checks", compute=_COMPUTE)
     assert {"llm", "vlm"} <= rep["recommendations"].keys()
     chosen = rep["recommendations"]["llm"]["chosen"]
     assert chosen["fits"] is True and chosen["est_tokens_per_s"] is not None
@@ -85,10 +92,20 @@ def test_lighter_alternative_is_not_less_structured_capable() -> None:
     # the chosen (structured-capable) model must NOT be offered as the leaner
     # alternative: following it would fail the suite's schema-driven tasks.
     catalog = [
-        {"id": "cap-vlm", "kind": "vlm", "ram_gb": 9.0,
-         "benchmarks": {"general": 77, "vision": 78}, "structured_output": True},
-        {"id": "incap-vlm", "kind": "vlm", "ram_gb": 6.8,
-         "benchmarks": {"general": 79, "vision": 80}, "structured_output": False},
+        {
+            "id": "cap-vlm",
+            "kind": "vlm",
+            "ram_gb": 9.0,
+            "benchmarks": {"general": 77, "vision": 78},
+            "structured_output": True,
+        },
+        {
+            "id": "incap-vlm",
+            "kind": "vlm",
+            "ram_gb": 6.8,
+            "benchmarks": {"general": 79, "vision": 80},
+            "structured_output": False,
+        },
     ]
     rep = recommend.recommend(_HW, catalog, task="image quality", compute=_COMPUTE)
     block = rep["recommendations"]["vlm"]
@@ -106,8 +123,12 @@ def test_recommend_throughput_needs_compute() -> None:
 def test_markdown_and_file_emitters(tmp_path) -> None:
     rep = recommend.recommend(_HW, _CATALOG, task="image quality", compute=_COMPUTE)
     md = recommend.to_markdown(rep)
-    for section in ("# Best local engine", "Usable model budget",
-                    "How this was decided", "Sources:"):
+    for section in (
+        "# Best local engine",
+        "Usable model budget",
+        "How this was decided",
+        "Sources:",
+    ):
         assert section in md
     md_path, json_path = recommend.write_report(rep, tmp_path / "r")
     assert md_path.is_file() and json_path.is_file()
@@ -116,8 +137,12 @@ def test_markdown_and_file_emitters(tmp_path) -> None:
 
 def test_recommend_with_load_caps_budget_and_appears_in_report() -> None:
     load = {
-        "available_ram_gb": 8.0, "cpu_percent": 12.0, "gpu_percent": 5.0,
-        "disk_free_gb": 100.0, "disk_percent_used": 40.0, "running_engines": 1,
+        "available_ram_gb": 8.0,
+        "cpu_percent": 12.0,
+        "gpu_percent": 5.0,
+        "disk_free_gb": 100.0,
+        "disk_percent_used": 40.0,
+        "running_engines": 1,
     }
     rep = recommend.recommend(_HW, _CATALOG, task="write copy", compute=_COMPUTE, load=load)
     # Live free RAM (8 GB) is tighter than the load-blind budget, so it wins.

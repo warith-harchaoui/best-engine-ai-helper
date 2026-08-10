@@ -23,8 +23,11 @@ def test_validate_llm_gate_passes_only_when_violations_removed(
     stub_chat = lambda *a, **k: ""  # noqa: E731 - the gate ignores it once prose_loop is stubbed
 
     # Both fixtures cleaned (em dash and "Par ailleurs" gone) -> gate passes.
-    monkeypatch.setattr(ralph, "prose_loop",
-                        lambda text, **kw: text.replace("—", ",").replace("Par ailleurs", "Donc"))
+    monkeypatch.setattr(
+        ralph,
+        "prose_loop",
+        lambda text, **kw: text.replace("—", ",").replace("Par ailleurs", "Donc"),
+    )
     assert validate_llm.validate(stub_chat) is True
 
     # The English em dash survives -> gate fails at the English check.
@@ -43,6 +46,7 @@ def test_validate_vlm_gate_reads_the_verdict() -> None:
             if kw.get("images"):
                 return "low-contrast bar and a clipped label" if passes else "looks fine"
             return {"pass": passes, "reason": "..."}
+
         return chat
 
     assert validate_vlm.validate(_chat(True)) is True
@@ -51,4 +55,5 @@ def test_validate_vlm_gate_reads_the_verdict() -> None:
     # A verdict that isn't valid JSON is treated as a failure, not a crash.
     def malformed(_prompt: str, **kw: Any) -> Any:
         return "reviewer says it's fine" if kw.get("images") else "not json at all"
+
     assert validate_vlm.validate(malformed) is False

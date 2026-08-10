@@ -42,9 +42,11 @@ def test_main_writes_every_icon_at_the_right_size(script: ModuleType, tmp_path: 
     script._OUT_DIR = tmp_path
     script.main()
     sized = {
-        "favicon-16x16.png": (16, 16), "favicon-32x32.png": (32, 32),
+        "favicon-16x16.png": (16, 16),
+        "favicon-32x32.png": (32, 32),
         "apple-touch-icon.png": (180, 180),
-        "android-chrome-192x192.png": (192, 192), "android-chrome-512x512.png": (512, 512),
+        "android-chrome-192x192.png": (192, 192),
+        "android-chrome-512x512.png": (512, 512),
     }
     for name, size in sized.items():
         with Image.open(tmp_path / name) as img:

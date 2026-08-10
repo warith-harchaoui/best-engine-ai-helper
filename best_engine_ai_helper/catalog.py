@@ -235,9 +235,7 @@ def normalize_apxml_spec(spec: dict[str, Any], fetched_at: str) -> dict[str, Any
     ram_gb = spec.get("ram_gb")
     # Invert estimate_ram: disk ≈ ram / overhead. Estimate only, like the seed.
     disk_gb = (
-        round(float(ram_gb) / _QUANT_OVERHEAD[_REFRESH_QUANT], 2)
-        if ram_gb is not None
-        else None
+        round(float(ram_gb) / _QUANT_OVERHEAD[_REFRESH_QUANT], 2) if ram_gb is not None else None
     )
 
     return {
@@ -280,9 +278,7 @@ def normalize_apxml_specs(
     return [e for e in entries if e is not None]
 
 
-def write_cache(
-    entries: list[dict[str, Any]], cache_path: Path | None = None
-) -> Path:
+def write_cache(entries: list[dict[str, Any]], cache_path: Path | None = None) -> Path:
     """
     Merge ``entries`` into the user catalog cache by ``id`` and write it to disk.
 

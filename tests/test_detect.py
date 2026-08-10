@@ -53,19 +53,22 @@ def test_apple_bandwidth_known_and_unknown_chips() -> None:
 
 
 def test_nvidia_and_amd_bandwidth_tables_have_entries() -> None:
-    assert detect._bandwidth_from_table(
-        "NVIDIA GeForce RTX 4090", detect._NVIDIA_BANDWIDTH_GBS
-    ) == 1008.0
-    assert detect._bandwidth_from_table(
-        "AMD Radeon RX 7900 XTX", detect._AMD_BANDWIDTH_GBS
-    ) == 960.0
+    assert (
+        detect._bandwidth_from_table("NVIDIA GeForce RTX 4090", detect._NVIDIA_BANDWIDTH_GBS)
+        == 1008.0
+    )
+    assert (
+        detect._bandwidth_from_table("AMD Radeon RX 7900 XTX", detect._AMD_BANDWIDTH_GBS) == 960.0
+    )
 
 
 def test_compute_profile_apple(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(detect, "chip_vendor", lambda: "apple")
     monkeypatch.setattr(detect, "chip_name", lambda: "Apple M2 Max")
     assert detect.compute_profile() == {
-        "accelerator": "gpu-metal", "chip": "Apple M2 Max", "bandwidth_gbs": 400.0,
+        "accelerator": "gpu-metal",
+        "chip": "Apple M2 Max",
+        "bandwidth_gbs": 400.0,
     }
 
 
@@ -78,22 +81,28 @@ def test_compute_profile_nvidia_and_amd_populate_bandwidth(monkeypatch: pytest.M
 
     monkeypatch.setattr(detect, "chip_vendor", lambda: "nvidia")
     monkeypatch.setattr(
-        osh, "gpus",
+        osh,
+        "gpus",
         lambda: [{"vendor": "nvidia", "name": "NVIDIA GeForce RTX 4090", "vram_gb": 24.0}],
     )
     prof = detect.compute_profile()
     assert prof == {
-        "accelerator": "gpu-cuda", "chip": "NVIDIA GeForce RTX 4090", "bandwidth_gbs": 1008.0,
+        "accelerator": "gpu-cuda",
+        "chip": "NVIDIA GeForce RTX 4090",
+        "bandwidth_gbs": 1008.0,
     }
 
     monkeypatch.setattr(detect, "chip_vendor", lambda: "amd")
     monkeypatch.setattr(
-        osh, "gpus",
+        osh,
+        "gpus",
         lambda: [{"vendor": "amd", "name": "Radeon RX 7900 XTX", "vram_gb": 24.0}],
     )
     prof = detect.compute_profile()
     assert prof == {
-        "accelerator": "gpu-rocm", "chip": "Radeon RX 7900 XTX", "bandwidth_gbs": 960.0,
+        "accelerator": "gpu-rocm",
+        "chip": "Radeon RX 7900 XTX",
+        "bandwidth_gbs": 960.0,
     }
 
 
@@ -106,7 +115,8 @@ def test_compute_profile_unrecognised_gpu_degrades_gracefully(
     # A brand-new SKU not yet in the table: chip is still reported, bandwidth
     # (and therefore the downstream tokens/s estimate) is honestly None.
     monkeypatch.setattr(
-        osh, "gpus",
+        osh,
+        "gpus",
         lambda: [{"vendor": "nvidia", "name": "NVIDIA RTX 9999", "vram_gb": 48.0}],
     )
     prof = detect.compute_profile()
@@ -140,7 +150,8 @@ def test_available_memory_selects_pool_by_vendor(monkeypatch: pytest.MonkeyPatch
     # Discrete GPU: VRAM populated by summing every visible card, unified None.
     monkeypatch.setattr(detect, "chip_vendor", lambda: "nvidia")
     monkeypatch.setattr(
-        osh, "gpus",
+        osh,
+        "gpus",
         lambda: [
             {"vendor": "nvidia", "name": "RTX 4090", "vram_gb": 24.0},
             {"vendor": "nvidia", "name": "RTX 4090", "vram_gb": 24.0},
@@ -167,7 +178,8 @@ def test_server_load_reshapes_hardware_info(monkeypatch: pytest.MonkeyPatch) -> 
     import os_helper as osh
 
     monkeypatch.setattr(
-        osh, "hardware_info",
+        osh,
+        "hardware_info",
         lambda: {
             "cpu": {"percent": 42.0},
             "available_ram_gb": 12.3,
@@ -205,11 +217,14 @@ def test_running_engines_counts_ollama_ps_and_vllm_processes(
     import psutil
 
     monkeypatch.setattr(
-        psutil, "process_iter",
-        lambda fields: iter([
-            _FakeProc(["python", "-m", "vllm.entrypoints.openai.api_server"]),
-            _FakeProc(["some-other-process"]),
-        ]),
+        psutil,
+        "process_iter",
+        lambda fields: iter(
+            [
+                _FakeProc(["python", "-m", "vllm.entrypoints.openai.api_server"]),
+                _FakeProc(["some-other-process"]),
+            ]
+        ),
     )
     # 2 Ollama-loaded models + 1 matching vLLM process.
     assert detect._running_engines() == 3
