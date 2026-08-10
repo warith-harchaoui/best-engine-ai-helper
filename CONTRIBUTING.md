@@ -21,9 +21,11 @@ Every Python file follows the mandate in [CODING.md](CODING.md):
 
 1. NumPy-style docstrings on every function and class (including private ones).
 2. Full type annotations; `from __future__ import annotations` in every file.
-3. Comment density approximately 25 to 30 percent, explaining the *why*.
+3. Comments explain the *why*, not the *what*.
 4. No bare `print(...)` in library code; use `click.echo` or `sys.stderr.write` in the CLI layer.
 5. `EXAMPLES.md` stays runnable: every recipe is tested in CI.
+6. One shared core behind every surface: library, CLI (`cli.py` / `cli_argparse.py`), GUI + HTTP API (`api.py`), and MCP (`mcp.py`) all delegate to the same application logic.
+7. Every GUI-visible string and human-language prompt resolves through [`locales/i18n.yaml`](locales/i18n.yaml).
 
 Run the same checks CI runs before opening a pull request:
 

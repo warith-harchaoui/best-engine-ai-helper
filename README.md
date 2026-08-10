@@ -4,18 +4,46 @@
 
 Pick and pull the best local large language model (LLM) or vision-language model (VLM) for the hardware in the current machine.
 
+![Best Engine AI Helper glove logo](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/logo.png)
+
 The tool detects available memory (Apple Silicon unified pool, NVIDIA VRAM, or system RAM), consults a bundled model catalog, and selects the highest-scoring model that fits within a configurable safety headroom. After selection, it pulls the model via Ollama, runs two quality gates (the Ralph Loop for prose and the Ralph Eyeball Loop for vision), and writes an environment file that downstream projects source to find the chosen model.
 
-A minimal browser GUI (`best-engine-ai-helper gui`) covers the read-only half of this (the hardware snapshot, and the task-to-engine recommendation) without the CLI. See [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md).
+## The Promise
+
+`best-engine-ai-helper` is designed to run entirely offline once the weights
+are downloaded. Two honest cases:
+
+1. **Guaranteed local.** Hardware detection, model selection, the quality
+   gates, and writing the environment file all run on your machine. No
+   telemetry, no account, no dependency on a cloud service.
+2. **The only caveat: the initial download.** The `pull` command downloads
+   the model weights via Ollama (a normal download from Ollama's servers).
+   After that, everything runs offline. Refreshing the catalog
+   (`catalog update`) is also online, but optional — the bundled catalog is
+   enough for everyday use.
+
+A minimal browser GUI (`best-engine-ai-helper gui`) covers the read-only half
+of this flow (the hardware snapshot and the task-to-engine recommendation)
+without touching the terminal. The page is bilingual: French by default,
+English via `/gui?lang=en`, with a header link to switch. See
+[GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md).
+
+## Documentation
+
+[💻 Documentation](https://harchaoui.org/warith/ai-helpers/docs/best-engine-ai-helper-doc/)
+
+[🗺️ Landscape](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/LANDSCAPE.md)
+
+[📋 Examples](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXAMPLES.md)
 
 ## Requirements
 
 - Python 3.10 or later
 - [Ollama](https://ollama.com) (needed for `pull`, `validate`, `env`; not for `detect`, `recommend`, or `report`)
-- os-helper (hardware detection), PyYAML, click, requests (installed automatically)
+- os-helper (hardware detection), PyYAML, click, requests, langdetect (installed automatically)
 - Optional: `fastapi` + `uvicorn` for the browser GUI (`pip install 'best-engine-ai-helper[api]'`)
 
-## Install
+## Installation
 
 The package is pure Python (Python 3.10+). The only platform-specific pieces
 are **Python itself** and the optional **Ollama** runtime (needed only for
@@ -126,10 +154,13 @@ best-engine-ai-helper hardware show
 
 # Launch the browser GUI (requires the [api] extra)
 best-engine-ai-helper gui
+
+# Who's calling what, and at what cost (local SQLite ledger)
+best-engine-ai-helper activity
 ```
 
-The same `/api/system` and `/api/recommend` endpoints are also reachable as
-MCP tools for any MCP-aware agent host:
+The same `/api/system`, `/api/recommend`, and `/api/activity` endpoints are
+also reachable as MCP tools for any MCP-aware agent host:
 
 ```sh
 pip install "best-engine-ai-helper[mcp]"
@@ -150,6 +181,28 @@ recommendation as `report`, with no terminal needed. The page is bilingual
 
 See [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) for the full write-up, the JSON API it's built on, and
 how the favicon / touch-icon set is generated from `assets/logo.png`.
+
+## Activity ledger
+
+Every `llm.chat()` call — from this tool's own `pull`/`validate` gates, or from
+any downstream project that imports `best_engine_ai_helper.llm` — can be
+recorded to a local, append-only SQLite ledger (`~/.best-engine-ai-helper/usage.db`):
+who called it (`BEST_ENGINE_USER` env var, else the OS login name), which
+model and backend, latency, success/failure, and an estimated cost for paid
+backends (always `0.0` for local Ollama/vLLM). Built for the "one company,
+several users on a shared machine" case: answer "who is calling what, how
+often, at what cost" without a separate telemetry stack. Local only — no
+network call, no third-party service.
+
+```sh
+best-engine-ai-helper activity              # table
+best-engine-ai-helper activity --format json
+```
+
+The CLI, GUI, and MCP server all enable recording by default; opt out with
+`BEST_ENGINE_NO_LEDGER=1`. The GUI's **Activity** section and `GET /api/activity`
+read the same ledger. See `best_engine_ai_helper.observe` for the library API
+(`enable()`, `as_user(name)`, `Ledger.summary()`).
 
 ## How selection works
 
@@ -201,6 +254,19 @@ alternative when one is nearly as strong. Bigger is not automatically better: a
 leaves headroom and runs several times faster.
 
 When nothing fits, the tool falls back to the smallest model and says so.
+
+### 5. Live server load (optional, `--live`)
+
+The four factors above describe the machine's *theoretical* capacity. Add
+`--live` (`recommend`/`report`; `live: true` on `POST /api/recommend`) to also
+weigh what else is happening on it *right now*: current free RAM, CPU/GPU/disk
+usage, and how many engines (Ollama models, vLLM servers) are already running.
+A busy or already-loaded machine gets a smaller, more realistic budget than an
+idle one with identical hardware. Off by default — it adds a short live probe
+(~0.1-0.5s: `nvidia-smi`/`ioreg`, a local Ollama ping, a `psutil` sample) and
+makes the recommendation depend on this exact moment rather than being a
+deterministic function of the hardware alone, which matters for reproducible
+reports and CI.
 
 **Sources.** Apple Metal working-set cap (Apple developer docs / apple-specs);
 inference-memory breakdown weights + KV (15-20%) + overhead (5-10%) (local-LLM
@@ -321,6 +387,14 @@ family = resolve_family("F1")        # one model for the whole constrained-gener
 ```
 
 best-engine writes the retained models into the gitignored `llm.engine*.yaml` for this machine (the extension of the `env.sh` it already emits); the app reads that file and re-resolution re-decides if the hardware changes. Adding a profile is a few lines in `usages.yaml`; a user overlay at `~/.best-engine-ai-helper/usages_cache.yaml` overrides by name.
+
+## Author
+
+[Warith HARCHAOUI](https://linkedin.com/in/warith-harchaoui)
+
+## Acknowledgements
+
+Special thanks to [Victor Favreau](https://www.linkedin.com/in/victor-favreau-41b823117/) for fruitful discussions.
 
 ## License
 

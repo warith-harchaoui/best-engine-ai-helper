@@ -15,13 +15,21 @@ from best_engine_ai_helper import score
 
 
 def _vlm(id_: str, ram_gb: float, vision: float, general: float) -> dict:
-    return {"id": id_, "kind": "vlm", "ram_gb": ram_gb,
-            "benchmarks": {"general": general, "vision": vision}}
+    return {
+        "id": id_,
+        "kind": "vlm",
+        "ram_gb": ram_gb,
+        "benchmarks": {"general": general, "vision": vision},
+    }
 
 
 def _llm(id_: str, ram_gb: float, general: float) -> dict:
-    return {"id": id_, "kind": "llm", "ram_gb": ram_gb,
-            "benchmarks": {"general": general, "vision": None}}
+    return {
+        "id": id_,
+        "kind": "llm",
+        "ram_gb": ram_gb,
+        "benchmarks": {"general": general, "vision": None},
+    }
 
 
 SMALL_VLM = _vlm("small-vlm", 3.5, vision=70.0, general=65.0)
@@ -37,13 +45,16 @@ def test_effective_budget_priority_and_headroom() -> None:
     # Unified pool wins over VRAM; >36 GB triggers the 0.75 Metal cap, then the
     # default 0.5 headroom: 96 * 0.75 * 0.5.
     assert score.effective_budget(
-        {"unified_gb": 96.0, "vram_gb": 24.0, "ram_gb": 96.0}) == pytest.approx(36.0)
+        {"unified_gb": 96.0, "vram_gb": 24.0, "ram_gb": 96.0}
+    ) == pytest.approx(36.0)
     # No unified -> VRAM budget (0.92 usable * 0.5).
     assert score.effective_budget(
-        {"unified_gb": None, "vram_gb": 24.0, "ram_gb": 64.0}) == pytest.approx(11.04)
+        {"unified_gb": None, "vram_gb": 24.0, "ram_gb": 64.0}
+    ) == pytest.approx(11.04)
     # No accelerator -> half of system RAM * 0.5 headroom.
     assert score.effective_budget(
-        {"unified_gb": None, "vram_gb": None, "ram_gb": 32.0}) == pytest.approx(8.0)
+        {"unified_gb": None, "vram_gb": None, "ram_gb": 32.0}
+    ) == pytest.approx(8.0)
     # Headroom is CLAMPED to MAX_HEADROOM (0.5): a caller asking for 0.90 still
     # gets 64 * 0.75 * 0.5, never * 0.90 — the anti-greed ceiling.
     assert score.MAX_HEADROOM == 0.5
@@ -52,10 +63,51 @@ def test_effective_budget_priority_and_headroom() -> None:
     ) == pytest.approx(24.0)
 
 
+def test_effective_budget_is_load_aware() -> None:
+    hw = {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}  # load-blind budget: 36.0 GB
+
+    # `load=None` (the default) reproduces the load-blind figure exactly.
+    assert score.effective_budget(hw) == pytest.approx(36.0)
+
+    # Live free RAM below the theoretical budget caps it.
+    assert score.effective_budget(hw, load={"available_ram_gb": 10.0}) == pytest.approx(10.0)
+    # Live free RAM above the theoretical budget changes nothing.
+    assert score.effective_budget(hw, load={"available_ram_gb": 80.0}) == pytest.approx(36.0)
+
+    # A saturated CPU derates further, on top of (not instead of) the memory cap.
+    busy = score.effective_budget(hw, load={"cpu_percent": 90.0})
+    assert busy == pytest.approx(36.0 * score._CPU_BUSY_DERATE)
+
+    # A nearly-full disk derates further too; both penalties compound.
+    busy_and_low_disk = score.effective_budget(hw, load={"cpu_percent": 90.0, "disk_free_gb": 2.0})
+    assert busy_and_low_disk == pytest.approx(
+        36.0 * score._CPU_BUSY_DERATE * score._DISK_LOW_DERATE
+    )
+
+    # Below the busy/low-disk thresholds, no extra derating applies.
+    idle = score.effective_budget(hw, load={"cpu_percent": 10.0, "disk_free_gb": 500.0})
+    assert idle == pytest.approx(36.0)
+
+
+def test_rank_and_select_forward_load_to_effective_budget() -> None:
+    hw = {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}
+    catalog = [SMALL_LLM, MID_LLM, LARGE_LLM]
+
+    # A tight live-RAM cap should disqualify the otherwise-comfortable mid model.
+    tight = {"available_ram_gb": 3.0}
+    ranked = score.rank(hw, catalog, kind="llm", load=tight)
+    assert {r["id"]: r["_fits"] for r in ranked} == {
+        "small-llm": True,
+        "mid-llm": False,
+        "large-llm": False,
+    }
+    assert score.select(hw, catalog, kind="llm", load=tight)["id"] == "small-llm"
+
+
 def test_select_picks_best_that_fits_and_falls_back() -> None:
     small = {"unified_gb": 24.0, "vram_gb": None, "ram_gb": 24.0}  # budget 7.92 GB
     large = {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}  # budget 36.0 GB
-    tiny = {"unified_gb": None, "vram_gb": 2.0, "ram_gb": 8.0}     # budget 0.92 GB
+    tiny = {"unified_gb": None, "vram_gb": 2.0, "ram_gb": 8.0}  # budget 0.92 GB
 
     # VLM: under the 0.5-clamped budget only small-vlm fits the 7.92 GB machine
     # (mid-vlm is 9 GB); mid-vlm fits the 36 GB machine and beats small-vlm on
@@ -103,8 +155,10 @@ def test_select_agrees_with_rank_on_structured_output() -> None:
     hw = {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}
     chosen = score.select(hw, [incapable, capable], kind="vlm", application="vision")
     assert chosen["id"] == "capable-vlm"
-    assert chosen["id"] == score.rank(hw, [incapable, capable], kind="vlm",
-                                      application="vision")[0]["id"]
+    assert (
+        chosen["id"]
+        == score.rank(hw, [incapable, capable], kind="vlm", application="vision")[0]["id"]
+    )
 
 
 def test_rank_prefers_structured_capable_over_higher_score() -> None:

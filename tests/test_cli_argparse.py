@@ -22,8 +22,18 @@ import yaml
 from best_engine_ai_helper.cli_argparse import build_parser, main
 
 EXPECTED_COMMANDS = {
-    "detect", "recommend", "resolve", "report", "usages", "catalog",
-    "hardware", "pull", "validate", "gui", "env",
+    "detect",
+    "recommend",
+    "resolve",
+    "report",
+    "usages",
+    "catalog",
+    "hardware",
+    "pull",
+    "validate",
+    "gui",
+    "env",
+    "activity",
 }
 
 
@@ -64,6 +74,40 @@ def test_recommend_kinds(capsys: pytest.CaptureFixture[str]) -> None:
     assert "LLM" in capsys.readouterr().out
     assert main(["recommend", "--kind", "vlm", "--headroom", "0.5"]) == 0
     assert "VLM" in capsys.readouterr().out
+    assert main(["recommend", "--kind", "llm", "--live"]) == 0
+    assert "LLM" in capsys.readouterr().out
+
+
+def test_report_live_includes_server_load_section(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["report", "--task", "write copy", "--live"]) == 0
+    assert "Server load (live, at recommendation time)" in capsys.readouterr().out
+
+
+def test_activity_empty_and_populated(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    from unittest.mock import patch
+
+    from best_engine_ai_helper import llm, observe
+
+    # Test-owned ledger enabled up front; see test_cli.py's equivalent test
+    # for why (avoids the "no active ledger" fallback touching the real path).
+    ledger = observe.enable(str(tmp_path / "usage.db"))
+
+    assert main(["activity"]) == 0
+    assert "No calls recorded yet." in capsys.readouterr().out
+
+    with patch("requests.post") as p:
+        p.return_value.json.return_value = {"response": "hi"}
+        p.return_value.raise_for_status.return_value = None
+        llm.chat("hello", model="qwen3:8b")
+
+    assert main(["activity"]) == 0
+    out = capsys.readouterr().out
+    assert "Total calls: 1" in out and "qwen3:8b" in out
+
+    assert main(["activity", "--format", "json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["total_calls"] == 1 and data["total_cost_usd"] == 0.0
+    ledger.close()
 
 
 def test_report_markdown_json_and_write_files(
@@ -83,8 +127,10 @@ def test_report_markdown_json_and_write_files(
 
 def test_resolve_writes_engine_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     brief = tmp_path / "llm.brief.yaml"
-    brief.write_text("mode: local\nkind: llm\nheadroom: 0.5\nmin_tps: 15\n"
-                      "structured_output: false\ntask: generalist chat\n")
+    brief.write_text(
+        "mode: local\nkind: llm\nheadroom: 0.5\nmin_tps: 15\n"
+        "structured_output: false\ntask: generalist chat\n"
+    )
     out = tmp_path / "llm.engine.yaml"
     assert main(["resolve", "--brief", str(brief), "--out", str(out)]) == 0
     assert out.is_file()
@@ -129,10 +175,20 @@ def test_catalog_update_writes_cache(
 
     cache = tmp_path / "catalog_cache.yaml"
     monkeypatch.setattr(catalog, "_CACHE_PATH", cache)
-    monkeypatch.setattr(apxml, "fetch_open_weight_models", lambda **kw: [{
-        "slug": "qwen3-8b", "kind": "llm", "size_b": 8.0, "ram_gb": 6.0,
-        "vllm_id": "Qwen/Qwen3-8B", "url": "https://apxml.com/models/qwen3-8b",
-    }])
+    monkeypatch.setattr(
+        apxml,
+        "fetch_open_weight_models",
+        lambda **kw: [
+            {
+                "slug": "qwen3-8b",
+                "kind": "llm",
+                "size_b": 8.0,
+                "ram_gb": 6.0,
+                "vllm_id": "Qwen/Qwen3-8B",
+                "url": "https://apxml.com/models/qwen3-8b",
+            }
+        ],
+    )
     assert main(["catalog", "update"]) == 0
     assert yaml.safe_load(cache.read_text())[0]["id"] == "qwen3-8b"
 
@@ -144,10 +200,18 @@ def test_hardware_update_records_this_machine(
 
     cache = tmp_path / "hardware_cache.yaml"
     monkeypatch.setattr(hardware, "_HW_CACHE_PATH", cache)
-    monkeypatch.setattr(hardware, "detect_local_entry", lambda *a, **k: {
-        "chip": "Apple M2 Max", "vendor": "apple", "memory_gb": 32.0,
-        "ollama_usable_gb": 28.0, "source": "detected", "fetched_at": "2026-08-01",
-    })
+    monkeypatch.setattr(
+        hardware,
+        "detect_local_entry",
+        lambda *a, **k: {
+            "chip": "Apple M2 Max",
+            "vendor": "apple",
+            "memory_gb": 32.0,
+            "ollama_usable_gb": 28.0,
+            "source": "detected",
+            "fetched_at": "2026-08-01",
+        },
+    )
     assert main(["hardware", "update"]) == 0
     assert yaml.safe_load(cache.read_text())[0]["chip"] == "Apple M2 Max"
 
@@ -171,8 +235,7 @@ def test_pull_vllm_prints_serve_command_without_downloading(
 ) -> None:
     from best_engine_ai_helper import pull
 
-    monkeypatch.setattr(pull, "ollama_pull",
-                        lambda *a, **k: pytest.fail("--vllm must not pull"))
+    monkeypatch.setattr(pull, "ollama_pull", lambda *a, **k: pytest.fail("--vllm must not pull"))
     assert main(["pull", "--vllm"]) == 0
     assert "vllm serve" in capsys.readouterr().out
 

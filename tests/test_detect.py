@@ -53,19 +53,22 @@ def test_apple_bandwidth_known_and_unknown_chips() -> None:
 
 
 def test_nvidia_and_amd_bandwidth_tables_have_entries() -> None:
-    assert detect._bandwidth_from_table(
-        "NVIDIA GeForce RTX 4090", detect._NVIDIA_BANDWIDTH_GBS
-    ) == 1008.0
-    assert detect._bandwidth_from_table(
-        "AMD Radeon RX 7900 XTX", detect._AMD_BANDWIDTH_GBS
-    ) == 960.0
+    assert (
+        detect._bandwidth_from_table("NVIDIA GeForce RTX 4090", detect._NVIDIA_BANDWIDTH_GBS)
+        == 1008.0
+    )
+    assert (
+        detect._bandwidth_from_table("AMD Radeon RX 7900 XTX", detect._AMD_BANDWIDTH_GBS) == 960.0
+    )
 
 
 def test_compute_profile_apple(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(detect, "chip_vendor", lambda: "apple")
     monkeypatch.setattr(detect, "chip_name", lambda: "Apple M2 Max")
     assert detect.compute_profile() == {
-        "accelerator": "gpu-metal", "chip": "Apple M2 Max", "bandwidth_gbs": 400.0,
+        "accelerator": "gpu-metal",
+        "chip": "Apple M2 Max",
+        "bandwidth_gbs": 400.0,
     }
 
 
@@ -78,22 +81,28 @@ def test_compute_profile_nvidia_and_amd_populate_bandwidth(monkeypatch: pytest.M
 
     monkeypatch.setattr(detect, "chip_vendor", lambda: "nvidia")
     monkeypatch.setattr(
-        osh, "gpus",
+        osh,
+        "gpus",
         lambda: [{"vendor": "nvidia", "name": "NVIDIA GeForce RTX 4090", "vram_gb": 24.0}],
     )
     prof = detect.compute_profile()
     assert prof == {
-        "accelerator": "gpu-cuda", "chip": "NVIDIA GeForce RTX 4090", "bandwidth_gbs": 1008.0,
+        "accelerator": "gpu-cuda",
+        "chip": "NVIDIA GeForce RTX 4090",
+        "bandwidth_gbs": 1008.0,
     }
 
     monkeypatch.setattr(detect, "chip_vendor", lambda: "amd")
     monkeypatch.setattr(
-        osh, "gpus",
+        osh,
+        "gpus",
         lambda: [{"vendor": "amd", "name": "Radeon RX 7900 XTX", "vram_gb": 24.0}],
     )
     prof = detect.compute_profile()
     assert prof == {
-        "accelerator": "gpu-rocm", "chip": "Radeon RX 7900 XTX", "bandwidth_gbs": 960.0,
+        "accelerator": "gpu-rocm",
+        "chip": "Radeon RX 7900 XTX",
+        "bandwidth_gbs": 960.0,
     }
 
 
@@ -106,7 +115,8 @@ def test_compute_profile_unrecognised_gpu_degrades_gracefully(
     # A brand-new SKU not yet in the table: chip is still reported, bandwidth
     # (and therefore the downstream tokens/s estimate) is honestly None.
     monkeypatch.setattr(
-        osh, "gpus",
+        osh,
+        "gpus",
         lambda: [{"vendor": "nvidia", "name": "NVIDIA RTX 9999", "vram_gb": 48.0}],
     )
     prof = detect.compute_profile()
@@ -140,7 +150,8 @@ def test_available_memory_selects_pool_by_vendor(monkeypatch: pytest.MonkeyPatch
     # Discrete GPU: VRAM populated by summing every visible card, unified None.
     monkeypatch.setattr(detect, "chip_vendor", lambda: "nvidia")
     monkeypatch.setattr(
-        osh, "gpus",
+        osh,
+        "gpus",
         lambda: [
             {"vendor": "nvidia", "name": "RTX 4090", "vram_gb": 24.0},
             {"vendor": "nvidia", "name": "RTX 4090", "vram_gb": 24.0},
@@ -161,3 +172,73 @@ def test_available_memory_public_contract_on_this_machine() -> None:
     assert isinstance(mem["ram_gb"], float) and mem["ram_gb"] > 0
     for key in ("unified_gb", "vram_gb"):
         assert mem[key] is None or (isinstance(mem[key], float) and mem[key] > 0)
+
+
+def test_server_load_reshapes_hardware_info(monkeypatch: pytest.MonkeyPatch) -> None:
+    import os_helper as osh
+
+    monkeypatch.setattr(
+        osh,
+        "hardware_info",
+        lambda: {
+            "cpu": {"percent": 42.0},
+            "available_ram_gb": 12.3,
+            "disk": {"free_gb": 55.0, "percent_used": 80.0},
+            "gpu_utilization_percent": 7.0,
+        },
+    )
+    monkeypatch.setattr(detect, "_running_engines", lambda: 2)
+    load = detect.server_load()
+    assert load == {
+        "available_ram_gb": 12.3,
+        "cpu_percent": 42.0,
+        "gpu_percent": 7.0,
+        "disk_free_gb": 55.0,
+        "disk_percent_used": 80.0,
+        "running_engines": 2,
+    }
+
+
+def test_running_engines_counts_ollama_ps_and_vllm_processes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FakeResponse:
+        ok = True
+
+        def json(self) -> dict:
+            return {"models": [{"name": "qwen3:8b"}, {"name": "gemma3:12b"}]}
+
+    monkeypatch.setattr("requests.get", lambda url, timeout: _FakeResponse())
+
+    class _FakeProc:
+        def __init__(self, cmdline: list[str]) -> None:
+            self.info = {"cmdline": cmdline}
+
+    import psutil
+
+    monkeypatch.setattr(
+        psutil,
+        "process_iter",
+        lambda fields: iter(
+            [
+                _FakeProc(["python", "-m", "vllm.entrypoints.openai.api_server"]),
+                _FakeProc(["some-other-process"]),
+            ]
+        ),
+    )
+    # 2 Ollama-loaded models + 1 matching vLLM process.
+    assert detect._running_engines() == 3
+
+
+def test_running_engines_fails_soft_when_nothing_is_running(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _raise(*args: object, **kwargs: object) -> None:
+        raise ConnectionError("no daemon")
+
+    monkeypatch.setattr("requests.get", _raise)
+
+    import psutil
+
+    monkeypatch.setattr(psutil, "process_iter", lambda fields: iter([]))
+    assert detect._running_engines() == 0

@@ -19,21 +19,37 @@ def test_ralph_loop_converges_caps_and_stops_on_noop() -> None:
         calls["n"] += 1
         return {"ship": calls["n"] >= 2, "blocking": [], "score": 0.9}
 
-    src, hist = ralph.ralph_loop("s", render=lambda s: s, inspect=lambda a: "issue",
-                                 apply_fix=lambda s, c: s + "+", verdict=verdict)
+    src, hist = ralph.ralph_loop(
+        "s",
+        render=lambda s: s,
+        inspect=lambda a: "issue",
+        apply_fix=lambda s, c: s + "+",
+        verdict=verdict,
+    )
     assert len(hist) == 2 and hist[-1][2]["ship"] is True and src == "s+"
 
     # Never exceeds max_iters when the verdict never ships.
-    _, capped = ralph.ralph_loop("x", render=lambda s: s, inspect=lambda a: "bad",
-                                 apply_fix=lambda s, c: s + "+",
-                                 verdict=lambda c: {"ship": False}, max_iters=3)
+    _, capped = ralph.ralph_loop(
+        "x",
+        render=lambda s: s,
+        inspect=lambda a: "bad",
+        apply_fix=lambda s, c: s + "+",
+        verdict=lambda c: {"ship": False},
+        max_iters=3,
+    )
     assert len(capped) == 3
 
     # A no-op fix exits after one iteration; on_iteration fires once.
     seen: list[int] = []
-    _, once = ralph.ralph_loop("same", render=lambda s: s, inspect=lambda a: "x",
-                               apply_fix=lambda s, c: s, verdict=lambda c: {"ship": False},
-                               max_iters=6, on_iteration=lambda i, *a: seen.append(i))
+    _, once = ralph.ralph_loop(
+        "same",
+        render=lambda s: s,
+        inspect=lambda a: "x",
+        apply_fix=lambda s, c: s,
+        verdict=lambda c: {"ship": False},
+        max_iters=6,
+        on_iteration=lambda i, *a: seen.append(i),
+    )
     assert len(once) == 1 and seen == [0]
 
 
@@ -72,7 +88,9 @@ def test_eyeball_loop_ships_on_clean_verdict() -> None:
         return prompt  # fix path, not reached once the verdict ships
 
     src, hist = ralph.eyeball_loop(
-        '{"mark": "bar"}', kind="vega", llm_chat=fake_chat,
+        '{"mark": "bar"}',
+        kind="vega",
+        llm_chat=fake_chat,
         renderers={"vega": lambda s: b"\x89PNG-fake"},
     )
     assert len(hist) == 1 and hist[0][2]["ship"] is True
@@ -92,7 +110,11 @@ def test_eyeball_loop_iterates_and_parses_string_verdict() -> None:
         return f"{prompt}_fix{fixes['n']}"  # a fresh source each pass
 
     _src, hist = ralph.eyeball_loop(
-        '{"mark": "bar"}', kind="vega", llm_chat=chat,
-        renderers={"vega": lambda s: b"PNG"}, max_iters=2)
+        '{"mark": "bar"}',
+        kind="vega",
+        llm_chat=chat,
+        renderers={"vega": lambda s: b"PNG"},
+        max_iters=2,
+    )
     assert len(hist) == 2 and all(h[2]["ship"] is False for h in hist)
     assert fixes["n"] >= 1  # the fix path ran

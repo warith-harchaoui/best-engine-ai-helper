@@ -27,9 +27,12 @@ from typing import Any
 
 import os_helper as osh
 
+from . import i18n
+
 # ---------------------------------------------------------------------------
 # Reference fixture
 # ---------------------------------------------------------------------------
+
 
 def _make_fixture_png() -> bytes:
     """
@@ -53,9 +56,7 @@ def _make_fixture_png() -> bytes:
     try:
         from PIL import Image, ImageDraw
     except ImportError as exc:
-        raise ImportError(
-            "Pillow is required for validate_vlm. Run: pip install Pillow"
-        ) from exc
+        raise ImportError("Pillow is required for validate_vlm. Run: pip install Pillow") from exc
 
     width, height = 200, 150
     img = Image.new("RGB", (width, height), color=(255, 255, 255))
@@ -63,7 +64,7 @@ def _make_fixture_png() -> bytes:
 
     # Draw axes
     draw.line([(20, 120), (180, 120)], fill=(0, 0, 0), width=2)  # x-axis
-    draw.line([(20, 20), (20, 120)], fill=(0, 0, 0), width=2)    # y-axis
+    draw.line([(20, 20), (20, 120)], fill=(0, 0, 0), width=2)  # y-axis
 
     # Defect 1: near-white bar — very low contrast, accessibility fail
     draw.rectangle([(30, 80), (60, 120)], fill=(240, 240, 240))
@@ -82,46 +83,11 @@ def _make_fixture_png() -> bytes:
 
 
 # ---------------------------------------------------------------------------
-# Critique and verdict prompts
-# ---------------------------------------------------------------------------
-
-_CRITIQUE_SYSTEM = """\
-You are a visual-quality reviewer for data visualizations. Examine the chart
-image carefully. Identify any of these concrete defects:
-1. Low contrast between a bar and its background (accessibility fail).
-2. Truncated or clipped axis labels that are cut off at the canvas edge.
-3. Missing or illegible text.
-4. Overlapping elements.
-
-List the defects you find. Be specific: name the element and the problem.
-If you find no defects, say so explicitly.\
-"""
-
-_CRITIQUE_PROMPT = (
-    "Describe any visual defects in this chart."
-    " Focus on contrast, clipping, and legibility."
-)
-
-_VERDICT_SYSTEM = """\
-You are a pass/fail gate for a chart quality test. The chart has two known
-seeded defects. Your task is to decide whether the reviewer's critique
-identifies at least one defect.
-
-Respond ONLY with a JSON object: {"pass": <true|false>, "reason": "<one sentence>"}
-
-"pass" is true if the critique mentions contrast, clipping, labels, or any
-accessibility problem. "pass" is false if the critique says the chart is fine.\
-"""
-
-_VERDICT_PROMPT = """\
-REVIEWER CRITIQUE:
-{critique}
-"""
-
-
-# ---------------------------------------------------------------------------
 # Validation entry point
 # ---------------------------------------------------------------------------
+# Critique and verdict prompts live in locales/i18n.yaml under
+# prompts.vlm_gate_critique / prompts.vlm_gate_verdict (see i18n.py).
+
 
 def validate(llm_chat: Callable[..., Any]) -> bool:
     """
@@ -156,18 +122,18 @@ def validate(llm_chat: Callable[..., Any]) -> bool:
 
     # Step 1: ask the VLM to critique the fixture
     critique = llm_chat(
-        _CRITIQUE_PROMPT,
-        system=_CRITIQUE_SYSTEM,
+        i18n.prompt("vlm_gate_critique", "user"),
+        system=i18n.prompt("vlm_gate_critique", "system"),
         images=[png],
     )
     if not isinstance(critique, str):
         critique = str(critique)
 
     # Step 2: ask a text call to produce a structured pass/fail verdict
-    verdict_prompt = _VERDICT_PROMPT.format(critique=critique)
+    verdict_prompt = i18n.prompt("vlm_gate_verdict", "user").format(critique=critique)
     raw = llm_chat(
         verdict_prompt,
-        system=_VERDICT_SYSTEM,
+        system=i18n.prompt("vlm_gate_verdict", "system"),
         json_schema={"type": "object"},
     )
 
@@ -176,6 +142,7 @@ def validate(llm_chat: Callable[..., Any]) -> bool:
         verdict = raw
     else:
         import json
+
         try:
             verdict = json.loads(str(raw))
         except Exception:

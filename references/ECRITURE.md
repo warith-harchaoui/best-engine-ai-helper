@@ -130,8 +130,8 @@ logiciel de secours reste souvent dégradé.
 - **Aucun tiret de ponctuation.** Ni cadratin, ni demi-cadratin en incise. On réécrit
   en virgules, deux-points, points-virgules, parenthèses, phrases courtes. Les traits
   d'union des mots composés (socio-technique, c'est-à-dire) restent.
-- **Aucun tic de machine :** pas de « , et » ni de « , ou » soudant deux propositions
-  (on coupe la phrase, ou l'on met un point-virgule ou un deux-points), pas de
+- **Aucun tic de machine :** pas de «  et » ni de «  ou » soudant deux propositions
+  (on coupe la phrase ou l'on met un point-virgule ou un deux-points), pas de
   « Autrement dit », pas de « en une formule », pas de règle de trois systématique,
   pas d'emphase par italiques à répétition, pas de tournure ampoulée.
 - **Pas de réflexe d'antithèse.** La tournure « ce n'est pas X, c'est Y », « non pas X
@@ -175,7 +175,7 @@ accents complets, espace insécable devant `; : ? !`.
 ## 9. Les sources
 
 Aucune référence gratuite. Une citation dit ce que la source établit, par quelle
-méthode, avec quelle limite, et pourquoi elle est déterminante à cet endroit. On lit
+méthode, avec quelle limite et pourquoi elle est déterminante à cet endroit. On lit
 réellement la source avant de s'en servir. On bannit le « comme le dit très bien X »
 et le name-dropping décoratif. Une seule citation forte par affirmation.
 

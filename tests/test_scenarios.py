@@ -26,7 +26,8 @@ def test_recommendation_report_pipeline_on_real_catalog(tmp_path: Path) -> None:
     known_ids = {e["id"] for e in entries}
 
     rep = recommend.recommend(
-        hw, entries, task="check photo quality and write product copy", compute=compute)
+        hw, entries, task="check photo quality and write product copy", compute=compute
+    )
     assert {"llm", "vlm"} <= rep["recommendations"].keys()
     for kind in ("llm", "vlm"):
         chosen = rep["recommendations"][kind]["chosen"]
@@ -37,17 +38,21 @@ def test_recommendation_report_pipeline_on_real_catalog(tmp_path: Path) -> None:
     assert json.loads(json_path.read_text())["memory_budget_gb"] > 0
 
 
-def test_catalog_refresh_then_appears_in_recommendation(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_catalog_refresh_then_appears_in_recommendation(tmp_path: Path, monkeypatch) -> None:
     # A `catalog update` refresh writes the cache; the merged catalog then
     # carries the new model, and the recommender can rank it.
     cache = tmp_path / "catalog_cache.yaml"
     monkeypatch.setattr(catalog, "_CACHE_PATH", cache)
-    spec = {"slug": "scenario-vlm", "kind": "vlm", "size_b": 7.0, "ram_gb": 5.0,
-            "url": "https://apxml.com/models/scenario-vlm"}
-    catalog.write_cache(catalog.normalize_apxml_specs([spec], fetched_at="2026-08-01"),
-                        cache_path=cache)
+    spec = {
+        "slug": "scenario-vlm",
+        "kind": "vlm",
+        "size_b": 7.0,
+        "ram_gb": 5.0,
+        "url": "https://apxml.com/models/scenario-vlm",
+    }
+    catalog.write_cache(
+        catalog.normalize_apxml_specs([spec], fetched_at="2026-08-01"), cache_path=cache
+    )
 
     merged = catalog.load_catalog()
     assert any(e["id"] == "scenario-vlm" for e in merged)
@@ -58,10 +63,13 @@ def test_catalog_refresh_then_appears_in_recommendation(
 def test_pull_writes_env_then_config_resolves_it(tmp_path: Path, monkeypatch) -> None:
     # The tail of the pull workflow: write_env persists the chosen tags, and the
     # config resolver reads them back with no env vars set.
-    pull.write_env("qwen3:8b", "gemma3:12b", "ollama", "http://localhost:11434",
-                   user_dir=tmp_path)
+    pull.write_env("qwen3:8b", "gemma3:12b", "ollama", "http://localhost:11434", user_dir=tmp_path)
     monkeypatch.setattr(config, "_USER_DIR", tmp_path)
-    for var in ("BEST_LLM_TEXT", "BEST_LLM_VISION",
-                "SPREZZATURE_LLM_TEXT", "SPREZZATURE_LLM_VISION"):
+    for var in (
+        "BEST_LLM_TEXT",
+        "BEST_LLM_VISION",
+        "SPREZZATURE_LLM_TEXT",
+        "SPREZZATURE_LLM_VISION",
+    ):
         monkeypatch.delenv(var, raising=False)
     assert config.resolved_models() == {"text": "qwen3:8b", "vision": "gemma3:12b"}

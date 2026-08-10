@@ -91,8 +91,9 @@ def _load_doc(path: Path) -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
-def _merge_by_key(seed: list[dict[str, Any]], overlay: list[dict[str, Any]],
-                  key: str) -> list[dict[str, Any]]:
+def _merge_by_key(
+    seed: list[dict[str, Any]], overlay: list[dict[str, Any]], key: str
+) -> list[dict[str, Any]]:
     """
     Overlay entries onto seed entries by ``key``; seed order first, new appended.
 
@@ -257,8 +258,7 @@ def get_usage(name: str) -> dict[str, Any]:
         return by_name[name]
     close = difflib.get_close_matches(name, list(by_name), n=3)
     hint = f" Did you mean: {', '.join(close)}?" if close else ""
-    raise KeyError(f"Unknown usage profile {name!r}.{hint} "
-                   f"Known profiles: {', '.join(by_name)}.")
+    raise KeyError(f"Unknown usage profile {name!r}.{hint} Known profiles: {', '.join(by_name)}.")
 
 
 def get_family(family_id: str) -> dict[str, Any]:
@@ -437,6 +437,7 @@ def _resolve_embedding(
         chosen: dict[str, Any] | None = None
         fits = False
     else:
+
         def _score(e: dict[str, Any]) -> float:
             return float((e.get("benchmarks") or {}).get(_EMBED_SCORE_KEY) or 0.0)
 
@@ -483,8 +484,9 @@ def _resolve_embedding(
     return descriptor
 
 
-def _annotate(descriptor: dict[str, Any], spec: dict[str, Any], *,
-              label_key: str) -> dict[str, Any]:
+def _annotate(
+    descriptor: dict[str, Any], spec: dict[str, Any], *, label_key: str
+) -> dict[str, Any]:
     """
     Attach usage metadata to an engine descriptor and flag sub-quality picks.
 
@@ -511,8 +513,10 @@ def _annotate(descriptor: dict[str, Any], spec: dict[str, Any], *,
     """
     # A profile is stamped by its name; a family by its id (F1/F2/F3).
     descriptor[label_key] = (
-        spec.get("id") if label_key == "family" else spec.get("name")
-    ) or spec.get("name") or spec.get("id")
+        (spec.get("id") if label_key == "family" else spec.get("name"))
+        or spec.get("name")
+        or spec.get("id")
+    )
     descriptor["status"] = spec.get("status", "stable")
     descriptor["local_strict"] = spec.get("local_strict", True)
     min_quality = spec.get("min_quality")
@@ -589,8 +593,12 @@ def resolve_usage(
         )
     else:
         descriptor = _engine.resolve(
-            _brief_of(profile), backend=backend, endpoint=endpoint,
-            catalog=catalog, hw=hw, compute=compute,
+            _brief_of(profile),
+            backend=backend,
+            endpoint=endpoint,
+            catalog=catalog,
+            hw=hw,
+            compute=compute,
         )
     return _annotate(descriptor, profile, label_key="usage")
 
@@ -640,7 +648,11 @@ def resolve_family(
         )
     else:
         descriptor = _engine.resolve(
-            _brief_of(family), backend=backend, endpoint=endpoint,
-            catalog=catalog, hw=hw, compute=compute,
+            _brief_of(family),
+            backend=backend,
+            endpoint=endpoint,
+            catalog=catalog,
+            hw=hw,
+            compute=compute,
         )
     return _annotate(descriptor, family, label_key="family")

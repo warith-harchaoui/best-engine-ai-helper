@@ -94,10 +94,21 @@ def chip_name() -> str | None:
 # are the per-chip figures Apple lists; higher-binned variants of the same
 # name share the ceiling closely enough for planning. Source: apple-specs.
 _APPLE_BANDWIDTH_GBS: dict[str, float] = {
-    "M1 Ultra": 800.0, "M1 Max": 400.0, "M1 Pro": 200.0, "M1": 68.0,
-    "M2 Ultra": 800.0, "M2 Max": 400.0, "M2 Pro": 200.0, "M2": 100.0,
-    "M3 Ultra": 800.0, "M3 Max": 300.0, "M3 Pro": 150.0, "M3": 100.0,
-    "M4 Max": 546.0, "M4 Pro": 273.0, "M4": 120.0,
+    "M1 Ultra": 800.0,
+    "M1 Max": 400.0,
+    "M1 Pro": 200.0,
+    "M1": 68.0,
+    "M2 Ultra": 800.0,
+    "M2 Max": 400.0,
+    "M2 Pro": 200.0,
+    "M2": 100.0,
+    "M3 Ultra": 800.0,
+    "M3 Max": 300.0,
+    "M3 Pro": 150.0,
+    "M3": 100.0,
+    "M4 Max": 546.0,
+    "M4 Pro": 273.0,
+    "M4": 120.0,
 }
 
 # NVIDIA discrete-GPU memory bandwidth in GB/s, by board name, from NVIDIA's
@@ -109,21 +120,41 @@ _APPLE_BANDWIDTH_GBS: dict[str, float] = {
 # server. Source: NVIDIA spec sheets / TechPowerUp GPU database.
 _NVIDIA_BANDWIDTH_GBS: dict[str, float] = {
     # Datacenter / workstation.
-    "H100 SXM": 3350.0, "H100 NVL": 3938.0, "H100 PCIe": 2000.0,
+    "H100 SXM": 3350.0,
+    "H100 NVL": 3938.0,
+    "H100 PCIe": 2000.0,
     "H200": 4800.0,
-    "A100 80GB": 2039.0, "A100 40GB": 1555.0,
-    "L40S": 864.0, "L40": 864.0, "L4": 300.0,
-    "A40": 696.0, "A30": 933.0, "A10": 600.0,
+    "A100 80GB": 2039.0,
+    "A100 40GB": 1555.0,
+    "L40S": 864.0,
+    "L40": 864.0,
+    "L4": 300.0,
+    "A40": 696.0,
+    "A30": 933.0,
+    "A10": 600.0,
     "T4": 320.0,
-    "RTX 6000 Ada": 960.0, "RTX 5000 Ada": 576.0, "RTX 4000 Ada": 360.0,
+    "RTX 6000 Ada": 960.0,
+    "RTX 5000 Ada": 576.0,
+    "RTX 4000 Ada": 360.0,
     # Consumer RTX 40 series.
-    "RTX 4090": 1008.0, "RTX 4080 SUPER": 736.0, "RTX 4080": 716.8,
-    "RTX 4070 Ti SUPER": 672.0, "RTX 4070 Ti": 504.2, "RTX 4070 SUPER": 504.2,
-    "RTX 4070": 504.2, "RTX 4060 Ti": 288.0, "RTX 4060": 272.0,
+    "RTX 4090": 1008.0,
+    "RTX 4080 SUPER": 736.0,
+    "RTX 4080": 716.8,
+    "RTX 4070 Ti SUPER": 672.0,
+    "RTX 4070 Ti": 504.2,
+    "RTX 4070 SUPER": 504.2,
+    "RTX 4070": 504.2,
+    "RTX 4060 Ti": 288.0,
+    "RTX 4060": 272.0,
     # Consumer RTX 30 series.
-    "RTX 3090 Ti": 1008.0, "RTX 3090": 936.2, "RTX 3080 Ti": 912.4,
-    "RTX 3080": 760.3, "RTX 3070 Ti": 608.3, "RTX 3070": 448.0,
-    "RTX 3060 Ti": 448.0, "RTX 3060": 360.0,
+    "RTX 3090 Ti": 1008.0,
+    "RTX 3090": 936.2,
+    "RTX 3080 Ti": 912.4,
+    "RTX 3080": 760.3,
+    "RTX 3070 Ti": 608.3,
+    "RTX 3070": 448.0,
+    "RTX 3060 Ti": 448.0,
+    "RTX 3060": 360.0,
 }
 
 # AMD discrete-GPU memory bandwidth in GB/s, by board name, from AMD's
@@ -131,12 +162,22 @@ _NVIDIA_BANDWIDTH_GBS: dict[str, float] = {
 # `os_helper.amd_gpus()` reads from `rocm-smi`. Source: AMD spec sheets /
 # TechPowerUp GPU database.
 _AMD_BANDWIDTH_GBS: dict[str, float] = {
-    "MI300X": 5300.0, "MI300A": 5300.0, "MI250X": 3277.0, "MI250": 3277.0,
-    "MI210": 1638.0, "MI100": 1229.0,
-    "RX 7900 XTX": 960.0, "RX 7900 XT": 800.0, "RX 7900 GRE": 576.0,
-    "RX 7800 XT": 624.1, "RX 7700 XT": 432.0,
-    "RX 6950 XT": 576.0, "RX 6900 XT": 512.0, "RX 6800 XT": 512.0,
-    "RX 6800": 512.0, "RX 6700 XT": 384.0,
+    "MI300X": 5300.0,
+    "MI300A": 5300.0,
+    "MI250X": 3277.0,
+    "MI250": 3277.0,
+    "MI210": 1638.0,
+    "MI100": 1229.0,
+    "RX 7900 XTX": 960.0,
+    "RX 7900 XT": 800.0,
+    "RX 7900 GRE": 576.0,
+    "RX 7800 XT": 624.1,
+    "RX 7700 XT": 432.0,
+    "RX 6950 XT": 576.0,
+    "RX 6900 XT": 512.0,
+    "RX 6800 XT": 512.0,
+    "RX 6800": 512.0,
+    "RX 6700 XT": 384.0,
 }
 
 
@@ -287,11 +328,143 @@ def available_memory() -> dict[str, float | None]:
         vram_gb = round(total, 1) if total > 0 else None
 
     osh.info(
-        f"Memory detected — unified: {unified_gb} GB, "
-        f"vram: {vram_gb} GB, ram: {ram_gb:.1f} GB"
+        f"Memory detected — unified: {unified_gb} GB, vram: {vram_gb} GB, ram: {ram_gb:.1f} GB"
     )
     return {
         "unified_gb": unified_gb,
         "vram_gb": vram_gb,
         "ram_gb": ram_gb,
     }
+
+
+# ---------------------------------------------------------------------------
+# Live server load — current, not total, capacity
+# ---------------------------------------------------------------------------
+# `available_memory` and `compute_profile` describe the machine's STATIC
+# capacity: total memory pools, accelerator identity. Two machines with
+# identical capacity behave very differently if one is idle and the other is
+# already serving three models or mid-compile — the realistic budget for
+# "one more model" depends on what else is happening RIGHT NOW. The live
+# metrics themselves (CPU%, free RAM, disk usage, GPU utilization) are generic
+# cross-platform facts and live in `os_helper.hardware_utils`, same as every
+# other raw probe this module wraps; only the Ollama/vLLM-specific
+# "how many engines are already serving" count is AI-domain-specific enough
+# to stay here.
+
+# Ollama's REST base URL, same default/env-var as llm.py's `_base_url()` (not
+# imported from there to avoid a cross-module private-name dependency for one
+# constant).
+_OLLAMA_BASE_URL_ENV = "SPREZZATURE_LLM_BASE_URL"
+_OLLAMA_BASE_URL_DEFAULT = "http://localhost:11434"
+
+
+def _running_engines() -> int:
+    """Best-effort count of already-serving local inference engines.
+
+    Sums Ollama's currently loaded models (queried via its ``/api/ps``
+    endpoint — the source of truth, since one ``ollama serve`` daemon can
+    hold several models resident at once, so a process count would
+    undercount) and running vLLM server processes (each normally serves
+    exactly one model, so a process count is accurate there). Both probes
+    fail soft to 0 — neither engine running is the common case, not an error.
+
+    Returns
+    -------
+    int
+        Number of currently loaded/serving models across both engines.
+    """
+    count = 0
+
+    try:
+        import os
+
+        import requests
+
+        base_url = os.environ.get(_OLLAMA_BASE_URL_ENV, _OLLAMA_BASE_URL_DEFAULT).rstrip("/")
+        resp = requests.get(f"{base_url}/api/ps", timeout=1.0)
+        if resp.ok:
+            count += len(resp.json().get("models", []))
+    except Exception as exc:  # noqa: BLE001 — Ollama not running is the common case
+        osh.debug(f"Ollama /api/ps unreachable (probably not running): {exc}")
+
+    try:
+        import psutil
+
+        for proc in psutil.process_iter(["cmdline"]):
+            try:
+                cmdline = " ".join(proc.info.get("cmdline") or []).lower()
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+            if "vllm" in cmdline and ("serve" in cmdline or "api_server" in cmdline):
+                count += 1
+    except Exception as exc:  # noqa: BLE001 — process enumeration must not break detection
+        osh.debug(f"vLLM process scan failed: {exc}")
+
+    return count
+
+
+def server_load() -> dict[str, Any]:
+    """
+    Snapshot the machine's CURRENT load — as opposed to its static capacity.
+
+    Requires an os-helper release whose ``hardware_info()`` includes the live
+    fields ``cpu.percent`` / ``available_ram_gb`` / ``disk`` /
+    ``gpu_utilization_percent`` (added alongside this function; not yet in a
+    published os-helper release as of this writing — bump the ``os-helper``
+    pin in ``pyproject.toml`` once one ships, or this raises ``KeyError`` on
+    a fresh install).
+
+    Feeds :func:`score.effective_budget`'s optional ``load`` parameter, so a
+    recommendation reflects what else is happening on this machine right now:
+    another process (or an already-running engine) can hold memory the static
+    hardware totals from :func:`available_memory` know nothing about.
+
+    Returns
+    -------
+    dict[str, Any]
+        ``available_ram_gb`` : float
+            Free system RAM right now.
+        ``cpu_percent`` : float
+            Instantaneous CPU utilization, 0-100.
+        ``gpu_percent`` : float or None
+            Live discrete-GPU utilization, 0-100; None on Apple Silicon,
+            CPU-only machines, or when the vendor CLI is unavailable.
+        ``disk_free_gb`` : float
+            Free space on the disk holding the home directory (where model
+            caches live).
+        ``disk_percent_used`` : float
+            0-100.
+        ``running_engines`` : int
+            Best-effort count of already-loaded Ollama models plus running
+            vLLM server processes.
+
+    Examples
+    --------
+    >>> load = server_load()
+    >>> load["available_ram_gb"] >= 0
+    True
+    >>> 0 <= load["cpu_percent"] <= 100
+    True
+    >>> load["running_engines"] >= 0
+    True
+    """
+    # One aggregate call: `hardware_info()` already samples every live figure
+    # this needs (plus static facts this function doesn't use), so calling it
+    # once avoids redundant vendor-detection/subprocess probes that four
+    # separate osh.* calls would each repeat.
+    info = osh.hardware_info()
+    load = {
+        "available_ram_gb": info["available_ram_gb"],
+        "cpu_percent": info["cpu"]["percent"],
+        "gpu_percent": info["gpu_utilization_percent"],
+        "disk_free_gb": info["disk"]["free_gb"],
+        "disk_percent_used": info["disk"]["percent_used"],
+        "running_engines": _running_engines(),
+    }
+    osh.info(
+        f"Server load — RAM free: {load['available_ram_gb']} GB, "
+        f"CPU: {load['cpu_percent']}%, GPU: {load['gpu_percent']}%, "
+        f"disk free: {load['disk_free_gb']} GB, "
+        f"running engines: {load['running_engines']}"
+    )
+    return load

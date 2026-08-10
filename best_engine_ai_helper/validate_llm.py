@@ -25,6 +25,8 @@ from typing import Any
 
 import os_helper as osh
 
+from . import i18n
+
 # ---------------------------------------------------------------------------
 # Reference fixtures with deliberate charter violations
 # ---------------------------------------------------------------------------
@@ -49,21 +51,15 @@ SEAM_FR = (
 )
 
 # Minimal charter excerpt embedded in the prompts so the model knows exactly
-# which rules to apply. A full charter would be loaded from references/.
-_WRITING_CHARTER_EXCERPT = """\
-Rule 5 (English): No punctuation dashes. No em dash and no en dash used as an
-aside; rewrite with commas, colons, semicolons, parentheses, or short sentences.
-Hyphens in compound words stay.
-
-Rule (French): Banned transitions: "Par ailleurs", "De plus", "Autrement dit",
-"En outre". Rewrite with a sentence that shows the logical connection explicitly.
-No em dash or en dash as a punctuation aside.\
-"""
+# which rules to apply (locales/i18n.yaml: prompts.writing_charter_excerpt).
+# A full charter would be loaded from references/.
+_WRITING_CHARTER_EXCERPT = i18n.prompt("writing_charter_excerpt", "text")
 
 
 # ---------------------------------------------------------------------------
 # Validation entry point
 # ---------------------------------------------------------------------------
+
 
 def validate(llm_chat: Callable[..., Any]) -> bool:
     """

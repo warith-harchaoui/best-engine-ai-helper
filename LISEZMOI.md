@@ -10,10 +10,10 @@ de vision-langage (VLM, *vision-language model*) local adapté au matériel de l
 courante.
 
 L'outil détecte la mémoire disponible (mémoire unifiée Apple Silicon, mémoire vidéo NVIDIA
-ou RAM système), consulte un catalogue de modèles intégré, et sélectionne le modèle au
+ou RAM système), consulte un catalogue de modèles intégré et sélectionne le modèle au
 meilleur score qui tient dans une marge de sécurité configurable. Après la sélection, il
 télécharge le modèle via Ollama, exécute deux contrôles de qualité (la boucle Ralph pour la
-prose et la boucle Ralph Eyeball pour la vision), et écrit un fichier d'environnement que
+prose et la boucle Ralph Eyeball pour la vision) et écrit un fichier d'environnement que
 les projets en aval viennent sourcer.
 
 [![logo](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/assets/logo.png)](https://harchaoui.org/warith/ai-helpers)
@@ -32,17 +32,25 @@ téléchargés. Deux cas, en toute franchise :
    mais optionnelle : le catalogue intégré suffit pour un usage courant.
 
 Une GUI minimale dans le navigateur (`best-engine-ai-helper gui`) couvre la moitié en
-lecture seule de ce flux (les caractéristiques matérielles, et la recommandation de moteur
+lecture seule de ce flux (les caractéristiques matérielles et la recommandation de moteur
 à partir d'une tâche) sans passer par le terminal. La page est bilingue : français par
 défaut, anglais via `/gui?lang=en`, avec un lien d'en-tête pour basculer. Voir
 [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) (en anglais).
+
+## Documentation
+
+[💻 Documentation](https://harchaoui.org/warith/ai-helpers/docs/best-engine-ai-helper-doc/)
+
+[🗺️ Paysage](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/PAYSAGE.md)
+
+[📋 Exemples](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXAMPLES.md)
 
 ## Prérequis
 
 - Python 3.10 ou ultérieur
 - [Ollama](https://ollama.com) (nécessaire uniquement pour `pull`, `validate` et `env` ; pas
   requis pour `detect`, `recommend` ou `report`)
-- os-helper (détection matérielle), PyYAML, click, requests (installés automatiquement)
+- os-helper (détection matérielle), PyYAML, click, requests, langdetect (installés automatiquement)
 - Optionnel : `fastapi` + `uvicorn` pour la GUI navigateur
   (`pip install 'best-engine-ai-helper[api]'`)
 
@@ -157,10 +165,13 @@ best-engine-ai-helper hardware show
 
 # Lancer la GUI navigateur (nécessite l'extra [api])
 best-engine-ai-helper gui
+
+# Qui appelle quoi, et à quel coût (journal SQLite local)
+best-engine-ai-helper activity
 ```
 
-Les mêmes points d'accès `/api/system` et `/api/recommend` sont aussi
-accessibles comme outils MCP pour tout hôte agentique compatible :
+Les mêmes points d'accès `/api/system`, `/api/recommend` et `/api/activity`
+sont aussi accessibles comme outils MCP pour tout hôte agentique compatible :
 
 ```sh
 pip install "best-engine-ai-helper[mcp]"
@@ -180,8 +191,32 @@ lien d'en-tête pour basculer.
 
 ![Résultats de recommandation](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/screenshots/gui-recommendation.png)
 
-Voir [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) pour le détail complet, l'API JSON sous-jacente, et comment le jeu
+Voir [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) pour le détail complet, l'API JSON sous-jacente et comment le jeu
 d'icônes (favicon / touch-icon) est généré à partir de `assets/logo.png`.
+
+## Journal d'activité
+
+Chaque appel `llm.chat()` (depuis les contrôles `pull`/`validate` de cet outil,
+ou depuis tout projet en aval qui importe `best_engine_ai_helper.llm`) peut
+être enregistré dans un journal SQLite local, en ajout seul
+(`~/.best-engine-ai-helper/usage.db`) : qui a appelé (variable d'environnement
+`BEST_ENGINE_USER`, sinon le nom de connexion du système), quel modèle et
+backend, la latence, le succès ou l'échec, et un coût estimé pour les backends
+payants (toujours `0,0` pour Ollama/vLLM en local). Pensé pour le cas « une
+entreprise, plusieurs utilisateurs sur une machine partagée » : répondre à
+« qui appelle quoi, combien de fois, à quel coût » sans pile de télémétrie
+séparée. Local uniquement : aucun appel réseau, aucun service tiers.
+
+```sh
+best-engine-ai-helper activity              # tableau
+best-engine-ai-helper activity --format json
+```
+
+Le CLI, la GUI et le serveur MCP activent l'enregistrement par défaut ;
+désactivable avec `BEST_ENGINE_NO_LEDGER=1`. La section **Activité** de la GUI
+et `GET /api/activity` lisent le même journal. Voir
+`best_engine_ai_helper.observe` pour l'API bibliothèque (`enable()`,
+`as_user(nom)`, `Ledger.summary()`).
 
 ## Comment fonctionne la sélection
 
@@ -226,6 +261,17 @@ là où un modèle 8-14B laisse de la marge et va plusieurs fois plus vite.
 
 Quand aucun modèle ne tient, l'outil sélectionne le plus petit du catalogue et le signale.
 
+### 5. Charge serveur en direct (optionnel, `--live`)
+
+Les quatre facteurs ci-dessus décrivent la capacité *théorique* de la machine. Ajouter
+`--live` (`recommend`/`report` ; `live: true` sur `POST /api/recommend`) pèse aussi ce qui
+s'y passe *en ce moment* : RAM libre actuelle, usage CPU/GPU/disque, et le nombre de moteurs
+déjà lancés (modèles Ollama, serveurs vLLM). Une machine chargée obtient un budget plus
+réaliste qu'une machine identique mais inactive. Désactivé par défaut : cela ajoute une
+sonde en direct (~0,1-0,5 s : `nvidia-smi`/`ioreg`, un ping Ollama local, un échantillon
+`psutil`) et rend la recommandation dépendante de cet instant précis plutôt que d'être une
+fonction déterministe du seul matériel, ce qui compte pour des rapports reproductibles et la CI.
+
 ## Commandes disponibles
 
 | Commande | Description |
@@ -241,6 +287,7 @@ Quand aucun modèle ne tient, l'outil sélectionne le plus petit du catalogue et
 | `validate` | Exécute les contrôles Ralph sur le modèle actuellement configuré |
 | `env` | Affiche le bloc d'exports shell prêt pour `~/.zshrc` |
 | `gui` | Lance la GUI navigateur (nécessite l'extra `[api]`) |
+| `activity` | Résume le journal local d'activité/coût (appels, coût, par utilisateur/modèle, erreurs) |
 | `usages list` | Liste les profils d'usage et les familles (besoins uniquement, jamais de modèle) |
 | `usages show <profil>` | Affiche les besoins d'un profil (tâche, *structured output*, planchers) |
 | `usages resolve <profil>` | Résout un profil (ou `--family`) vers le modèle que best-engine choisit ici |
@@ -271,10 +318,10 @@ Les projets qui utilisent le modèle sélectionné sourcent ce fichier ou lisent
 ### Modèle B : un moteur par projet, résolu depuis un brief ajusté
 
 Un projet connaît en général sa tâche plus précisément qu'un défaut valable pour toute la
-machine, et la qualité du choix dépend de la précision avec laquelle cette tâche est décrite
+machine et la qualité du choix dépend de la précision avec laquelle cette tâche est décrite
 — c'est le texte de la tâche qui se traduit en axe de score et qui décide si un VLM est
 nécessaire (voir [Comment fonctionne la sélection](#comment-fonctionne-la-sélection)). Le
-projet garde donc un **brief** versionné qui décrit son travail, et le résout, par machine,
+projet garde donc un **brief** versionné qui décrit son travail et le résout, par machine,
 en un **fichier moteur** gitignoré qui nomme le backend et le modèle à utiliser. Aucune
 constante `DEFAULT_MODEL` ne vit dans le projet : le modèle se lit toujours depuis le fichier
 moteur résolu.
@@ -289,7 +336,7 @@ moteur résolu.
    structured_output: true # la tâche exige une sortie contrainte par schéma
    task: >-
      Nommer les pôles des axes ACP en JSON contraint par schéma, rédiger une courte
-     analyse dans la langue de la table, et vérifier l'image du graphique rendu.
+     analyse dans la langue de la table et vérifier l'image du graphique rendu.
    ```
 
    `mode: local` est le défaut et la seule famille de backend gérée aujourd'hui ; un brief
@@ -304,7 +351,7 @@ moteur résolu.
 
    Le backend est choisi selon le matériel : **vLLM quand un GPU discret (NVIDIA/AMD) est
    présent, Ollama sinon** (macOS, Linux CPU seul, iGPU Intel). Le choix est délibérément
-   prudent — la marge mémoire est plafonnée à 0,5, et parmi les modèles à quelques points de
+   prudent — la marge mémoire est plafonnée à 0,5 et parmi les modèles à quelques points de
    benchmark du meilleur, il prend le plus léger et le plus rapide, pas le plus gros qui tient
    tout juste. Les choix vLLM sont dimensionnés sur les poids FP16 complets (plus lourds que
    l'estimation Ollama Q4), pour qu'un choix vLLM soit réaliste sur le vrai GPU. La sortie est
@@ -324,7 +371,7 @@ moteur résolu.
    ```python
    from best_engine_ai_helper import ensure, llm
 
-   engine = ensure(".")            # charge llm.engine.yaml, ou le résout depuis
+   engine = ensure(".")            # charge llm.engine.yaml ou le résout depuis
                                    # llm.brief.yaml au premier usage
    resume = llm.chat(prompt, engine=engine, kind="llm")
    critique = llm.chat(prompt, engine=engine, kind="vlm",
@@ -353,7 +400,7 @@ contexte. Un profil est, au fond, un *brief* nommé : il est donc résolu par le
 à quatre critères** que n'importe quel *brief*.
 
 Un profil **ne nomme jamais de modèle.** best-engine est le seul décideur : il lit les
-besoins, sonde la machine, et choisit le modèle local concret, en n'écrivant ce choix que
+besoins, sonde la machine et choisit le modèle local concret, en n'écrivant ce choix que
 dans un fichier moteur généré (`llm.engine*.yaml`), **gitignoré et spécifique à la machine**
 — jamais un littéral versionné. C'est tout l'intérêt de l'outil.
 
@@ -391,10 +438,18 @@ family = resolve_family("F1")        # un seul modèle pour tout le groupe F1
 ```
 
 best-engine écrit les modèles retenus dans le `llm.engine*.yaml` gitignoré de cette machine
-(le prolongement de l'`env.sh` qu'il produit déjà) ; l'application lit ce fichier, et une
+(le prolongement de l'`env.sh` qu'il produit déjà) ; l'application lit ce fichier et une
 nouvelle résolution re-décide si le matériel change. Ajouter un profil = quelques lignes dans
 `usages.yaml` ; un *overlay* utilisateur dans `~/.best-engine-ai-helper/usages_cache.yaml`
 surcharge par nom.
+
+## Auteur
+
+[Warith HARCHAOUI](https://linkedin.com/in/warith-harchaoui)
+
+## Remerciements
+
+Remerciements chaleureux à [Victor Favreau](https://www.linkedin.com/in/victor-favreau-41b823117/) pour nos échanges fructueux.
 
 ## Licence
 

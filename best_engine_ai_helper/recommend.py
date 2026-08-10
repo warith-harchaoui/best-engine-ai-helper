@@ -55,10 +55,55 @@ _AXIS_KEYWORDS: dict[str, tuple[str, ...]] = {
     "ocr": ("ocr", "scan", "receipt", "invoice", "document", "handwrit"),
     "code": ("code", "coding", "program", "python", "sql", "javascript", "bug"),
     "math": ("math", "calculation", "arithmetic", "equation", "proof"),
-    "vision": ("image", "vision", "visual", "photo", "picture", "diagram",
-               "screenshot", "chart", "quality assessment", "aesthetic"),
+    "vision": (
+        "image",
+        "vision",
+        "visual",
+        "photo",
+        "picture",
+        "diagram",
+        "screenshot",
+        "chart",
+        "quality assessment",
+        "aesthetic",
+    ),
 }
 _VISION_AXES = {"vision", "ocr"}
+
+
+def _detect_language(text: str) -> str | None:
+    """
+    Best-effort ISO 639-1 language code for a task description.
+
+    Uses ``langdetect`` (deterministic, offline, no model call — a fixed
+    n-gram profile, not an LLM). Recorded as metadata for activity monitoring
+    (which languages a company's users actually write task descriptions in),
+    not used as a reliability gate: langdetect is a known weak performer on
+    short phrases and can be confidently wrong (e.g. "write SQL queries"
+    detects as French at 99.9% confidence) rather than merely uncertain, so a
+    low-confidence score would not be a trustworthy "unclean text" signal.
+    An outright detection failure (no usable characters: symbols, digits-only)
+    is a reliable signal and is surfaced by the caller instead.
+
+    Parameters
+    ----------
+    text : str
+        Non-empty task description (already stripped).
+
+    Returns
+    -------
+    str or None
+        The top-guess language code, or None if ``langdetect`` is not
+        installed or detection raised (e.g. no alphabetic content).
+    """
+    try:
+        from langdetect import LangDetectException, detect
+    except ImportError:
+        return None
+    try:
+        return str(detect(text))
+    except LangDetectException:
+        return None
 
 
 def parse_task(task: str | None) -> dict[str, Any]:
@@ -66,12 +111,47 @@ def parse_task(task: str | None) -> dict[str, Any]:
     Turn a vague task phrase into the model kinds and benchmark axis it implies.
 
     Returns a dict with ``kinds`` (subset of ``["llm", "vlm"]`` in pull order),
-    ``application`` (the benchmark axis for the text model), and ``matched``
-    (the keywords that fired, for the report's justification). A task that
-    mentions nothing visual still gets an LLM on the ``generalist`` axis; any
-    vision keyword adds a VLM.
+    ``application`` (the benchmark axis for the text model), ``matched`` (the
+    keywords that fired, for the report's justification), and ``language``
+    (best-effort ISO 639-1 code from :func:`_detect_language`, or None). A
+    task that mentions nothing visual still gets an LLM on the ``generalist``
+    axis; any vision keyword adds a VLM.
+
+    Parameters
+    ----------
+    task : str or None
+        Free-text task description. ``None``, a blank/whitespace-only string,
+        or text with no detectable language (symbols/digits only) falls back
+        to a generic text-assistant profile, but logs a loud warning first: a
+        recommendation with no clean task description carries no useful label
+        for activity/cost monitoring or for the report's justification, so a
+        caller skipping it should see that reflected back.
+
+    Examples
+    --------
+    >>> parse_task("write product descriptions and check photo quality")["kinds"]
+    ['llm', 'vlm']
+    >>> parse_task(None)["application"]  # logs a WARNING, still resolves
+    'generalist'
     """
-    text = (task or "").lower()
+    stripped = (task or "").strip()
+    language: str | None = None
+    if not stripped:
+        osh.warning(
+            "recommend: no task description provided; falling back to a generic "
+            "text-assistant profile. Pass a clear task description — activity "
+            "and cost monitoring cannot attribute this call to a job without one."
+        )
+    else:
+        language = _detect_language(stripped)
+        if language is None:
+            osh.warning(
+                f"recommend: task description {stripped!r} has no detectable "
+                "language (symbols/digits only?) — this does not look like a "
+                "clean description; activity/cost monitoring works best with "
+                "clear text."
+            )
+    text = stripped.lower()
     matched: list[str] = []
     axis = "generalist"
     for candidate_axis, words in _AXIS_KEYWORDS.items():
@@ -84,21 +164,28 @@ def parse_task(task: str | None) -> dict[str, Any]:
             if candidate_axis not in _VISION_AXES:
                 axis = candidate_axis
 
-    needs_vlm = any(
-        w in text for a in _VISION_AXES for w in _AXIS_KEYWORDS[a]
-    )
+    needs_vlm = any(w in text for a in _VISION_AXES for w in _AXIS_KEYWORDS[a])
     kinds = ["llm"]
     if needs_vlm:
         kinds.append("vlm")
     # If the task is purely an OCR axis, the VLM should be scored on ocr.
     vlm_axis = "ocr" if any(w in text for w in _AXIS_KEYWORDS["ocr"]) else "vision"
-    return {"kinds": kinds, "application": axis, "vlm_application": vlm_axis,
-            "matched": sorted(set(matched))}
+    return {
+        "kinds": kinds,
+        "application": axis,
+        "vlm_application": vlm_axis,
+        "matched": sorted(set(matched)),
+        "language": language,
+    }
 
 
 def _candidate_row(
-    entry: dict[str, Any], budget: float, bandwidth_gbs: float | None, axis: str,
-    min_tps: float = COMFORT_TPS, backend: str = "ollama",
+    entry: dict[str, Any],
+    budget: float,
+    bandwidth_gbs: float | None,
+    axis: str,
+    min_tps: float = COMFORT_TPS,
+    backend: str = "ollama",
 ) -> dict[str, Any]:
     """One catalog entry annotated with the four decision factors.
 
@@ -145,7 +232,8 @@ def _pick_sufficient(pool: list[dict[str, Any]]) -> dict[str, Any]:
     """
     top = pool[0]
     near = [
-        r for r in pool
+        r
+        for r in pool
         if r["score"] >= top["score"] - _SUFFICIENT_MARGIN
         and (r["structured_output"] or not top["structured_output"])
     ]
@@ -162,6 +250,7 @@ def recommend(
     min_tps: float = COMFORT_TPS,
     backend: str = "ollama",
     kinds: list[Literal["llm", "vlm"]] | None = None,
+    load: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Recommend the best engine per needed kind for this hardware and task.
@@ -191,6 +280,14 @@ def recommend(
         the kinds inferred from ``task``. The task text still selects the
         benchmark axis. Used when the caller already knows what it needs (e.g. a
         brief that declares ``kind: both``).
+    load : dict or None
+        Live server state from :func:`detect.server_load` (current free RAM,
+        CPU/GPU/disk usage, already-running engines). Forwarded to
+        :func:`score.effective_budget`/:func:`score.rank` so the recommendation
+        reflects what else is happening on this machine right now, not only its
+        theoretical capacity. None (the default) reproduces the load-blind
+        behaviour exactly; also included as ``server_load`` in the returned
+        report when given, for activity monitoring.
 
     Returns
     -------
@@ -201,10 +298,10 @@ def recommend(
     """
     compute = compute or {}
     bandwidth = compute.get("bandwidth_gbs")
-    budget = effective_budget(hw, headroom=headroom)
+    budget = effective_budget(hw, headroom=headroom, load=load)
     parsed = parse_task(task)
-    needed_kinds = kinds if kinds is not None else cast(
-        list[Literal["llm", "vlm"]], parsed["kinds"]
+    needed_kinds = (
+        kinds if kinds is not None else cast(list[Literal["llm", "vlm"]], parsed["kinds"])
     )
     osh.info(
         f"Recommending for task axis '{parsed['application']}' "
@@ -215,10 +312,10 @@ def recommend(
     picks: dict[str, Any] = {}
     for kind in needed_kinds:
         axis = parsed["vlm_application"] if kind == "vlm" else parsed["application"]
-        ranked = rank(hw, catalog, kind, headroom=headroom, application=axis,
-                      backend=backend)
-        rows = [_candidate_row(e, budget, bandwidth, axis, min_tps, backend)
-                for e in ranked]
+        ranked = rank(
+            hw, catalog, kind, headroom=headroom, application=axis, backend=backend, load=load
+        )
+        rows = [_candidate_row(e, budget, bandwidth, axis, min_tps, backend) for e in ranked]
         fitting = [r for r in rows if r["fits"]]
         comfortable = [r for r in fitting if r["comfortable"]]
         # Prefer models that fit memory AND decode fast enough to be usable; fall
@@ -262,7 +359,8 @@ def recommend(
         lighter = None
         if chosen:
             near = [
-                r for r in (comfortable or fitting)
+                r
+                for r in (comfortable or fitting)
                 if r["score"] >= chosen["score"] - 3
                 and (r["structured_output"] or not chosen["structured_output"])
             ]
@@ -280,6 +378,7 @@ def recommend(
     return {
         "task": {"input": task, **parsed},
         "hardware": {**hw, **({"compute": compute} if compute else {})},
+        **({"server_load": load} if load else {}),
         "memory_budget_gb": budget,
         "headroom": headroom,
         "comfort_tps": min_tps,
@@ -328,25 +427,47 @@ def to_markdown(report: dict[str, Any]) -> str:
     lines.append("# Best local engine — recommendation")
     lines.append("")
     lines.append(f"**Task:** {task.get('input') or 'general text assistant'}  ")
+    if task.get("language"):
+        lines.append(f"**Language:** {task['language']}  ")
     if task.get("matched"):
         lines.append(f"**Matched keywords:** {', '.join(task['matched'])}  ")
     lines.append(f"**Needs:** {', '.join(k.upper() for k in task['kinds'])}")
     lines.append("")
     lines.append("## Hardware")
     lines.append("")
-    lines.append(f"- Chip / accelerator: {comp.get('chip') or '?'} "
-                 f"({comp.get('accelerator', 'unknown')})")
+    lines.append(
+        f"- Chip / accelerator: {comp.get('chip') or '?'} ({comp.get('accelerator', 'unknown')})"
+    )
     pool = hw.get("unified_gb") or hw.get("vram_gb") or hw.get("ram_gb")
     lines.append(f"- Memory pool: {pool} GB")
     if comp.get("bandwidth_gbs"):
-        lines.append(f"- Memory bandwidth: {comp['bandwidth_gbs']:.0f} GB/s "
-                     "(sets the decode-speed ceiling)")
-    lines.append(f"- Usable model budget: **{report['memory_budget_gb']:.1f} GB** "
-                 f"(headroom {report['headroom']})")
+        lines.append(
+            f"- Memory bandwidth: {comp['bandwidth_gbs']:.0f} GB/s (sets the decode-speed ceiling)"
+        )
+    lines.append(
+        f"- Usable model budget: **{report['memory_budget_gb']:.1f} GB** "
+        f"(headroom {report['headroom']})"
+    )
     if report.get("comfort_tps"):
-        lines.append(f"- Comfort throughput floor: **{report['comfort_tps']:.0f} tok/s** "
-                     "(a model below this fits memory but decodes too slowly to recommend)")
+        lines.append(
+            f"- Comfort throughput floor: **{report['comfort_tps']:.0f} tok/s** "
+            "(a model below this fits memory but decodes too slowly to recommend)"
+        )
     lines.append("")
+
+    load = report.get("server_load")
+    if load:
+        lines.append("## Server load (live, at recommendation time)")
+        lines.append("")
+        lines.append(f"- Available RAM: {load['available_ram_gb']:.1f} GB")
+        gpu_pct = load.get("gpu_percent")
+        gpu_suffix = f", GPU: {gpu_pct:.0f}%" if gpu_pct is not None else ""
+        lines.append(f"- CPU: {load['cpu_percent']:.0f}%" + gpu_suffix)
+        lines.append(
+            f"- Disk free: {load['disk_free_gb']:.1f} GB ({load['disk_percent_used']:.0f}% used)"
+        )
+        lines.append(f"- Already-running engines: {load['running_engines']}")
+        lines.append("")
 
     for kind, block in report["recommendations"].items():
         chosen = block["chosen"]
@@ -360,23 +481,29 @@ def to_markdown(report: dict[str, Any]) -> str:
                 flag = "  ⚠️ below comfort floor (fits but decodes slowly)"
             else:
                 flag = ""
-            lines.append(f"**→ `{chosen['id']}`** — {chosen['ram_gb']:.1f} GB, "
-                         f"score {chosen['score']:.0f}, ~{tps} tok/s" + flag)
+            lines.append(
+                f"**→ `{chosen['id']}`** — {chosen['ram_gb']:.1f} GB, "
+                f"score {chosen['score']:.0f}, ~{tps} tok/s" + flag
+            )
             alt = block["lighter_alternative"]
             if alt:
                 lines.append("")
-                lines.append(f"Lighter alternative: `{alt['id']}` — "
-                             f"{alt['ram_gb']:.1f} GB, score {alt['score']:.0f}, "
-                             f"~{_fmt_tps(alt['est_tokens_per_s'])} tok/s.")
+                lines.append(
+                    f"Lighter alternative: `{alt['id']}` — "
+                    f"{alt['ram_gb']:.1f} GB, score {alt['score']:.0f}, "
+                    f"~{_fmt_tps(alt['est_tokens_per_s'])} tok/s."
+                )
         else:
             lines.append("_No candidate found._")
         lines.append("")
         lines.append("| model | RAM GB | score | fits | ~tok/s | comfy |")
         lines.append("|---|---|---|---|---|---|")
         for r in block["candidates"]:
-            lines.append(f"| `{r['id']}` | {r['ram_gb']:.1f} | {r['score']:.0f} | "
-                         f"{'yes' if r['fits'] else 'no'} | {_fmt_tps(r['est_tokens_per_s'])} | "
-                         f"{'yes' if r.get('comfortable') else 'no'} |")
+            lines.append(
+                f"| `{r['id']}` | {r['ram_gb']:.1f} | {r['score']:.0f} | "
+                f"{'yes' if r['fits'] else 'no'} | {_fmt_tps(r['est_tokens_per_s'])} | "
+                f"{'yes' if r.get('comfortable') else 'no'} |"
+            )
         lines.append("")
 
     lines.append("## How this was decided")

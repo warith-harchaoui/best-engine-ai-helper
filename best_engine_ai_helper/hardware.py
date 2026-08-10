@@ -230,9 +230,7 @@ def detect_local_entry(fetched_at: str | None = None) -> dict[str, Any] | None:
     }
 
 
-def write_cache(
-    entries: list[dict[str, Any]], cache_path: Path | None = None
-) -> Path:
+def write_cache(entries: list[dict[str, Any]], cache_path: Path | None = None) -> Path:
     """
     Merge ``entries`` into the hardware cache by (chip, memory_gb) and write it.
 
@@ -257,9 +255,7 @@ def write_cache(
     def _key(e: dict[str, Any]) -> tuple[str, float]:
         return (e["chip"], float(e.get("memory_gb", 0)))
 
-    merged: dict[tuple[str, float], dict[str, Any]] = {
-        _key(e): e for e in _load_yaml_file(path)
-    }
+    merged: dict[tuple[str, float], dict[str, Any]] = {_key(e): e for e in _load_yaml_file(path)}
     for entry in entries:
         merged[_key(entry)] = entry
 

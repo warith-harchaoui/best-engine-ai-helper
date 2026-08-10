@@ -13,6 +13,13 @@ English). The JSON API the page calls is language-neutral, so only the labels
 differ. ``GUI_HTML`` is the French render, kept as a module constant for
 callers and tests that want the default page directly.
 
+Every user-facing string is authored once, in ``locales/i18n.yaml`` (package
+root's ``gui:`` namespace, loaded through :mod:`best_engine_ai_helper.i18n`)
+— this module never hardcodes wording. It maps that file's stable semantic
+keys onto the template's ``{{TOKEN}}`` placeholders and the JavaScript ``T``
+object, and falls back to the ``meta.default_locale`` declared in the YAML
+(French) for any language the file does not cover.
+
 Visual language matches the sprezzature-figures gallery
 (https://harchaoui.org/warith/sprezzature/figures.html): Roboto / Roboto
 Serif / Roboto Mono, the #007aff brand blue, a neutral gray scale, and a
@@ -30,170 +37,133 @@ from __future__ import annotations
 import html
 import json
 
-# ---------------------------------------------------------------------------
-# Per-language label tables
-# ---------------------------------------------------------------------------
-# `html` keys fill {{TOKEN}} placeholders in the markup; `js` keys are emitted
-# as a `const T = {...}` object the page's script reads, so every user-facing
-# string — HTML and JavaScript alike — lives here and nowhere else.
+from . import i18n
 
-_STRINGS: dict[str, dict[str, dict[str, str]]] = {
-    "fr": {
-        "html": {
-            "LANG": "fr",
-            "META_DESC": (
-                "Caractéristiques matérielles de cette machine et meilleur "
-                "moteur local (LLM / VLM) pour une tâche donnée."
-            ),
-            "SKIP": "Aller au contenu",
-            "NAV_ARIA": "Principal",
-            "GITHUB": "⭐️ sur GitHub",
-            "THEME_ARIA": "Changer de thème",
-            "LANG_HREF": "/gui?lang=en",
-            "LANG_LABEL": "EN",
-            "LANG_ARIA": "English version",
-            "HERO_TITLE": "Meilleur moteur local",
-            "HERO_P": (
-                "Caractéristiques de cette machine, et le meilleur moteur local "
-                "(LLM / VLM) pour la tâche que vous décrivez."
-            ),
-            "SYS_H2": "Caractéristiques système",
-            "REFRESH": "Rafraîchir",
-            "DETECTING": "Détection en cours…",
-            "TASK_H2": "Décrire la tâche",
-            "TASK_P": (
-                "Une phrase suffit — les mots-clés visuels ajoutent un VLM à la "
-                "recommandation."
-            ),
-            "TASK_LABEL": "Description de la tâche",
-            "TASK_PLACEHOLDER": (
-                "ex. « rédiger des fiches produit et vérifier la qualité de photos »"
-            ),
-            "RUN_BTN": "Recommander le(s) meilleur(s) moteur(s)",
-            "HEADROOM": "Marge mémoire",
-            "FOOTER_NOTE": "local uniquement, aucune télémétrie",
-        },
-        "js": {
-            "detecting": "Détection en cours…",
-            "detectFail": "Détection impossible : ",
-            "fPlatform": "Plateforme",
-            "fVendor": "Fournisseur",
-            "fChip": "Puce / accélérateur",
-            "poolUnified": "Mémoire unifiée",
-            "poolVram": "VRAM",
-            "poolRam": "RAM système",
-            "fBandwidth": "Bande passante mémoire",
-            "unknown": "inconnue",
-            "fBudget": "Budget modèle utilisable",
-            "gb": "Go",
-            "gbs": "Go/s",
-            "analyzing": "Analyse de la tâche et du matériel…",
-            "done": "Terminé.",
-            "recFail": "Échec de la recommandation : ",
-            "error": "Erreur.",
-            "yes": "oui",
-            "no": "non",
-            "best": "Meilleur",
-            "axis": "axe :",
-            "overBudget": "dépasse le budget mémoire — sera lent",
-            "notStructured": "pas de sortie JSON structurée — inadapté aux tâches à schéma",
-            "lighterAlt": "Alternative plus légère :",
-            "score": "score",
-            "noCandidate": "Aucun candidat trouvé.",
-            "allCandidates": "Tous les candidats",
-            "thStructured": "structuré",
-            "thModel": "modèle",
-            "thRam": "Go RAM",
-            "thScore": "score",
-            "thFits": "tient",
-            "thTps": "tok/s",
-            "task": "Tâche :",
-            "genericAssistant": "assistant texte généraliste",
-            "matched": "Mots-clés détectés :",
-            "needs": "Besoins :",
-            "tps": "tok/s",
-        },
-    },
-    "en": {
-        "html": {
-            "LANG": "en",
-            "META_DESC": (
-                "This machine's hardware characteristics and the best local "
-                "engine (LLM / VLM) for a given task."
-            ),
-            "SKIP": "Skip to content",
-            "NAV_ARIA": "Main",
-            "GITHUB": "⭐️ on GitHub",
-            "THEME_ARIA": "Toggle theme",
-            "LANG_HREF": "/gui",
-            "LANG_LABEL": "FR",
-            "LANG_ARIA": "Version française",
-            "HERO_TITLE": "Best local engine",
-            "HERO_P": (
-                "This machine's characteristics, and the best local engine "
-                "(LLM / VLM) for the task you describe."
-            ),
-            "SYS_H2": "System characteristics",
-            "REFRESH": "Refresh",
-            "DETECTING": "Detecting…",
-            "TASK_H2": "Describe the task",
-            "TASK_P": (
-                "One sentence is enough — visual keywords add a VLM to the "
-                "recommendation."
-            ),
-            "TASK_LABEL": "Task description",
-            "TASK_PLACEHOLDER": (
-                'e.g. "write product descriptions and check photo quality"'
-            ),
-            "RUN_BTN": "Recommend the best engine(s)",
-            "HEADROOM": "Memory headroom",
-            "FOOTER_NOTE": "local only, no telemetry",
-        },
-        "js": {
-            "detecting": "Detecting…",
-            "detectFail": "Detection failed: ",
-            "fPlatform": "Platform",
-            "fVendor": "Vendor",
-            "fChip": "Chip / accelerator",
-            "poolUnified": "Unified memory",
-            "poolVram": "VRAM",
-            "poolRam": "System RAM",
-            "fBandwidth": "Memory bandwidth",
-            "unknown": "unknown",
-            "fBudget": "Usable model budget",
-            "gb": "GB",
-            "gbs": "GB/s",
-            "analyzing": "Analyzing task and hardware…",
-            "done": "Done.",
-            "recFail": "Recommendation failed: ",
-            "error": "Error.",
-            "yes": "yes",
-            "no": "no",
-            "best": "Best",
-            "axis": "axis:",
-            "overBudget": "exceeds the memory budget — will be slow",
-            "notStructured": "no structured JSON output — unfit for schema-driven tasks",
-            "lighterAlt": "Lighter alternative:",
-            "score": "score",
-            "noCandidate": "No candidate found.",
-            "allCandidates": "All candidates",
-            "thStructured": "structured",
-            "thModel": "model",
-            "thRam": "GB RAM",
-            "thScore": "score",
-            "thFits": "fits",
-            "thTps": "tok/s",
-            "task": "Task:",
-            "genericAssistant": "general-purpose text assistant",
-            "matched": "Detected keywords:",
-            "needs": "Needs:",
-            "tps": "tok/s",
-        },
-    },
+# ---------------------------------------------------------------------------
+# Template-token <-> locale-key maps
+# ---------------------------------------------------------------------------
+# The markup and inline script below were written once against these short
+# token names; renaming every {{TOKEN}} / T.name reference to match the YAML's
+# semantic keys would only add churn, so these maps are the single place that
+# bridges the two vocabularies. `_HTML_TOKEN_TO_KEY` fills {{TOKEN}} placeholders;
+# `_JS_NAME_TO_KEY` builds the `const T = {...}` object the page's script reads.
+
+_HTML_TOKEN_TO_KEY: dict[str, str] = {
+    "META_DESC": "meta_description",
+    "SKIP": "skip_to_content",
+    "NAV_ARIA": "nav_aria",
+    "GITHUB": "github_link_label",
+    "THEME_ARIA": "theme_toggle_aria",
+    "LANG_HREF": "lang_toggle_href",
+    "LANG_LABEL": "lang_toggle_flag",
+    "LANG_ARIA": "lang_toggle_aria",
+    "HERO_TITLE": "hero_title",
+    "HERO_P": "hero_subtitle",
+    "SYS_H2": "system_heading",
+    "REFRESH": "refresh_button",
+    "DETECTING": "detecting",
+    "TASK_H2": "task_heading",
+    "TASK_P": "task_subtitle",
+    "TASK_LABEL": "task_label",
+    "TASK_PLACEHOLDER": "task_placeholder",
+    "RUN_BTN": "run_button",
+    "HEADROOM": "headroom_label",
+    "LIVE_LABEL": "live_toggle_label",
+    "FOOTER_NOTE": "footer_note",
+    "ACTIVITY_H2": "activity_heading",
+    "ACTIVITY_P": "activity_subtitle",
+    "ACTIVITY_LOADING": "activity_loading",
+}
+_JS_NAME_TO_KEY: dict[str, str] = {
+    "detecting": "detecting",
+    "detectFail": "detect_failed",
+    "fPlatform": "field_platform",
+    "fVendor": "field_vendor",
+    "fChip": "field_chip",
+    "poolUnified": "pool_unified",
+    "poolVram": "pool_vram",
+    "poolRam": "pool_ram",
+    "fBandwidth": "field_bandwidth",
+    "unknown": "unknown",
+    "fBudget": "field_budget",
+    "gb": "unit_gb",
+    "gbs": "unit_gbs",
+    "analyzing": "analyzing",
+    "done": "done",
+    "recFail": "recommend_failed",
+    "error": "error_generic",
+    "yes": "yes",
+    "no": "no",
+    "best": "best_label",
+    "axis": "axis_label",
+    "overBudget": "over_budget_warning",
+    "notStructured": "not_structured_warning",
+    "lighterAlt": "lighter_alternative",
+    "score": "score_label",
+    "noCandidate": "no_candidate",
+    "allCandidates": "all_candidates",
+    "thStructured": "th_structured",
+    "thModel": "th_model",
+    "thRam": "th_ram",
+    "thScore": "th_score",
+    "thFits": "th_fits",
+    "thTps": "th_tps",
+    "task": "task_prefix",
+    "language": "language_prefix",
+    "serverLoad": "server_load_label",
+    "ramFree": "ram_free_label",
+    "diskFree": "disk_free_label",
+    "runningEngines": "running_engines_label",
+    "activityLoading": "activity_loading",
+    "activityFail": "activity_failed",
+    "noActivity": "no_activity",
+    "unknownCost": "unknown_cost",
+    "thCalls": "th_calls",
+    "thCost": "th_cost",
+    "calls": "calls_label",
+    "totalCost": "total_cost_label",
+    "errorRate": "error_rate_label",
+    "byUser": "by_user_label",
+    "byModel": "by_model_label",
+    "genericAssistant": "generic_assistant",
+    "matched": "matched_keywords",
+    "needs": "needs_label",
+    "tps": "unit_tps",
 }
 
-# Default language when the query string names none or an unknown one.
-_DEFAULT_LANG = "fr"
+
+# Default language when the query string names none or an unknown one — read
+# from the YAML's own declared default so the file stays the single source of
+# truth for locale metadata (see references/CODING.md section 21.3.4).
+_DEFAULT_LANG: str = str(i18n.meta()["default_locale"])
+_SUPPORTED_LANGS: set[str] = set(i18n.meta()["supported_locales"])
+
+
+def _strings_for(lang: str) -> dict[str, dict[str, str]]:
+    """Build the ``{"html": ..., "js": ...}`` label tables for one language.
+
+    Parameters
+    ----------
+    lang : str
+        Requested language code.
+
+    Returns
+    -------
+    dict
+        ``html`` maps template tokens to text; ``js`` maps the names the
+        inline script reads off ``T``. A key missing for ``lang`` falls back
+        to ``_DEFAULT_LANG``'s value, then to the bare key itself — the file
+        should never omit an entry, but a page must never 500 over copy.
+    """
+    gui = i18n.gui_strings()
+
+    def pick(key: str) -> str:
+        entry = gui.get(key, {})
+        return entry.get(lang) or entry.get(_DEFAULT_LANG) or key
+
+    html_strings = {"LANG": lang, **{tok: pick(k) for tok, k in _HTML_TOKEN_TO_KEY.items()}}
+    js_strings = {name: pick(k) for name, k in _JS_NAME_TO_KEY.items()}
+    return {"html": html_strings, "js": js_strings}
 
 
 # The document template. Human-facing text is tokenised as {{TOKEN}} (HTML) or
@@ -337,6 +307,13 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
                             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue
                             dark:border-neutral-600 dark:bg-neutral-950 dark:text-neutral-100" />
             </label>
+            <label class="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-600
+                          dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
+              <input id="live" type="checkbox"
+                     class="rounded border-neutral-300 text-brand-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue
+                            dark:border-neutral-600" />
+              {{LIVE_LABEL}}
+            </label>
             <span id="status" class="text-xs text-neutral-500 dark:text-neutral-400" role="status" aria-live="polite"></span>
           </div>
         </div>
@@ -347,6 +324,25 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
     <section id="results-section" class="border-t border-neutral-200/70 dark:border-neutral-800">
       <div class="mx-auto max-w-4xl px-5 py-10">
         <div id="results" class="space-y-4"></div>
+      </div>
+    </section>
+
+    <!-- 4) Activity ledger -->
+    <section class="border-t border-neutral-200/70 dark:border-neutral-800">
+      <div class="mx-auto max-w-4xl px-5 py-10">
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="text-2xl font-bold tracking-tight">{{ACTIVITY_H2}}</h2>
+          <button id="refresh-activity"
+                  class="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium
+                         hover:border-brand-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue
+                         dark:border-neutral-600">
+            {{REFRESH}}
+          </button>
+        </div>
+        <p class="mb-4 max-w-2xl text-sm text-neutral-600 dark:text-neutral-300">{{ACTIVITY_P}}</p>
+        <div id="activity" class="rounded-xl border border-neutral-200 bg-white p-5 text-sm shadow-sm dark:border-neutral-800 dark:bg-neutral-950">
+          <p class="text-neutral-500 dark:text-neutral-400">{{ACTIVITY_LOADING}}</p>
+        </div>
       </div>
     </section>
   </main>
@@ -430,6 +426,67 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
     $("refresh-system").addEventListener("click", loadSystem);
     loadSystem();
 
+    // --- 4) Activity ledger ------------------------------------------------
+    async function loadActivity() {
+      $("activity").innerHTML =
+        `<p class="text-neutral-500 dark:text-neutral-400">${T.activityLoading}</p>`;
+      try {
+        const res = await fetch("/api/activity");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        renderActivity(await res.json());
+      } catch (err) {
+        $("activity").innerHTML =
+          `<p class="text-red-600 dark:text-red-400">${T.activityFail}${err}</p>`;
+      }
+    }
+
+    function activityRow(row, keyName) {
+      const cost = row.cost_usd != null ? `$${row.cost_usd.toFixed(4)}` : T.unknownCost;
+      return `
+        <tr class="border-t border-neutral-200 dark:border-neutral-800">
+          <td class="py-1.5 pr-3 font-mono">${row[keyName]}</td>
+          <td class="py-1.5 pr-3">${row.calls}</td>
+          <td class="py-1.5">${cost}</td>
+        </tr>`;
+    }
+
+    function activityTable(title, rows, keyName) {
+      if (!rows.length) return "";
+      return `
+        <div class="mt-4">
+          <h3 class="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">${title}</h3>
+          <table class="w-full text-left text-xs">
+            <thead><tr class="text-neutral-500 dark:text-neutral-400">
+              <th class="pb-1 pr-3 font-medium">${keyName}</th>
+              <th class="pb-1 pr-3 font-medium">${T.thCalls}</th>
+              <th class="pb-1 font-medium">${T.thCost}</th>
+            </tr></thead>
+            <tbody>${rows.map((r) => activityRow(r, keyName)).join("")}</tbody>
+          </table>
+        </div>`;
+    }
+
+    function renderActivity(data) {
+      if (!data.total_calls) {
+        $("activity").innerHTML =
+          `<p class="text-neutral-500 dark:text-neutral-400">${T.noActivity}</p>`;
+        return;
+      }
+      const cost = data.total_cost_usd != null ? `$${data.total_cost_usd.toFixed(4)}` : T.unknownCost;
+      const parts = [`
+        <p>
+          <span class="font-semibold">${data.total_calls}</span> ${T.calls} ·
+          ${T.totalCost} <span class="font-semibold">${cost}</span> ·
+          ${T.errorRate} <span class="font-semibold">${(data.error_rate * 100).toFixed(1)}%</span>
+        </p>`];
+      parts.push(activityTable(T.byUser, data.by_user, "user"));
+      parts.push(activityTable(T.byModel, data.by_model, "model"));
+      $("activity").innerHTML = parts.join("");
+    }
+
+    $("refresh-activity").addEventListener("click", loadActivity);
+    loadActivity();
+
     // --- 2 & 3) Recommendation -------------------------------------------
     $("run-recommend").addEventListener("click", runRecommend);
     $("task").addEventListener("keydown", (e) => {
@@ -447,6 +504,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
     async function runRecommend() {
       const task = $("task").value.trim() || null;
       const headroom = Number($("headroom").value) || 0.85;
+      const live = $("live").checked;
       $("run-recommend").disabled = true;
       status(T.analyzing);
       $("results").innerHTML = "";
@@ -454,7 +512,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
         const res = await fetch("/api/recommend", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ task, headroom }),
+          body: JSON.stringify({ task, headroom, live }),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
         const report = await res.json();
@@ -538,9 +596,22 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
       parts.push(`
         <div class="rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-sm dark:border-neutral-800 dark:bg-neutral-900">
           <p><span class="text-neutral-500 dark:text-neutral-400">${T.task}</span> ${task.input ? task.input : T.genericAssistant}</p>
+          ${task.language ? `<p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">${T.language} ${task.language}</p>` : ""}
           ${task.matched && task.matched.length ? `<p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">${T.matched} ${task.matched.join(", ")}</p>` : ""}
           <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">${T.needs} ${task.kinds.map((k) => k.toUpperCase()).join(", ")}</p>
         </div>`);
+
+      const load = report.server_load;
+      if (load) {
+        const gpuPart = load.gpu_percent != null ? `, GPU ${Math.round(load.gpu_percent)}%` : "";
+        parts.push(`
+          <div class="mt-3 rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-xs text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
+            <span class="font-medium text-neutral-700 dark:text-neutral-300">${T.serverLoad}</span>
+            ${fmt1(load.available_ram_gb)} ${T.gb} ${T.ramFree}, CPU ${Math.round(load.cpu_percent)}%${gpuPart},
+            ${T.diskFree} ${fmt1(load.disk_free_gb)} ${T.gb} (${Math.round(load.disk_percent_used)}%),
+            ${T.runningEngines} ${load.running_engines}
+          </div>`);
+      }
 
       const kindBlocks = Object.entries(report.recommendations || {});
       const gridClass = kindBlocks.length > 1 ? "mt-4 grid gap-4 sm:grid-cols-2" : "mt-4 grid gap-4";
@@ -561,15 +632,16 @@ def render_gui(lang: str = _DEFAULT_LANG) -> str:
     Parameters
     ----------
     lang : str
-        Two-letter language code. ``"fr"`` (default) and ``"en"`` are supported;
-        any other value falls back to French so an unknown ``?lang=`` never 500s.
+        Two-letter language code. Any value outside ``locales/i18n.yaml``'s
+        ``meta.supported_locales`` (``"fr"``, ``"en"``) falls back to
+        ``meta.default_locale`` so an unknown ``?lang=`` never 500s.
 
     Returns
     -------
     str
         The complete HTML document for that language.
     """
-    strings = _STRINGS.get(lang, _STRINGS[_DEFAULT_LANG])
+    strings = _strings_for(lang if lang in _SUPPORTED_LANGS else _DEFAULT_LANG)
     page = _GUI_TEMPLATE
     for token, value in strings["html"].items():
         # Escape every value: these labels land in attributes (placeholder, aria,

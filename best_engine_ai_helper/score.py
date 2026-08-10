@@ -25,11 +25,11 @@ import os_helper as osh
 # Maps an application keyword to an ordered list of benchmark keys to try.
 # The first non-null value found in a catalog entry is used as the score.
 _APP_BENCH_PRIORITY: dict[str, list[str]] = {
-    "code":       ["code", "general"],
-    "math":       ["math", "general"],
-    "ocr":        ["ocr", "vision", "general"],
-    "vision":     ["vision", "general"],
-    "chat":       ["general"],
+    "code": ["code", "general"],
+    "math": ["math", "general"],
+    "ocr": ["ocr", "vision", "general"],
+    "vision": ["vision", "general"],
+    "chat": ["general"],
     "generalist": ["general"],
 }
 
@@ -91,6 +91,17 @@ _DECODE_EFFICIENCY_BY_BACKEND: dict[str, float] = {
 # model drops to ~7 tok/s. Source: MLX / llama.cpp community UX benchmarks.
 COMFORT_TPS: float = 15.0
 
+# Live-load derating: knocked off the budget on TOP of headroom when the
+# machine is demonstrably busy right now (see `detect.server_load`), so two
+# machines with identical total capacity do not get identical recommendations
+# when one is idle and the other is already saturated. Deliberately coarse —
+# a single threshold each, not a continuous curve — because the live values
+# are a snapshot, not a stable input worth over-fitting.
+_CPU_BUSY_PERCENT: float = 85.0
+_CPU_BUSY_DERATE: float = 0.85
+_DISK_LOW_GB: float = 10.0
+_DISK_LOW_DERATE: float = 0.85
+
 # Hard ceiling on the safety headroom. Headroom is the fraction of the
 # accelerator's *usable* pool a model may occupy; anything above 0.5 leaves too
 # little room for the OS, the caller's own workload, and KV-cache growth as the
@@ -147,7 +158,11 @@ def model_footprint_gb(entry: dict[str, Any], backend: str = "ollama") -> float:
     return round(max(fp16, ram), 3)
 
 
-def effective_budget(hw: dict[str, float | None], headroom: float = MAX_HEADROOM) -> float:
+def effective_budget(
+    hw: dict[str, float | None],
+    headroom: float = MAX_HEADROOM,
+    load: dict[str, Any] | None = None,
+) -> float:
     """
     Compute the memory budget (GB) a model may occupy at run time.
 
@@ -169,6 +184,15 @@ def effective_budget(hw: dict[str, float | None], headroom: float = MAX_HEADROOM
         room for the OS, the caller's workload, and KV growth. Defaults to
         :data:`MAX_HEADROOM` (0.5) and is **clamped** down to it — a larger value
         is never honoured, to keep picks realistic.
+    load : dict or None
+        Live server state from :func:`detect.server_load` (``available_ram_gb``,
+        ``cpu_percent``, ``disk_free_gb``, ...). When given, the theoretical
+        accelerator budget is additionally capped at what is ACTUALLY free
+        right now (another process, or an already-running engine, holds memory
+        the static hardware totals in ``hw`` know nothing about), and further
+        derated when the CPU is already saturated or the disk is nearly full.
+        ``None`` (the default) reproduces the pre-existing, load-blind
+        behaviour exactly.
 
     Returns
     -------
@@ -184,6 +208,10 @@ def effective_budget(hw: dict[str, float | None], headroom: float = MAX_HEADROOM
     >>> # headroom above the 0.5 ceiling is clamped, not honoured
     >>> effective_budget({'unified_gb': 96.0, 'vram_gb': None, 'ram_gb': 96.0}, headroom=0.85)
     36.0
+    >>> # a busy machine gets a smaller budget than an idle one with the same hardware
+    >>> hw = {'unified_gb': 96.0, 'vram_gb': None, 'ram_gb': 96.0}
+    >>> effective_budget(hw, load={'available_ram_gb': 10.0})
+    10.0
     """
     # Clamp to the hard ceiling: an over-generous headroom is the main source of
     # unrealistically large picks, so it is silently reduced, never exceeded.
@@ -191,9 +219,7 @@ def effective_budget(hw: dict[str, float | None], headroom: float = MAX_HEADROOM
     if hw.get("unified_gb"):
         pool = float(hw["unified_gb"])  # type: ignore[arg-type]
         cap = (
-            _APPLE_GPU_FRACTION_LARGE
-            if pool > _APPLE_SMALL_POOL_GB
-            else _APPLE_GPU_FRACTION_SMALL
+            _APPLE_GPU_FRACTION_LARGE if pool > _APPLE_SMALL_POOL_GB else _APPLE_GPU_FRACTION_SMALL
         )
         available = pool * cap
     elif hw.get("vram_gb"):
@@ -201,7 +227,29 @@ def effective_budget(hw: dict[str, float | None], headroom: float = MAX_HEADROOM
     else:
         available = float(hw.get("ram_gb") or 8.0) * _CPU_RAM_FRACTION
 
-    return round(available * headroom, 3)
+    budget = available * headroom
+
+    if load:
+        # Never let the theoretical accelerator cap exceed what is actually
+        # free right now. Exact for Apple Silicon and the CPU-only branch
+        # (their pool IS system RAM); a conservative-but-not-exact cap for a
+        # discrete GPU, since VRAM and system RAM are separate pools and this
+        # only catches the "system RAM itself is also exhausted" case.
+        live_ram = load.get("available_ram_gb")
+        if live_ram is not None:
+            budget = min(budget, float(live_ram))
+
+        # A saturated CPU or a nearly-full disk make this a bad moment to load
+        # one more model regardless of memory headroom — derate further so the
+        # pick reflects that, rather than only ever reacting to memory.
+        cpu_percent = load.get("cpu_percent")
+        if cpu_percent is not None and cpu_percent >= _CPU_BUSY_PERCENT:
+            budget *= _CPU_BUSY_DERATE
+        disk_free_gb = load.get("disk_free_gb")
+        if disk_free_gb is not None and disk_free_gb <= _DISK_LOW_GB:
+            budget *= _DISK_LOW_DERATE
+
+    return round(budget, 3)
 
 
 def estimated_tokens_per_second(
@@ -303,6 +351,7 @@ def select(
     headroom: float = MAX_HEADROOM,
     application: str | None = None,
     backend: str = "ollama",
+    load: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Pick the best-scoring model that fits in available memory.
@@ -339,6 +388,9 @@ def select(
     backend : {'ollama', 'vllm'}
         Serving backend, so memory fit is checked against the footprint that
         actually loads (FP16 for vLLM, Q4 ``ram_gb`` for Ollama).
+    load : dict or None
+        Live server state from :func:`detect.server_load`, forwarded to
+        :func:`effective_budget`. None reproduces the load-blind behaviour.
 
     Returns
     -------
@@ -372,7 +424,7 @@ def select(
     if not candidates:
         candidates = list(catalog)
 
-    budget = effective_budget(hw, headroom=headroom)
+    budget = effective_budget(hw, headroom=headroom, load=load)
 
     # Keep only models whose backend-specific footprint fits the safety budget
     fitting = [e for e in candidates if model_footprint_gb(e, backend) <= budget]
@@ -406,6 +458,7 @@ def rank(
     headroom: float = MAX_HEADROOM,
     application: str | None = None,
     backend: str = "ollama",
+    load: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """
     Return all candidates sorted by benchmark score, annotated with fit status.
@@ -432,6 +485,9 @@ def rank(
     backend : {'ollama', 'vllm'}
         Serving backend, so ``_fits`` reflects the footprint that actually
         loads (FP16 for vLLM, Q4 ``ram_gb`` for Ollama).
+    load : dict or None
+        Live server state from :func:`detect.server_load`, forwarded to
+        :func:`effective_budget`. None reproduces the load-blind behaviour.
 
     Returns
     -------
@@ -453,7 +509,7 @@ def rank(
     if not candidates:
         candidates = list(catalog)
 
-    budget = effective_budget(hw, headroom=headroom)
+    budget = effective_budget(hw, headroom=headroom, load=load)
 
     annotated = []
     for entry in candidates:

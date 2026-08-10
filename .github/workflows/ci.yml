@@ -36,7 +36,9 @@ jobs:
         # Catch incompatible pinned dependencies before they bite at runtime.
         run: python -m pip check
       - name: Ruff
-        run: ruff check .
+        run: |
+          ruff check .
+          ruff format --check .
       - name: Mypy
         run: mypy best_engine_ai_helper
       - name: Pytest
