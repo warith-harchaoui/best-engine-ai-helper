@@ -62,14 +62,18 @@ SQLite-backed sink (call ``observe.enable()``) that turns this into a
 queryable local activity/cost ledger, surfaced by the ``activity`` CLI command
 and the ``/api/activity`` endpoint.
 
-Privacy and safety (cloud calls only)
---------------------------------------
+Privacy and safety
+------------------
 ``chat(..., pseudonymize=True)`` scrubs personal data from the prompt with a
 local LLM before it reaches a cloud provider, and restores it in the response
-— see :mod:`best_engine_ai_helper.privacy`. ``chat(..., safety=True)`` (the
-default when the resolved engine is a cloud one) scans the prompt/images
-before sending and the response after receiving for policy violations — see
-:mod:`best_engine_ai_helper.safety`. Both are no-ops on a local engine.
+— see :mod:`best_engine_ai_helper.privacy`. Cloud-only (a no-op on a local
+engine — there is nowhere for personal data to leak to).
+
+``chat(..., safety=...)`` scans the prompt/images before sending and the
+response after receiving for NSFW/policy violations — see
+:mod:`best_engine_ai_helper.safety`. On by default for EVERY engine, local
+or cloud (content policy is independent of who is billed); pass
+``safety=False`` to opt out.
 
 Author
 ------
@@ -192,11 +196,19 @@ def _cloud_api_key(engine_dict: dict[str, Any] | None) -> str:
     """
     Resolve a cloud provider's API key without ever persisting the value.
 
-    Precedence: the env var NAMED in ``engine_dict["api_key_env"]`` (the
+    Precedence, for the variable NAMED in ``engine_dict["api_key_env"]`` (the
     engine descriptor stores only the variable's *name* — see
-    :func:`engine._resolve_cloud`) — then, if the optional ``keyring``
-    package is installed, the OS keychain entry
-    ``("best-engine-ai-helper", api_key_env)`` — else empty.
+    :func:`engine._resolve_cloud`):
+
+    1. ``os_helper.get_config``'s own fallback order, checked as one call —
+       ``settings.yaml`` (or ``settings.json``) in the current directory,
+       then any ``.env`` file, then the plain process environment. Copy
+       ``settings.yaml.example`` to ``settings.yaml`` (gitignored) and fill
+       in the key to use this; an empty value there is a deliberate "cloud
+       stays off" rather than a missing file.
+    2. If none of those have it, the OS keychain via the optional
+       ``keyring`` package, entry ``("best-engine-ai-helper", api_key_env)``.
+    3. Otherwise empty.
 
     Parameters
     ----------
@@ -214,9 +226,13 @@ def _cloud_api_key(engine_dict: dict[str, Any] | None) -> str:
     env_name = engine_dict.get("api_key_env")
     if not env_name:
         return _api_key()
-    key = os.environ.get(env_name, "")
-    if key:
-        return key
+
+    try:
+        config = osh.get_config([env_name], "cloud API key", path="settings.yaml")
+        return str(config[env_name])
+    except RuntimeError:
+        pass  # not in settings.yaml, any .env file, or the environment — try keyring
+
     try:
         import keyring
 
@@ -1198,8 +1214,9 @@ def chat(
         Scan the prompt/images before sending and the response after
         receiving for policy violations — see
         :mod:`best_engine_ai_helper.safety`. ``None`` (the default) resolves
-        to True for a cloud engine, False for a local one; pass an explicit
-        bool to override that default in either direction.
+        to True for every engine, local or cloud: NSFW/policy content is a
+        content-policy concern independent of who is billed, not a
+        cloud-only risk. Pass ``False`` to opt out explicitly.
 
     Returns
     -------
@@ -1260,8 +1277,10 @@ def chat(
                 )
 
         # Safety: scan the (possibly scrubbed) prompt and any images before
-        # sending. Defaults to on for a cloud engine, off for local.
-        do_safety = safety if safety is not None else is_cloud
+        # sending. On by default for EVERY engine, local or cloud — NSFW/policy
+        # content is a content-policy concern independent of who is billed,
+        # not a cloud-only risk. Pass safety=False to opt out explicitly.
+        do_safety = safety if safety is not None else True
         if do_safety:
             from . import safety as _safety
 

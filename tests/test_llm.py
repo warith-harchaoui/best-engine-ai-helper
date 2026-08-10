@@ -322,7 +322,7 @@ def test_chat_gemini_malformed_response_raises() -> None:
 
 
 def test_mistral_routes_through_openai_compatible_transport(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
 ) -> None:
     # Mistral speaks the OpenAI Chat Completions wire format, so it never needs
     # its own transport function — only membership in _OPENAI_COMPATIBLE.
@@ -336,6 +336,9 @@ def test_mistral_routes_through_openai_compatible_transport(
         "api_key_env": "MISTRAL_API_KEY",
         "llm": {"model": "mistral-large-latest", "cloud": True},
     }
+    # Isolated cwd: a real settings.yaml (this project's own, for live testing)
+    # must never leak into a test asserting on the ENV VAR path specifically.
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("MISTRAL_API_KEY", "mistral-secret")
     with patch("requests.post", return_value=resp) as post:
         out = _llm.chat("salut", engine=eng, kind="llm")
@@ -349,6 +352,30 @@ def test_mistral_routes_through_openai_compatible_transport(
 # ---------------------------------------------------------------------------
 # Cloud API key resolution
 # ---------------------------------------------------------------------------
+
+
+def test_cloud_api_key_reads_settings_yaml_in_cwd(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    # os_helper.get_config's own precedence: settings.yaml in the CURRENT
+    # directory wins over a plain env var — verified by setting both to
+    # different values and checking the file wins.
+    (tmp_path / "settings.yaml").write_text("MY_KEY_ENV: from-settings-yaml\n")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("MY_KEY_ENV", "from-env")
+    assert _llm._cloud_api_key({"api_key_env": "MY_KEY_ENV"}) == "from-settings-yaml"
+
+
+def test_cloud_api_key_empty_string_in_settings_yaml_means_off(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    # settings.yaml.example ships every key as "" ("empty ⇒ cloud stays off"):
+    # a present-but-empty value must resolve to "", not fall through to a
+    # possibly-set env var — the file's explicit "off" wins.
+    (tmp_path / "settings.yaml").write_text('MY_KEY_ENV: ""\n')
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("MY_KEY_ENV", "from-env")
+    assert _llm._cloud_api_key({"api_key_env": "MY_KEY_ENV"}) == ""
 
 
 def test_cloud_api_key_env_var_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -472,7 +499,11 @@ def test_chat_pseudonymize_warns_without_a_fallback(monkeypatch: pytest.MonkeyPa
     assert out == "hi"  # sent unscrubbed, no crash
 
 
-def test_chat_safety_defaults_on_for_cloud_off_for_local(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_chat_safety_defaults_on_for_both_local_and_cloud(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # NSFW/policy scanning is a content-policy concern independent of who is
+    # billed -- on by default for every engine, not just cloud ones.
     from best_engine_ai_helper import safety
 
     calls: list[str] = []
@@ -495,7 +526,11 @@ def test_chat_safety_defaults_on_for_cloud_off_for_local(monkeypatch: pytest.Mon
         "llm": {"model": "qwen3:8b"},
     }
     _llm.chat("hi", engine=local_eng, kind="llm")
-    assert calls == []  # local engine: safety scanning stays off by default
+    assert calls == ["outbound", "inbound"]  # local engine: scanned too, same default
+
+    calls.clear()
+    _llm.chat("hi", engine=local_eng, kind="llm", safety=False)
+    assert calls == []  # explicit opt-out still works
 
 
 def test_chat_safety_block_propagates_as_safetyviolation(monkeypatch: pytest.MonkeyPatch) -> None:

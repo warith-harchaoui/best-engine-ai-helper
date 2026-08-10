@@ -21,14 +21,20 @@ eventual `cloud` -> `main` merge only needs to add what follows.
 - **Real, provider-reported token counts for cost accounting.** Every
   transport (including Ollama's `prompt_eval_count`/`eval_count`) now returns
   `(text, usage)`; the `chat()` event gains `in_tokens`/`out_tokens` when the
-  provider reports them. `observe.estimate_cost_usd` should be extended to
-  prefer these over its char-count heuristic once this branch reaches `main`
-  (currently a `main`-side change, tracked separately — this branch only
-  produces the real numbers).
-- **`llm._cloud_api_key`**: resolves a cloud engine's API key from the env
-  var named in its `api_key_env` field, falling back to the OS keychain via
-  the optional `keyring` extra. The key VALUE is never read from or written
-  to the engine descriptor itself.
+  provider reports them, and `observe.estimate_cost_usd` now prefers these
+  exact counts over its char-count heuristic whenever they're present (falls
+  back to the heuristic otherwise, e.g. LangChain). `pricing.yaml` gained
+  Mistral's four model tiers alongside the existing OpenAI/Anthropic/Gemini
+  entries. Verified against a real, live Mistral call (see below).
+- **`llm._cloud_api_key`**: resolves a cloud engine's API key via
+  `os_helper.get_config` — its own fallback order in one call (a
+  `settings.yaml`/`settings.json` file in the current directory, then any
+  `.env` file, then the plain process environment) for the env var named in
+  the engine's `api_key_env` field — then the OS keychain via the optional
+  `keyring` extra as a last resort. The key VALUE is never read from or
+  written to the engine descriptor itself. New `settings.yaml.example`
+  (copy to `settings.yaml`, gitignored, fill in your key; an empty value is
+  a deliberate "cloud stays off", not a missing file).
 - **Failover chain, retry, and cache** (`llm._engine_chain`, `_with_retry`,
   `_cache_key_payload`): `chat(engine=..., retries=N, cache=True)`. A cloud
   engine's embedded local `fallback` is tried automatically on failure
@@ -37,17 +43,20 @@ eventual `cloud` -> `main` merge only needs to add what follows.
   request twice.
 - **`privacy.py` wired into `chat(..., pseudonymize=True)`**: scrubs personal
   data from the prompt with the engine's local fallback before a cloud send,
-  restores it in the response. No-op on a local engine, or with a loud
-  warning if the cloud engine has no local fallback to scrub with.
-- **`safety.py` (Phase 6.5, new): NSFW/policy scanning**, wired into
-  `chat(..., safety=...)` (defaults to on for a cloud engine, off for local).
-  Scans the outbound prompt/images and the inbound response; `action`
-  policy is `block` (raise `SafetyViolation`) / `redact` (text only) / `warn`
-  (log, pass through — the default, since this has no track record on real
-  traffic yet). Detoxify (text) and a CLIP-based classifier (images, via
-  `transformers`) are optional (`[safety]` extra); absent them, text scanning
-  degrades to a crude keyword heuristic (never silently no-ops) and image
-  scanning degrades to `"unavailable"` (never a fabricated verdict).
+  restores it in the response. Cloud-only (a no-op on a local engine — there
+  is nowhere for personal data to leak to), or with a loud warning if the
+  cloud engine has no local fallback to scrub with.
+- **`safety.py` (Phase 6.5, new): NSFW/policy scanning, for text AND images,
+  for local AND cloud engines alike** — content policy is independent of who
+  is billed, so this is on by default for every `chat()` call, not just
+  paid ones (pass `safety=False` to opt out). Scans the outbound
+  prompt/images and the inbound response; `action` policy is `block` (raise
+  `SafetyViolation`) / `redact` (text only) / `warn` (log, pass through —
+  the default, since this has no track record on real traffic yet).
+  Detoxify (text) and a CLIP-based classifier (images, via `transformers`)
+  are optional (`[safety]` extra); absent them, text scanning degrades to a
+  crude keyword heuristic (never silently no-ops) and image scanning
+  degrades to `"unavailable"` (never a fabricated verdict).
 - `engine.resolve(mode="cloud")` now actually resolves instead of raising
   `NotImplementedError` — provider + model (+ optional `base_url`/
   `api_key_env`) plus a local `fallback` from the same brief.
@@ -55,11 +64,12 @@ eventual `cloud` -> `main` merge only needs to add what follows.
 ### Verification
 
 Everything above is covered by mocked tests (no network call, no API key,
-no paid request) — 260 passed, 91.9% coverage, ruff/mypy clean. Real
-provider wire-format correctness (payload shapes, auth headers, response
-parsing) is verified against each provider's documented API shape; an actual
-live call (e.g. against Mistral) still needs a real API key to confirm end
-to end and has not been run.
+no paid request) — 263 passed, 92.0% coverage, ruff/mypy clean. Also ran a
+real, live call against Mistral (`mistral-small-latest`, via the
+`settings.yaml` key) end to end: request/response, real token counts, and a
+real computed cost ($0.0000048 for a two-word exchange) all confirmed
+working outside the mocks. Anthropic/Gemini payload shapes are verified
+against their documented APIs but have not had a live call yet.
 
 ## [1.2.0] - 2026-08-09
 

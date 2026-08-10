@@ -29,3 +29,15 @@ models:
   gemini-1.5-flash:
     input_per_1m: 0.075
     output_per_1m: 0.30
+  mistral-large-latest:
+    input_per_1m: 2.00
+    output_per_1m: 6.00
+  mistral-small-latest:
+    input_per_1m: 0.10
+    output_per_1m: 0.30
+  mistral-medium-latest:
+    input_per_1m: 0.40
+    output_per_1m: 2.00
+  open-mistral-nemo:
+    input_per_1m: 0.15
+    output_per_1m: 0.15

@@ -1,0 +1,6 @@
+
+# Paid LLM/VLM backend (opt-in "backup generator" — local Ollama is the default). Empty ⇒
+# cloud LLM/VLM stays off; --llm-backend/--vlm-backend cloud fall back to local without it.
+# Get a key at https://console.mistral.ai/api-keys
+MISTRAL_API_KEY: ""
+

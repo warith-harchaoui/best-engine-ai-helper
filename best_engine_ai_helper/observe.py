@@ -164,14 +164,18 @@ def estimate_cost_usd(event: dict[str, Any]) -> float | None:
     ----------
     event : dict
         One event dict as emitted by :func:`llm.chat` (``backend``, ``model``,
-        ``in_chars``, ``out_chars``).
+        ``in_chars``, ``out_chars``, and — on the ``cloud`` branch, once a
+        provider reports them — ``in_tokens``/``out_tokens``).
 
     Returns
     -------
     float or None
         ``0.0`` for a local backend (always free). For a paid backend: the
-        estimated cost from ``pricing.yaml``, or None when the model is not
-        in the table — an unpriced model must never silently show as free.
+        cost from ``pricing.yaml`` using the provider's own reported token
+        counts when the event carries them (``in_tokens``/``out_tokens``,
+        exact), falling back to the character-count heuristic otherwise
+        (approximate — see :data:`_CHARS_PER_TOKEN`). None when the model is
+        not in the table — an unpriced model must never silently show as free.
 
     Examples
     --------
@@ -190,11 +194,19 @@ def estimate_cost_usd(event: dict[str, Any]) -> float | None:
     if not pricing:
         return None
 
-    in_tokens = float(event.get("in_chars", 0)) / _CHARS_PER_TOKEN
-    out_tokens = float(event.get("out_chars", 0)) / _CHARS_PER_TOKEN
-    cost: float = in_tokens / 1_000_000 * float(
+    # Real provider-reported counts are exact; the char-count heuristic is a
+    # fallback for backends/events that don't carry them (e.g. LangChain, or
+    # any event recorded before a transport started reporting usage).
+    in_tokens = event.get("in_tokens")
+    out_tokens = event.get("out_tokens")
+    if in_tokens is None:
+        in_tokens = float(event.get("in_chars", 0)) / _CHARS_PER_TOKEN
+    if out_tokens is None:
+        out_tokens = float(event.get("out_chars", 0)) / _CHARS_PER_TOKEN
+
+    cost: float = float(in_tokens) / 1_000_000 * float(
         pricing.get("input_per_1m", 0.0)
-    ) + out_tokens / 1_000_000 * float(pricing.get("output_per_1m", 0.0))
+    ) + float(out_tokens) / 1_000_000 * float(pricing.get("output_per_1m", 0.0))
     return round(cost, 6)
 
 
