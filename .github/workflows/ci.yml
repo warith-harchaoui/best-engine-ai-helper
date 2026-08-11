@@ -27,6 +27,14 @@ jobs:
         python-version: ["3.12"]
     steps:
       - uses: actions/checkout@v4
+        with:
+          # best_engine_ai_helper/models/*.onnx is tracked via Git LFS; a
+          # plain checkout leaves an LFS pointer stub in its place. The test
+          # suite never actually opens that file (onnxruntime is mocked, not
+          # installed), so this isn't a CURRENT failure risk, but any future
+          # build/publish step reading the real bytes would silently ship
+          # the stub instead of the model without this.
+          lfs: true
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
