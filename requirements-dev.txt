@@ -7,6 +7,16 @@ types-pyyaml
 types-requests
 httpx>=0.27
 pillow>=10
+# safety.py's _clip_image_embedding does a real `import numpy` internally
+# (L2-normalizing a CLIP embedding) even when transformers/onnxruntime are
+# faked out in test_safety.py -- without this, that "extra installed"
+# branch either needs a real numpy transitively present by luck or silently
+# degrades to the "unavailable" backend instead of exercising the real path.
+# Capped below 2.5: its own type stubs use `type X = ...` (PEP 695) syntax
+# that mypy 1.20.2 rejects under this project's python_version = "3.10"
+# target ("Type statement is only supported in Python 3.12 and greater"),
+# aborting the whole mypy run -- not just a numpy-specific warning.
+numpy>=1.24,<2.5
 # Message types (HumanMessage/SystemMessage) for the langchain backend path in
 # llm.py. Test-only: the backend wrappers (langchain_ollama / langchain_openai)
 # are stubbed in tests/test_llm.py, but the message import is unconditional, so
