@@ -170,7 +170,7 @@ best-engine-ai-helper hardware show
 # Lancer la GUI navigateur
 best-engine-ai-helper gui
 
-# Qui appelle quoi, et à quel coût (journal SQLite local)
+# Qui appelle quoi et à quel coût (journal SQLite local)
 best-engine-ai-helper activity
 ```
 
@@ -204,7 +204,7 @@ ou depuis tout projet en aval qui importe `best_engine_ai_helper.llm`) peut
 être enregistré dans un journal SQLite local, en ajout seul
 (`~/.best-engine-ai-helper/usage.db`) : qui a appelé (variable d'environnement
 `BEST_ENGINE_USER`, sinon le nom de connexion du système), quel modèle et
-backend, la latence, le succès ou l'échec, et un coût estimé pour les backends
+backend, la latence, le succès ou l'échec et un coût estimé pour les backends
 payants (toujours `0,0` pour Ollama/vLLM en local). Pensé pour le cas « une
 entreprise, plusieurs utilisateurs sur une machine partagée » : répondre à
 « qui appelle quoi, combien de fois, à quel coût » sans pile de télémétrie
@@ -268,7 +268,7 @@ Quand aucun modèle ne tient, l'outil sélectionne le plus petit du catalogue et
 
 Les quatre facteurs ci-dessus décrivent la capacité *théorique* de la machine. Ajouter
 `--live` (`recommend`/`report` ; `live: true` sur `POST /api/recommend`) pèse aussi ce qui
-s'y passe *en ce moment* : RAM libre actuelle, usage CPU/GPU/disque, et le nombre de moteurs
+s'y passe *en ce moment* : RAM libre actuelle, usage CPU/GPU/disque et le nombre de moteurs
 déjà lancés (modèles Ollama, serveurs vLLM). Une machine chargée obtient un budget plus
 réaliste qu'une machine identique mais inactive. Désactivé par défaut : cela ajoute une
 sonde en direct (~0,1-0,5 s : `nvidia-smi`/`ioreg`, un ping Ollama local, un échantillon
@@ -339,7 +339,7 @@ en un **fichier moteur** gitignoré qui nomme le backend et le modèle à utilis
 constante `DEFAULT_MODEL` ne vit dans le projet : le modèle se lit toujours depuis le fichier
 moteur résolu.
 
-1. **Versionner le brief** — `llm.brief.yaml` dans le dépôt, indépendant du matériel :
+1. **Versionner le brief** : `llm.brief.yaml` dans le dépôt, indépendant du matériel :
 
    ```yaml
    mode: local             # local (défaut) ou cloud
@@ -353,14 +353,13 @@ moteur résolu.
    ```
 
    `mode: local` est le défaut. `mode: cloud` résout un fournisseur payant plus
-   un repli local depuis le même brief (payant vers local en cas d'échec) —
+   un repli local depuis le même brief (payant vers local en cas d'échec) ;
    voir [EXEMPLES.md → resolve](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXEMPLES.md#resolve)
    pour un brief `mode: cloud` complet. Le retry/cache/pseudonymisation
    nécessitent l'extra `[cloud]` ; les vrais classifieurs NSFW de
-   `llm.chat(safety=...)` nécessitent `[filtered]` — les deux se dégradent
+   `llm.chat(safety=...)` nécessitent `[filtered]` : les deux se dégradent
    proprement plutôt que d'échouer en leur absence.
-
-2. **Le résoudre, par machine** — écrit un `llm.engine.yaml` gitignoré :
+2. **Le résoudre, par machine** : écrit un `llm.engine.yaml` gitignoré :
 
    ```sh
    best-engine-ai-helper resolve --brief llm.brief.yaml --out llm.engine.yaml
@@ -368,11 +367,11 @@ moteur résolu.
 
    Le backend est choisi selon le matériel : **vLLM quand un GPU discret (NVIDIA/AMD) est
    présent, Ollama sinon** (macOS, Linux CPU seul, iGPU Intel). Le choix est délibérément
-   prudent — la marge mémoire est plafonnée à 0,5 et parmi les modèles à quelques points de
+   prudent : la marge mémoire est plafonnée à 0,5 et parmi les modèles à quelques points de
    benchmark du meilleur, il prend le plus léger et le plus rapide, pas le plus gros qui tient
    tout juste. Les choix vLLM sont dimensionnés sur les poids FP16 complets (plus lourds que
    l'estimation Ollama Q4), pour qu'un choix vLLM soit réaliste sur le vrai GPU. La sortie est
-   spécifique au matériel — ajoutez-la au `.gitignore` :
+   spécifique au matériel ; ajoutez-la au `.gitignore` :
 
    ```yaml
    backend: ollama
@@ -382,7 +381,7 @@ moteur résolu.
    serve: [ollama pull gemma3:12b]
    ```
 
-3. **Le consommer, sans constante** — lisez le moteur au moment de l'appel et laissez le
+3. **Le consommer, sans constante** : lisez le moteur au moment de l'appel et laissez le
    transport router vers le bon backend :
 
    ```python
@@ -401,16 +400,16 @@ moteur résolu.
 
 **Politique de fichier manquant.** Le brief est versionné : son absence est un vrai bug et
 `ensure` lève une erreur explicite avec la commande à lancer. Le fichier moteur est gitignoré
-et spécifique à la machine : son absence est normale — `ensure` le résout depuis le brief au
+et spécifique à la machine : son absence est normale, `ensure` le résout depuis le brief au
 premier usage. Le modèle reste ainsi hors de toute variable : le fichier moteur résolu est
 l'unique source de vérité.
 
 ## Usages / profils de tâche
 
-Là où un *brief* est écrit par dépôt, les charges de travail récurrentes de la suite sev7n
+Là où un *brief* est écrit par dépôt, les huit charges de travail récurrentes de la suite
 sont nommées une fois dans un **catalogue d'usages** intégré (`usages.yaml`). Chaque
-**profil** — `text2sql`, `rag-answer`, `embeddings`, `text2sql-figures`, `report-bluf`,
-`classification`, `pii-rgpd`, `persona` — n'énonce que ses **besoins** : type de tâche
+**profil** (`text2sql`, `rag-answer`, `embeddings`, `text2sql-figures`, `report-bluf`,
+`classification`, `pii-rgpd`, `persona`) n'énonce que ses **besoins** : type de tâche
 (texte / code / vision / *embeddings*), besoin ou non de sortie structurée (*structured
 output*), plancher de débit, marge mémoire, seuil de qualité indicatif et longueur de
 contexte. Un profil est, au fond, un *brief* nommé : il est donc résolu par le **même moteur
@@ -421,14 +420,14 @@ besoins, sonde la machine et choisit le modèle local concret, en n'écrivant ce
 dans un fichier moteur généré (`llm.engine*.yaml`), **gitignoré et spécifique à la machine**
 — jamais un littéral versionné. C'est tout l'intérêt de l'outil.
 
-Les profils sont regroupés en **familles** — les usages qui peuvent partager un même modèle,
+Les profils sont regroupés en **familles** : les usages qui peuvent partager un même modèle,
 pour qu'une machine n'ait pas à en garder huit :
 
 | Famille | Besoin | Profils |
 |---------|--------|---------|
-| **F1 — génération contrainte** | code + sortie structurée fiable (SQL / JSON), déterministe | `text2sql`, `text2sql-figures`, `classification`, `pii-rgpd` |
-| **F2 — génération rédactionnelle** | prose fidèle FR/EN sur long contexte | `rag-answer`, `report-bluf`, `persona` |
-| **F3 — *embeddings*** | vecteurs de recherche multilingues et multi-granulaires (jamais un modèle de chat) | `embeddings` |
+| **F1 : génération contrainte** | code + sortie structurée fiable (SQL / JSON), déterministe | `text2sql`, `text2sql-figures`, `classification`, `pii-rgpd` |
+| **F2 : génération rédactionnelle** | prose fidèle FR/EN sur long contexte | `rag-answer`, `report-bluf`, `persona` |
+| **F3 : *embeddings*** | vecteurs de recherche multilingues et multi-granulaires (jamais un modèle de chat) | `embeddings` |
 
 Résoudre une famille donne **un** modèle pour le groupe ; résoudre un profil seul donne le
 modèle éventuellement spécialisé pour ce travail quand le matériel le permet. Sur une machine
