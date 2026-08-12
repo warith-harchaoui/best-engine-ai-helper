@@ -37,7 +37,8 @@ mypy best_engine_ai_helper                           # types
 python -m pytest -q --cov=best_engine_ai_helper --cov-fail-under=90
 ```
 
-CI runs this matrix on Python 3.10, 3.11, and 3.12; a failing check or a
+CI runs this on Python 3.12 (a deliberately super-light single-version gate;
+run the full 3.10-3.12 sweep locally before pushing). A failing check or a
 coverage drop below the floor blocks the merge.
 
 ## Writing standards

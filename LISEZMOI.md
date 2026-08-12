@@ -295,6 +295,16 @@ fonction déterministe du seul matériel, ce qui compte pour des rapports reprod
 | `usages show <profil>` | Affiche les besoins d'un profil (tâche, *structured output*, planchers) |
 | `usages resolve <profil>` | Résout un profil (ou `--family`) vers le modèle que best-engine choisit ici |
 
+## Catalogue de modèles
+
+Le catalogue de base intégré (`models.yaml`) couvre les familles Qwen 3, Qwen 2.5, Qwen 2.5-Coder et Gemma 3 (de 3B à 72B paramètres, en Q4_K_M et Q8_0), plus un petit ensemble d'*embedders* textuels (`kind: embed`) pour l'index de recherche. Le catalogue suit la taille sur disque, la RAM de pic estimée et les scores de benchmark issus de l'Open LLM Leaderboard v2, de l'OpenVLM Leaderboard, d'EvalPlus (code) et de MTEB (recherche par *embedding*). C'est l'*espace de recherche* dans lequel best-engine choisit, jamais un choix propre à un usage.
+
+`catalog update` rafraîchit le cache depuis l'[annuaire LLM ApXML](https://apxml.com/models?modelType=open_weight) (modèles à poids ouverts avec leurs besoins VRAM par quantification, consulté régulièrement). Il récupère les fiches, les normalise en entrées de catalogue et les fusionne dans `~/.best-engine-ai-helper/catalog_cache.yaml` par identifiant (le catalogue de base intégré n'est jamais modifié). Utilisez `--limit N` pour un rafraîchissement partiel rapide. Les pages statiques d'ApXML portent des caractéristiques mais aucun score de classement numérique, donc les entrées rafraîchies gardent des benchmarks nuls (et un rang bas) jusqu'à ce qu'une source notée, comme l'Open LLM Leaderboard v2 ou l'OpenVLM Leaderboard, les remplisse.
+
+## Table matérielle
+
+`hardware.yaml` liste les configurations de puces GPU et Apple Silicon connues avec leur mémoire utilisable (pool physique moins la réserve OS et pilote). Il n'existe aucune API publique de caractéristiques couvrant toutes les puces, donc `hardware update` enregistre plutôt la vérité terrain pour la machine sur laquelle elle tourne : elle détecte la puce, le pool mémoire et la part utilisable par Ollama de cette machine, puis met à jour cette ligne dans `~/.best-engine-ai-helper/hardware_cache.yaml` (indexée par puce + palier mémoire).
+
 ## Intégration avec les projets en aval
 
 Il y a deux façons de consommer le modèle sélectionné. La première quand tous les outils de

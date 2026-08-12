@@ -2,7 +2,7 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
-## [1.3.4] - 2026-08-10 (`nsfw` branch)
+## [1.3.4] - 2026-08-10
 
 Reverses `1.3.3`'s image-detector decision: LAION's `CLIP-based-NSFW-Detector`
 now ships as the default, converted to ONNX to remove the fragility that
@@ -50,8 +50,13 @@ made `1.3.3` keep Falconsai instead.
   `BaseModelOutputWithPooling` object in the version this was verified
   against) — this project's own `transformers>=4.30` pin has no upper
   bound, so the code needs to stay correct across that whole range.
+- `ci.yml`'s checkout step now fetches Git LFS content (`lfs: true`). Not a
+  test-suite regression risk today (`onnxruntime` is mocked in CI, never
+  installed, so nothing opens the real `.onnx` file), but a plain checkout
+  otherwise leaves an LFS pointer stub in its place, which would silently
+  break any future build/publish step reading the real bytes.
 
-## [1.3.3] - 2026-08-10 (`nsfw` branch)
+## [1.3.3] - 2026-08-10
 
 Re-evaluated both `safety.py` classifier choices against real, independently
 run tests (not vendor claims) and swapped one of them.

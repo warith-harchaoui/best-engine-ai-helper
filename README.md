@@ -19,7 +19,7 @@ are downloaded. Two honest cases:
 2. **The only caveat: the initial download.** The `pull` command downloads
    the model weights via Ollama (a normal download from Ollama's servers).
    After that, everything runs offline. Refreshing the catalog
-   (`catalog update`) is also online, but optional — the bundled catalog is
+   (`catalog update`) is also online, but optional: the bundled catalog is
    enough for everyday use.
 
 A minimal browser GUI (`best-engine-ai-helper gui`) covers the read-only half
@@ -278,6 +278,26 @@ inference-memory breakdown weights + KV (15-20%) + overhead (5-10%) (local-LLM
 sizing guides); bandwidth-bound decode `tok/s ≈ bandwidth ÷ active-bytes × 0.5-0.8`
 (llama.cpp / MLX community benchmarks). The exact ratios live as documented
 constants in `score.py`.
+
+## Available commands
+
+| Command | Description |
+|---------|-------------|
+| `detect` | Print the detected hardware as JSON |
+| `recommend` | Rank candidates for this hardware (no download) |
+| `report` | Recommend the best engine(s) for a task (Markdown + JSON) |
+| `catalog show` | Print the merged model catalog |
+| `catalog update` | Refresh the model cache from the ApXML open-weight directory (`--limit N` for a partial refresh) |
+| `hardware show` | Print the known hardware chip table |
+| `hardware update` | Record this machine's chip and memory in the hardware cache |
+| `pull` | Download the best model and run the Ralph gates |
+| `validate` | Run the Ralph gates on the currently configured model |
+| `env` | Print the shell export block ready for `~/.zshrc` |
+| `gui` | Launch the browser GUI |
+| `activity` | Summarize the local activity/cost ledger (calls, cost, by user/model, errors) |
+| `usages list` | List usage profiles and families (needs only, never a model) |
+| `usages show <profile>` | Show one profile's needs (task, structured output, floors) |
+| `usages resolve <profile>` | Resolve a profile (or `--family`) to the model best-engine picks here |
 
 ## Model catalog
 
