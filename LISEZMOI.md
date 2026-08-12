@@ -50,10 +50,10 @@ défaut, anglais via `/gui?lang=en`, avec un lien d'en-tête pour basculer. Voir
 - Python 3.10 ou ultérieur
 - [Ollama](https://ollama.com) (nécessaire uniquement pour `pull`, `validate` et `env` ; pas
   requis pour `detect`, `recommend` ou `report`)
-- Tout le reste — os-helper (détection matérielle), PyYAML, click, requests,
-  langdetect, ainsi que les surfaces FastAPI/MCP (`fastapi`, `uvicorn`,
-  `fastapi-mcp`) — s'installe automatiquement : la CLI, la GUI, l'API HTTP et
-  le serveur MCP font tous partie de l'installation par défaut, rien
+- Tout le reste s'installe automatiquement : os-helper (détection matérielle),
+  PyYAML, click, requests, langdetect, ainsi que les surfaces FastAPI/MCP
+  (`fastapi`, `uvicorn`, `fastapi-mcp`). La CLI, la GUI, l'API HTTP et le
+  serveur MCP font tous partie de l'installation par défaut, rien
   d'optionnel à activer.
 - Optionnel : `[cloud]` pour le mode fournisseur cloud (retry, cache,
   pseudonymisation, repli sur le trousseau OS pour les clés API) et
@@ -144,7 +144,7 @@ best-engine-ai-helper detect     # affiche le matériel de la machine en JSON
 ```
 
 Chaque commande existe aussi via un jumeau argparse,
-`best-engine-ai-helper-argparse` (mêmes options, même sortie) — la surface
+`best-engine-ai-helper-argparse` (mêmes options, même sortie) : la surface
 CLI sans dépendance supplémentaire de la suite (click est ici une dépendance
 de base, donc `best-engine-ai-helper` reste le point d'entrée principal ; le
 jumeau argparse est une surface ajoutée, pas un remplacement).
@@ -390,7 +390,7 @@ moteur résolu.
 
    engine = ensure(".")            # charge llm.engine.yaml ou le résout depuis
                                    # llm.brief.yaml au premier usage
-   resume = llm.chat(prompt, engine=engine, kind="llm")
+   summary = llm.chat(prompt, engine=engine, kind="llm")
    critique = llm.chat(prompt, engine=engine, kind="vlm",
                        images=[png], json_schema=SCHEMA)
    ```
