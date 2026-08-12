@@ -133,6 +133,15 @@ def test_scan_text_and_image_degradation_and_real_classifiers(
     monkeypatch.setattr(safety, "_CLIP_PROCESSOR", None)
     monkeypatch.setattr(safety, "_ONNX_SESSION", None)
 
+    # With onnxruntime/transformers "installed" (still faked above) but the
+    # REAL Pillow decoding genuinely malformed bytes: a decode failure must
+    # degrade to "unavailable" too, not crash with an uncaught PIL error.
+    monkeypatch.delitem(sys.modules, "PIL", raising=False)
+    monkeypatch.delitem(sys.modules, "PIL.Image", raising=False)
+    malformed = safety.scan_image(b"not a real image")
+    assert malformed == {"score": 0.0, "label": "unavailable", "backend": "unavailable"}
+    monkeypatch.setattr(safety, "_ONNX_SESSION", None)
+
 
 def _stub_score(score: float, label: str = "nsfw", backend: str = "heuristic") -> dict[str, Any]:
     return {"score": score, "label": label, "backend": backend}

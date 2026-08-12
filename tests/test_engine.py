@@ -91,6 +91,50 @@ def test_resolve_local_mode_backend_and_headroom(monkeypatch: pytest.MonkeyPatch
     assert endpoint_eng["base_url"] == "http://gpu-box:8001/v1"
     assert endpoint_eng["serve"] == ["vllm serve org/Mid-VLM --port 8001"]
 
+    # An invalid backend name is a configuration error, not a silent fallback.
+    with pytest.raises(ValueError, match="backend"):
+        engine.resolve(_BRIEF, backend="bogus", catalog=_CATALOG, hw=_HW, compute=_COMPUTE)
+
+    # An unknown brief mode is treated as "local" (with a warning), not an error.
+    unknown_mode_eng = engine.resolve(
+        dict(_BRIEF, mode="not-a-real-mode"),
+        backend="ollama",
+        catalog=_CATALOG,
+        hw=_HW,
+        compute=_COMPUTE,
+    )
+    assert unknown_mode_eng["mode"] == "local"
+
+    # An unknown brief kind defaults to resolving both llm and vlm.
+    unknown_kind_eng = engine.resolve(
+        dict(_BRIEF, kind="not-a-real-kind"),
+        backend="ollama",
+        catalog=_CATALOG,
+        hw=_HW,
+        compute=_COMPUTE,
+    )
+    assert set(unknown_kind_eng) >= {"llm", "vlm"}
+
+    # An empty catalog leaves every kind unresolved (a warning, not a crash)
+    # rather than raising deep inside the picker.
+    empty_catalog_eng = engine.resolve(
+        _BRIEF, backend="ollama", catalog=[], hw=_HW, compute=_COMPUTE
+    )
+    assert empty_catalog_eng["llm"] is None and empty_catalog_eng["vlm"] is None
+
+    # A vLLM catalog entry with no vllm_id falls back to the raw Ollama-style
+    # tag (with a warning), rather than failing to produce a serve command.
+    no_vllm_id_catalog = [dict(_CATALOG[0], id="tagged-only")]
+    del no_vllm_id_catalog[0]["vllm_id"]
+    fallback_tag_eng = engine.resolve(
+        {"kind": "llm", "task": "write copy"},
+        backend="vllm",
+        catalog=no_vllm_id_catalog,
+        hw=_HW,
+        compute=_COMPUTE,
+    )
+    assert fallback_tag_eng["llm"]["model"] == "tagged-only"
+
 
 def test_engine_file_roundtrip_ensure_and_model_for(
     tmp_path, monkeypatch: pytest.MonkeyPatch
@@ -135,8 +179,27 @@ def test_engine_file_roundtrip_ensure_and_model_for(
     with pytest.raises(KeyError):
         engine.model_for({"backend": "ollama", "base_url": "x"}, "vlm")
 
+    # load_brief also accepts a real path to a well-formed YAML mapping (not
+    # just an already-loaded dict, the path every engine.resolve() call above
+    # takes).
+    good_brief = tmp_path / "good_brief.yaml"
+    good_brief.write_text("kind: llm\ntask: write copy\n")
+    assert engine.load_brief(good_brief) == {"kind": "llm", "task": "write copy"}
 
-def test_resolve_cloud_mode() -> None:
+    # A brief/engine file that parses to a YAML list (not a mapping) is a
+    # clear error, not a silent AttributeError deep inside resolve()/ensure().
+    bad_brief = tmp_path / "bad_brief.yaml"
+    bad_brief.write_text("- not\n- a\n- mapping\n")
+    with pytest.raises(ValueError, match="mapping"):
+        engine.load_brief(bad_brief)
+
+    bad_engine = tmp_path / "bad_engine.yaml"
+    bad_engine.write_text("- not\n- a\n- mapping\n")
+    with pytest.raises(ValueError, match="mapping"):
+        engine.load_engine(bad_engine)
+
+
+def test_resolve_cloud_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     eng = engine.resolve(
         {
             "mode": "cloud",
@@ -179,6 +242,26 @@ def test_resolve_cloud_mode() -> None:
     )
     assert proxied["base_url"] == "https://my-proxy.example.com"
     assert proxied["api_key_env"] == "MY_ANTHROPIC_KEY"
+
+    # A local fallback that fails to resolve (e.g. no local model fits) must
+    # not break cloud resolution itself -- fallback becomes None, not a raise.
+    def _boom(*a: object, **k: object) -> None:
+        raise RuntimeError("no local model available")
+
+    monkeypatch.setattr(engine, "_resolve_local", _boom)
+    no_fallback_eng = engine.resolve(
+        {
+            "mode": "cloud",
+            "provider": "mistral",
+            "model": "mistral-large-latest",
+            "kind": "llm",
+            "task": "x",
+        },
+        catalog=_CATALOG,
+        hw=_HW,
+        compute=_COMPUTE,
+    )
+    assert no_fallback_eng["mode"] == "cloud" and no_fallback_eng["fallback"] is None
 
 
 def test_chat_engine_routes_backend_and_base_url(monkeypatch: pytest.MonkeyPatch) -> None:

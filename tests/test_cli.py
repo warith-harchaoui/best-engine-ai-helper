@@ -16,6 +16,7 @@ import json
 from pathlib import Path
 
 import pytest
+import requests
 import yaml
 from click.testing import CliRunner
 
@@ -70,6 +71,16 @@ def test_read_only_and_report_commands(runner: CliRunner, tmp_path: Path) -> Non
     assert missing.exit_code == 1
     assert "not found" in missing.output
 
+    # A brief that reaches engine.resolve() but fails there (not a missing
+    # file) is reported readably too, not as a raw traceback.
+    bad_cloud_brief = tmp_path / "bad_cloud.brief.yaml"
+    bad_cloud_brief.write_text(
+        yaml.safe_dump({"mode": "cloud", "provider": "openai", "kind": "llm"})
+    )
+    resolve_failed = runner.invoke(main, ["resolve", "--brief", str(bad_cloud_brief)])
+    assert resolve_failed.exit_code == 1
+    assert "resolve failed" in resolve_failed.output
+
 
 def test_activity_empty_and_populated(runner: CliRunner, tmp_path: Path) -> None:
     from unittest.mock import patch
@@ -101,6 +112,16 @@ def test_activity_empty_and_populated(runner: CliRunner, tmp_path: Path) -> None
     as_json = runner.invoke(main, ["activity", "--format", "json"])
     data = json.loads(as_json.stdout)
     assert data["total_calls"] == 1 and data["total_cost_usd"] == 0.0
+
+    # A failed call renders a "Recent errors" table too, not just the tallies.
+    with patch("requests.post", side_effect=requests.ConnectionError("no server")):
+        try:
+            llm.chat("hello", model="qwen3:8b")
+        except RuntimeError:
+            pass
+    with_error = runner.invoke(main, ["activity"])
+    assert with_error.exit_code == 0
+    assert "Recent errors:" in with_error.stdout
     ledger.close()
 
 
@@ -169,6 +190,15 @@ def test_catalog_and_hardware_update(
     monkeypatch.setattr(apxml, "fetch_open_weight_models", lambda **kw: [])
     empty = runner.invoke(main, ["catalog", "update"])
     assert empty.exit_code != 0 and not cache.exists()
+
+    # A network/parse failure is reported readably, not as a raw traceback.
+    def _boom(**kw: object) -> None:
+        raise ConnectionError("ApXML unreachable")
+
+    monkeypatch.setattr(apxml, "fetch_open_weight_models", _boom)
+    network_fail = runner.invoke(main, ["catalog", "update"])
+    assert network_fail.exit_code != 0
+    assert "catalog update failed" in network_fail.output
 
     hw_cache = tmp_path / "hardware_cache.yaml"
     monkeypatch.setattr(hardware, "_HW_CACHE_PATH", hw_cache)
@@ -267,6 +297,16 @@ def test_pull_validate_env(
     vllm = runner.invoke(main, ["pull", "--vllm"])
     assert vllm.exit_code == 0 and "vllm serve" in vllm.output
 
+    # `env` reads ~/.best-engine-ai-helper/env.sh with no override, so point
+    # Path.home() at a tmp dir for isolation -- otherwise this test's
+    # "unconfigured" case silently depends on the REAL developer machine
+    # never having run a real `pull` before (a real, if latent, isolation gap).
+    import pathlib
+
+    fake_home = tmp_path / "fake_home"
+    fake_home.mkdir()
+    monkeypatch.setattr(pathlib.Path, "home", lambda: fake_home)
+
     # validate/env with nothing configured: both explain what to run.
     monkeypatch.delenv("BEST_LLM_TEXT", raising=False)
     monkeypatch.delenv("SPREZZATURE_LLM_TEXT", raising=False)
@@ -274,6 +314,14 @@ def test_pull_validate_env(
         unconfigured = runner.invoke(main, cmd)
         combined = (unconfigured.output or "") + (unconfigured.stderr or "")
         assert unconfigured.exit_code != 0 and combined.strip()
+
+    # env with a real env.sh in place prints it verbatim.
+    env_dir = fake_home / ".best-engine-ai-helper"
+    env_dir.mkdir()
+    (env_dir / "env.sh").write_text("export BEST_LLM_TEXT=qwen3:8b\n")
+    configured_env = runner.invoke(main, ["env"])
+    assert configured_env.exit_code == 0
+    assert configured_env.output == "export BEST_LLM_TEXT=qwen3:8b\n"
 
     # validate with a model configured and both gates passing.
     monkeypatch.setenv("BEST_LLM_TEXT", "qwen3:8b")

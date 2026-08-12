@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from best_engine_ai_helper import ralph
 
 
@@ -75,6 +77,55 @@ def test_prose_and_eyeball_loops() -> None:
         return {"a": "Revised A.", "b": "Revised B."}
 
     assert ralph.prose_loop(text, charter="No machine tics.", llm_chat=fixer) != text
+
+    # A malformed (non-JSON) seam verdict degrades to "no fix needed" rather
+    # than crashing -- a model returning garbage is a real failure mode, not
+    # just a hypothetical.
+    def garbled_seam(_p: str, **kw: Any) -> Any:
+        return "not json at all" if kw.get("json_schema") else ""
+
+    assert ralph.prose_loop(text, charter="c", llm_chat=garbled_seam) == text
+
+    # A malformed fix response skips that pair (leaves it unchanged) rather
+    # than crashing, even though the seam itself was correctly flagged.
+    def garbled_fix(_p: str, **kw: Any) -> Any:
+        schema = kw.get("json_schema")
+        if not schema:
+            return ""
+        system = kw.get("system", "").lower()
+        if "seam" in system or "needs_fix" in system:
+            return '{"needs_fix": true, "reasons": ["x"]}'
+        return "not json at all"
+
+    assert ralph.prose_loop(text, charter="c", llm_chat=garbled_fix) == text
+
+    # No renderer for the requested kind -- a clear NotImplementedError, not
+    # a crash deep inside rendering.
+    with pytest.raises(NotImplementedError, match="renderer"):
+        ralph.eyeball_loop(
+            '{"mark": "bar"}', kind="vega", llm_chat=lambda p, **k: "", renderers=None
+        )
+    with pytest.raises(NotImplementedError, match="renderer"):
+        ralph.eyeball_loop('{"mark": "bar"}', kind="vega", llm_chat=lambda p, **k: "", renderers={})
+
+    # A malformed (non-JSON) verdict degrades to "do not ship" rather than
+    # crashing.
+    def garbled_verdict(prompt: str, **kw: Any) -> Any:
+        if kw.get("images"):
+            return "some critique"
+        if kw.get("json_schema"):
+            return "not json at all"
+        return prompt
+
+    _src3, garbled_hist = ralph.eyeball_loop(
+        '{"mark": "bar"}',
+        kind="vega",
+        llm_chat=garbled_verdict,
+        renderers={"vega": lambda s: b"PNG"},
+        max_iters=1,
+    )
+    assert len(garbled_hist) == 1 and garbled_hist[0][2]["ship"] is False
+    assert garbled_hist[0][2]["blocking"] == ["verdict parse failure"]
 
     # A faked renderer avoids real rendering; the VLM critique + verdict ship on
     # the first pass, so the loop records exactly one iteration.

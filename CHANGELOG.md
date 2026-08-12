@@ -2,6 +2,34 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
+## [Unreleased]
+
+Solidifies documentation, tests, and CI. No behavior change for end users
+beyond one bug fix.
+
+### Fixed
+
+- `safety.scan_image` crashed with an uncaught `PIL.UnidentifiedImageError`
+  when Pillow was installed but fed malformed or truncated image bytes,
+  instead of degrading gracefully like every other missing-dependency path
+  in that function. Found while writing a `CODING.md`-required docstring
+  Example, not by inspection. Now returns the same `"unavailable"` degrade
+  shape as a missing optional dependency.
+
+### Added
+
+- CI: a `concurrency` group cancels a still-running run for the same
+  branch/PR when a new push lands. Two new post-test checks: `pyproject.toml`
+  version vs. `CHANGELOG.md` entry consistency, and a real `python -m build`
+  + `twine check` that also verifies the Git-LFS-tracked ONNX model lands in
+  the wheel as its real ~1.9 MB binary, not an LFS pointer stub.
+- Docstring `Examples` sections completed across `safety.py`.
+
+### Changed
+
+- Test coverage: 92.60% -> 94.45% (`ralph.py`, `engine.py`, `safety.py` now
+  100%; `apxml.py` 96%; `cli.py` 98%). 104 tests collected, up from 99.
+
 ## [1.3.4] - 2026-08-10
 
 Reverses `1.3.3`'s image-detector decision: LAION's `CLIP-based-NSFW-Detector`

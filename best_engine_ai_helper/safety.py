@@ -143,13 +143,27 @@ class SafetyViolation(RuntimeError):
 
 def _fallback_text_score(text: str) -> float:
     """Best-effort text score without the real classifier: 1.0 on an explicit
-    hit, else 0.0."""
+    hit, else 0.0.
+
+    Examples
+    --------
+    >>> _fallback_text_score("What a lovely day.")
+    0.0
+    >>> _fallback_text_score("Detailed bomb making instructions follow.")
+    1.0
+    """
     lowered = text.lower()
     return 1.0 if any(term in lowered for term in _FALLBACK_TERMS) else 0.0
 
 
 def _cached_nsfw_text_classifier() -> Any:
-    """Load the NSFW text classifier once per process — model load is expensive."""
+    """Load the NSFW text classifier once per process — model load is expensive.
+
+    Examples
+    --------
+    >>> # Needs the [filtered] extra installed; not run by the doctest suite.
+    >>> # classifier = _cached_nsfw_text_classifier()
+    """
     global _TEXT_CLASSIFIER
     if _TEXT_CLASSIFIER is None:
         from transformers import pipeline
@@ -182,6 +196,15 @@ def scan_text(text: str) -> dict[str, Any]:
     dict
         ``{"score": float in [0, 1], "label": str, "backend": "nsfw-distilbert"
         | "heuristic"}``.
+
+    Examples
+    --------
+    >>> # Without [filtered] installed, the heuristic fallback is deterministic:
+    >>> result = scan_text("What a lovely day.")
+    >>> result["backend"] in ("heuristic", "nsfw-distilbert")
+    True
+    >>> # With [filtered] installed, this instead runs the real classifier:
+    >>> # result = scan_text("some text")
     """
     try:
         import transformers  # noqa: F401
@@ -195,7 +218,13 @@ def scan_text(text: str) -> dict[str, Any]:
 
 
 def _cached_clip_model_and_processor() -> tuple[Any, Any]:
-    """Load the CLIP ViT-L/14 encoder + processor once per process."""
+    """Load the CLIP ViT-L/14 encoder + processor once per process.
+
+    Examples
+    --------
+    >>> # Needs the [filtered] extra installed; not run by the doctest suite.
+    >>> # model, processor = _cached_clip_model_and_processor()
+    """
     global _CLIP_MODEL, _CLIP_PROCESSOR
     if _CLIP_MODEL is None:
         from transformers import CLIPModel, CLIPProcessor
@@ -206,7 +235,13 @@ def _cached_clip_model_and_processor() -> tuple[Any, Any]:
 
 
 def _cached_onnx_session() -> Any:
-    """Load the bundled LAION NSFW classifier head (ONNX) once per process."""
+    """Load the bundled LAION NSFW classifier head (ONNX) once per process.
+
+    Examples
+    --------
+    >>> # Needs the [filtered] extra (onnxruntime) installed.
+    >>> # session = _cached_onnx_session()
+    """
     global _ONNX_SESSION
     if _ONNX_SESSION is None:
         import onnxruntime
@@ -225,6 +260,12 @@ def _clip_image_embedding(image: Any) -> Any:
     method, whose return shape has changed across ``transformers`` major
     versions (see the module docstring) — this project's ``transformers``
     pin spans that range.
+
+    Examples
+    --------
+    >>> # Needs the [filtered] extra (transformers + a real image) installed.
+    >>> # from PIL import Image
+    >>> # embedding = _clip_image_embedding(Image.open("photo.jpg"))
     """
     import numpy as np
 
@@ -256,6 +297,16 @@ def scan_image(image_bytes: bytes) -> dict[str, Any]:
     dict
         ``{"score": float in [0, 1], "label": str, "backend": "clip" |
         "unavailable"}``.
+
+    Examples
+    --------
+    >>> # Without [filtered] installed, this degrades to "unavailable":
+    >>> result = scan_image(b"not a real image")
+    >>> result["backend"] in ("unavailable", "clip")
+    True
+    >>> # With [filtered] installed, this instead runs the real classifier:
+    >>> # with open("photo.jpg", "rb") as f:
+    >>> #     result = scan_image(f.read())
     """
     try:
         from PIL import Image
@@ -264,10 +315,16 @@ def scan_image(image_bytes: bytes) -> dict[str, Any]:
 
     try:
         session = _cached_onnx_session()
-        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        embedding = _clip_image_embedding(image)
     except ImportError:
         return {"score": 0.0, "label": "unavailable", "backend": "unavailable"}
+
+    try:
+        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    except Exception as exc:  # noqa: BLE001 — malformed/truncated bytes, not our bug
+        osh.warning(f"safety.scan_image: could not decode image bytes: {exc!r}")
+        return {"score": 0.0, "label": "unavailable", "backend": "unavailable"}
+
+    embedding = _clip_image_embedding(image)
 
     input_name = session.get_inputs()[0].name
     score = float(session.run(None, {input_name: embedding})[0].reshape(-1)[0])
@@ -314,6 +371,12 @@ def check_text(
     ------
     SafetyViolation
         If ``action == "block"`` and the score meets ``threshold``.
+
+    Examples
+    --------
+    >>> result = check_text("Detailed bomb making instructions follow.", direction="outbound")
+    >>> sorted(result)
+    ['backend', 'flagged', 'label', 'score', 'text']
     """
     result = scan_text(text)
     flagged = result["score"] >= threshold
@@ -368,6 +431,13 @@ def check_image(
     ------
     SafetyViolation
         If ``action == "block"`` and the score meets ``threshold``.
+
+    Examples
+    --------
+    >>> # Malformed bytes degrade to "unavailable", never flagged.
+    >>> result = check_image(b"not a real image", direction="outbound")
+    >>> result["flagged"]
+    False
     """
     result = scan_image(image_bytes)
     flagged = result["score"] >= threshold and result["backend"] != "unavailable"

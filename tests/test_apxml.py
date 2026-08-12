@@ -63,6 +63,23 @@ def test_rsc_parsing_and_field_normalization() -> None:
     assert hf("https://huggingface.co/Qwen/Qwen3.5-9B/tree/main") == "Qwen/Qwen3.5-9B"
     assert hf("https://example.com/model") is None
     assert hf(None) is None
+    # Only an org name, no model segment -> not enough path parts to build an id.
+    assert hf("https://huggingface.co/Qwen") is None
+
+    assert apxml._to_float("9.00") == 9.0
+    assert apxml._to_float(None) is None
+    assert apxml._to_float("not-a-number") is None  # non-numeric string, not just None
+
+    extract = apxml._extract_json_object
+    # No opening brace anywhere before the anchor.
+    assert extract('no braces here "k":"v"', '"k":"v"') is None
+    # An escaped backslash inside a string value must not desynchronize the
+    # in-string/depth tracking that finds the matching close brace.
+    assert extract('{"a":"x\\\\y","k":"v"}', '"k":"v"') == {"a": "x\\y", "k": "v"}
+    # Braces balance but the content between them isn't valid JSON.
+    assert extract('{"k":"v","x":}', '"k":"v"') is None
+    # Opening brace never finds a matching close brace.
+    assert extract('{"k":"v"', '"k":"v"') is None
 
     # A leading i18n label map (with the same key names but no numeric value)
     # must not be mistaken for the real spec object.

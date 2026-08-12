@@ -17,6 +17,12 @@ name: ci
   pull_request:
     branches: [main]
 
+# Cancel a still-running run for the same branch/PR when a new push lands, so
+# a quick string of fixup pushes doesn't queue up redundant runs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -55,3 +61,39 @@ jobs:
       - name: Pytest
         # A failing test or a coverage regression below the floor blocks merge.
         run: pytest -q --cov=best_engine_ai_helper --cov-report=term-missing --cov-fail-under=90
+      - name: Version / CHANGELOG consistency
+        # Catch the easy-to-forget half of a version bump: pyproject.toml's
+        # version needs a matching "## [X.Y.Z]" heading in CHANGELOG.md.
+        run: |
+          version=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          if ! grep -qF "## [$version]" CHANGELOG.md; then
+            echo "::error::pyproject.toml is at $version but CHANGELOG.md has no '## [$version]' entry"
+            exit 1
+          fi
+      - name: Build package
+        # Build a real wheel and sdist -- catches packaging problems (missing
+        # package-data, a broken MANIFEST, invalid metadata) before an actual
+        # release, without publishing anything. Also verifies the
+        # Git-LFS-tracked ONNX model lands in the wheel as the real ~1.9 MB
+        # binary, not a small LFS pointer-stub text file (would silently ship
+        # a broken safety.py to anyone who installs [filtered]).
+        run: |
+          pip install --no-cache-dir build twine
+          python -m build
+          twine check dist/*
+          python - <<'PYEOF'
+          import pathlib
+          import zipfile
+
+          wheel = next(pathlib.Path("dist").glob("*.whl"))
+          with zipfile.ZipFile(wheel) as zf:
+              name = "best_engine_ai_helper/models/clip_nsfw_vit_l14.onnx"
+              info = zf.getinfo(name)
+              size_mb = info.file_size / 1_000_000
+              assert size_mb > 1.0, (
+                  f"{name} is {size_mb:.3f} MB in the wheel -- looks like an "
+                  "LFS pointer stub, not the real model (expected ~1.9 MB). "
+                  "Was this built from a checkout with `git lfs pull` run?"
+              )
+          print(f"OK: {name} is {size_mb:.2f} MB in the wheel")
+          PYEOF
