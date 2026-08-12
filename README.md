@@ -373,23 +373,23 @@ A project usually knows its job more precisely than a machine-wide default can, 
 
    `chat` reads the backend and model from the engine file and dispatches to Ollama (`/api/generate`) or vLLM (OpenAI-compatible `/v1/chat/completions`) transparently, with schema-constrained structured output on both.
 
-**Missing-file policy.** The brief is committed, so its absence is a real bug and `ensure` raises loudly with the command to run. The engine file is gitignored and machine-specific, so its absence is normal — `ensure` resolves it from the brief on first use. This keeps the model out of any variable: the resolved engine file is the single source of truth.
+**Missing-file policy.** The brief is committed, so its absence is a real bug and `ensure` raises loudly with the command to run. The engine file is gitignored and machine-specific, so its absence is normal: `ensure` resolves it from the brief on first use. This keeps the model out of any variable: the resolved engine file is the single source of truth.
 
-The suite's consumers — [Standpoint](https://github.com/warith-harchaoui/standpoint), vocal-helper, and md2star — follow this pattern; each ships an `llm.brief.yaml` describing its own job (Standpoint's, for instance, names schema-constrained JSON, so the structured-output gate rules out higher-scoring vision models that cannot honour a schema and picks the strongest one that can) and reads the model only from the resolved engine file.
+The suite's consumers, [Standpoint](https://github.com/warith-harchaoui/standpoint), vocal-helper, and md2star, follow this pattern; each ships an `llm.brief.yaml` describing its own job (Standpoint's, for instance, names schema-constrained JSON, so the structured-output gate rules out higher-scoring vision models that cannot honour a schema and picks the strongest one that can) and reads the model only from the resolved engine file.
 
 ## Usages / task profiles
 
-Where a brief is written per repo, the recurring sev7n workloads are named once in a bundled **usage catalog** (`usages.yaml`). Each **profile** — `text2sql`, `rag-answer`, `embeddings`, `text2sql-figures`, `report-bluf`, `classification`, `pii-rgpd`, `persona` — states only its **needs**: task type (text / code / vision / embeddings), whether it needs structured output, a throughput floor, a memory headroom, an advisory quality bar, and a context-length hint. A profile is, at heart, a named brief, so it is resolved by the **same four-criteria picker** as any brief.
+Where a brief is written per repo, the recurring eight workloads are named once in a bundled **usage catalog** (`usages.yaml`). Each **profile**, `text2sql`, `rag-answer`, `embeddings`, `text2sql-figures`, `report-bluf`, `classification`, `pii-rgpd`, `persona`, states only its **needs**: task type (text / code / vision / embeddings), whether it needs structured output, a throughput floor, a memory headroom, an advisory quality bar, and a context-length hint. A profile is, at heart, a named brief, so it is resolved by the **same four-criteria picker** as any brief.
 
-A profile **never names a model.** best-engine is the sole decider: it reads the needs, probes the machine, and chooses the concrete local model, writing that choice only into a generated engine file (`llm.engine*.yaml`) that is **gitignored and machine-specific** — never a committed literal. That is the whole point of the tool.
+A profile **never names a model.** best-engine is the sole decider: it reads the needs, probes the machine, and chooses the concrete local model, writing that choice only into a generated engine file (`llm.engine*.yaml`) that is **gitignored and machine-specific**, never a committed literal. That is the whole point of the tool.
 
-Profiles are grouped into **families** — the usages that can share one model, so a machine need not hold eight:
+Profiles are grouped into **families**: the usages that can share one model, so a machine need not hold eight:
 
 | Family | What it needs | Profiles |
 |--------|---------------|----------|
-| **F1 — constrained generation** | code + reliable structured output (SQL / JSON), deterministic | `text2sql`, `text2sql-figures`, `classification`, `pii-rgpd` |
-| **F2 — prose generation** | faithful FR/EN prose over long context | `rag-answer`, `report-bluf`, `persona` |
-| **F3 — embeddings** | multilingual, multi-granular retrieval vectors (never a chat model) | `embeddings` |
+| **F1: constrained generation** | code + reliable structured output (SQL / JSON), deterministic | `text2sql`, `text2sql-figures`, `classification`, `pii-rgpd` |
+| **F2: prose generation** | faithful FR/EN prose over long context | `rag-answer`, `report-bluf`, `persona` |
+| **F3: embeddings** | multilingual, multi-granular retrieval vectors (never a chat model) | `embeddings` |
 
 Resolving a family yields **one** model for the group; resolving a single profile yields the possibly-specialised model for that job when the hardware allows it. On a roomy machine best-engine may specialise; on a tight one a family collapses onto one model.
 
