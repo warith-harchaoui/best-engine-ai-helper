@@ -40,18 +40,18 @@ English via `/gui?lang=en`, with a header link to switch. See
 
 - Python 3.10 or later
 - [Ollama](https://ollama.com) (needed for `pull`, `validate`, `env`; not for `detect`, `recommend`, or `report`)
-- Everything else — os-helper (hardware detection), PyYAML, click, requests,
-  langdetect, and the FastAPI/MCP surfaces (`fastapi`, `uvicorn`,
-  `fastapi-mcp`) — installs automatically; the CLI, GUI, HTTP API, and MCP
+- Everything else installs automatically: os-helper (hardware detection),
+  PyYAML, click, requests, langdetect, and the FastAPI/MCP surfaces
+  (`fastapi`, `uvicorn`, `fastapi-mcp`). The CLI, GUI, HTTP API, and MCP
   server are all part of the default install, nothing extra to opt into.
 - Optional: `[cloud]` for cloud-provider mode (retry, caching,
   pseudonymization, an OS-keychain fallback for API keys) and `[filtered]`
   for real NSFW classifiers (a DistilBERT text model; LAION's CLIP-based
   image detector, via `transformers` for the CLIP encoder and a bundled
-  `onnxruntime` model for the classifier head) — see [EXAMPLES.md's
+  `onnxruntime` model for the classifier head). See [EXAMPLES.md's
   `resolve`/`mode: cloud`
   section](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXAMPLES.md#resolve)
-  for the full story; both degrade gracefully (a keyword heuristic / an
+  for the full story; both degrade gracefully (a keyword heuristic, or an
   "unavailable" verdict) when absent, never a hard failure.
 
 ## Installation
@@ -135,7 +135,7 @@ best-engine-ai-helper detect     # prints this machine's hardware as JSON
 ```
 
 Every command is also available through an argparse twin,
-`best-engine-ai-helper-argparse` (same flags, same output) — the suite's
+`best-engine-ai-helper-argparse` (same flags, same output): the suite's
 zero-extra-runtime-dependency CLI surface (click is a core dependency here,
 so `best-engine-ai-helper` stays the primary entry point; the argparse twin
 is the added surface, not a replacement).
@@ -189,15 +189,16 @@ how the favicon / touch-icon set is generated from `assets/logo.png`.
 
 ## Activity ledger
 
-Every `llm.chat()` call — from this tool's own `pull`/`validate` gates, or from
-any downstream project that imports `best_engine_ai_helper.llm` — can be
-recorded to a local, append-only SQLite ledger (`~/.best-engine-ai-helper/usage.db`):
-who called it (`BEST_ENGINE_USER` env var, else the OS login name), which
-model and backend, latency, success/failure, and an estimated cost for paid
-backends (always `0.0` for local Ollama/vLLM). Built for the "one company,
-several users on a shared machine" case: answer "who is calling what, how
-often, at what cost" without a separate telemetry stack. Local only — no
-network call, no third-party service.
+Every `llm.chat()` call, whether from this tool's own `pull`/`validate` gates
+or from any downstream project that imports `best_engine_ai_helper.llm`, can
+be recorded to a local, append-only SQLite ledger
+(`~/.best-engine-ai-helper/usage.db`): who called it (`BEST_ENGINE_USER` env
+var, else the OS login name), which model and backend, latency,
+success/failure, and an estimated cost for paid backends (always `0.0` for
+local Ollama/vLLM). Built for the "one company, several users on a shared
+machine" case: answer "who is calling what, how often, at what cost" without
+a separate telemetry stack. Local only, no network call, no third-party
+service.
 
 ```sh
 best-engine-ai-helper activity              # table
@@ -267,7 +268,7 @@ The four factors above describe the machine's *theoretical* capacity. Add
 weigh what else is happening on it *right now*: current free RAM, CPU/GPU/disk
 usage, and how many engines (Ollama models, vLLM servers) are already running.
 A busy or already-loaded machine gets a smaller, more realistic budget than an
-idle one with identical hardware. Off by default — it adds a short live probe
+idle one with identical hardware. Off by default: it adds a short live probe
 (~0.1-0.5s: `nvidia-smi`/`ioreg`, a local Ollama ping, a `psutil` sample) and
 makes the recommendation depend on this exact moment rather than being a
 deterministic function of the hardware alone, which matters for reproducible
@@ -301,7 +302,7 @@ constants in `score.py`.
 
 ## Model catalog
 
-The bundled seed catalog (`models.yaml`) covers the Qwen 3, Qwen 2.5, Qwen 2.5-Coder, and Gemma 3 families (from 3B to 72B parameters, across Q4_K_M and Q8_0), plus a small set of `kind: embed` text embedders for the retrieval index. The catalog tracks on-disk size, estimated peak RAM, and benchmark scores from the Open LLM Leaderboard v2, the OpenVLM Leaderboard, EvalPlus (code), and MTEB (embedding retrieval). This is the *search space* best-engine picks from — it is never a per-usage choice.
+The bundled seed catalog (`models.yaml`) covers the Qwen 3, Qwen 2.5, Qwen 2.5-Coder, and Gemma 3 families (from 3B to 72B parameters, across Q4_K_M and Q8_0), plus a small set of `kind: embed` text embedders for the retrieval index. The catalog tracks on-disk size, estimated peak RAM, and benchmark scores from the Open LLM Leaderboard v2, the OpenVLM Leaderboard, EvalPlus (code), and MTEB (embedding retrieval). This is the *search space* best-engine picks from: it is never a per-usage choice.
 
 `catalog update` refreshes the cache from the [ApXML LLM directory](https://apxml.com/models?modelType=open_weight) (open-weight models with their per-quant VRAM needs, consulted regularly). It fetches the specs, normalizes them to catalog entries, and merges them into `~/.best-engine-ai-helper/catalog_cache.yaml` by id (the bundled seed is never modified). Use `--limit N` for a quick partial refresh. ApXML's static pages carry specs but no numeric leaderboard scores, so refreshed entries keep null benchmarks (and rank low) until a scored source, such as the Open LLM Leaderboard v2 or the OpenVLM Leaderboard, fills them.
 
@@ -328,9 +329,9 @@ Projects that consume the selected model source this file or read the companion 
 
 ### Pattern B: a per-project engine resolved from a tuned brief
 
-A project usually knows its job more precisely than a machine-wide default can, and the quality of the pick depends on how well that job is described — the task text is what maps to a scoring axis and decides whether a VLM is needed (see [How selection works](#how-selection-works)). So the project keeps a committed **brief** describing the job and resolves it, per machine, into a gitignored **engine file** that names the backend and model to use. No `DEFAULT_MODEL` constant lives in the project: the model is always read from the resolved engine file.
+A project usually knows its job more precisely than a machine-wide default can, and the quality of the pick depends on how well that job is described: the task text is what maps to a scoring axis and decides whether a VLM is needed (see [How selection works](#how-selection-works)). So the project keeps a committed **brief** describing the job and resolves it, per machine, into a gitignored **engine file** that names the backend and model to use. No `DEFAULT_MODEL` constant lives in the project: the model is always read from the resolved engine file.
 
-1. **Commit the brief** — `llm.brief.yaml` in the repo, hardware-independent:
+1. **Commit the brief**: `llm.brief.yaml` in the repo, hardware-independent:
 
    ```yaml
    kind: both              # llm | vlm | both
@@ -342,13 +343,13 @@ A project usually knows its job more precisely than a machine-wide default can, 
      the table's own language, and sanity-check the rendered chart image.
    ```
 
-2. **Resolve it, per machine** — writes a gitignored `llm.engine.yaml`:
+2. **Resolve it, per machine**: writes a gitignored `llm.engine.yaml`:
 
    ```sh
    best-engine-ai-helper resolve --brief llm.brief.yaml --out llm.engine.yaml
    ```
 
-   The backend is chosen for the hardware: **vLLM when a discrete GPU (NVIDIA/AMD) is present, Ollama otherwise** (macOS, CPU-only Linux, Intel iGPU). The pick is deliberately conservative — the memory headroom is capped at 0.5, and among models within a few benchmark points of the best it takes the leanest and fastest, not the largest that merely fits. vLLM picks are sized against full FP16 weights (heavier than the Ollama Q4 estimate), so a vLLM pick is realistic on the real GPU. The output is hardware-specific — add it to `.gitignore`:
+   The backend is chosen for the hardware: **vLLM when a discrete GPU (NVIDIA/AMD) is present, Ollama otherwise** (macOS, CPU-only Linux, Intel iGPU). The pick is deliberately conservative: the memory headroom is capped at 0.5, and among models within a few benchmark points of the best it takes the leanest and fastest, not the largest that merely fits. vLLM picks are sized against full FP16 weights (heavier than the Ollama Q4 estimate), so a vLLM pick is realistic on the real GPU. The output is hardware-specific; add it to `.gitignore`:
 
    ```yaml
    backend: ollama
@@ -358,7 +359,7 @@ A project usually knows its job more precisely than a machine-wide default can, 
    serve: [ollama pull gemma3:12b]
    ```
 
-3. **Consume it, no constant** — read the engine at call time and let the transport route to the right backend:
+3. **Consume it, no constant**: read the engine at call time and let the transport route to the right backend:
 
    ```python
    from best_engine_ai_helper import ensure, llm
