@@ -44,7 +44,7 @@ uvicorn best_engine_ai_helper.api:app --port 8000
 The page is bilingual (**French by default, English at `/gui?lang=en`**), with
 a header link (a flag emoji, 🇬🇧 / 🇫🇷) that switches between them. Both are
 rendered from a single template by `gui.render_gui(lang)`; every string comes
-from [`locales/i18n.yaml`](locales/i18n.yaml)'s `gui:` namespace — that file is
+from [`locales/i18n.yaml`](locales/i18n.yaml)'s `gui:` namespace: that file is
 the one place to edit wording, add a language, or check a translation, not
 `gui.py`. An unknown `?lang=` falls back to `meta.default_locale` (French)
 rather than erroring. The JSON API is language-neutral, so only the labels
@@ -72,7 +72,7 @@ score / estimated tokens per second, a lighter alternative when one is nearly
 as strong, and the full ranked candidate table behind a disclosure toggle.
 Leaving the box empty, or typing text with no detectable language (symbols or
 digits only), logs a warning server-side and falls back to a generic
-text-assistant profile — see `recommend.parse_task`.
+text-assistant profile; see `recommend.parse_task`.
 
 ![Recommendation results](assets/screenshots/gui-recommendation.png)
 
@@ -88,8 +88,9 @@ is a deterministic function of the hardware alone.
 Total calls, estimated total cost, error rate, and per-user / per-model
 breakdowns from the local SQLite ledger (`~/.best-engine-ai-helper/usage.db`,
 see the README's "Activity ledger"). Empty until something calls
-`llm.chat()` — this tool's own `pull`/`validate` gates, or any downstream
-project that imports `best_engine_ai_helper.llm` and has recording enabled. A
+`llm.chat()`, whether this tool's own `pull`/`validate` gates or any
+downstream project that imports `best_engine_ai_helper.llm` and has
+recording enabled. A
 **Refresh** button re-fetches without reloading the page.
 
 ## HTTP surface

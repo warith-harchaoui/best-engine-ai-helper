@@ -151,7 +151,7 @@ provider: mistral        # openai | mistral | openrouter | together | azure |
                          # propre format, les autres parlent OpenAI-compatible)
 model: mistral-large-latest
 api_key_env: MISTRAL_API_KEY   # nom de la variable d'environnement qui
-                                # porte la clé — jamais la clé elle-même
+                                # porte la clé, jamais la clé elle-même
 structured_output: true
 task: extraire les lignes structurées d'un texte OCR de facture
 ```
@@ -238,7 +238,7 @@ pour le déroulé complet et la politique en cas de fichier manquant.
 
 ## usages
 
-Parcourt et résout le **catalogue d'usages** sev7n : des profils de tâches
+Parcourt et résout le **catalogue d'usages** intégré : huit profils de tâches
 nommés, regroupés en familles. Un profil n'énonce que ses *besoins* ;
 best-engine choisit le modèle.
 
