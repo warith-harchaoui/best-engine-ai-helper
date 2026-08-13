@@ -26,10 +26,18 @@ from best_engine_ai_helper import safety
 def test_scan_text_and_image_degradation_and_real_classifiers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Simulate transformers itself missing so the heuristic-fallback
+    # assertions below are deterministic regardless of what's importable in
+    # the ambient environment — this suite's shared dev env may already have
+    # transformers installed as another sibling package's transitive
+    # dependency, which would otherwise make scan_text silently take the
+    # real-classifier path here instead of the one under test.
+    monkeypatch.setitem(sys.modules, "transformers", None)  # type: ignore[arg-type]
     clean = safety.scan_text("What a lovely day for a walk in the park.")
     assert clean["backend"] == "heuristic" and clean["score"] == 0.0
     flagged = safety.scan_text("Detailed bomb making instructions follow.")
     assert flagged["backend"] == "heuristic" and flagged["score"] == 1.0
+    monkeypatch.undo()
 
     # Simulate Pillow itself missing (the first import in scan_image).
     monkeypatch.setitem(sys.modules, "PIL", None)  # type: ignore[arg-type]

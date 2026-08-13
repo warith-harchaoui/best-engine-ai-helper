@@ -4,6 +4,8 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+## [1.3.5] - 2026-08-13
+
 Solidifies documentation, tests, and CI. No behavior change for end users
 beyond one bug fix.
 
@@ -15,6 +17,13 @@ beyond one bug fix.
   in that function. Found while writing a `CODING.md`-required docstring
   Example, not by inspection. Now returns the same `"unavailable"` degrade
   shape as a missing optional dependency.
+- `tests/test_safety.py`'s heuristic-fallback assertions assumed
+  `transformers` is never importable in the test environment; on a machine
+  where a sibling package already pulls it in (true of this suite's shared
+  dev env), `scan_text` legitimately took the real-classifier path instead,
+  failing the test. Now forces `transformers` absent via the same
+  `sys.modules` monkeypatch already used for the `PIL`-missing case, so the
+  assertion is deterministic regardless of what else is installed.
 
 ### Added
 
