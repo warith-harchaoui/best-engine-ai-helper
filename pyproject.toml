@@ -76,7 +76,7 @@ filtered = [
 ]
 
 [project.scripts]
-best-engine-ai-helper = "best_engine_ai_helper.cli:main"
+best-engine-ai-helper = "best_engine_ai_helper.cli:console_entry"
 # argparse twin (no extra runtime dep beyond click, already a core dependency
 # here) — mirrors every cli.py command 1:1, see cli_argparse.py's docstring
 # for why this is the suite's inverted naming (click is primary here).

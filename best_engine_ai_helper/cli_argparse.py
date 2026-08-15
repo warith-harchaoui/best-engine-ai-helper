@@ -40,6 +40,7 @@ import argparse
 import json
 import logging
 import os
+import subprocess
 import sys
 from collections.abc import Sequence
 from typing import Any, cast
@@ -628,7 +629,19 @@ def _handle_pull(ns: argparse.Namespace) -> int:
             return 0
 
         _emit(f"Pulling {tag} ...")
-        ok = _pull.ollama_pull(tag)
+        try:
+            ok = _pull.ollama_pull(tag)
+        except FileNotFoundError:
+            # No candidate can ever pull without the ollama binary -- fail
+            # the whole command now instead of repeating the same crash for
+            # every remaining candidate.
+            _emit_err("Error: ollama binary not found. Install from https://ollama.com")
+            return 1
+        except subprocess.TimeoutExpired:
+            # This candidate stalled (network stall, hung server); treat it
+            # like a failed pull and move on, same as ok=False below.
+            _emit_err(f"ollama pull {tag} timed out. Skipping.")
+            continue
         if not ok:
             _emit_err(f"ollama pull {tag} failed. Skipping.")
             continue
@@ -1056,6 +1069,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     """
     Entry point invoked by `best-engine-ai-helper-argparse`.
 
+    A subcommand handler's own exception (a connection failure, a missing
+    `ollama` binary, ...) is caught here and turned into one clean
+    `Error: ...` line + exit 1, instead of propagating as a raw Python
+    traceback -- argparse itself already handles usage errors (bad flags,
+    `--help`) via its own `SystemExit`, which this does not touch.
+
     Parameters
     ----------
     argv : sequence of str, optional
@@ -1078,7 +1097,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not os.environ.get("BEST_ENGINE_NO_LEDGER"):
         _observe.enable()
 
-    return cast(int, ns.func(ns))
+    try:
+        return cast(int, ns.func(ns))
+    except Exception as err:  # noqa: BLE001 — last resort: see main()'s docstring
+        _emit_err(f"Error: {err}")
+        return 1
 
 
 if __name__ == "__main__":  # pragma: no cover

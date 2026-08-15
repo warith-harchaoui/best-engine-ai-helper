@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import subprocess
 import sys
 from typing import Any
 
@@ -714,7 +715,19 @@ def pull_cmd(keep_failed: bool, vllm: bool, application: str | None, min_tps: fl
             sys.exit(0)
 
         click.echo(f"Pulling {tag} ...")
-        ok = _pull.ollama_pull(tag)
+        try:
+            ok = _pull.ollama_pull(tag)
+        except FileNotFoundError:
+            # No candidate can ever pull without the ollama binary -- fail
+            # the whole command now instead of repeating the same crash for
+            # every remaining candidate.
+            click.echo("Error: ollama binary not found. Install from https://ollama.com", err=True)
+            sys.exit(1)
+        except subprocess.TimeoutExpired:
+            # This candidate stalled (network stall, hung server); treat it
+            # like a failed pull and move on, same as ok=False below.
+            click.echo(f"ollama pull {tag} timed out. Skipping.", err=True)
+            continue
         if not ok:
             click.echo(f"ollama pull {tag} failed. Skipping.", err=True)
             continue
@@ -864,3 +877,26 @@ def activity_cmd(fmt: str) -> None:
         click.echo()
         click.echo("Recent errors:")
         click.echo(_fmt_table(summary["recent_errors"], ["ts", "user", "model", "error"]))
+
+
+def console_entry() -> None:
+    """Console entry point (`best-engine-ai-helper`, registered in pyproject.toml).
+
+    Click's own `main()` only special-cases `ClickException`/`Abort` (and a
+    broken pipe); a plain library exception (a connection failure, a missing
+    `ollama` binary, ...) would otherwise propagate as a raw Python traceback
+    instead of a clean CLI error. This wraps the whole invocation and
+    translates that last case into a one-line stderr message + exit 1 --
+    click's own control flow (usage errors, `--help`, an explicit
+    `sys.exit(1)` in a subcommand) already raises `SystemExit`, a
+    `BaseException` this does not catch, so it passes through untouched.
+    """
+    try:
+        main()
+    except Exception as err:  # noqa: BLE001 — last resort: see docstring
+        click.echo(f"Error: {err}", err=True)
+        sys.exit(1)
+
+
+if __name__ == "__main__":  # pragma: no cover
+    console_entry()
