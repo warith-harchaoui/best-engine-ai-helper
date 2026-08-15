@@ -4,7 +4,14 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+## [1.3.6] - 2026-08-15
+
 ### Fixed
+
+- **`__init__.py`'s `__version__` was drifted from `pyproject.toml`** (stuck
+  at `"1.2.0"` since before 1.3.0, unused anywhere else in the codebase but
+  misleading to anyone inspecting `best_engine_ai_helper.__version__`
+  directly). Synced.
 
 - **`pull.ollama_pull`'s `timeout` was never actually enforced**: the
   progress-streaming loop blocks on each read until a line arrives or the
