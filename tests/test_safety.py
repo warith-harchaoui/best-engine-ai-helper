@@ -151,6 +151,37 @@ def test_scan_text_and_image_degradation_and_real_classifiers(
     monkeypatch.setattr(safety, "_ONNX_SESSION", None)
 
 
+def test_scan_text_label_matching_is_case_insensitive_and_degrades_gracefully(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The real classifier's label strings come from a downloaded, versioned
+    # HuggingFace model -- a bare `next(r for r in result if r["label"] ==
+    # "nsfw")` used to crash the whole check_text()/chat() call with an
+    # unhandled StopIteration if the labels were ever cased differently, or
+    # renamed. Two cases: differently-cased labels still match; a genuinely
+    # absent "nsfw" label degrades to the heuristic fallback instead of
+    # raising.
+    fake_transformers_module = ModuleType("transformers")
+
+    def _fake_pipeline_differently_cased(task: str, model: str, **kw: Any) -> Any:
+        return lambda text: [[{"label": "SAFE", "score": 0.02}, {"label": "NSFW", "score": 0.97}]]
+
+    fake_transformers_module.pipeline = _fake_pipeline_differently_cased  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "transformers", fake_transformers_module)
+    monkeypatch.setattr(safety, "_TEXT_CLASSIFIER", None)
+    result = safety.scan_text("some text")
+    assert result == {"score": 0.97, "label": "nsfw", "backend": "nsfw-distilbert"}
+    monkeypatch.setattr(safety, "_TEXT_CLASSIFIER", None)
+
+    def _fake_pipeline_no_nsfw_label(task: str, model: str, **kw: Any) -> Any:
+        return lambda text: [[{"label": "toxic", "score": 0.5}, {"label": "clean", "score": 0.5}]]
+
+    fake_transformers_module.pipeline = _fake_pipeline_no_nsfw_label  # type: ignore[attr-defined]
+    result = safety.scan_text("Detailed bomb making instructions follow.")
+    assert result["backend"] == "heuristic" and result["score"] == 1.0
+    monkeypatch.setattr(safety, "_TEXT_CLASSIFIER", None)
+
+
 def _stub_score(score: float, label: str = "nsfw", backend: str = "heuristic") -> dict[str, Any]:
     return {"score": score, "label": label, "backend": backend}
 

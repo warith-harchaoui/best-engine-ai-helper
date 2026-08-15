@@ -213,7 +213,20 @@ def scan_text(text: str) -> dict[str, Any]:
 
     classifier = _cached_nsfw_text_classifier()
     result = classifier(text)[0]
-    nsfw_entry = next(r for r in result if r["label"] == "nsfw")
+    # Case-insensitive match against a downloaded, versioned HuggingFace
+    # model's own label strings: if a future model update changes casing (or
+    # this model is swapped for one with a differently-named label), a bare
+    # `next(...)` with no default would raise StopIteration here and crash
+    # the whole check_text()/chat() call instead of degrading gracefully --
+    # exactly the "silently no-op" failure this module's fallback path
+    # exists to avoid (see module docstring).
+    nsfw_entry = next((r for r in result if str(r.get("label", "")).lower() == "nsfw"), None)
+    if nsfw_entry is None:
+        osh.warning(
+            "safety.scan_text: classifier output has no 'nsfw' label (got "
+            f"{[r.get('label') for r in result]!r}); falling back to the heuristic."
+        )
+        return {"score": _fallback_text_score(text), "label": "nsfw", "backend": "heuristic"}
     return {"score": float(nsfw_entry["score"]), "label": "nsfw", "backend": "nsfw-distilbert"}
 
 
