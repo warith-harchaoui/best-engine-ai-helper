@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import IO
 
@@ -56,6 +57,9 @@ def ollama_pull(tag: str, *, timeout: int = 600, out: IO[str] | None = None) -> 
     ------
     FileNotFoundError
         If the ``ollama`` binary is not on PATH.
+    subprocess.TimeoutExpired
+        If the pull is still running after ``timeout`` seconds. The process
+        is killed before this is raised.
 
     Examples
     --------
@@ -77,13 +81,35 @@ def ollama_pull(tag: str, *, timeout: int = 600, out: IO[str] | None = None) -> 
         osh.error("ollama binary not found. Install from https://ollama.com")
         raise FileNotFoundError("ollama binary not found. Install from https://ollama.com") from exc
 
-    # Stream output line by line so the user sees progress in real time
-    assert proc.stdout is not None
-    for line in proc.stdout:
-        sink.write(line)
-        sink.flush()
+    # `for line in proc.stdout` below blocks on each read until a line
+    # arrives or the pipe closes (i.e. until the process exits) -- it has no
+    # timeout of its own, so a stalled pull (network stall, hung server)
+    # would otherwise block forever regardless of `timeout`. A watchdog
+    # thread kills the process if it is still running after `timeout`
+    # seconds; the read loop then unblocks (naturally, via EOF on the now
+    # -closed pipe) instead of hanging.
+    timed_out = threading.Event()
 
-    proc.wait(timeout=timeout)
+    def _kill_on_timeout() -> None:
+        timed_out.set()
+        proc.kill()
+
+    watchdog = threading.Timer(timeout, _kill_on_timeout)
+    watchdog.start()
+    try:
+        # Stream output line by line so the user sees progress in real time
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            sink.write(line)
+            sink.flush()
+        proc.wait()
+    finally:
+        watchdog.cancel()
+
+    if timed_out.is_set():
+        osh.error(f"Pull timed out after {timeout}s (process killed):\n\t{tag}")
+        raise subprocess.TimeoutExpired(["ollama", "pull", tag], timeout)
+
     ok = proc.returncode == 0
     if ok:
         osh.info(f"Pull succeeded:\n\t{tag}")

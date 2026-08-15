@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -20,9 +21,44 @@ class _FakeProc:
     def __init__(self, lines: list[str], returncode: int) -> None:
         self.stdout = iter(lines)
         self.returncode = returncode
+        self.killed = False
 
     def wait(self, timeout: float | None = None) -> int:
         return self.returncode
+
+    def kill(self) -> None:
+        self.killed = True
+
+
+class _HangingProc:
+    """A process whose stdout never yields a line until killed.
+
+    Simulates a stalled `ollama pull` (network stall, hung server): nothing
+    to read, nothing to signal completion, until the watchdog kills it.
+    """
+
+    def __init__(self) -> None:
+        self.returncode: int | None = None
+        self.killed = False
+
+    def __iter__(self) -> _HangingProc:
+        return self
+
+    def __next__(self) -> str:
+        while not self.killed:
+            time.sleep(0.01)
+        raise StopIteration
+
+    @property
+    def stdout(self) -> _HangingProc:
+        return self
+
+    def kill(self) -> None:
+        self.killed = True
+        self.returncode = -9
+
+    def wait(self, timeout: float | None = None) -> int:
+        return self.returncode or 0
 
 
 def test_write_env_and_ollama_pull_rm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -61,3 +97,17 @@ def test_write_env_and_ollama_pull_rm(tmp_path: Path, monkeypatch: pytest.Monkey
     assert _pull.ollama_rm("x") is True
     monkeypatch.setattr(_pull.subprocess, "run", lambda *a, **k: type("R", (), {"returncode": 1})())
     assert _pull.ollama_rm("x") is False
+
+
+def test_ollama_pull_enforces_timeout_on_a_stalled_process(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # `for line in proc.stdout` blocks until a line arrives or the pipe
+    # closes -- it has no timeout of its own, so a stalled pull (network
+    # stall, hung server) used to hang forever regardless of `timeout`. The
+    # watchdog thread must kill the process and raise TimeoutExpired instead.
+    proc = _HangingProc()
+    monkeypatch.setattr(_pull.subprocess, "Popen", lambda *a, **k: proc)
+    with pytest.raises(_pull.subprocess.TimeoutExpired):
+        _pull.ollama_pull("x", timeout=0.05, out=io.StringIO())
+    assert proc.killed is True
