@@ -54,6 +54,29 @@ def test_load_catalog_seed_and_cache_overlay(tmp_path: Path, monkeypatch) -> Non
     with pytest.raises(FileNotFoundError):
         catalog.load_catalog(catalog_path=tmp_path / "does_not_exist.yaml")
 
+
+def test_load_yaml_file_rejects_non_list_top_level(tmp_path: Path) -> None:
+    # `list(a_dict)` would silently return only the dict's KEYS as "entries",
+    # and `list(a_string)` would silently return one-character "entries" --
+    # either way garbage instead of a clear, loggable skip. A bare scalar
+    # used to crash `list(...)` outright (e.g. `list(42)` -> TypeError).
+    a_mapping = tmp_path / "mapping.yaml"
+    a_mapping.write_text("id: test-model:1b\nkind: llm\n")
+    assert catalog._load_yaml_file(a_mapping) == []
+
+    a_scalar = tmp_path / "scalar.yaml"
+    a_scalar.write_text("42\n")
+    assert catalog._load_yaml_file(a_scalar) == []
+
+    a_string = tmp_path / "string.yaml"
+    a_string.write_text("just a string\n")
+    assert catalog._load_yaml_file(a_string) == []
+
+    # The happy path -- a real list -- still works.
+    a_list = tmp_path / "list.yaml"
+    a_list.write_text("- id: test-model:1b\n  kind: llm\n")
+    assert catalog._load_yaml_file(a_list) == [{"id": "test-model:1b", "kind": "llm"}]
+
     # Known quants use their overhead factor; unknown quants fall back to 1.15.
     for disk, quant, expected in [
         (6.1, "Q4_K_M", 6.832),

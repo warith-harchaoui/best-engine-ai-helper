@@ -112,6 +112,15 @@ def _load_yaml_file(path: Path) -> list[dict[str, Any]]:
     if raw is None:
         osh.debug(f"YAML file empty, treating as empty:\n\t{path}")
         return []
+    if not isinstance(raw, list):
+        # A syntactically valid YAML document whose top level isn't a list (a
+        # bare scalar, or a mapping) is not a usable catalog: `list(a_dict)`
+        # would silently return only the dict's KEYS as "entries", and
+        # `list(a_string)` would silently return one-character "entries" --
+        # either way, garbage that breaks every downstream `entry.get(...)`
+        # call instead of a clear, loggable error at the source.
+        osh.warning(f"YAML file does not contain a list at the top level, ignoring:\n\t{path}")
+        return []
     return list(raw)
 
 
