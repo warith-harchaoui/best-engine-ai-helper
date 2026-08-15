@@ -4,6 +4,38 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`pull.ollama_pull`'s `timeout` was never actually enforced**: the
+  progress-streaming loop blocks on each read until a line arrives or the
+  pipe closes (i.e. until the process exits), so a stalled pull (network
+  stall, hung Ollama server) hung forever regardless of `timeout`. A
+  watchdog thread now kills the process and raises `subprocess.TimeoutExpired`
+  after `timeout` seconds. `cli.py`'s and `cli_argparse.py`'s `pull` command
+  now catch that (skip to the next candidate, like a failed pull) and
+  `FileNotFoundError` (no candidate can pull without the `ollama` binary —
+  fail fast with a clear message instead of repeating the same crash per
+  candidate).
+- **`catalog._load_yaml_file` silently produced garbage on a non-list YAML
+  top level**: `list(a_dict)` returned only the dict's keys as fake
+  "entries", `list(a_string)` returned one-character "entries", and a bare
+  scalar crashed `list(...)` outright — all reachable from a hand-edited or
+  corrupted `catalog_cache.yaml`. Now validated and skipped with a warning,
+  same treatment as an empty file.
+- **`safety.scan_text` could crash `check_text`/`chat()` outright**: the
+  NSFW-label lookup (`next(r for r in result if r["label"] == "nsfw")`) had
+  no default and no case-insensitivity, so a differently-cased or renamed
+  label from a future model update would raise an unhandled `StopIteration`
+  instead of degrading — the exact "silently no-op" failure this module's
+  design otherwise avoids. Now case-insensitive with a heuristic fallback
+  instead of a crash.
+- **CLI**: an exception from the library now prints one clean `Error: ...`
+  line to stderr and exits 1, instead of a raw Python traceback, on both CLI
+  twins. `best-engine-ai-helper`'s console-script entry point now points at
+  a new `cli.console_entry()` wrapper (was the bare `main` click group);
+  `cli_argparse.py`'s `main()` now wraps its subcommand dispatch the same
+  way. `pyproject.toml` updated.
+
 ## [1.3.5] - 2026-08-13
 
 Solidifies documentation, tests, and CI. No behavior change for end users
