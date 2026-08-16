@@ -4,6 +4,17 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`pull.ollama_rm` had no timeout** — same bug class already fixed for
+  `ollama_pull`: a hung daemon or a locked model file would block the
+  pull-and-validate loop forever. Now bounded (default 60s; local
+  filesystem delete, no network, so shorter than `ollama_pull`'s 600s).
+- **`pull.write_env`'s docstring claimed the files it writes are atomic**,
+  but the implementation was a plain `Path.write_text()`. Now actually
+  atomic (write to a sibling temp file, `os.replace()` into place), so the
+  docstring's guarantee is real.
+
 ## [1.3.6] - 2026-08-15
 
 ### Fixed

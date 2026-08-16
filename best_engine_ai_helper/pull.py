@@ -14,8 +14,10 @@ Warith Harchaoui <warith.harchaoui@deraison.ai>
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import tempfile
 import threading
 from pathlib import Path
 from typing import IO
@@ -28,6 +30,25 @@ _USER_DIR = Path.home() / ".best-engine-ai-helper"
 # File names for the two output formats
 _ENV_SH = "env.sh"
 _CONFIG_JSON = "config.json"
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    """Write ``content`` to ``path`` atomically: no reader ever sees a partial write.
+
+    Writes to a sibling temp file in the same directory (so the final
+    ``os.replace`` is a same-filesystem rename, not a cross-filesystem copy)
+    then renames it over the destination. A crash or a concurrent read mid-
+    write sees either the old file or the fully-written new one, never a
+    truncated one.
+    """
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp_name, path)
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
 
 
 def ollama_pull(tag: str, *, timeout: int = 600, out: IO[str] | None = None) -> bool:
@@ -118,7 +139,7 @@ def ollama_pull(tag: str, *, timeout: int = 600, out: IO[str] | None = None) -> 
     return ok
 
 
-def ollama_rm(tag: str) -> bool:
+def ollama_rm(tag: str, *, timeout: int = 60) -> bool:
     """
     Remove a pulled model via ``ollama rm``.
 
@@ -129,11 +150,17 @@ def ollama_rm(tag: str) -> bool:
     ----------
     tag : str
         Ollama model tag to remove.
+    timeout : int
+        Maximum seconds to wait. ``ollama rm`` is a local filesystem delete
+        (no network, unlike :func:`ollama_pull`), so 60s is generous; a hung
+        daemon or a locked model file would otherwise block the pull-and-
+        validate loop forever with no way out.
 
     Returns
     -------
     bool
-        True if ``ollama rm`` exited with code 0; False otherwise.
+        True if ``ollama rm`` exited with code 0; False if it exited nonzero
+        or timed out (the process is killed before returning in that case).
 
     Examples
     --------
@@ -142,11 +169,16 @@ def ollama_rm(tag: str) -> bool:
     True
     """
     osh.info(f"Removing model via ollama:\n\t{tag}")
-    result = subprocess.run(
-        ["ollama", "rm", tag],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            ["ollama", "rm", tag],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        osh.error(f"Removal timed out after {timeout}s (process killed):\n\t{tag}")
+        return False
     ok = result.returncode == 0
     if not ok:
         osh.warning(f"Removal failed (exit {result.returncode}):\n\t{tag}")
@@ -210,7 +242,7 @@ def write_env(
         f"export BEST_LLM_BACKEND={backend}\n"
         f"export BEST_LLM_BASE_URL={base_url}\n"
     )
-    env_sh_path.write_text(env_content, encoding="utf-8")
+    _atomic_write_text(env_sh_path, env_content)
     osh.info(f"Wrote shell env file:\n\t{env_sh_path}")
 
     # JSON format for scripts that prefer structured config over shell sourcing
@@ -220,7 +252,7 @@ def write_env(
         "BEST_LLM_BACKEND": backend,
         "BEST_LLM_BASE_URL": base_url,
     }
-    config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+    _atomic_write_text(config_path, json.dumps(config, indent=2) + "\n")
     osh.info(f"Wrote JSON config file:\n\t{config_path}")
 
     return env_sh_path

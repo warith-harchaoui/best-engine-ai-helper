@@ -111,3 +111,48 @@ def test_ollama_pull_enforces_timeout_on_a_stalled_process(
     with pytest.raises(_pull.subprocess.TimeoutExpired):
         _pull.ollama_pull("x", timeout=0.05, out=io.StringIO())
     assert proc.killed is True
+
+
+def test_ollama_rm_enforces_a_timeout_instead_of_hanging_forever(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ollama_rm used to call subprocess.run with no timeout at all -- a
+    # hung daemon or a locked model file would block the pull-and-validate
+    # loop forever. subprocess.run itself raises TimeoutExpired when a
+    # `timeout=` kwarg is honored; simulate that and assert it degrades to
+    # a clean False instead of propagating or hanging.
+    def _hangs(*a: object, **k: object) -> object:
+        raise _pull.subprocess.TimeoutExpired(cmd=["ollama", "rm", "x"], timeout=k.get("timeout"))
+
+    monkeypatch.setattr(_pull.subprocess, "run", _hangs)
+    assert _pull.ollama_rm("x", timeout=0.05) is False
+
+
+def test_write_env_is_atomic_no_partial_file_on_a_mid_write_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A crash between opening the destination and finishing the write must
+    # never leave a truncated env.sh/config.json behind -- write_env writes
+    # to a sibling temp file and renames it into place, so any failure
+    # before the rename leaves the destination untouched (absent, on a
+    # first write).
+    real_replace = _pull.os.replace
+
+    def _boom(*a: object, **k: object) -> None:
+        raise OSError("simulated failure before rename")
+
+    monkeypatch.setattr(_pull.os, "replace", _boom)
+    with pytest.raises(OSError, match="simulated failure"):
+        _pull.write_env(
+            "qwen3:8b", "qwen3:8b", "ollama", "http://localhost:11434", user_dir=tmp_path
+        )
+    assert not (tmp_path / "env.sh").exists()
+    # No stray temp file left behind either.
+    assert list(tmp_path.iterdir()) == []
+
+    monkeypatch.setattr(_pull.os, "replace", real_replace)
+    env_path = _pull.write_env(
+        "qwen3:8b", "qwen3:8b", "ollama", "http://localhost:11434", user_dir=tmp_path
+    )
+    assert env_path.exists()
+    assert {p.name for p in tmp_path.iterdir()} == {"env.sh", "config.json"}
