@@ -1,5 +1,6 @@
 """
-best_engine_ai_helper — pick the best local LLM/VLM for the current hardware.
+best_engine_ai_helper — pick the best local large language model (LLM) or
+vision-language model (VLM) for the current hardware.
 
 Public API (importable without invoking the CLI):
 

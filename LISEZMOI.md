@@ -12,9 +12,11 @@ courante.
 L'outil détecte la mémoire disponible (mémoire unifiée Apple Silicon, mémoire vidéo NVIDIA
 ou RAM système), consulte un catalogue de modèles intégré et sélectionne le modèle au
 meilleur score qui tient dans une marge de sécurité configurable. Après la sélection, il
-télécharge le modèle via Ollama, exécute deux contrôles de qualité (la boucle Ralph pour la
-prose et la boucle Ralph Eyeball pour la vision) et écrit un fichier d'environnement que
-les projets en aval viennent sourcer.
+télécharge le modèle via Ollama et le soumet à deux contrôles avant de lui faire confiance :
+sait-il repérer et corriger un défaut connu glissé dans un court texte (la boucle Ralph), et
+sait-il repérer un défaut visuel évident glissé dans une petite image de test (la boucle
+Ralph Eyeball) ? Seul un modèle qui réussit les deux voit son fichier d'environnement
+écrit, le fichier que les projets en aval viennent lire pour trouver le modèle choisi.
 
 [![logo](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/assets/logo.png)](https://harchaoui.org/warith/ai-helpers)
 
@@ -257,7 +259,9 @@ les modèles qui tiennent, le meilleur score sur cet axe l'emporte.
 
 La génération est bornée par la bande passante mémoire : chaque jeton lit une fois le modèle
 actif en mémoire, donc le plafond est `bande passante ÷ taille`, réduit à environ 65 % pour
-le cache KV et les surcoûts. `report` estime les jetons/s par candidat et propose une
+la mémoire de travail que le modèle garde en cours de génération (le *cache KV*, la trace
+de tout ce qu'il a déjà lu, pour ne pas le relire à chaque nouveau mot) et pour les autres
+surcoûts. `report` estime les jetons/s par candidat et propose une
 alternative plus légère et plus rapide quand elle est presque aussi forte. Plus gros n'est
 pas toujours mieux : un modèle 72B qui tient tout juste peut tourner à quelques jetons/s,
 là où un modèle 8-14B laisse de la marge et va plusieurs fois plus vite.
@@ -331,8 +335,8 @@ Les projets qui utilisent le modèle sélectionné sourcent ce fichier ou lisent
 ### Modèle B : un moteur par projet, résolu depuis un brief ajusté
 
 Un projet connaît en général sa tâche plus précisément qu'un défaut valable pour toute la
-machine et la qualité du choix dépend de la précision avec laquelle cette tâche est décrite
-— c'est le texte de la tâche qui se traduit en axe de score et qui décide si un VLM est
+machine et la qualité du choix dépend de la précision avec laquelle cette tâche est décrite :
+c'est le texte de la tâche qui se traduit en axe de score et qui décide si un VLM est
 nécessaire (voir [Comment fonctionne la sélection](#comment-fonctionne-la-sélection)). Le
 projet garde donc un **brief** versionné qui décrit son travail et le résout, par machine,
 en un **fichier moteur** gitignoré qui nomme le backend et le modèle à utiliser. Aucune
@@ -417,8 +421,8 @@ contexte. Un profil est, au fond, un *brief* nommé : il est donc résolu par le
 
 Un profil **ne nomme jamais de modèle.** best-engine est le seul décideur : il lit les
 besoins, sonde la machine et choisit le modèle local concret, en n'écrivant ce choix que
-dans un fichier moteur généré (`llm.engine*.yaml`), **gitignoré et spécifique à la machine**
-— jamais un littéral versionné. C'est tout l'intérêt de l'outil.
+dans un fichier moteur généré (`llm.engine*.yaml`), **gitignoré et spécifique à la machine**,
+jamais un littéral versionné. C'est tout l'intérêt de l'outil.
 
 Les profils sont regroupés en **familles** : les usages qui peuvent partager un même modèle,
 pour qu'une machine n'ait pas à en garder huit :

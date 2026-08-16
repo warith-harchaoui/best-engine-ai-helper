@@ -169,9 +169,9 @@ le moteur local de repli) et `safety=` (filtrage NSFW/politique de contenu,
 activé par défaut pour chaque moteur, local ou cloud) de `llm.chat` pour le
 reste du filet de sécurité de l'appel cloud. Le retry/cache/pseudonymisation
 nécessitent l'extra `[cloud]` (`pip install 'best-engine-ai-helper[cloud]'`) ;
-les vrais classifieurs NSFW de `safety=` nécessitent `[filtered]` —
-les deux se dégradent proprement (retry simple, pas de cache, heuristique par
-mots-clés) plutôt que d'échouer en leur absence.
+les vrais classifieurs NSFW de `safety=` nécessitent `[filtered]`. Dans les
+deux cas, l'absence de l'extra dégrade proprement (retry simple, pas de
+cache, heuristique par mots-clés) plutôt que d'échouer.
 
 Résolvez-le, par machine (le backend est choisi selon le matériel : **vLLM
 sur un GPU discret, Ollama sinon**) :

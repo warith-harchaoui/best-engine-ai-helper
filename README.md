@@ -6,7 +6,7 @@ Pick and pull the best local large language model (LLM) or vision-language model
 
 ![Best Engine AI Helper glove logo](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/logo.png)
 
-The tool detects available memory (Apple Silicon unified pool, NVIDIA VRAM, or system RAM), consults a bundled model catalog, and selects the highest-scoring model that fits within a configurable safety headroom. After selection, it pulls the model via Ollama, runs two quality gates (the Ralph Loop for prose and the Ralph Eyeball Loop for vision), and writes an environment file that downstream projects source to find the chosen model.
+The tool detects available memory (Apple Silicon unified pool, NVIDIA VRAM, or system RAM), consults a bundled model catalog, and selects the highest-scoring model that fits within a configurable safety headroom. After selection, it pulls the model via Ollama and puts it through two quality gates before trusting it: does it catch and fix a known flaw seeded into a short text (the Ralph Loop), and does it spot an obvious visual defect seeded into a small test image (the Ralph Eyeball Loop)? Only a model that passes both gets its environment file written, the file downstream projects read to find the chosen model.
 
 ## The Promise
 
@@ -235,8 +235,11 @@ The usable budget is **not** the whole pool. On Apple Silicon, Metal caps GPU
 allocations at about **66%** of unified memory at or below 36 GB and about
 **75%** above it (`recommendedMaxWorkingSetSize`); past that, work spills to the
 CPU and slows sharply. An extra safety `headroom` (default **0.85**) is applied
-on top, reserving room for the OS, your own application, and KV-cache growth as
-context fills. A catalog entry's `ram_gb` is already a peak-inference estimate
+on top, reserving room for the OS, your own application, and a model's own
+working memory: as a conversation or prompt gets longer, a model keeps a
+running cache of everything it has already read so it does not recompute it
+on every new word (the KV cache), and that cache keeps growing as context
+fills. A catalog entry's `ram_gb` is already a peak-inference estimate
 (weights plus a moderate KV cache; roughly weights ÷ 0.7, since weights are only
 about 70% of runtime memory and can approach 2× at long context). A model fits
 when that `ram_gb` is at most the budget.
