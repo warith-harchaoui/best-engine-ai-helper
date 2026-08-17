@@ -2,7 +2,7 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
-## [Unreleased]
+## [1.3.7] - 2026-08-17
 
 ### Fixed
 
@@ -14,6 +14,14 @@ All notable changes to best-engine-ai-helper are documented here.
   but the implementation was a plain `Path.write_text()`. Now actually
   atomic (write to a sibling temp file, `os.replace()` into place), so the
   docstring's guarantee is real.
+
+### Documentation
+
+- README.md/LISEZMOI.md now explain what the Ralph Loop and Ralph Eyeball
+  Loop quality gates actually check (catch-and-fix a seeded text flaw,
+  spot a seeded visual defect) before naming them, and gloss "KV-cache" at
+  first use in both languages. Prose-only cleanup of stray punctuation
+  dashes; no behavior change.
 
 ## [1.3.6] - 2026-08-15
 
