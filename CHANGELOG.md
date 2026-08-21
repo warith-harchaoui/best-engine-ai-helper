@@ -2,6 +2,32 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
+## [1.3.9] - 2026-08-21
+
+### Fixed
+
+- **`pull`'s Ralph gates validated the wrong model.** `pull_cmd`
+  (`cli.py`/`cli_argparse.py`) pulls a candidate tag, then calls
+  `validate_vlm.validate(_llm.chat)` and `validate_llm.validate(_llm.chat)`
+  to gate it before trusting it. Neither call bound a `model=`, so
+  `llm.chat`'s no-model-given resolution fell back to `BEST_LLM_TEXT` /
+  `BEST_LLM_VISION` (env, then the config `pull` itself last wrote, then
+  the built-in default) instead of the tag just pulled. On a fresh
+  machine this queried a model that was never pulled (a hard failure);
+  on a repeat `pull` it silently re-validated the PREVIOUS model while
+  writing `env.sh` for the NEW one, so a candidate could be promoted
+  without ever actually being tested. Both gate calls now bind the
+  candidate explicitly (`functools.partial(_llm.chat, model=tag)`).
+- **`--headroom` defaulted to 0.85 in every entry point** (`recommend`,
+  `report`, `POST /api/recommend`, the GUI's headroom field), even though
+  `score.MAX_HEADROOM` (0.5) has clamped any larger value since 1.1.0, so
+  the documented default silently became 0.5 with no indication in
+  `--help` or the GUI. The GUI's number input additionally set
+  `min="0.5" max="1"`, a range in which every value has the exact same
+  effect. Defaults now read `score.MAX_HEADROOM` directly, the GUI input's
+  range is `0-0.5`, and the `--help` text says plainly that a larger value
+  is clamped.
+
 ## [1.3.8] - 2026-08-21
 
 ### Fixed

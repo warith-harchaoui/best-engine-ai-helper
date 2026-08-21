@@ -57,6 +57,18 @@ Key rules for both:
 
 Releases live in [CHANGELOG.md](CHANGELOG.md), tagged `vX.Y.Z` in git, and published as GitHub releases.
 
+## Pre-push hook
+
+A git `pre-push` hook blocks the push outright if `ruff check`, `ruff
+format --check`, or the full `pytest -q -m ""` sweep fails: a red local
+state never reaches CI. One-time setup per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Bypass only when you really mean it: `git push --no-verify`.
+
 ## Authorship
 
 Sole author: [Warith Harchaoui](https://www.linkedin.com/in/warith-harchaoui/).

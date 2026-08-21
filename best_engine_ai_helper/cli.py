@@ -22,6 +22,7 @@ Warith Harchaoui <warith.harchaoui@deraison.ai>
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import os
@@ -148,9 +149,13 @@ _VALID_APPLICATIONS = ["code", "math", "ocr", "vision", "chat", "generalist"]
 @click.option(
     "--headroom",
     type=float,
-    default=0.85,
+    default=_score.MAX_HEADROOM,
     show_default=True,
-    help="Safety headroom fraction (0-1) applied to available memory.",
+    help=(
+        "Safety headroom fraction (0-1) applied to available memory. Clamped "
+        f"to {_score.MAX_HEADROOM} (score.MAX_HEADROOM) -- a larger value is "
+        "never honoured."
+    ),
 )
 @click.option(
     "--application",
@@ -314,9 +319,13 @@ def resolve_cmd(brief: str, out: str | None, backend: str, endpoint: str | None)
 @click.option(
     "--headroom",
     type=float,
-    default=0.85,
+    default=_score.MAX_HEADROOM,
     show_default=True,
-    help="Memory safety fraction on top of the accelerator cap.",
+    help=(
+        "Memory safety fraction on top of the accelerator cap. Clamped to "
+        f"{_score.MAX_HEADROOM} (score.MAX_HEADROOM) -- a larger value is "
+        "never honoured."
+    ),
 )
 @click.option(
     "--out",
@@ -732,10 +741,16 @@ def pull_cmd(keep_failed: bool, vllm: bool, application: str | None, min_tps: fl
             click.echo(f"ollama pull {tag} failed. Skipping.", err=True)
             continue
 
+        # Bind the just-pulled candidate as the model under test -- without
+        # this, `_llm.chat`'s no-model-given resolution falls back to
+        # BEST_LLM_TEXT/VISION (env or persisted config.json), which is
+        # whatever was configured BEFORE this pull, not `tag`. That would
+        # validate a stale model while promoting an untested one on success.
+        chat_for_candidate = functools.partial(_llm.chat, model=tag)
         click.echo(f"Running VLM gate on {tag} ...")
-        vlm_ok = _validate_vlm.validate(_llm.chat)
+        vlm_ok = _validate_vlm.validate(chat_for_candidate)
         click.echo(f"Running prose gate on {tag} ...")
-        llm_ok = _validate_llm.validate(_llm.chat)
+        llm_ok = _validate_llm.validate(chat_for_candidate)
 
         if vlm_ok and llm_ok:
             # Both gates passed: write env.sh and exit successfully

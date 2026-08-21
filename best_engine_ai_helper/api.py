@@ -39,6 +39,7 @@ from . import detect as _detect
 from . import observe as _observe
 from .gui import render_gui
 from .recommend import recommend as _recommend_engines
+from .score import MAX_HEADROOM as _MAX_HEADROOM
 from .score import effective_budget as _effective_budget
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -54,7 +55,9 @@ class RecommendRequest(BaseModel):
     """Body for ``POST /api/recommend``."""
 
     task: str | None = None
-    headroom: float = 0.85
+    # Matches score.MAX_HEADROOM: a larger value is silently clamped down to
+    # it inside effective_budget, so a bigger default here would be dishonest.
+    headroom: float = _MAX_HEADROOM
     # Off by default: weighing live server load (free RAM, CPU/GPU/disk usage,
     # already-running engines) adds a probe (~0.1-0.5s) and makes the result
     # depend on this exact moment rather than the hardware alone — see

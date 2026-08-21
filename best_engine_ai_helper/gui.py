@@ -302,7 +302,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
             <label class="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-600
                           dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
               {{HEADROOM}}
-              <input id="headroom" type="number" min="0.5" max="1" step="0.05" value="0.85"
+              <input id="headroom" type="number" min="0" max="0.5" step="0.05" value="0.5"
                      class="w-16 rounded border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-900
                             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue
                             dark:border-neutral-600 dark:bg-neutral-950 dark:text-neutral-100" />
@@ -503,7 +503,9 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
 
     async function runRecommend() {
       const task = $("task").value.trim() || null;
-      const headroom = Number($("headroom").value) || 0.85;
+      // Matches score.MAX_HEADROOM: any value above 0.5 is silently clamped
+      // down to it server-side, so the input's own range is capped at 0.5.
+      const headroom = Number($("headroom").value) || 0.5;
       const live = $("live").checked;
       $("run-recommend").disabled = true;
       status(T.analyzing);

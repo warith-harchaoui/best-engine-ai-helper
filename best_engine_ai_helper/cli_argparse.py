@@ -37,6 +37,7 @@ Warith Harchaoui <warith.harchaoui@deraison.ai>
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import logging
 import os
@@ -646,10 +647,16 @@ def _handle_pull(ns: argparse.Namespace) -> int:
             _emit_err(f"ollama pull {tag} failed. Skipping.")
             continue
 
+        # Bind the just-pulled candidate as the model under test -- without
+        # this, `_llm.chat`'s no-model-given resolution falls back to
+        # BEST_LLM_TEXT/VISION (env or persisted config.json), which is
+        # whatever was configured BEFORE this pull, not `tag`. That would
+        # validate a stale model while promoting an untested one on success.
+        chat_for_candidate = functools.partial(_llm.chat, model=tag)
         _emit(f"Running VLM gate on {tag} ...")
-        vlm_ok = _validate_vlm.validate(_llm.chat)
+        vlm_ok = _validate_vlm.validate(chat_for_candidate)
         _emit(f"Running prose gate on {tag} ...")
-        llm_ok = _validate_llm.validate(_llm.chat)
+        llm_ok = _validate_llm.validate(chat_for_candidate)
 
         if vlm_ok and llm_ok:
             env_path = _pull.write_env(
@@ -860,8 +867,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--headroom",
         type=float,
-        default=0.85,
-        help="Safety headroom fraction (0-1) applied to available memory (default: 0.85).",
+        default=_score.MAX_HEADROOM,
+        help=(
+            "Safety headroom fraction (0-1) applied to available memory "
+            f"(default: {_score.MAX_HEADROOM}). Clamped to {_score.MAX_HEADROOM} "
+            "(score.MAX_HEADROOM) -- a larger value is never honoured."
+        ),
     )
     p.add_argument(
         "--application",
@@ -906,8 +917,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--headroom",
         type=float,
-        default=0.85,
-        help="Memory safety fraction on top of the accelerator cap (default: 0.85).",
+        default=_score.MAX_HEADROOM,
+        help=(
+            "Memory safety fraction on top of the accelerator cap "
+            f"(default: {_score.MAX_HEADROOM}). Clamped to {_score.MAX_HEADROOM} "
+            "(score.MAX_HEADROOM) -- a larger value is never honoured."
+        ),
     )
     p.add_argument("--out", default=None, help="Path stem to write <stem>.md and <stem>.json.")
     p.add_argument(
