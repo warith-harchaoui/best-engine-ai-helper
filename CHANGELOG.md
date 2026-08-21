@@ -2,6 +2,23 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
+## [1.3.8] - 2026-08-21
+
+### Fixed
+
+- **`cli_argparse`'s `env` command printed one extra trailing blank line**
+  compared to its click twin: `_emit` always appends a newline, but
+  `env.sh`'s content already ends in one, so the two CLI surfaces produced
+  byte-different output for the same command. The argparse path now
+  writes the file content as-is.
+
+### Documentation
+
+- README.md/LISEZMOI.md: `server_load()`'s docstring no longer describes
+  the os-helper live-load fields as a future/unreleased dependency — the
+  `os-helper>=2.3.0,<3` floor already pinned in `pyproject.toml`
+  guarantees them on every install.
+
 ## [1.3.7] - 2026-08-17
 
 ### Fixed

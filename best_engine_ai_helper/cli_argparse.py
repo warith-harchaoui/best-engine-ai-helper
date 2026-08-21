@@ -750,7 +750,11 @@ def _handle_env(_ns: argparse.Namespace) -> int:
         _emit_err("env.sh not found. Run `best-engine-ai-helper pull` first.")
         return 1
 
-    _emit(env_path.read_text(encoding="utf-8"))
+    # cli.py's click twin prints with nl=False (env.sh's own content already
+    # ends in "\n"); `_emit` always appends one more, so a plain `_emit` here
+    # would tack on a trailing blank line the click surface never emits. Write
+    # the file content as-is to keep the two surfaces byte-identical.
+    sys.stdout.write(env_path.read_text(encoding="utf-8"))
     return 0
 
 

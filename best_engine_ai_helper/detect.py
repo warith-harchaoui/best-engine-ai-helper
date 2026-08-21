@@ -409,10 +409,9 @@ def server_load() -> dict[str, Any]:
 
     Requires an os-helper release whose ``hardware_info()`` includes the live
     fields ``cpu.percent`` / ``available_ram_gb`` / ``disk`` /
-    ``gpu_utilization_percent`` (added alongside this function; not yet in a
-    published os-helper release as of this writing — bump the ``os-helper``
-    pin in ``pyproject.toml`` once one ships, or this raises ``KeyError`` on
-    a fresh install).
+    ``gpu_utilization_percent`` — available since os-helper 2.3.0, the floor
+    pinned in ``pyproject.toml`` (``os-helper>=2.3.0,<3``), so any install of
+    this package already has them.
 
     Feeds :func:`score.effective_budget`'s optional ``load`` parameter, so a
     recommendation reflects what else is happening on this machine right now:

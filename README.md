@@ -28,6 +28,10 @@ without touching the terminal. The page is bilingual: French by default,
 English via `/gui?lang=en`, with a header link to switch. See
 [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md).
 
+## In production
+
+This package sits at the base of the AI Helpers suite's model-selection layer: three other published packages (`md2star`, `standpoint`, `vocal-helper`) route every LLM and VLM call through it instead of hardcoding a model name. It ships on PyPI with a green CI gate on every push (ruff, mypy, and a pytest suite held above 90% coverage), and every release is a semantic-version tag on GitHub.
+
 ## Documentation
 
 [💻 Documentation](https://harchaoui.org/warith/ai-helpers/docs/best-engine-ai-helper-doc/)

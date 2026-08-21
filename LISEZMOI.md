@@ -39,6 +39,10 @@ lecture seule de ce flux (les caractéristiques matérielles et la recommandatio
 défaut, anglais via `/gui?lang=en`, avec un lien d'en-tête pour basculer. Voir
 [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) (en anglais).
 
+## En production
+
+Ce paquet est à la base de la couche de sélection de modèles de la suite AI Helpers : trois autres paquets publiés (`md2star`, `standpoint`, `vocal-helper`) font transiter chaque appel LLM et VLM par lui plutôt que de coder en dur un nom de modèle. Il est publié sur PyPI avec une intégration continue verte à chaque envoi (ruff, mypy et une suite de tests maintenue au-dessus de 90 % de couverture). Chaque version est un tag sémantique sur GitHub.
+
 ## Documentation
 
 [💻 Documentation](https://harchaoui.org/warith/ai-helpers/docs/best-engine-ai-helper-doc/)
