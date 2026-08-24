@@ -69,7 +69,9 @@ _HTML_TOKEN_TO_KEY: dict[str, str] = {
     "RUN_BTN": "run_button",
     "HEADROOM": "headroom_label",
     "LIVE_LABEL": "live_toggle_label",
-    "CLOUD_LABEL": "cloud_toggle_label",
+    "MODE_LABEL": "mode_select_label",
+    "MODE_LOCAL": "mode_local_option",
+    "MODE_CLOUD": "mode_cloud_option",
     "QVC_LABEL": "quality_vs_cost_label",
     "FOOTER_NOTE": "footer_note",
     "ACTIVITY_H2": "activity_heading",
@@ -131,7 +133,6 @@ _JS_NAME_TO_KEY: dict[str, str] = {
     "matched": "matched_keywords",
     "needs": "needs_label",
     "tps": "unit_tps",
-    "cloudHeading": "cloud_section_heading",
     "cloudNote": "cloud_reference_note",
     "thProvider": "th_provider",
     "thPrice": "th_price",
@@ -308,30 +309,37 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
             </button>
             <label class="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-600
                           dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
+              {{MODE_LABEL}}
+              <select id="mode"
+                      class="rounded border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-900
+                             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue
+                             dark:border-neutral-600 dark:bg-neutral-950 dark:text-neutral-100">
+                <option value="local">{{MODE_LOCAL}}</option>
+                <option value="cloud">{{MODE_CLOUD}}</option>
+              </select>
+            </label>
+            <label id="headroom-field" class="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-600
+                          dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
               {{HEADROOM}}
               <input id="headroom" type="number" min="0" max="0.5" step="0.05" value="0.5"
                      class="w-16 rounded border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-900
                             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue
                             dark:border-neutral-600 dark:bg-neutral-950 dark:text-neutral-100" />
             </label>
-            <label class="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-600
+            <label id="live-field" class="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-600
                           dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
               <input id="live" type="checkbox"
                      class="rounded border-neutral-300 text-brand-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue
                             dark:border-neutral-600" />
               {{LIVE_LABEL}}
             </label>
-            <label class="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-600
+            <label id="qvc-field" style="display:none" class="items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-600
                           dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
-              <input id="cloud" type="checkbox" checked
-                     class="rounded border-neutral-300 text-brand-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue
-                            dark:border-neutral-600" />
-              {{CLOUD_LABEL}}
+              {{QVC_LABEL}}
               <input id="qvc" type="number" min="0" max="1" step="0.1" value="0.7"
                      class="w-14 rounded border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-900
                             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue
-                            dark:border-neutral-600 dark:bg-neutral-950 dark:text-neutral-100"
-                     title="{{QVC_LABEL}}" />
+                            dark:border-neutral-600 dark:bg-neutral-950 dark:text-neutral-100" />
             </label>
             <span id="status" class="text-xs text-neutral-500 dark:text-neutral-400" role="status" aria-live="polite"></span>
           </div>
@@ -512,9 +520,33 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) runRecommend();
     });
 
-    // Deep link: /gui?task=... pre-fills the box and runs it on load, so a
-    // recommendation is shareable by URL. ?lang is handled server-side.
-    const urlTask = new URLSearchParams(location.search).get("task");
+    // The mode dropdown reflects best-engine's own mode: local / mode: cloud
+    // brief distinction: only ONE mode's controls are relevant at a time
+    // (headroom/live for local, quality_vs_cost for cloud), and only that
+    // mode's recommendation is rendered -- see applyModeVisibility/renderResults.
+    function applyModeVisibility() {
+      const isCloud = $("mode").value === "cloud";
+      $("headroom-field").style.display = isCloud ? "none" : "flex";
+      $("live-field").style.display = isCloud ? "none" : "flex";
+      $("qvc-field").style.display = isCloud ? "flex" : "none";
+    }
+    $("mode").addEventListener("change", () => {
+      applyModeVisibility();
+      // Re-run immediately if a task is already filled in, so switching
+      // modes feels like a real toggle, not a setting that needs a second click.
+      if ($("task").value.trim()) runRecommend();
+    });
+    applyModeVisibility();
+
+    // Deep link: /gui?task=...&mode=cloud pre-fills the box and runs it on
+    // load, so a recommendation is shareable by URL. ?lang is handled server-side.
+    const urlParams = new URLSearchParams(location.search);
+    const urlTask = urlParams.get("task");
+    const urlMode = urlParams.get("mode");
+    if (urlMode === "cloud" || urlMode === "local") {
+      $("mode").value = urlMode;
+      applyModeVisibility();
+    }
     if (urlTask) {
       $("task").value = urlTask;
       runRecommend();
@@ -522,11 +554,11 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
 
     async function runRecommend() {
       const task = $("task").value.trim() || null;
+      const mode = $("mode").value;
       // Matches score.MAX_HEADROOM: any value above 0.5 is silently clamped
       // down to it server-side, so the input's own range is capped at 0.5.
       const headroom = Number($("headroom").value) || 0.5;
       const live = $("live").checked;
-      const cloud = $("cloud").checked;
       const quality_vs_cost = Number($("qvc").value);
       $("run-recommend").disabled = true;
       status(T.analyzing);
@@ -535,11 +567,14 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
         const res = await fetch("/api/recommend", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ task, headroom, live, cloud, quality_vs_cost }),
+          // Both local and cloud pick data are always fetched (both are
+          // cheap: no API key, no network); the mode dropdown decides which
+          // one is RENDERED, in renderResults(report, mode) below.
+          body: JSON.stringify({ task, headroom, live, cloud: true, quality_vs_cost }),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
         const report = await res.json();
-        renderResults(report);
+        renderResults(report, mode);
         status(T.done);
       } catch (err) {
         $("results").innerHTML =
@@ -663,7 +698,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
         </div>`;
     }
 
-    function renderResults(report) {
+    function renderResults(report, mode) {
       const task = report.task || {};
       const parts = [];
 
@@ -675,33 +710,33 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
           <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">${T.needs} ${task.kinds.map((k) => k.toUpperCase()).join(", ")}</p>
         </div>`);
 
-      const load = report.server_load;
-      if (load) {
-        const gpuPart = load.gpu_percent != null ? `, GPU ${Math.round(load.gpu_percent)}%` : "";
-        parts.push(`
-          <div class="mt-3 rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-xs text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
-            <span class="font-medium text-neutral-700 dark:text-neutral-300">${T.serverLoad}</span>
-            ${fmt1(load.available_ram_gb)} ${T.gb} ${T.ramFree}, CPU ${Math.round(load.cpu_percent)}%${gpuPart},
-            ${T.diskFree} ${fmt1(load.disk_free_gb)} ${T.gb} (${Math.round(load.disk_percent_used)}%),
-            ${T.runningEngines} ${load.running_engines}
-          </div>`);
-      }
-
-      const kindBlocks = Object.entries(report.recommendations || {});
-      const gridClass = kindBlocks.length > 1 ? "mt-4 grid gap-4 sm:grid-cols-2" : "mt-4 grid gap-4";
-      parts.push(`<div class="${gridClass}">${kindBlocks.map(([kind, block]) => kindCard(kind, block)).join("")}</div>`);
-
-      if (report.cloud) {
-        const cloudBlocks = Object.entries(report.cloud.recommendations || {});
+      // The mode dropdown is a real switch, not a comparison view: only the
+      // selected mode's recommendation renders, mirroring how a llm.brief.yaml
+      // carries exactly one mode (local or cloud), never both at once.
+      if (mode === "cloud") {
+        const cloudBlocks = Object.entries((report.cloud || {}).recommendations || {});
         const cloudGridClass = cloudBlocks.length > 1 ? "mt-4 grid gap-4 sm:grid-cols-2" : "mt-4 grid gap-4";
         parts.push(`
-          <div class="mt-6">
-            <h3 class="flex items-center gap-2 text-base font-bold tracking-tight text-brand-navy dark:text-blue-300">
-              ${T.cloudHeading}
-            </h3>
-            <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">${T.cloudNote}</p>
+          <div class="mt-4">
+            <p class="text-xs text-neutral-500 dark:text-neutral-400">${T.cloudNote}</p>
             <div class="${cloudGridClass}">${cloudBlocks.map(([kind, block]) => cloudKindCard(kind, block)).join("")}</div>
           </div>`);
+      } else {
+        const load = report.server_load;
+        if (load) {
+          const gpuPart = load.gpu_percent != null ? `, GPU ${Math.round(load.gpu_percent)}%` : "";
+          parts.push(`
+            <div class="mt-3 rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-xs text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
+              <span class="font-medium text-neutral-700 dark:text-neutral-300">${T.serverLoad}</span>
+              ${fmt1(load.available_ram_gb)} ${T.gb} ${T.ramFree}, CPU ${Math.round(load.cpu_percent)}%${gpuPart},
+              ${T.diskFree} ${fmt1(load.disk_free_gb)} ${T.gb} (${Math.round(load.disk_percent_used)}%),
+              ${T.runningEngines} ${load.running_engines}
+            </div>`);
+        }
+
+        const kindBlocks = Object.entries(report.recommendations || {});
+        const gridClass = kindBlocks.length > 1 ? "mt-4 grid gap-4 sm:grid-cols-2" : "mt-4 grid gap-4";
+        parts.push(`<div class="${gridClass}">${kindBlocks.map(([kind, block]) => kindCard(kind, block)).join("")}</div>`);
       }
 
       $("results").innerHTML = parts.join("");

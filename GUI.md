@@ -76,20 +76,27 @@ text-assistant profile; see `recommend.parse_task`.
 
 ![Recommendation results](assets/screenshots/gui-recommendation.png)
 
-The memory headroom (default `0.5`) is editable next to the button, matching
-`report --headroom`. The **live server load** checkbox next to it matches
-`report --live`: checked, the recommendation also weighs current free RAM,
-CPU/GPU/disk usage, and already-running engines, and the result panel gets an
-extra line showing that snapshot. Unchecked (the default), the recommendation
-is a deterministic function of the hardware alone.
+A **mode** dropdown next to the button mirrors the brief's own `mode: local` /
+`mode: cloud` switch (see the README's "Two modes: local (free) and cloud
+(paid)"): only one mode's recommendation renders at a time, and its own
+controls come with it.
 
-Below it, a **best cloud (paid) pick** section shows the best PAID model for
-the same task, checked by default and matching `report`'s own default:
-reference only, no API key read and no network call, ranking the bundled
-`pricing.yaml` catalog (see the README's "Two modes: local (free) and cloud
-(paid)"). The number field next to the checkbox is `quality_vs_cost` (0..1,
-default 0.7): `1.0` picks purely on benchmark score, `0.0` picks purely on
-price. Uncheck the box to hide the section and skip that ranking entirely.
+- **Local** (default): the memory headroom field (default `0.5`, matching
+  `report --headroom`) and the **live server load** checkbox (matches
+  `report --live`: checked, the recommendation also weighs current free RAM,
+  CPU/GPU/disk usage, and already-running engines, with an extra line
+  showing that snapshot; unchecked, the recommendation is a deterministic
+  function of the hardware alone).
+- **Cloud**: the `quality_vs_cost` field (0..1, default 0.7: `1.0` picks
+  purely on benchmark score, `0.0` picks purely on price) replaces them. The
+  cloud pick is reference only: no API key read, no network call, just the
+  bundled `pricing.yaml` catalog ranked the same way `report --cloud` ranks
+  it.
+
+![Cloud mode results](assets/screenshots/gui-cloud.png)
+
+Switching modes re-runs the last query if one was already shown; the deep
+link `/gui?task=...&mode=cloud` pre-selects a mode and runs immediately.
 
 ### 3. Activity (local call ledger)
 

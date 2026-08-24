@@ -36,12 +36,13 @@ gui:
     fr: English version
     en: Version française
   hero_title:
-    fr: Meilleur moteur local
-    en: Best local engine
+    fr: Meilleur LLM / VLM local ou cloud
+    en: Best local or cloud LLM / VLM
   hero_subtitle:
-    fr: Caractéristiques de cette machine et le meilleur moteur local (LLM / VLM) pour la tâche que vous
-      décrivez.
-    en: This machine's characteristics, and the best local engine (LLM / VLM) for the task you describe.
+    fr: Caractéristiques de cette machine et le meilleur moteur (LLM / VLM), local ou cloud, pour la tâche
+      que vous décrivez.
+    en: This machine's characteristics, and the best engine (LLM / VLM), local or cloud, for the task you
+      describe.
   system_heading:
     fr: Caractéristiques système
     en: System characteristics
@@ -72,9 +73,15 @@ gui:
   live_toggle_label:
     fr: Charge serveur en direct
     en: Live server load
-  cloud_toggle_label:
-    fr: Comparer au meilleur cloud (payant)
-    en: Compare against the best cloud (paid) pick
+  mode_select_label:
+    fr: Mode
+    en: Mode
+  mode_local_option:
+    fr: Local (gratuit)
+    en: Local (free)
+  mode_cloud_option:
+    fr: Cloud (payant)
+    en: Cloud (paid)
   quality_vs_cost_label:
     fr: qualité / coût
     en: quality / cost
@@ -246,9 +253,6 @@ gui:
   unit_tps:
     fr: tok/s
     en: tok/s
-  cloud_section_heading:
-    fr: Meilleur choix cloud (payant)
-    en: Best cloud (paid) pick
   cloud_reference_note:
     fr: Référence seulement — aucune clé API lue, aucun appel réseau.
     en: Reference only — no API key read, no network call.

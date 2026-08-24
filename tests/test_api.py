@@ -140,16 +140,17 @@ def test_activity_gui_and_static_endpoints(client: TestClient, tmp_path: Path) -
 
     fr = client.get("/gui")
     assert fr.status_code == 200 and "text/html" in fr.headers["content-type"]
-    assert '<html lang="fr"' in fr.text and "Meilleur moteur local" in fr.text
+    assert '<html lang="fr"' in fr.text and "Meilleur LLM / VLM local ou cloud" in fr.text
     assert 'href="/gui?lang=en"' in fr.text and "/api/recommend" in fr.text
-    # The cloud-comparison checkbox (on by default) and its quality/cost input.
-    assert 'id="cloud" type="checkbox" checked' in fr.text and 'id="qvc"' in fr.text
-    assert "Comparer au meilleur cloud" in fr.text
+    # The mode dropdown (local/cloud) and its quality/cost input (hidden until
+    # cloud mode is picked).
+    assert 'id="mode"' in fr.text and 'value="cloud"' in fr.text and 'id="qvc"' in fr.text
+    assert "Local (gratuit)" in fr.text and "Cloud (payant)" in fr.text
 
     en = client.get("/gui", params={"lang": "en"}).text
-    assert '<html lang="en"' in en and "Best local engine" in en
-    assert "Meilleur moteur local" not in en
-    assert "Compare against the best cloud" in en
+    assert '<html lang="en"' in en and "Best local or cloud LLM / VLM" in en
+    assert "Meilleur LLM / VLM local ou cloud" not in en
+    assert "Local (free)" in en and "Cloud (paid)" in en
     # The EN placeholder's double quotes must be HTML-escaped (regression guard).
     assert "&quot;write product descriptions" in en and 'placeholder="e.g. "write' not in en
 

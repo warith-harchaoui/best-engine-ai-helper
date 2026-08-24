@@ -22,6 +22,14 @@ All notable changes to best-engine-ai-helper are documented here.
   `--quality-vs-cost`, `--cloud-provider` to tune it) — reference only,
   needs no API key and reaches no network. `to_markdown` renders it as an
   extra section when a report carries a `"cloud"` key.
+- **GUI gains a local/cloud mode switch**: a `mode` dropdown next to the
+  task box mirrors the brief's own `mode: local` / `mode: cloud` field —
+  only the selected mode's recommendation renders, with only that mode's
+  controls shown (memory headroom + live server load for local;
+  `quality_vs_cost` for cloud, reference only, no API key or network call).
+  `POST /api/recommend` gains matching `cloud`, `quality_vs_cost`, and
+  `cloud_provider` fields, reusing `cloud_recommend()` so the CLI and GUI
+  share the same ranking logic.
 
 ### Fixed
 
