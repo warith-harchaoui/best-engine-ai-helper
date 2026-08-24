@@ -66,10 +66,11 @@ To see only VLM candidates:
 best-engine-ai-helper recommend --kind vlm
 ```
 
-To use a tighter safety margin (0.5 instead of the default 0.85):
+To use a tighter safety margin than the default (`--headroom` maxes out at
+`0.5`; anything larger is silently clamped down to it):
 
 ```sh
-best-engine-ai-helper recommend --headroom 0.5
+best-engine-ai-helper recommend --headroom 0.3
 ```
 
 ---

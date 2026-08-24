@@ -239,7 +239,8 @@ Silicon unified memory (`system_profiler`), NVIDIA VRAM (`nvidia-smi`), AMD VRAM
 The usable budget is **not** the whole pool. On Apple Silicon, Metal caps GPU
 allocations at about **66%** of unified memory at or below 36 GB and about
 **75%** above it (`recommendedMaxWorkingSetSize`); past that, work spills to the
-CPU and slows sharply. An extra safety `headroom` (default **0.85**) is applied
+CPU and slows sharply. An extra safety `headroom` (default **0.5**, the hard
+ceiling: a larger value is clamped down to it) is applied
 on top, reserving room for the OS, your own application, and a model's own
 working memory: as a conversation or prompt gets longer, a model keeps a
 running cache of everything it has already read so it does not recompute it

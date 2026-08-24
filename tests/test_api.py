@@ -83,6 +83,28 @@ def test_system_and_recommend_endpoints(client: TestClient) -> None:
         "running_engines",
     } <= live["server_load"].keys()
 
+    # `cloud` is on by default (matching `report`'s own default): the base
+    # `{}` request above already carries a best-paid-model comparison, no API
+    # key or network call needed.
+    assert "cloud" in llm_only
+    cloud_chosen = llm_only["cloud"]["recommendations"]["llm"]["chosen"]
+    assert {"id", "provider", "score", "price_per_1m", "structured_output"} <= cloud_chosen.keys()
+    assert llm_only["cloud"]["quality_vs_cost"] == pytest.approx(0.7)
+
+    # `cloud: false` skips it entirely.
+    no_cloud = client.post("/api/recommend", json={"cloud": False}).json()
+    assert "cloud" not in no_cloud
+
+    # quality_vs_cost and cloud_provider are threaded through.
+    cheapest = client.post(
+        "/api/recommend", json={"task": "write SQL", "quality_vs_cost": 0.0}
+    ).json()
+    assert cheapest["cloud"]["quality_vs_cost"] == 0.0
+    pinned = client.post(
+        "/api/recommend", json={"task": "write SQL", "cloud_provider": "mistral"}
+    ).json()
+    assert pinned["cloud"]["recommendations"]["llm"]["chosen"]["provider"] == "mistral"
+
 
 def test_activity_gui_and_static_endpoints(client: TestClient, tmp_path: Path) -> None:
     from unittest.mock import patch
@@ -120,10 +142,14 @@ def test_activity_gui_and_static_endpoints(client: TestClient, tmp_path: Path) -
     assert fr.status_code == 200 and "text/html" in fr.headers["content-type"]
     assert '<html lang="fr"' in fr.text and "Meilleur moteur local" in fr.text
     assert 'href="/gui?lang=en"' in fr.text and "/api/recommend" in fr.text
+    # The cloud-comparison checkbox (on by default) and its quality/cost input.
+    assert 'id="cloud" type="checkbox" checked' in fr.text and 'id="qvc"' in fr.text
+    assert "Comparer au meilleur cloud" in fr.text
 
     en = client.get("/gui", params={"lang": "en"}).text
     assert '<html lang="en"' in en and "Best local engine" in en
     assert "Meilleur moteur local" not in en
+    assert "Compare against the best cloud" in en
     # The EN placeholder's double quotes must be HTML-escaped (regression guard).
     assert "&quot;write product descriptions" in en and 'placeholder="e.g. "write' not in en
 

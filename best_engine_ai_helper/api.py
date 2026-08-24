@@ -5,11 +5,14 @@ Exposes the two calls the GUI needs:
 
 - ``GET /api/system``    — detected hardware + compute profile + memory budget.
 - ``POST /api/recommend`` — a free-text task -> the same report ``recommend()``
-  produces for the CLI's ``report`` command, as JSON.
+  produces for the CLI's ``report`` command, as JSON, plus the best PAID model
+  under ``"cloud"`` (reference only, on by default; see ``cli.py``'s
+  ``report --cloud``).
 
 A minimal single-page GUI is served at ``GET /gui`` (``GET /`` redirects
 there): it shows the machine's characteristics and lets you type a task
-description to get the best local engine(s) for it. It is bilingual —
+description to get the best local engine(s) for it, alongside the best paid
+model for comparison. It is bilingual —
 French by default, English at ``GET /gui?lang=en`` — with a header link to
 switch between the two.
 
@@ -35,9 +38,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import catalog as _catalog
+from . import cloud_catalog as _cloud_catalog
 from . import detect as _detect
 from . import observe as _observe
 from .gui import render_gui
+from .recommend import cloud_recommend as _cloud_recommend_engines
 from .recommend import recommend as _recommend_engines
 from .score import MAX_HEADROOM as _MAX_HEADROOM
 from .score import effective_budget as _effective_budget
@@ -63,6 +68,12 @@ class RecommendRequest(BaseModel):
     # depend on this exact moment rather than the hardware alone — see
     # cli.py's --live for the same trade-off spelled out.
     live: bool = False
+    # On by default, matching `report`'s own default: the best PAID model for
+    # the task, reference only (no API key read, no network call — it ranks
+    # the bundled pricing.yaml catalog). See cli.py's `report --cloud`.
+    cloud: bool = True
+    quality_vs_cost: float = _cloud_catalog.DEFAULT_QUALITY_VS_COST
+    cloud_provider: str | None = None
 
 
 def _system_info() -> dict[str, Any]:
@@ -104,14 +115,25 @@ def system() -> dict[str, Any]:
 
 @app.post("/api/recommend")
 def recommend(body: RecommendRequest) -> dict[str, Any]:
-    """Best local engine(s) for ``body.task`` on this machine's hardware."""
+    """Best local engine(s) for ``body.task`` on this machine's hardware.
+
+    Also carries the best PAID model under ``"cloud"`` unless ``body.cloud`` is
+    false — a reference ranking only (no API key, no network call), the same
+    one the CLI's ``report --cloud`` shows; see
+    :func:`best_engine_ai_helper.recommend.cloud_recommend`.
+    """
     hw = _detect.available_memory()
     compute = _detect.compute_profile()
     entries = _catalog.load_catalog()
     load = _detect.server_load() if body.live else None
-    return _recommend_engines(
+    rep = _recommend_engines(
         hw, entries, task=body.task, headroom=body.headroom, compute=compute, load=load
     )
+    if body.cloud:
+        rep["cloud"] = _cloud_recommend_engines(
+            body.task, quality_vs_cost=body.quality_vs_cost, provider=body.cloud_provider
+        )
+    return rep
 
 
 @app.get("/api/activity")

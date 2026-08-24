@@ -72,6 +72,12 @@ gui:
   live_toggle_label:
     fr: Charge serveur en direct
     en: Live server load
+  cloud_toggle_label:
+    fr: Comparer au meilleur cloud (payant)
+    en: Compare against the best cloud (paid) pick
+  quality_vs_cost_label:
+    fr: qualité / coût
+    en: quality / cost
   footer_note:
     fr: local uniquement, aucune télémétrie
     en: local only, no telemetry
@@ -240,6 +246,21 @@ gui:
   unit_tps:
     fr: tok/s
     en: tok/s
+  cloud_section_heading:
+    fr: Meilleur choix cloud (payant)
+    en: Best cloud (paid) pick
+  cloud_reference_note:
+    fr: Référence seulement — aucune clé API lue, aucun appel réseau.
+    en: Reference only — no API key read, no network call.
+  th_provider:
+    fr: fournisseur
+    en: provider
+  th_price:
+    fr: $/1M jetons
+    en: $/1M tokens
+  price_blended_suffix:
+    fr: (mélangé)
+    en: (blended)
 prompts:
   eyeball_critique:
     system: 'You are a strict visual-quality reviewer. Examine the image and write a

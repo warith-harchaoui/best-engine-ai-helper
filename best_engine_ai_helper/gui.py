@@ -69,6 +69,8 @@ _HTML_TOKEN_TO_KEY: dict[str, str] = {
     "RUN_BTN": "run_button",
     "HEADROOM": "headroom_label",
     "LIVE_LABEL": "live_toggle_label",
+    "CLOUD_LABEL": "cloud_toggle_label",
+    "QVC_LABEL": "quality_vs_cost_label",
     "FOOTER_NOTE": "footer_note",
     "ACTIVITY_H2": "activity_heading",
     "ACTIVITY_P": "activity_subtitle",
@@ -129,6 +131,11 @@ _JS_NAME_TO_KEY: dict[str, str] = {
     "matched": "matched_keywords",
     "needs": "needs_label",
     "tps": "unit_tps",
+    "cloudHeading": "cloud_section_heading",
+    "cloudNote": "cloud_reference_note",
+    "thProvider": "th_provider",
+    "thPrice": "th_price",
+    "blended": "price_blended_suffix",
 }
 
 
@@ -313,6 +320,18 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
                      class="rounded border-neutral-300 text-brand-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue
                             dark:border-neutral-600" />
               {{LIVE_LABEL}}
+            </label>
+            <label class="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-600
+                          dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
+              <input id="cloud" type="checkbox" checked
+                     class="rounded border-neutral-300 text-brand-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue
+                            dark:border-neutral-600" />
+              {{CLOUD_LABEL}}
+              <input id="qvc" type="number" min="0" max="1" step="0.1" value="0.7"
+                     class="w-14 rounded border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-900
+                            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue
+                            dark:border-neutral-600 dark:bg-neutral-950 dark:text-neutral-100"
+                     title="{{QVC_LABEL}}" />
             </label>
             <span id="status" class="text-xs text-neutral-500 dark:text-neutral-400" role="status" aria-live="polite"></span>
           </div>
@@ -507,6 +526,8 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
       // down to it server-side, so the input's own range is capped at 0.5.
       const headroom = Number($("headroom").value) || 0.5;
       const live = $("live").checked;
+      const cloud = $("cloud").checked;
+      const quality_vs_cost = Number($("qvc").value);
       $("run-recommend").disabled = true;
       status(T.analyzing);
       $("results").innerHTML = "";
@@ -514,7 +535,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
         const res = await fetch("/api/recommend", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ task, headroom, live }),
+          body: JSON.stringify({ task, headroom, live, cloud, quality_vs_cost }),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
         const report = await res.json();
@@ -591,6 +612,57 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
         </div>`;
     }
 
+    function cloudCandidateRow(r) {
+      return `
+        <tr class="border-t border-neutral-200 dark:border-neutral-800">
+          <td class="py-1.5 pr-3 font-mono">${r.id}</td>
+          <td class="py-1.5 pr-3">${r.provider}</td>
+          <td class="py-1.5 pr-3">${Math.round(r.score)}</td>
+          <td class="py-1.5 pr-3">${r.price_per_1m.toFixed(2)}</td>
+          <td class="py-1.5">${r.structured_output === false ? T.no : T.yes}</td>
+        </tr>`;
+    }
+
+    function cloudKindCard(kind, block) {
+      const chosen = block.chosen;
+      const chosenHtml = chosen ? `
+        <p class="flex flex-wrap items-center gap-2 text-sm">
+          ${pill(chosen.id)}
+          <span class="text-neutral-600 dark:text-neutral-300">
+            ${chosen.provider}, ${T.score} ${Math.round(chosen.score)}, ~$${chosen.price_per_1m.toFixed(2)}/1M ${T.blended}
+          </span>
+          ${chosen.structured_output === false ? `<span class="text-amber-600 dark:text-amber-400">${T.notStructured}</span>` : ""}
+        </p>
+      ` : `<p class="text-sm text-neutral-500 dark:text-neutral-400">${T.noCandidate}</p>`;
+
+      return `
+        <div class="overflow-hidden rounded-xl border border-brand-blue/30 bg-white p-5 shadow-sm dark:border-brand-blue/40 dark:bg-neutral-950">
+          <h3 class="mb-3 text-lg font-bold tracking-tight">
+            ${T.best} ${kind.toUpperCase()} <span class="font-mono text-sm font-normal text-neutral-500 dark:text-neutral-400">(${T.axis} ${block.axis})</span>
+          </h3>
+          ${chosenHtml}
+          <details class="mt-4">
+            <summary class="cursor-pointer text-xs font-medium text-neutral-500 hover:text-brand-blue dark:text-neutral-400">
+              ${T.allCandidates} (${block.candidates.length})
+            </summary>
+            <div class="mt-2 overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead>
+                  <tr class="text-neutral-500 dark:text-neutral-400">
+                    <th class="pb-1.5 pr-3 font-medium">${T.thModel}</th>
+                    <th class="pb-1.5 pr-3 font-medium">${T.thProvider}</th>
+                    <th class="pb-1.5 pr-3 font-medium">${T.thScore}</th>
+                    <th class="pb-1.5 pr-3 font-medium">${T.thPrice}</th>
+                    <th class="pb-1.5 font-medium">${T.thStructured}</th>
+                  </tr>
+                </thead>
+                <tbody>${block.candidates.map(cloudCandidateRow).join("")}</tbody>
+              </table>
+            </div>
+          </details>
+        </div>`;
+    }
+
     function renderResults(report) {
       const task = report.task || {};
       const parts = [];
@@ -618,6 +690,19 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
       const kindBlocks = Object.entries(report.recommendations || {});
       const gridClass = kindBlocks.length > 1 ? "mt-4 grid gap-4 sm:grid-cols-2" : "mt-4 grid gap-4";
       parts.push(`<div class="${gridClass}">${kindBlocks.map(([kind, block]) => kindCard(kind, block)).join("")}</div>`);
+
+      if (report.cloud) {
+        const cloudBlocks = Object.entries(report.cloud.recommendations || {});
+        const cloudGridClass = cloudBlocks.length > 1 ? "mt-4 grid gap-4 sm:grid-cols-2" : "mt-4 grid gap-4";
+        parts.push(`
+          <div class="mt-6">
+            <h3 class="flex items-center gap-2 text-base font-bold tracking-tight text-brand-navy dark:text-blue-300">
+              ${T.cloudHeading}
+            </h3>
+            <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">${T.cloudNote}</p>
+            <div class="${cloudGridClass}">${cloudBlocks.map(([kind, block]) => cloudKindCard(kind, block)).join("")}</div>
+          </div>`);
+      }
 
       $("results").innerHTML = parts.join("");
     }

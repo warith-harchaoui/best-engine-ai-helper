@@ -76,12 +76,20 @@ text-assistant profile; see `recommend.parse_task`.
 
 ![Recommendation results](assets/screenshots/gui-recommendation.png)
 
-The memory headroom (default `0.85`) is editable next to the button, matching
+The memory headroom (default `0.5`) is editable next to the button, matching
 `report --headroom`. The **live server load** checkbox next to it matches
 `report --live`: checked, the recommendation also weighs current free RAM,
 CPU/GPU/disk usage, and already-running engines, and the result panel gets an
 extra line showing that snapshot. Unchecked (the default), the recommendation
 is a deterministic function of the hardware alone.
+
+Below it, a **best cloud (paid) pick** section shows the best PAID model for
+the same task, checked by default and matching `report`'s own default:
+reference only, no API key read and no network call, ranking the bundled
+`pricing.yaml` catalog (see the README's "Two modes: local (free) and cloud
+(paid)"). The number field next to the checkbox is `quality_vs_cost` (0..1,
+default 0.7): `1.0` picks purely on benchmark score, `0.0` picks purely on
+price. Uncheck the box to hide the section and skip that ranking entirely.
 
 ### 3. Activity (local call ledger)
 
@@ -101,7 +109,7 @@ another tool, or `curl`):
 | Method | Path | Body | Returns |
 |--------|------|------|---------|
 | `GET`  | `/api/system` | (none) | hardware + compute profile + `memory_budget_gb` |
-| `POST` | `/api/recommend` | `{"task": str \| null, "headroom": float, "live": bool}` | the same report `recommend()` / `report` produce, as JSON |
+| `POST` | `/api/recommend` | `{"task": str \| null, "headroom": float, "live": bool, "cloud": bool, "quality_vs_cost": float, "cloud_provider": str \| null}` | the same report `recommend()` / `report` produce, as JSON, plus the best paid model under `"cloud"` (reference only) unless `cloud: false` |
 | `GET`  | `/api/activity` | (none) | ledger summary: `total_calls`, `total_cost_usd`, `error_rate`, `by_user`, `by_model`, `recent_errors` |
 
 ```sh

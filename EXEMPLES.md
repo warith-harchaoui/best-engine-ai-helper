@@ -70,10 +70,11 @@ Pour ne voir que les candidats VLM :
 best-engine-ai-helper recommend --kind vlm
 ```
 
-Pour resserrer la marge de sécurité (0,5 au lieu de 0,85 par défaut) :
+Pour resserrer la marge de sécurité davantage que le défaut (`--headroom` plafonne à
+`0,5` ; toute valeur plus grande est ramenée à ce plafond) :
 
 ```sh
-best-engine-ai-helper recommend --headroom 0.5
+best-engine-ai-helper recommend --headroom 0.3
 ```
 
 ---

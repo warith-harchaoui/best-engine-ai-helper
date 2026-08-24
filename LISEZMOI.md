@@ -255,7 +255,8 @@ La mémoire disponible vient de la première sonde qui réussit : mémoire unifi
 sinon la moitié de la RAM système comme estimation conservative sur CPU. Le budget utilisable
 n'est pas tout le pool : sur Apple Silicon, Metal plafonne l'allocation GPU à environ 66 %
 de la mémoire unifiée jusqu'à 36 Go et environ 75 % au-delà (`recommendedMaxWorkingSetSize`),
-puis une marge de sécurité `headroom` (par défaut 0,85) s'applique par-dessus. Un modèle
+puis une marge de sécurité `headroom` (par défaut 0,5, le plafond dur : une valeur plus
+grande est ramenée à ce plafond) s'applique par-dessus. Un modèle
 tient quand son `ram_gb` (pic d'inférence estimé) reste au plus égal à ce budget.
 
 ### 3. Adéquation à la tâche
