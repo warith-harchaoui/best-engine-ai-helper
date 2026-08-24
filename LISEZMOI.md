@@ -66,7 +66,13 @@ Ce paquet est à la base de la couche de sélection de modèles de la suite AI H
   `[filtered]` pour de vrais classifieurs NSFW (un modèle DistilBERT pour le
   texte ; le détecteur d'image basé sur CLIP de LAION, via `transformers`
   pour l'encodeur CLIP et un modèle `onnxruntime` embarqué pour la tête de
-  classification).
+  classification). Voir [Deux modes : local (gratuit) et cloud
+  (payant)](#deux-modes--local-gratuit-et-cloud-payant) plus bas et [la
+  section `resolve`
+  d'EXEMPLES.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXEMPLES.md#resolve)
+  pour le déroulé complet ; les deux se dégradent proprement (une
+  heuristique par mots-clés, ou un verdict « indisponible ») en leur
+  absence, jamais un échec brutal.
 
 ## Installation
 
@@ -411,6 +417,81 @@ moteur résolu.
 et spécifique à la machine : son absence est normale, `ensure` le résout depuis le brief au
 premier usage. Le modèle reste ainsi hors de toute variable : le fichier moteur résolu est
 l'unique source de vérité.
+
+## Deux modes : local (gratuit) et cloud (payant)
+
+Chaque brief choisit un des deux modes avec `mode: local` (le défaut) ou `mode: cloud`. Les
+deux se résolvent vers le même type de fichier moteur et le même point d'appel
+`llm.chat(engine=..., kind=...)` en aval : seuls le transport et le coût changent.
+
+### Local (gratuit, par défaut)
+
+`mode: local`, ou l'absence de champ `mode`, correspond à [la promesse](#la-promesse) : la
+détection matérielle, la sélection du modèle et chaque garde qualité tournent sur cette
+machine, contre un modèle déjà tiré via Ollama ou servi via vLLM. Chaque appel coûte **0,0 $**,
+toujours (voir [Journal d'activité](#journal-dactivité)) : il n'y a aucun appel API payant à
+chiffrer.
+
+### Cloud (payant)
+
+`mode: cloud` route plutôt vers un fournisseur payant : OpenAI, Mistral, OpenRouter, Together
+ou Azure OpenAI (tous compatibles OpenAI), plus Anthropic et Gemini (formats propres à chacun),
+tout en gardant le même point d'appel `llm.chat(engine=..., kind=...)` en aval. Deux façons de
+choisir le modèle :
+
+- **Le fixer** : nommer `provider` et `model` explicitement dans le brief, exactement comme
+  avant.
+- **Le choisir automatiquement** : omettre `model` (et `provider`, pour chercher chez tous les
+  fournisseurs) et best-engine choisit le meilleur modèle payant depuis un petit catalogue
+  embarqué (`pricing.yaml`, enrichi de scores de benchmark par modèle), de la même façon que le
+  mode local choisit depuis `models.yaml`, sauf que la ressource budgétée est le **prix**, pas
+  la mémoire, puisque tout modèle payant tourne sur n'importe quelle machine. Un curseur
+  `quality_vs_cost` (0 à 1, défaut 0,7) oriente le choix : `1.0` choisit uniquement sur le
+  score, `0.0` uniquement sur le prix, et le défaut privilégie la qualité avec le prix en
+  départage.
+
+```yaml
+mode: cloud
+kind: both
+quality_vs_cost: 0.7           # optionnel, 0..1 ; choix automatique seulement, défaut 0.7
+task: extraire les lignes structurées d'une facture PDF depuis son texte OCR
+```
+
+```sh
+best-engine-ai-helper resolve --brief llm.brief.yaml --out llm.engine.yaml
+# Wrote llm.engine.yaml
+#   backend: openai  (llm=gpt-4o, vlm=gpt-4o)
+```
+
+Prévisualiser le choix automatique pour n'importe quelle tâche avant d'écrire un brief, côte à
+côte avec le choix local, sans clé API ni appel réseau :
+
+```sh
+best-engine-ai-helper report --task "extraire les lignes d'une facture"
+# ... section locale ...
+# ## Best cloud VLM (axis: ocr)
+# **→ `gpt-4o`** (openai) — score 69, ~$6.25/1M tokens (blended)
+```
+
+(`--no-cloud` retire cette section ; `--quality-vs-cost` et `--cloud-provider` l'ajustent.)
+
+Chaque moteur cloud porte aussi un **repli** local embarqué, résolu depuis le même brief, pour
+qu'un appel payant en échec dégrade vers le modèle local toujours disponible : payant vers
+local, la seule direction sûre (un moteur local n'escalade jamais silencieusement vers un appel
+payant). Quatre autres choses se produisent automatiquement au point d'appel `llm.chat()` dès
+que `engine=` est un descripteur cloud :
+
+| Point | Défaut | Désactiver / configurer |
+|---|---|---|
+| **Clé API** | le NOM dans `api_key_env` (jamais la valeur de la clé) est cherché en un passage (`settings.yaml`, puis un éventuel fichier `.env`, puis l'environnement du processus), puis le trousseau du système via `keyring` | `pip install 'best-engine-ai-helper[cloud]'` pour le repli trousseau |
+| **Scan de sécurité** | chaque prompt/image scanné en sortie, chaque réponse scannée en entrée, pour le local ET le cloud (un souci de politique de contenu, pas un risque propre au cloud) | `chat(..., safety=False)` |
+| **Pseudonymisation** | désactivée ; une fois activée, nettoie les données personnelles avec le modèle de repli LOCAL avant que le prompt ne quitte la machine, les restaure dans la réponse | `chat(..., pseudonymize=True)`, nécessite `[cloud]` |
+| **Retry + cache** | désactivés ; le retry rejoue un échec transport transitoire avant de basculer, le cache mémoïse les appels identiques pour qu'une répétition ne soit jamais payée deux fois | `chat(..., retries=3, cache=True)`, le cache nécessite `[cloud]` |
+| **Suivi du coût** | chaque appel, local ou payant, ajouté au journal d'activité local, chiffré depuis les comptages de jetons réels du fournisseur quand ils sont rapportés, sinon une estimation par caractères | `best-engine-ai-helper activity`, désactiver avec `BEST_ENGINE_NO_LEDGER=1` |
+
+Voir [la section `resolve` d'EXEMPLES.md](EXEMPLES.md#resolve) pour la recette complète
+(settings.yaml, trousseau, sortie structurée, chaîne de repli) et [GUI.md](GUI.md) pour le
+tableau de bord d'activité.
 
 ## Usages / profils de tâche
 

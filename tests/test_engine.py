@@ -41,6 +41,44 @@ _CATALOG = [
 _HW = {"unified_gb": 64.0, "vram_gb": None, "ram_gb": 64.0}
 _COMPUTE = {"accelerator": "gpu-metal", "chip": "Apple M2", "bandwidth_gbs": None}
 
+# Synthetic paid-model catalog for cloud auto-pick tests: two providers, one
+# offering both llm/vlm, the other text-only, so the "anchor on vlm, then
+# constrain llm to the same provider" rule (engine._auto_pick_cloud) and the
+# "provider pinned but has no vlm" error path are both exercisable.
+# cheap-text beats acme-vision on the general (text) axis AND on price, so it
+# unambiguously wins the llm slot within acme regardless of quality_vs_cost;
+# textonly-flagship beats both on the general axis but has no vision entry,
+# so it only wins an unconstrained (no provider pin) llm-only pick.
+_CLOUD_CATALOG = [
+    {
+        "id": "cheap-text",
+        "provider": "acme",
+        "kind": "llm",
+        "structured_output": True,
+        "benchmarks": {"general": 85},
+        "input_per_1m": 0.10,
+        "output_per_1m": 0.10,
+    },
+    {
+        "id": "acme-vision",
+        "provider": "acme",
+        "kind": "vlm",
+        "structured_output": True,
+        "benchmarks": {"general": 60, "vision": 70},
+        "input_per_1m": 2.00,
+        "output_per_1m": 6.00,
+    },
+    {
+        "id": "textonly-flagship",
+        "provider": "textco",
+        "kind": "llm",
+        "structured_output": True,
+        "benchmarks": {"general": 90},
+        "input_per_1m": 5.00,
+        "output_per_1m": 15.00,
+    },
+]
+
 _BRIEF = {
     "kind": "both",
     "headroom": 0.9,
@@ -218,13 +256,10 @@ def test_resolve_cloud_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     # A local fallback is resolved from the SAME brief (paid -> local direction).
     assert eng["fallback"] is not None and eng["fallback"]["backend"] in {"ollama", "vllm"}
 
-    with pytest.raises(ValueError, match="model"):
-        engine.resolve(
-            {"mode": "cloud", "provider": "openai", "kind": "llm", "task": "x"},
-            catalog=_CATALOG,
-            hw=_HW,
-            compute=_COMPUTE,
-        )
+    # A pinned provider with no api_key_env falls back to the conventional
+    # env-var name for that provider (never a raise: only the NAME, never a
+    # key value, is at stake here).
+    assert eng["api_key_env"] == "MISTRAL_API_KEY"
 
     proxied = engine.resolve(
         {
@@ -262,6 +297,99 @@ def test_resolve_cloud_mode(monkeypatch: pytest.MonkeyPatch) -> None:
         compute=_COMPUTE,
     )
     assert no_fallback_eng["mode"] == "cloud" and no_fallback_eng["fallback"] is None
+
+
+def test_resolve_cloud_auto_pick() -> None:
+    """mode: cloud with no 'model' auto-picks provider + model(s) from a catalog."""
+    # Both kinds, no provider pin, pure quality (quality_vs_cost=1.0): "vlm" is
+    # the anchor (only one provider -- acme -- offers it), which forces the
+    # llm pick onto the SAME provider too, even though textco's llm-only
+    # model scores higher in isolation (one provider per engine, same rule
+    # local mode applies to the backend).
+    both = engine.resolve(
+        {"mode": "cloud", "kind": "both", "quality_vs_cost": 1.0, "task": "look at this photo"},
+        catalog=_CATALOG,
+        hw=_HW,
+        compute=_COMPUTE,
+        cloud_catalog=_CLOUD_CATALOG,
+    )
+    assert both["mode"] == "cloud" and both["backend"] == "acme"
+    assert both["vlm"]["model"] == "acme-vision" and both["vlm"]["cloud"] is True
+    assert both["llm"]["model"] == "cheap-text"
+    # 'acme' has no entry in engine._DEFAULT_API_KEY_ENV -- no key-value is
+    # fabricated, api_key_env is simply left unset.
+    assert both["api_key_env"] is None
+    # The local fallback is still resolved from the same brief either way.
+    assert both["fallback"] is not None
+
+    # llm-only, no vision needed: the anchor is llm itself, so the strongest
+    # text model overall wins regardless of provider (textco's flagship beats
+    # both of acme's models on the general axis).
+    llm_only = engine.resolve(
+        {"mode": "cloud", "kind": "llm", "quality_vs_cost": 1.0, "task": "summarize a report"},
+        catalog=_CATALOG,
+        hw=_HW,
+        compute=_COMPUTE,
+        cloud_catalog=_CLOUD_CATALOG,
+    )
+    assert llm_only["backend"] == "textco"
+    assert llm_only["llm"]["model"] == "textonly-flagship"
+    assert "vlm" not in llm_only
+
+    # A pinned provider restricts the auto-pick to it.
+    pinned = engine.resolve(
+        {
+            "mode": "cloud",
+            "kind": "llm",
+            "provider": "acme",
+            "quality_vs_cost": 1.0,
+            "task": "summarize a report",
+        },
+        catalog=_CATALOG,
+        hw=_HW,
+        compute=_COMPUTE,
+        cloud_catalog=_CLOUD_CATALOG,
+    )
+    assert pinned["backend"] == "acme" and pinned["llm"]["model"] == "cheap-text"
+
+    # A pinned provider that cannot serve the requested (anchor) kind raises,
+    # rather than silently switching provider.
+    with pytest.raises(ValueError, match="textco"):
+        engine.resolve(
+            {"mode": "cloud", "kind": "both", "provider": "textco", "task": "read this image"},
+            catalog=_CATALOG,
+            hw=_HW,
+            compute=_COMPUTE,
+            cloud_catalog=_CLOUD_CATALOG,
+        )
+
+    # An explicit structured_output override wins over the catalog entry's own
+    # flag, exactly as it does on the manual-pin path.
+    forced = engine.resolve(
+        {
+            "mode": "cloud",
+            "kind": "llm",
+            "provider": "acme",
+            "structured_output": False,
+            "task": "summarize a report",
+        },
+        catalog=_CATALOG,
+        hw=_HW,
+        compute=_COMPUTE,
+        cloud_catalog=_CLOUD_CATALOG,
+    )
+    assert forced["llm"]["structured_output"] is False
+
+    # An empty cloud catalog is a clear error, not a confusing KeyError deep
+    # inside cloud_catalog.
+    with pytest.raises(ValueError, match="catalog"):
+        engine.resolve(
+            {"mode": "cloud", "kind": "llm", "task": "x"},
+            catalog=_CATALOG,
+            hw=_HW,
+            compute=_COMPUTE,
+            cloud_catalog=[],
+        )
 
 
 def test_chat_engine_routes_backend_and_base_url(monkeypatch: pytest.MonkeyPatch) -> None:

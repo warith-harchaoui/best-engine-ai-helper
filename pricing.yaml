@@ -1,43 +1,107 @@
-# Cost table for best_engine_ai_helper.observe's usage ledger.
+# Seed catalog for PAID cloud models: cost (for observe.py's usage ledger)
+# AND benchmark quality (for cloud_catalog.py's auto-pick, the cloud
+# counterpart of models.yaml's local picker). Hand-maintained, same spirit as
+# models.yaml: refresh when a provider reprices or ships a new flagship,
+# never treat these numbers as exact.
 #
 # USD per 1 million tokens, published list prices as of this writing. Local
 # backends (ollama, vllm) are never priced here -- they are hardcoded free in
-# observe.py, since there is no paid API call to price. This table exists
-# only for the day mode: cloud calls actually reach a paid provider (see the
-# `cloud` branch); until then it has no effect on `main`.
+# observe.py, since there is no paid API call to price. Every model below IS
+# reachable today: engine.resolve(mode="cloud") on main routes a real request
+# through llm.chat's OpenAI-compatible / Anthropic / Gemini transports, and
+# observe.py prices every call against this table.
 #
-# Update when a provider changes pricing; each entry's cost is an estimate
-# (character-based token approximation, see observe.py's _CHARS_PER_TOKEN)
-# until real provider `usage` token counts are wired in.
+# Update cost when a provider changes pricing; each call's cost is an
+# estimate (character-based token approximation, see observe.py's
+# _CHARS_PER_TOKEN) until real provider `usage` token counts are wired in.
+#
+# Fields (mirrors models.yaml where the concept transfers):
+#   provider    One of engine._CLOUD_BASE_URLS's keys (openai, anthropic,
+#               gemini, mistral, openrouter, together, azure).
+#   kind        llm | vlm  (vlm implies text capability too, same rule as
+#               models.yaml; cloud_catalog.rank_cloud filters the same way
+#               score.rank does for the local catalog).
+#   structured_output  Whether the provider's API reliably honours a JSON
+#               schema / JSON-mode request. Absent is treated as true.
+#   benchmarks  Approximate public-leaderboard scores (MMLU-style general,
+#               HumanEval-style code, MATH, MMMU-style vision; ocr is null
+#               everywhere below -- no OCR-specific cloud benchmark is
+#               consistently published). SEED VALUES: approximate, sourced
+#               from each provider's own release benchmarks and third-party
+#               leaderboards at time of writing, not re-verified per release.
+#               Good enough to rank candidates against each other; refresh
+#               before using them for a procurement decision.
+#   input_per_1m / output_per_1m  USD per 1M tokens, list price.
 
 models:
   gpt-4o:
+    provider: openai
+    kind: vlm
+    structured_output: true
+    benchmarks: {general: 88, code: 90, math: 76, ocr: null, vision: 69}
     input_per_1m: 2.50
     output_per_1m: 10.00
   gpt-4o-mini:
+    provider: openai
+    kind: vlm
+    structured_output: true
+    benchmarks: {general: 82, code: 87, math: 70, ocr: null, vision: 59}
     input_per_1m: 0.15
     output_per_1m: 0.60
   claude-3-5-sonnet:
+    provider: anthropic
+    kind: vlm
+    structured_output: true
+    benchmarks: {general: 88, code: 92, math: 78, ocr: null, vision: 68}
     input_per_1m: 3.00
     output_per_1m: 15.00
   claude-3-5-haiku:
+    # Text-only: Claude 3.5 Haiku dropped the image input Claude 3 Haiku had.
+    provider: anthropic
+    kind: llm
+    structured_output: true
+    benchmarks: {general: 73, code: 75, math: 60, ocr: null, vision: null}
     input_per_1m: 0.80
     output_per_1m: 4.00
   gemini-1.5-pro:
+    provider: gemini
+    kind: vlm
+    structured_output: true
+    benchmarks: {general: 86, code: 71, math: 68, ocr: null, vision: 62}
     input_per_1m: 1.25
     output_per_1m: 5.00
   gemini-1.5-flash:
+    provider: gemini
+    kind: vlm
+    structured_output: true
+    benchmarks: {general: 79, code: 74, math: 55, ocr: null, vision: 56}
     input_per_1m: 0.075
     output_per_1m: 0.30
   mistral-large-latest:
+    provider: mistral
+    kind: llm
+    structured_output: true
+    benchmarks: {general: 84, code: 92, math: 71, ocr: null, vision: null}
     input_per_1m: 2.00
     output_per_1m: 6.00
   mistral-small-latest:
+    provider: mistral
+    kind: llm
+    structured_output: true
+    benchmarks: {general: 72, code: 74, math: 55, ocr: null, vision: null}
     input_per_1m: 0.10
     output_per_1m: 0.30
   mistral-medium-latest:
+    provider: mistral
+    kind: llm
+    structured_output: true
+    benchmarks: {general: 78, code: 80, math: 63, ocr: null, vision: null}
     input_per_1m: 0.40
     output_per_1m: 2.00
   open-mistral-nemo:
+    provider: mistral
+    kind: llm
+    structured_output: true
+    benchmarks: {general: 68, code: 65, math: 50, ocr: null, vision: null}
     input_per_1m: 0.15
     output_per_1m: 0.15

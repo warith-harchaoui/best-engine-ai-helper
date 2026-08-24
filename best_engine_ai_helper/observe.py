@@ -5,9 +5,10 @@ Every :func:`best_engine_ai_helper.llm.chat` call already emits a small event
 dict to any observer registered via :func:`llm.add_observer`; nothing
 consumes it by default. This module is that consumer: call :func:`enable`
 once (the CLI, the FastAPI app, and the MCP server all do this at startup)
-and every subsequent call — local or, once the ``cloud`` branch's paid
-transports land, cloud — is appended to a SQLite database at
-``~/.best-engine-ai-helper/usage.db``.
+and every subsequent call — local (always free) or cloud (a real paid
+request through OpenAI/Mistral/OpenRouter/Together/Azure/Anthropic/Gemini,
+see :mod:`best_engine_ai_helper.engine`'s ``mode: cloud``) — is appended to a
+SQLite database at ``~/.best-engine-ai-helper/usage.db``.
 
 The point is the "one company, several users" case: a shared machine or a
 small internal server fields calls from more than one person, and someone
@@ -15,13 +16,14 @@ needs to answer "who is calling what, how often, and at what cost" without
 standing up a separate telemetry stack. This ledger is local-only (no
 network call, no third-party service) and off by default.
 
-Cost is a **best-effort estimate**, not a provider-verified bill. Providers
-report real token usage per call; until that lands (tracked on the ``cloud``
-branch), cost is estimated from character counts via a fixed chars-per-token
-ratio (see :data:`_CHARS_PER_TOKEN`) against the bundled ``pricing.yaml``
-table. Local backends (Ollama, vLLM) always cost ``0.0`` — there is no paid
-API call to price. A cloud-backend call for a model absent from
-``pricing.yaml`` gets ``cost_usd: None`` (unknown), never a fabricated number.
+Cost is a **best-effort estimate**, not a provider-verified bill. Most
+providers report real token usage per call; when that field is present it is
+used directly, otherwise cost is estimated from character counts via a fixed
+chars-per-token ratio (see :data:`_CHARS_PER_TOKEN`) against the bundled
+``pricing.yaml`` table. Local backends (Ollama, vLLM) always cost ``0.0`` —
+there is no paid API call to price. A cloud-backend call for a model absent
+from ``pricing.yaml`` gets ``cost_usd: None`` (unknown), never a fabricated
+number.
 
 Author
 ------
@@ -164,8 +166,8 @@ def estimate_cost_usd(event: dict[str, Any]) -> float | None:
     ----------
     event : dict
         One event dict as emitted by :func:`llm.chat` (``backend``, ``model``,
-        ``in_chars``, ``out_chars``, and — on the ``cloud`` branch, once a
-        provider reports them — ``in_tokens``/``out_tokens``).
+        ``in_chars``, ``out_chars``, and — when the transport's provider
+        reports them — ``in_tokens``/``out_tokens``).
 
     Returns
     -------

@@ -68,8 +68,14 @@ def test_read_only_commands_happy_path(capsys: pytest.CaptureFixture[str], tmp_p
 
     assert main(["report", "--task", "write copy", "--live"]) == 0
     assert "Server load (live, at recommendation time)" in capsys.readouterr().out
+    # The best-cloud-pick section is on by default (no API key/network needed).
+    assert main(["report", "--task", "write copy"]) == 0
+    assert "Best cloud engine" in capsys.readouterr().out
+    assert main(["report", "--task", "write copy", "--no-cloud"]) == 0
+    assert "Best cloud engine" not in capsys.readouterr().out
     assert main(["report", "--format", "json"]) == 0
-    json.loads(capsys.readouterr().out)  # must parse as JSON
+    report_json = json.loads(capsys.readouterr().out)  # must parse as JSON
+    assert "cloud" in report_json
     stem = str(tmp_path / "r")
     assert main(["report", "--out", stem]) == 0
     capsys.readouterr()

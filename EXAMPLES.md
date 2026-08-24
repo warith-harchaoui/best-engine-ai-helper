@@ -110,6 +110,22 @@ Off by default: it adds a short live probe (~0.1-0.5s) and makes the result
 depend on this exact moment rather than being a deterministic function of the
 hardware alone.
 
+`report` also shows the best PAID model for the task, on by default, needing
+no API key and reaching no network: it ranks the bundled `pricing.yaml`
+catalog (see the `resolve` section below).
+
+```sh
+best-engine-ai-helper report --task "extract line items from an invoice"
+# ... local section ...
+# ## Best cloud VLM (axis: ocr)
+# **→ `gpt-4o`** (openai) — score 69, ~$6.25/1M tokens (blended)
+```
+
+Skip it with `--no-cloud`, or steer it with `--quality-vs-cost 0..1` (1.0 =
+best benchmark regardless of price, 0.0 = cheapest regardless of quality;
+default 0.7) and `--cloud-provider openai|mistral|...` (restrict to one
+provider).
+
 ---
 
 ## resolve
@@ -162,6 +178,36 @@ the rest of the cloud-call safety net. Retry/caching/pseudonymization need the
 classifiers for `safety=` need `[filtered]`; both degrade gracefully
 (a light retry, no caching, a keyword heuristic) rather than erroring when
 absent.
+
+### Auto-pick the best paid model (no `model` in the brief)
+
+`model` is optional. Omit it (and `provider`, to search every provider) and
+`resolve` picks the best paid model itself, from the same bundled
+`pricing.yaml` catalog `report --cloud` previews (the cloud counterpart of
+local mode's `models.yaml` auto-pick, except the resource being budgeted is
+**price**, not memory, since every paid model runs on any machine):
+
+```yaml
+mode: cloud
+kind: both
+quality_vs_cost: 0.7   # optional, 0..1, default 0.7: 1.0 = best score
+                        # regardless of price, 0.0 = cheapest regardless of
+                        # quality, in between leans quality with price as a
+                        # tiebreaker
+task: extract structured line items from an invoice PDF's OCR text
+```
+
+```sh
+best-engine-ai-helper resolve --brief llm.brief.yaml --out llm.engine.yaml
+# Wrote llm.engine.yaml
+#   backend: openai  (llm=gpt-4o, vlm=gpt-4o)
+```
+
+Pin `provider` alone (no `model`) to auto-pick within one provider only:
+useful when you already have a key for that provider and just want its best
+model for the job. Structured-output capability is checked first, exactly
+like local mode: a model that cannot honour a JSON schema never wins the
+auto-pick over one that can, however attractively priced.
 
 Resolve it, per machine (the backend is chosen for the hardware: **vLLM on a
 discrete GPU, Ollama otherwise**):

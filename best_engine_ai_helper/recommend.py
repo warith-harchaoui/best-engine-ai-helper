@@ -20,6 +20,13 @@ The result is a plain dict (ready for ``json.dumps``) and, via
 :func:`to_markdown`, a human-readable report. Nothing here calls a model or the
 network; it is pure ranking over the catalog and the detected hardware.
 
+:func:`cloud_recommend` is the paid counterpart: same task-to-axis mapping
+(:func:`parse_task`), but ranks :mod:`best_engine_ai_helper.cloud_catalog`'s
+paid-model catalog on quality vs. price instead of local hardware fit — no
+hardware probe, no API key, nothing reaches the network; it only tells you
+which model *would* be picked. :func:`to_markdown` renders it as an extra
+section when a report carries a ``"cloud"`` key (see :func:`to_markdown_cloud`).
+
 Author
 ------
 Warith Harchaoui <warith.harchaoui@deraison.ai>
@@ -414,6 +421,96 @@ _SOURCES = [
 ]
 
 
+_CLOUD_METHOD_NOTE = (
+    "Each paid model is judged on two explicit factors, min-max normalized across "
+    "the candidate pool: task fit (its benchmark on the task's axis) and price "
+    "(the blended $/1M-token list price -- cheaper is better). quality_vs_cost "
+    "(0..1) weighs the two: 1.0 picks purely on benchmark score, 0.0 picks purely "
+    "on price, 0.7 (the default) leans quality with price as a tiebreaker. "
+    "Structured-output capability is checked first, exactly as in local mode: a "
+    "model that cannot honour a JSON schema is never auto-chosen over one that "
+    "can. This is a REFERENCE ranking, not a live call: it needs no API key and "
+    "reaches no network, and the benchmark figures are hand-maintained seed "
+    "values (see pricing.yaml) -- good for comparing candidates against each "
+    "other, not a substitute for checking the provider's own current numbers."
+)
+
+
+def cloud_recommend(
+    task: str | None = None,
+    *,
+    kinds: list[Literal["llm", "vlm"]] | None = None,
+    quality_vs_cost: float | None = None,
+    provider: str | None = None,
+    catalog: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """
+    Recommend the best PAID model per needed kind for a task (reference only).
+
+    The cloud counterpart of :func:`recommend`: same :func:`parse_task` mapping
+    from a free-text task to the kinds needed and the benchmark axis, but ranks
+    :mod:`best_engine_ai_helper.cloud_catalog`'s paid-model catalog on quality vs.
+    price instead of local memory/throughput fit. No hardware probe, no API key,
+    no network call — every paid model in the catalog is reachable from any
+    machine, so there is nothing to detect; this only tells you which one *would*
+    be picked.
+
+    Parameters
+    ----------
+    task : str or None
+        Free-text or keyword task, same parsing as :func:`recommend`.
+    kinds : list of {'llm', 'vlm'} or None
+        Explicit kinds to resolve, overriding the kinds inferred from ``task``.
+    quality_vs_cost : float or None
+        0..1 weight on quality vs. price (clamped into range by
+        :mod:`cloud_catalog`). ``None`` uses
+        :data:`cloud_catalog.DEFAULT_QUALITY_VS_COST`.
+    provider : str or None
+        Restrict candidates to one provider (e.g. ``"openai"``). ``None`` ranks
+        across every provider in the catalog.
+    catalog : list[dict[str, Any]] or None
+        Injectable for tests; defaults to :func:`cloud_catalog.load_cloud_catalog`.
+
+    Returns
+    -------
+    dict
+        A JSON-ready report: the parsed task, the quality/price weight, and for
+        each needed kind the chosen paid model plus the full ranked candidate
+        table (mirrors :func:`recommend`'s shape under ``"recommendations"``).
+
+    Examples
+    --------
+    >>> catalog = [{"id": "m", "provider": "p", "kind": "llm",
+    ...             "structured_output": True, "benchmarks": {"general": 80},
+    ...             "input_per_1m": 1.0, "output_per_1m": 2.0}]
+    >>> rep = cloud_recommend("write a summary", catalog=catalog)
+    >>> rep["recommendations"]["llm"]["chosen"]["id"]
+    'm'
+    """
+    from . import cloud_catalog as _cc
+
+    cat = catalog if catalog is not None else _cc.load_cloud_catalog()
+    weight = _cc.DEFAULT_QUALITY_VS_COST if quality_vs_cost is None else quality_vs_cost
+    parsed = parse_task(task)
+    needed_kinds = (
+        kinds if kinds is not None else cast(list[Literal["llm", "vlm"]], parsed["kinds"])
+    )
+
+    picks: dict[str, Any] = {}
+    for kind in needed_kinds:
+        axis = parsed["vlm_application"] if kind == "vlm" else parsed["application"]
+        ranked = _cc.rank_cloud(cat, kind, axis, weight, provider=provider)
+        picks[kind] = {"axis": axis, "chosen": ranked[0] if ranked else None, "candidates": ranked}
+
+    return {
+        "task": {"input": task, **parsed},
+        "quality_vs_cost": _cc._clamp_weight(weight),
+        "provider_filter": provider,
+        "recommendations": picks,
+        "method": _CLOUD_METHOD_NOTE,
+    }
+
+
 def _fmt_tps(v: float | None) -> str:
     return f"{v:.0f}" if v else "-"
 
@@ -513,6 +610,70 @@ def to_markdown(report: dict[str, Any]) -> str:
     lines.append("Sources:")
     for s in report["sources"]:
         lines.append(f"- {s}")
+    lines.append("")
+
+    # A "cloud" key (see cloud_recommend) renders as an extra section, so a
+    # single to_markdown(report) call covers both the local pick (this
+    # function's own body) and the reference paid pick, in one document.
+    if report.get("cloud"):
+        lines.append(to_markdown_cloud(report["cloud"]))
+
+    return "\n".join(lines)
+
+
+def to_markdown_cloud(report: dict[str, Any]) -> str:
+    """Render a :func:`cloud_recommend` report as a Markdown section.
+
+    Parameters
+    ----------
+    report : dict[str, Any]
+        Output of :func:`cloud_recommend`.
+
+    Returns
+    -------
+    str
+        A Markdown document, structurally parallel to :func:`to_markdown`'s
+        per-kind sections but scored on quality-vs-price instead of memory fit.
+    """
+    task = report["task"]
+    lines: list[str] = []
+    lines.append("# Best cloud engine — recommendation (reference, no API key needed)")
+    lines.append("")
+    lines.append(f"**Task:** {task.get('input') or 'general text assistant'}  ")
+    lines.append(f"**Needs:** {', '.join(k.upper() for k in task['kinds'])}  ")
+    lines.append(
+        f"**Quality vs. cost:** {report['quality_vs_cost']:.2f} "
+        "(1.0 = best benchmark regardless of price, 0.0 = cheapest regardless of quality)"
+    )
+    if report.get("provider_filter"):
+        lines.append(f"**Provider filter:** {report['provider_filter']}")
+    lines.append("")
+
+    for kind, block in report["recommendations"].items():
+        chosen = block["chosen"]
+        lines.append(f"## Best cloud {kind.upper()} (axis: {block['axis']})")
+        lines.append("")
+        if chosen:
+            lines.append(
+                f"**→ `{chosen['id']}`** ({chosen['provider']}) — "
+                f"score {chosen['score']:.0f}, ~${chosen['price_per_1m']:.2f}/1M tokens (blended)"
+            )
+        else:
+            lines.append("_No candidate found._")
+        lines.append("")
+        lines.append("| model | provider | score | $/1M | structured |")
+        lines.append("|---|---|---|---|---|")
+        for r in block["candidates"]:
+            lines.append(
+                f"| `{r['id']}` | {r['provider']} | {r['score']:.0f} | "
+                f"{r['price_per_1m']:.2f} | "
+                f"{'yes' if r.get('structured_output', True) else 'no'} |"
+            )
+        lines.append("")
+
+    lines.append("## How the cloud pick was decided")
+    lines.append("")
+    lines.append(report["method"])
     lines.append("")
     return "\n".join(lines)
 

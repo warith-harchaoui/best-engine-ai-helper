@@ -72,14 +72,55 @@ def test_read_only_and_report_commands(runner: CliRunner, tmp_path: Path) -> Non
     assert "not found" in missing.output
 
     # A brief that reaches engine.resolve() but fails there (not a missing
-    # file) is reported readably too, not as a raw traceback.
+    # file) is reported readably too, not as a raw traceback. No 'model' asks
+    # for a cloud auto-pick; a provider absent from the catalog can't serve it.
     bad_cloud_brief = tmp_path / "bad_cloud.brief.yaml"
     bad_cloud_brief.write_text(
-        yaml.safe_dump({"mode": "cloud", "provider": "openai", "kind": "llm"})
+        yaml.safe_dump({"mode": "cloud", "provider": "not-a-real-provider", "kind": "llm"})
     )
     resolve_failed = runner.invoke(main, ["resolve", "--brief", str(bad_cloud_brief)])
     assert resolve_failed.exit_code == 1
     assert "resolve failed" in resolve_failed.output
+
+    # An explicit provider + model still pins exactly that model (the
+    # pre-existing, no-catalog-lookup manual path).
+    pinned_cloud_brief = tmp_path / "pinned_cloud.brief.yaml"
+    pinned_cloud_brief.write_text(
+        yaml.safe_dump({"mode": "cloud", "provider": "openai", "model": "gpt-4o", "kind": "llm"})
+    )
+    pinned_out = tmp_path / "pinned.engine.yaml"
+    pinned_resolved = runner.invoke(
+        main, ["resolve", "--brief", str(pinned_cloud_brief), "--out", str(pinned_out)]
+    )
+    assert pinned_resolved.exit_code == 0
+    assert yaml.safe_load(pinned_out.read_text())["llm"]["model"] == "gpt-4o"
+
+    # No 'model': the CLI auto-picks the best paid model from pricing.yaml.
+    auto_cloud_brief = tmp_path / "auto_cloud.brief.yaml"
+    auto_cloud_brief.write_text(
+        yaml.safe_dump({"mode": "cloud", "provider": "openai", "kind": "llm", "task": "write SQL"})
+    )
+    auto_out = tmp_path / "auto.engine.yaml"
+    auto_resolved = runner.invoke(
+        main, ["resolve", "--brief", str(auto_cloud_brief), "--out", str(auto_out)]
+    )
+    assert auto_resolved.exit_code == 0
+    auto_engine = yaml.safe_load(auto_out.read_text())
+    assert auto_engine["backend"] == "openai" and auto_engine["llm"]["model"]
+
+    # `report`'s default best-cloud-pick section needs no API key/network.
+    cloud_report = runner.invoke(main, ["report", "--task", "write python code"])
+    assert cloud_report.exit_code == 0
+    assert "Best cloud engine" in cloud_report.output
+    assert "Best cloud LLM" in cloud_report.output
+
+    no_cloud_report = runner.invoke(main, ["report", "--task", "write python code", "--no-cloud"])
+    assert no_cloud_report.exit_code == 0
+    assert "Best cloud engine" not in no_cloud_report.output
+
+    cloud_json = runner.invoke(main, ["report", "--task", "write python code", "--format", "json"])
+    cloud_data = json.loads(cloud_json.stdout)
+    assert "cloud" in cloud_data and cloud_data["cloud"]["recommendations"]["llm"]["chosen"]
 
 
 def test_activity_empty_and_populated(runner: CliRunner, tmp_path: Path) -> None:

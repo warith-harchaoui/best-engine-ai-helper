@@ -2,6 +2,45 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
+## [Unreleased]
+
+### Added
+
+- **Cloud mode auto-picks the best paid model, like local mode auto-picks
+  the best local one.** A `mode: cloud` brief's `model` is now optional:
+  omit it (and `provider`, to search every provider) and `resolve` picks
+  the best paid model itself, from a new small catalog (`pricing.yaml`,
+  extended with `provider`, `kind`, `structured_output`, and per-axis
+  `benchmarks` per entry) on a quality-vs-price trade-off. A `quality_vs_cost`
+  brief field (0..1, default 0.7) tips the pick: `1.0` picks purely on
+  benchmark score, `0.0` picks purely on price. New module
+  `cloud_catalog.py` (`load_cloud_catalog`, `rank_cloud`, `pick_cloud`,
+  `blended_price_per_1m`) mirrors `score.py`'s local picker. Pinning
+  `provider`/`model` explicitly still works exactly as before.
+- **`report`/`recommend.cloud_recommend`**: `report` now also shows the
+  best PAID model for the task, on by default (`--no-cloud` to skip,
+  `--quality-vs-cost`, `--cloud-provider` to tune it) — reference only,
+  needs no API key and reaches no network. `to_markdown` renders it as an
+  extra section when a report carries a `"cloud"` key.
+
+### Fixed
+
+- **Stale "cloud branch" wording** in `pricing.yaml`'s header comment and
+  `observe.py`'s module/function docstrings claimed cloud calls only
+  matter "once the cloud branch lands" / "has no effect on main" — cloud
+  mode (paid transports, cost ledger, real provider token counts) has
+  been live on `main` for several releases; the comments now say so.
+
+### Documentation
+
+- README.md/LISEZMOI.md gain a **"Two modes: local (free) and cloud
+  (paid)"** section: what each mode guarantees, the auto-pick vs. manual
+  pin choice, and a table of what happens automatically at the
+  `llm.chat()` call site for a cloud engine (API key lookup, safety scan,
+  pseudonymization, retry/cache, cost tracking).
+- EXAMPLES.md/EXEMPLES.md's `resolve` recipe gains an auto-pick walkthrough
+  and `report`'s recipe gains the `--cloud` comparison.
+
 ## [1.3.9] - 2026-08-21
 
 ### Fixed

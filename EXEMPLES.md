@@ -117,6 +117,22 @@ Désactivé par défaut : cela ajoute une courte sonde en direct (environ
 0,1 à 0,5 s) et rend le résultat dépendant de cet instant précis, plutôt
 qu'une fonction déterministe du seul matériel.
 
+`report` affiche aussi le meilleur modèle PAYANT pour la tâche, activé par
+défaut, sans clé API ni appel réseau : il classe le catalogue embarqué
+`pricing.yaml` (voir la section `resolve` ci-dessous) :
+
+```sh
+best-engine-ai-helper report --task "extract line items from an invoice"
+# ... section locale ...
+# ## Best cloud VLM (axis: ocr)
+# **→ `gpt-4o`** (openai) — score 69, ~$6.25/1M tokens (blended)
+```
+
+Désactivez-la avec `--no-cloud`, ou orientez-la avec `--quality-vs-cost 0..1`
+(1.0 = meilleur score sans égard au prix, 0.0 = le moins cher sans égard à la
+qualité ; défaut 0.7) et `--cloud-provider openai|mistral|...` (limiter à un
+seul fournisseur).
+
 ---
 
 ## resolve
@@ -172,6 +188,38 @@ nécessitent l'extra `[cloud]` (`pip install 'best-engine-ai-helper[cloud]'`) ;
 les vrais classifieurs NSFW de `safety=` nécessitent `[filtered]`. Dans les
 deux cas, l'absence de l'extra dégrade proprement (retry simple, pas de
 cache, heuristique par mots-clés) plutôt que d'échouer.
+
+### Choisir automatiquement le meilleur modèle payant (sans `model` dans le brief)
+
+`model` est optionnel. Omettez-le (et `provider`, pour chercher chez tous les
+fournisseurs) et `resolve` choisit lui-même le meilleur modèle payant, depuis
+le même catalogue `pricing.yaml` embarqué que prévisualise `report --cloud` :
+le pendant cloud du choix automatique local depuis `models.yaml`, sauf que la
+ressource budgétée est le **prix**, pas la mémoire, puisque tout modèle payant
+tourne sur n'importe quelle machine :
+
+```yaml
+mode: cloud
+kind: both
+quality_vs_cost: 0.7   # optionnel, 0..1, défaut 0.7 : 1.0 = meilleur score
+                        # sans égard au prix, 0.0 = le moins cher sans égard
+                        # à la qualité, entre les deux privilégie la qualité
+                        # avec le prix en départage
+task: extraire les lignes structurées d'un texte OCR de facture
+```
+
+```sh
+best-engine-ai-helper resolve --brief llm.brief.yaml --out llm.engine.yaml
+# Wrote llm.engine.yaml
+#   backend: openai  (llm=gpt-4o, vlm=gpt-4o)
+```
+
+Fixez `provider` seul (sans `model`) pour choisir automatiquement au sein
+d'un seul fournisseur : utile quand vous avez déjà une clé pour ce
+fournisseur et voulez juste son meilleur modèle pour la tâche. La capacité de
+sortie structurée est vérifiée en premier, exactement comme en mode local :
+un modèle qui ne peut pas honorer un schéma JSON ne gagne jamais le choix
+automatique face à un modèle qui le peut, aussi attractif soit son prix.
 
 Résolvez-le, par machine (le backend est choisi selon le matériel : **vLLM
 sur un GPU discret, Ollama sinon**) :

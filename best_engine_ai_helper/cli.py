@@ -34,10 +34,12 @@ import click
 import os_helper as osh
 
 from . import catalog as _catalog
+from . import cloud_catalog as _cloud_catalog
 from . import detect as _detect
 from . import hardware as _hardware
 from . import observe as _observe
 from . import score as _score
+from .recommend import cloud_recommend as _cloud_recommend
 from .recommend import recommend as _recommend_engines
 from .recommend import to_markdown as _report_markdown
 from .recommend import write_report as _write_report
@@ -352,13 +354,52 @@ def resolve_cmd(brief: str, out: str | None, backend: str, endpoint: str | None)
         "rather than being a deterministic function of the hardware alone."
     ),
 )
-def report_cmd(task: str | None, headroom: float, out: str | None, fmt: str, live: bool) -> None:
+@click.option(
+    "--cloud/--no-cloud",
+    default=True,
+    show_default=True,
+    help=(
+        "Also show the best PAID model for this task, for comparison against "
+        "the local pick. Reference only: no API key needed, no network call "
+        "-- it ranks the bundled pricing.yaml catalog on quality vs. price."
+    ),
+)
+@click.option(
+    "--quality-vs-cost",
+    type=float,
+    default=_cloud_catalog.DEFAULT_QUALITY_VS_COST,
+    show_default=True,
+    help=(
+        "Cloud pick only: 0..1 weight on quality vs. price. 1.0 = best "
+        "benchmark regardless of price; 0.0 = cheapest regardless of quality."
+    ),
+)
+@click.option(
+    "--cloud-provider",
+    type=str,
+    default=None,
+    help="Cloud pick only: restrict to one provider (e.g. openai, anthropic, mistral).",
+)
+def report_cmd(
+    task: str | None,
+    headroom: float,
+    out: str | None,
+    fmt: str,
+    live: bool,
+    cloud: bool,
+    quality_vs_cost: float,
+    cloud_provider: str | None,
+) -> None:
     """Recommend the best engine(s) for this hardware and task; emit MD + JSON."""
     hw = _detect.available_memory()
     compute = _detect.compute_profile()
     entries = _catalog.load_catalog()
     load = _detect.server_load() if live else None
     rep = _recommend_engines(hw, entries, task=task, headroom=headroom, compute=compute, load=load)
+    if cloud:
+        rep["cloud"] = _cloud_recommend(
+            task, quality_vs_cost=quality_vs_cost, provider=cloud_provider
+        )
 
     if out:
         md_path, json_path = _write_report(rep, out)

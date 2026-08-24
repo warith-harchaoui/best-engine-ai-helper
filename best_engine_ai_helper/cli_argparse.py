@@ -49,11 +49,13 @@ from typing import Any, cast
 import os_helper as osh
 
 from . import catalog as _catalog
+from . import cloud_catalog as _cloud_catalog
 from . import detect as _detect
 from . import hardware as _hardware
 from . import observe as _observe
 from . import score as _score
 from .cli import _VALID_APPLICATIONS, _fmt_table
+from .recommend import cloud_recommend as _cloud_recommend
 from .recommend import recommend as _recommend_engines
 from .recommend import to_markdown as _report_markdown
 from .recommend import write_report as _write_report
@@ -248,7 +250,8 @@ def _handle_report(ns: argparse.Namespace) -> int:
     Parameters
     ----------
     ns : argparse.Namespace
-        Parsed CLI arguments: `task`, `headroom`, `out`, `format`, `live`.
+        Parsed CLI arguments: `task`, `headroom`, `out`, `format`, `live`,
+        `no_cloud`, `quality_vs_cost`, `cloud_provider`.
 
     Returns
     -------
@@ -262,6 +265,10 @@ def _handle_report(ns: argparse.Namespace) -> int:
     rep = _recommend_engines(
         hw, entries, task=ns.task, headroom=ns.headroom, compute=compute, load=load
     )
+    if not ns.no_cloud:
+        rep["cloud"] = _cloud_recommend(
+            ns.task, quality_vs_cost=ns.quality_vs_cost, provider=ns.cloud_provider
+        )
 
     if ns.out:
         md_path, json_path = _write_report(rep, ns.out)
@@ -939,6 +946,25 @@ def build_parser() -> argparse.ArgumentParser:
         "already-running engines), not just theoretical capacity. Off by "
         "default: adds a live probe (~0.1-0.5s) and makes the result depend "
         "on this exact moment rather than the hardware alone.",
+    )
+    p.add_argument(
+        "--no-cloud",
+        action="store_true",
+        help="Skip the best-PAID-model comparison (shown by default). The "
+        "cloud pick is reference only: no API key needed, no network call.",
+    )
+    p.add_argument(
+        "--quality-vs-cost",
+        type=float,
+        default=_cloud_catalog.DEFAULT_QUALITY_VS_COST,
+        help="Cloud pick only: 0..1 weight on quality vs. price "
+        f"(default: {_cloud_catalog.DEFAULT_QUALITY_VS_COST}). 1.0 = best "
+        "benchmark regardless of price; 0.0 = cheapest regardless of quality.",
+    )
+    p.add_argument(
+        "--cloud-provider",
+        default=None,
+        help="Cloud pick only: restrict to one provider (e.g. openai, anthropic, mistral).",
     )
     p.set_defaults(func=_handle_report)
 

@@ -52,8 +52,9 @@ This package sits at the base of the AI Helpers suite's model-selection layer: t
   pseudonymization, an OS-keychain fallback for API keys) and `[filtered]`
   for real NSFW classifiers (a DistilBERT text model; LAION's CLIP-based
   image detector, via `transformers` for the CLIP encoder and a bundled
-  `onnxruntime` model for the classifier head). See [EXAMPLES.md's
-  `resolve`/`mode: cloud`
+  `onnxruntime` model for the classifier head). See [Two modes: local (free)
+  and cloud (paid)](#two-modes-local-free-and-cloud-paid) below and
+  [EXAMPLES.md's `resolve`
   section](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXAMPLES.md#resolve)
   for the full story; both degrade gracefully (a keyword heuristic, or an
   "unavailable" verdict) when absent, never a hard failure.
@@ -383,6 +384,57 @@ A project usually knows its job more precisely than a machine-wide default can, 
 **Missing-file policy.** The brief is committed, so its absence is a real bug and `ensure` raises loudly with the command to run. The engine file is gitignored and machine-specific, so its absence is normal: `ensure` resolves it from the brief on first use. This keeps the model out of any variable: the resolved engine file is the single source of truth.
 
 The suite's consumers, [Standpoint](https://github.com/warith-harchaoui/standpoint), vocal-helper, and md2star, follow this pattern; each ships an `llm.brief.yaml` describing its own job (Standpoint's, for instance, names schema-constrained JSON, so the structured-output gate rules out higher-scoring vision models that cannot honour a schema and picks the strongest one that can) and reads the model only from the resolved engine file.
+
+## Two modes: local (free) and cloud (paid)
+
+Every brief picks one of two modes with `mode: local` (the default) or `mode: cloud`. Both resolve to the same shape of engine file and the same `llm.chat(engine=..., kind=...)` call site downstream: only the transport and the cost change.
+
+### Local (free, default)
+
+`mode: local`, or no `mode` field at all, is [the promise](#the-promise): hardware detection, model selection, and every quality gate run on this machine against a model already pulled via Ollama or served via vLLM. Every call costs **$0.0**, always, with no paid API call to price (see [Activity ledger](#activity-ledger)).
+
+### Cloud (paid)
+
+`mode: cloud` routes through a paid provider instead: OpenAI, Mistral, OpenRouter, Together, or Azure OpenAI (all OpenAI-compatible), plus Anthropic and Gemini (their own wire formats), while keeping the exact same `llm.chat(engine=..., kind=...)` call site downstream. Two ways to pick the model:
+
+- **Pin it**: name `provider` and `model` explicitly in the brief, exactly as before.
+- **Auto-pick it**: omit `model` (and `provider`, to search every provider) and best-engine picks the best paid model from a small bundled catalog (`pricing.yaml`, extended with benchmark scores per model), the same way local mode auto-picks from `models.yaml`, except that the resource being budgeted is **price**, not memory, since every paid model fits on any machine. A `quality_vs_cost` knob (0..1, default 0.7) tips the pick: `1.0` picks purely on benchmark score, `0.0` picks purely on price, and the default leans quality with price as a tiebreaker.
+
+```yaml
+mode: cloud
+kind: both
+quality_vs_cost: 0.7           # optional, 0..1; auto-pick only, default 0.7
+task: extract structured line items from an invoice PDF's OCR text
+```
+
+```sh
+best-engine-ai-helper resolve --brief llm.brief.yaml --out llm.engine.yaml
+# Wrote llm.engine.yaml
+#   backend: openai  (llm=gpt-4o, vlm=gpt-4o)
+```
+
+Preview the auto-pick for any task before writing a brief, side by side with the local pick, with no API key and no network call:
+
+```sh
+best-engine-ai-helper report --task "extract line items from an invoice"
+# ... local section ...
+# ## Best cloud VLM (axis: ocr)
+# **→ `gpt-4o`** (openai) — score 69, ~$6.25/1M tokens (blended)
+```
+
+(`--no-cloud` skips that section; `--quality-vs-cost` and `--cloud-provider` tune it.)
+
+Every cloud engine also carries an embedded local **fallback**, resolved from the SAME brief, so a failed paid call degrades to the always-available local model: paid → local, the one safe direction (a local engine never silently escalates to a paid call). Four more things happen automatically at the `llm.chat()` call site once `engine=` is a cloud descriptor:
+
+| Concern | Default | Opt out / configure |
+|---|---|---|
+| **API key** | the NAME in `api_key_env` (never the key value) is looked up in one pass (`settings.yaml`, then any `.env` file, then the process environment), then the OS keychain via `keyring` | `pip install 'best-engine-ai-helper[cloud]'` for the keyring fallback |
+| **Safety scan** | every prompt/image scanned outbound, every response scanned inbound, for BOTH local and cloud (a content-policy concern, not a cloud-only risk) | `chat(..., safety=False)` |
+| **Pseudonymization** | off; when on, scrubs personal data with the LOCAL fallback model before the prompt leaves the machine, restores it in the response | `chat(..., pseudonymize=True)`, needs `[cloud]` |
+| **Retry + cache** | off; retry replays a transient transport failure before failing over, cache memoizes identical calls so a repeat never pays twice | `chat(..., retries=3, cache=True)`, cache needs `[cloud]` |
+| **Cost tracking** | every call, local or paid, appended to the local activity ledger, priced from real provider token counts when reported, else a character estimate | `best-engine-ai-helper activity`, opt out with `BEST_ENGINE_NO_LEDGER=1` |
+
+See [EXAMPLES.md's `resolve` section](EXAMPLES.md#resolve) for the full worked recipe (settings.yaml, keyring, structured output, the failover chain) and [GUI.md](GUI.md) for the activity dashboard.
 
 ## Usages / task profiles
 

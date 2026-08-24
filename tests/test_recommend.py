@@ -166,3 +166,70 @@ def test_recommend_load_and_comfort_gate() -> None:
     assert no_bandwidth_chosen["id"] == "mid-llm"
     assert no_bandwidth_chosen["est_tokens_per_s"] is None
     assert no_bandwidth_chosen["comfortable"] is True
+
+
+_CLOUD_CATALOG = [
+    {
+        "id": "cheap-model",
+        "provider": "acme",
+        "kind": "llm",
+        "structured_output": True,
+        "benchmarks": {"general": 65},
+        "input_per_1m": 0.20,
+        "output_per_1m": 0.20,
+    },
+    {
+        "id": "flagship-model",
+        "provider": "acme",
+        "kind": "vlm",
+        "structured_output": True,
+        "benchmarks": {"general": 90, "vision": 85},
+        "input_per_1m": 5.0,
+        "output_per_1m": 15.0,
+    },
+]
+
+
+def test_cloud_recommend_and_markdown() -> None:
+    # Pure quality (1.0): the flagship wins the llm slot too (vlm implies text
+    # capability, same rule as local mode's rank()).
+    quality_rep = recommend.cloud_recommend(
+        "read this chart image", quality_vs_cost=1.0, catalog=_CLOUD_CATALOG
+    )
+    assert quality_rep["recommendations"]["vlm"]["chosen"]["id"] == "flagship-model"
+    assert quality_rep["recommendations"]["llm"]["chosen"]["id"] == "flagship-model"
+    assert quality_rep["quality_vs_cost"] == 1.0
+
+    # Pure price (0.0): the cheap model wins whenever it is eligible (the llm
+    # slot; the vlm slot still has only one candidate).
+    price_rep = recommend.cloud_recommend(
+        "read this chart image", quality_vs_cost=0.0, catalog=_CLOUD_CATALOG
+    )
+    assert price_rep["recommendations"]["llm"]["chosen"]["id"] == "cheap-model"
+
+    # A provider filter with no matching candidate reports "no candidate",
+    # not an exception.
+    filtered_rep = recommend.cloud_recommend(
+        "write copy", provider="nonexistent", catalog=_CLOUD_CATALOG
+    )
+    assert filtered_rep["recommendations"]["llm"]["chosen"] is None
+
+    # Defaults: no explicit quality_vs_cost falls back to cloud_catalog's own
+    # default, and a task with no vision keyword only asks for an llm pick.
+    default_rep = recommend.cloud_recommend("write copy", catalog=_CLOUD_CATALOG)
+    assert "vlm" not in default_rep["recommendations"]
+    from best_engine_ai_helper import cloud_catalog as _cc
+
+    assert default_rep["quality_vs_cost"] == _cc.DEFAULT_QUALITY_VS_COST
+
+    # to_markdown renders a "cloud" key as an extra section, alongside (not
+    # instead of) the local section.
+    local_rep = recommend.recommend(_HW, _CATALOG, task="write copy", compute=_COMPUTE)
+    local_rep["cloud"] = quality_rep
+    combined_md = recommend.to_markdown(local_rep)
+    assert "# Best local engine" in combined_md
+    assert "Best cloud engine" in combined_md
+    assert "flagship-model" in combined_md
+
+    # Without a "cloud" key, no cloud section is emitted at all.
+    assert "Best cloud engine" not in recommend.to_markdown(local_rep | {"cloud": None})
