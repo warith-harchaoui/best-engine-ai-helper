@@ -2,7 +2,7 @@
 
 [🇫🇷](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/LISEZMOI.md) · [🇬🇧](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/README.md)
 
-[![Licence : BSD-3-Clause](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](LICENSE)
+[![Licence : BSD-3-Clause](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](#)
 
 Choisit et télécharge le meilleur modèle de langage (LLM, *large language model*) ou modèle
@@ -18,7 +18,7 @@ sait-il repérer un défaut visuel évident glissé dans une petite image de tes
 Ralph Eyeball) ? Seul un modèle qui réussit les deux voit son fichier d'environnement
 écrit, le fichier que les projets en aval viennent lire pour trouver le modèle choisi.
 
-[![logo](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/assets/logo.png)](https://harchaoui.org/warith/ai-helpers)
+[![logo](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/logo.png)](https://harchaoui.org/warith/ai-helpers)
 
 ## La promesse
 
@@ -490,8 +490,8 @@ que `engine=` est un descripteur cloud :
 | **Retry + cache** | désactivés ; le retry rejoue un échec transport transitoire avant de basculer, le cache mémoïse les appels identiques pour qu'une répétition ne soit jamais payée deux fois | `chat(..., retries=3, cache=True)`, le cache nécessite `[cloud]` |
 | **Suivi du coût** | chaque appel, local ou payant, ajouté au journal d'activité local, chiffré depuis les comptages de jetons réels du fournisseur quand ils sont rapportés, sinon une estimation par caractères | `best-engine-ai-helper activity`, désactiver avec `BEST_ENGINE_NO_LEDGER=1` |
 
-Voir [la section `resolve` d'EXEMPLES.md](EXEMPLES.md#resolve) pour la recette complète
-(settings.yaml, trousseau, sortie structurée, chaîne de repli) et [GUI.md](GUI.md) pour le
+Voir [la section `resolve` d'EXEMPLES.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXEMPLES.md#resolve) pour la recette complète
+(settings.yaml, trousseau, sortie structurée, chaîne de repli) et [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) pour le
 tableau de bord d'activité.
 
 ## Usages / profils de tâche

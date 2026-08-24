@@ -435,7 +435,7 @@ Every cloud engine also carries an embedded local **fallback**, resolved from th
 | **Retry + cache** | off; retry replays a transient transport failure before failing over, cache memoizes identical calls so a repeat never pays twice | `chat(..., retries=3, cache=True)`, cache needs `[cloud]` |
 | **Cost tracking** | every call, local or paid, appended to the local activity ledger, priced from real provider token counts when reported, else a character estimate | `best-engine-ai-helper activity`, opt out with `BEST_ENGINE_NO_LEDGER=1` |
 
-See [EXAMPLES.md's `resolve` section](EXAMPLES.md#resolve) for the full worked recipe (settings.yaml, keyring, structured output, the failover chain) and [GUI.md](GUI.md) for the activity dashboard.
+See [EXAMPLES.md's `resolve` section](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXAMPLES.md#resolve) for the full worked recipe (settings.yaml, keyring, structured output, the failover chain) and [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) for the activity dashboard.
 
 ## Usages / task profiles
 

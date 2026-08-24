@@ -40,6 +40,13 @@ All notable changes to best-engine-ai-helper are documented here.
   ignoring" by `_load_yaml_file`, losing the entire cache. Both now use
   the same same-directory-temp-file-then-`os.replace` atomic write
   `pull.write_env` already established for `env.sh`/`config.json`.
+- **README.md/LISEZMOI.md had a few relative links/images** (`EXAMPLES.md#resolve`,
+  `GUI.md`, `LICENSE`, and LISEZMOI's logo pointing at a GitHub `blob` URL
+  instead of `raw.githubusercontent.com`) — relative paths and `blob` image
+  URLs break once the README is rendered outside the repo (PyPI's project
+  page), so both are now absolute `github.com/.../blob/main/...` links and
+  `raw.githubusercontent.com` image URLs, matching the convention already
+  used everywhere else in both files.
 - **Stale "cloud branch" wording** in `pricing.yaml`'s header comment and
   `observe.py`'s module/function docstrings claimed cloud calls only
   matter "once the cloud branch lands" / "has no effect on main" — cloud
