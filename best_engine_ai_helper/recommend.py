@@ -35,6 +35,8 @@ Warith Harchaoui <warith.harchaoui@deraison.ai>
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -678,13 +680,30 @@ def to_markdown_cloud(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _atomic_write_text(path: Path, content: str) -> None:
+    """Write ``content`` to ``path`` atomically: no reader ever sees a partial write.
+
+    Writes to a sibling temp file in the same directory (so the final
+    ``os.replace`` is a same-filesystem rename, not a cross-filesystem copy)
+    then renames it over the destination.
+    """
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp_name, path)
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
+
+
 def write_report(report: dict[str, Any], stem: str | Path) -> tuple[Path, Path]:
     """Write both a JSON and a Markdown rendering; return (md_path, json_path)."""
     stem = Path(stem)
     md_path = stem.with_suffix(".md")
     json_path = stem.with_suffix(".json")
     osh.make_directory(str(md_path.parent))
-    md_path.write_text(to_markdown(report), encoding="utf-8")
-    json_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    _atomic_write_text(md_path, to_markdown(report))
+    _atomic_write_text(json_path, json.dumps(report, indent=2))
     osh.info(f"Wrote recommendation report:\n\t{md_path}\n\t{json_path}")
     return md_path, json_path

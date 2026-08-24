@@ -48,6 +48,18 @@ All notable changes to best-engine-ai-helper are documented here.
   ignoring" by `_load_yaml_file`, losing the entire cache. Both now use
   the same same-directory-temp-file-then-`os.replace` atomic write
   `pull.write_env` already established for `env.sh`/`config.json`.
+- **`engine.write_engine`/`recommend.write_report` had the same
+  non-atomic-write gap**, found in a follow-up sweep for every remaining
+  `Path.write_text()` call in the package. `write_engine` is the more
+  consequential of the two: `engine.load_engine` has no `try/except` around
+  a malformed YAML parse (unlike the catalog/hardware loaders), so a reader
+  racing a `resolve --out llm.engine.yaml` write would crash outright
+  instead of degrading gracefully. Both now write atomically, same pattern.
+- **`observe.py`'s module docstring claimed the FastAPI app calls
+  `observe.enable()` at startup** — it doesn't; `GET /api/activity` reads
+  the ledger directly instead (documented correctly in its own docstring),
+  so a plain `uvicorn best_engine_ai_helper.api:app` never needs `enable()`
+  called at all. Corrected the module docstring to match.
 - **README.md/LISEZMOI.md had a few relative links/images** (`EXAMPLES.md#resolve`,
   `GUI.md`, `LICENSE`, and LISEZMOI's logo pointing at a GitHub `blob` URL
   instead of `raw.githubusercontent.com`) — relative paths and `blob` image

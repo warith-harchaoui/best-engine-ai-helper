@@ -28,6 +28,8 @@ Warith Harchaoui <warith.harchaoui@deraison.ai>
 
 from __future__ import annotations
 
+import os
+import tempfile
 from pathlib import Path
 from typing import Any, Literal, cast
 from urllib.parse import urlparse
@@ -485,6 +487,27 @@ def _resolve_cloud(
     return engine
 
 
+def _atomic_write_text(path: Path, content: str) -> None:
+    """Write ``content`` to ``path`` atomically: no reader ever sees a partial write.
+
+    Writes to a sibling temp file in the same directory (so the final
+    ``os.replace`` is a same-filesystem rename, not a cross-filesystem copy)
+    then renames it over the destination. A crash or a concurrent
+    :func:`load_engine` mid-write sees either the old engine file or the
+    fully-written new one, never a truncated one -- unlike ``catalog``'s
+    cache loader, ``load_engine`` has no ``try/except`` around a malformed
+    YAML parse, so a truncated read here would crash the caller outright.
+    """
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp_name, path)
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
+
+
 def write_engine(engine: dict[str, Any], path: str | Path) -> Path:
     """Write an engine descriptor to ``path`` as YAML with a do-not-commit header.
 
@@ -499,7 +522,7 @@ def write_engine(engine: dict[str, Any], path: str | Path) -> Path:
         f"{BRIEF_NAME} --out {path.name}\n\n"
     )
     body = yaml.safe_dump(engine, sort_keys=False, allow_unicode=True)
-    path.write_text(header + body, encoding="utf-8")
+    _atomic_write_text(path, header + body)
     osh.info(f"Wrote engine descriptor:\n\t{path}")
     return path
 

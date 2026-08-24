@@ -4,8 +4,11 @@ observe — a local, append-only activity/cost ledger for :func:`llm.chat`.
 Every :func:`best_engine_ai_helper.llm.chat` call already emits a small event
 dict to any observer registered via :func:`llm.add_observer`; nothing
 consumes it by default. This module is that consumer: call :func:`enable`
-once (the CLI, the FastAPI app, and the MCP server all do this at startup)
-and every subsequent call — local (always free) or cloud (a real paid
+once (the CLI's ``activity`` command and the MCP server do this at startup;
+the FastAPI app does NOT — ``GET /api/activity`` reads the ledger directly
+instead, see :func:`api.activity`, so it works even under a plain
+``uvicorn`` launch that never called ``enable()``) and every subsequent
+call — local (always free) or cloud (a real paid
 request through OpenAI/Mistral/OpenRouter/Together/Azure/Anthropic/Gemini,
 see :mod:`best_engine_ai_helper.engine`'s ``mode: cloud``) — is appended to a
 SQLite database at ``~/.best-engine-ai-helper/usage.db``.
