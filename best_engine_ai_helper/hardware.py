@@ -20,6 +20,8 @@ Warith Harchaoui <warith.harchaoui@deraison.ai>
 
 from __future__ import annotations
 
+import os
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -230,6 +232,26 @@ def detect_local_entry(fetched_at: str | None = None) -> dict[str, Any] | None:
     }
 
 
+def _atomic_write_text(path: Path, content: str) -> None:
+    """Write ``content`` to ``path`` atomically: no reader ever sees a partial write.
+
+    Writes to a sibling temp file in the same directory (so the final
+    ``os.replace`` is a same-filesystem rename, not a cross-filesystem copy)
+    then renames it over the destination. A crash or a concurrent
+    :func:`load_hardware` mid-write sees either the old cache or the fully
+    -written new one, never a truncated YAML document that would otherwise
+    be silently discarded as malformed (see :func:`_load_yaml_file`).
+    """
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp_name, path)
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
+
+
 def write_cache(entries: list[dict[str, Any]], cache_path: Path | None = None) -> Path:
     """
     Merge ``entries`` into the hardware cache by (chip, memory_gb) and write it.
@@ -259,10 +281,9 @@ def write_cache(entries: list[dict[str, Any]], cache_path: Path | None = None) -
     for entry in entries:
         merged[_key(entry)] = entry
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        yaml.safe_dump(list(merged.values()), sort_keys=False, allow_unicode=True),
-        encoding="utf-8",
+    osh.make_directory(str(path.parent))
+    _atomic_write_text(
+        path, yaml.safe_dump(list(merged.values()), sort_keys=False, allow_unicode=True)
     )
     osh.info(f"Wrote {len(merged)} cached hardware entry(ies):\n\t{path}")
     return path

@@ -2,7 +2,7 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
-## [Unreleased]
+## [1.4.0] - 2026-08-24
 
 ### Added
 
@@ -25,6 +25,21 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Fixed
 
+- **`__version__`/`pyproject.toml` drift, again**: the `v1.3.8` and `v1.3.9`
+  git tags were placed on commits whose `pyproject.toml`/`__init__.py`
+  still read `1.3.8`'s predecessor value — the version bump step was
+  skipped before tagging, so those tags shipped no matching release
+  (confirmed: PyPI's live version stayed `1.3.7` through both). This
+  release bumps straight to `1.4.0`, since `1.3.8`/`1.3.9` are already
+  consumed as (mismatched) git tags and must not be reused.
+- **`catalog.write_cache`/`hardware.write_cache` wrote the YAML cache
+  non-atomically** (`path.write_text` directly, bypassing os-helper's
+  `osh.make_directory` convention used everywhere else in this package).
+  A crash or a concurrent `load_catalog`/`load_hardware` read mid-write
+  could see a truncated file — silently discarded as "malformed YAML,
+  ignoring" by `_load_yaml_file`, losing the entire cache. Both now use
+  the same same-directory-temp-file-then-`os.replace` atomic write
+  `pull.write_env` already established for `env.sh`/`config.json`.
 - **Stale "cloud branch" wording** in `pricing.yaml`'s header comment and
   `observe.py`'s module/function docstrings claimed cloud calls only
   matter "once the cloud branch lands" / "has no effect on main" — cloud
