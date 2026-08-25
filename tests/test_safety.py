@@ -61,8 +61,11 @@ def test_scan_text_and_image_degradation_and_real_classifiers(
     # it loads.
     fake_transformers_module = ModuleType("transformers")
 
+    classifier_calls: list[dict[str, Any]] = []
+
     def _fake_pipeline(task: str, model: str, **kw: Any) -> Any:
-        def _text_classifier(text: str) -> list[list[dict[str, Any]]]:
+        def _text_classifier(text: str, **call_kw: Any) -> list[list[dict[str, Any]]]:
+            classifier_calls.append(call_kw)
             return [[{"label": "safe", "score": 0.05}, {"label": "nsfw", "score": 0.95}]]
 
         return _text_classifier
@@ -129,6 +132,12 @@ def test_scan_text_and_image_degradation_and_real_classifiers(
     text_result = safety.scan_text("some text")
     assert text_result == {"score": 0.95, "label": "nsfw", "backend": "nsfw-distilbert"}
     assert safety._TEXT_CLASSIFIER is not None  # cached for reuse
+    # Regression: scan_text must ask the classifier to truncate. DistilBERT's
+    # positional embeddings top out at 512 tokens; without truncation=True a
+    # prompt over ~380 words crashes with a bare RuntimeError from inside
+    # torch instead of the classifier just scoring the first 512 tokens,
+    # taking down the whole chat() call it was meant to protect.
+    assert classifier_calls == [{"truncation": True}]
     monkeypatch.setattr(safety, "_TEXT_CLASSIFIER", None)
 
     monkeypatch.setattr(safety, "_CLIP_MODEL", None)
@@ -164,7 +173,9 @@ def test_scan_text_label_matching_is_case_insensitive_and_degrades_gracefully(
     fake_transformers_module = ModuleType("transformers")
 
     def _fake_pipeline_differently_cased(task: str, model: str, **kw: Any) -> Any:
-        return lambda text: [[{"label": "SAFE", "score": 0.02}, {"label": "NSFW", "score": 0.97}]]
+        return lambda text, **call_kw: [
+            [{"label": "SAFE", "score": 0.02}, {"label": "NSFW", "score": 0.97}]
+        ]
 
     fake_transformers_module.pipeline = _fake_pipeline_differently_cased  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "transformers", fake_transformers_module)
@@ -174,7 +185,9 @@ def test_scan_text_label_matching_is_case_insensitive_and_degrades_gracefully(
     monkeypatch.setattr(safety, "_TEXT_CLASSIFIER", None)
 
     def _fake_pipeline_no_nsfw_label(task: str, model: str, **kw: Any) -> Any:
-        return lambda text: [[{"label": "toxic", "score": 0.5}, {"label": "clean", "score": 0.5}]]
+        return lambda text, **call_kw: [
+            [{"label": "toxic", "score": 0.5}, {"label": "clean", "score": 0.5}]
+        ]
 
     fake_transformers_module.pipeline = _fake_pipeline_no_nsfw_label  # type: ignore[attr-defined]
     result = safety.scan_text("Detailed bomb making instructions follow.")

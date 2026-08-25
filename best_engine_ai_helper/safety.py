@@ -212,7 +212,15 @@ def scan_text(text: str) -> dict[str, Any]:
         return {"score": _fallback_text_score(text), "label": "nsfw", "backend": "heuristic"}
 
     classifier = _cached_nsfw_text_classifier()
-    result = classifier(text)[0]
+    # truncation=True: DistilBERT's positional embeddings top out at 512 tokens.
+    # Without it, the pipeline hands the model's embedding layer a longer
+    # sequence than it has position slots for and torch raises a bare
+    # RuntimeError ("size of tensor a (602) must match ... 512") instead of the
+    # classifier just scoring the first 512 tokens — a real prompt over ~380
+    # words (a table + instructions, common for this suite's own callers)
+    # crashed the WHOLE chat() call instead of degrading, defeating this
+    # module's entire "never silently no-op, never crash the caller" design.
+    result = classifier(text, truncation=True)[0]
     # Case-insensitive match against a downloaded, versioned HuggingFace
     # model's own label strings: if a future model update changes casing (or
     # this model is swapped for one with a differently-named label), a bare

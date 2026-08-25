@@ -2,6 +2,29 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
+## [1.4.1] - 2026-08-25
+
+### Fixed
+
+- **`safety.scan_text` crashed (not degraded) on any prompt over ~380
+  words.** DistilBERT's positional embeddings top out at 512 tokens; the
+  classifier pipeline was called with no `truncation=True`, so a longer
+  prompt made the model's embedding layer receive more positions than it
+  has slots for, and torch raised a bare `RuntimeError` ("size of tensor a
+  (602) must match ... 512") instead of the classifier just scoring the
+  first 512 tokens. Since `chat(..., safety=True)` is the default for
+  every engine, local or cloud, this took down the WHOLE call for any
+  caller sending a normal, non-adversarial, moderately long prompt (a
+  table plus instructions, common across this suite's own downstream
+  callers) — the exact "silently no-op or crash the caller" failure mode
+  this module's own design explicitly exists to avoid. Found via
+  `standpoint`'s own test suite hitting it live against the real model
+  (the existing test suite here only ever exercised a mocked classifier,
+  so a real over-length prompt was never actually driven through the real
+  pipeline before). Fixed with `classifier(text, truncation=True)`;
+  regression test asserts the classifier is actually called with
+  `truncation=True`, not just that a long prompt happens to work today.
+
 ## [1.4.0] - 2026-08-24
 
 ### Added
