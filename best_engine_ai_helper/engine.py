@@ -10,11 +10,15 @@ The suite's model-selection contract has two YAML files per consumer repo:
    the backend chosen for the current machine plus the concrete model per kind,
    sized realistically for that backend.
 
-Backend rule (``resolve(..., backend="auto")``): **vLLM only when a real
-discrete GPU (NVIDIA/AMD) is detected; otherwise Ollama** — so macOS, CPU-only
-Linux, and Intel-iGPU machines all use Ollama, and only a CUDA/ROCm box gets
-vLLM. This keeps picks realistic (vLLM on plain CPU is the weak path). When vLLM
-gains an Apple-Silicon runtime, widening this rule is the only change needed.
+Backend rule (``resolve(..., backend="auto")``): **vLLM only on Linux with a
+real discrete GPU (NVIDIA/AMD); Ollama everywhere else** — macOS (vLLM has no
+native macOS runtime), Windows (no native vLLM wheel, WSL-only), CPU-only
+machines (vLLM's CPU-only path is its own weak spot, notably on Linux), and
+Intel iGPUs all use Ollama; only a Linux CUDA/ROCm box gets vLLM, chiefly for
+the request-batching/concurrency handling it offers under real production
+load, which Ollama does not match. This keeps picks realistic. When vLLM
+gains a first-class runtime elsewhere, widening this rule is the only change
+needed.
 
 No ``DEFAULT_MODEL`` constant lives in any consumer: the model is always read
 from the resolved engine file. :func:`ensure` is the missing-file policy — a
@@ -78,24 +82,37 @@ _DEFAULT_API_KEY_ENV = {
 }
 
 
-# Accelerator vendors that have a real (fast) vLLM runtime today. A discrete
-# CUDA (NVIDIA) or ROCm (AMD) GPU gets vLLM; Apple Silicon, Intel iGPUs, and
-# CPU-only machines fall back to Ollama, where vLLM is either unsupported or too
-# slow to be realistic.
+# Accelerator vendors that have a real (fast) vLLM runtime today, and only on
+# Linux (see default_backend): a discrete CUDA (NVIDIA) or ROCm (AMD) GPU gets
+# vLLM there. Apple Silicon (no native vLLM runtime), Intel iGPUs, and
+# CPU-only machines fall back to Ollama, where vLLM is either unsupported or
+# too slow to be realistic.
 _VLLM_VENDORS = frozenset({"nvidia", "amd"})
 
 
 def default_backend() -> str:
     """Return the backend for the current machine.
 
-    **vLLM** only when a real discrete GPU (NVIDIA/AMD) is detected; **Ollama**
-    everywhere else (macOS, CPU-only Linux, Intel iGPU). Endgame: when vLLM runs
-    well on Mac and CPU-only Linux too, replace this whole body with
+    A three-branch decision tree, matching what each backend actually
+    supports well rather than what it merely runs on:
+
+    - **macOS** -> Ollama. vLLM ships no native macOS runtime.
+    - **CPU-only** (Linux or macOS) -> Ollama. vLLM's CPU-only path — notably
+      on Linux — is its own reported weak spot; Ollama's CPU path is the
+      well-trodden one.
+    - **discrete GPU (NVIDIA/AMD) on Linux** — the real production case ->
+      vLLM, chiefly for the request-batching/concurrency handling it offers
+      under real load, which Ollama does not match.
+
+    Windows falls back to Ollama too (vLLM has no native Windows wheel, only
+    a WSL path), so in practice: **vLLM only on Linux with a real discrete
+    GPU; Ollama everywhere else.** Endgame: when vLLM gains a first-class
+    runtime on Mac, Windows, or CPU-only Linux, replace this whole body with
     ``return "vllm"`` and the suite is fully on vLLM.
     """
-    from .detect import chip_vendor
+    from .detect import chip_vendor, platform_name
 
-    return "vllm" if chip_vendor() in _VLLM_VENDORS else "ollama"
+    return "vllm" if platform_name() == "linux" and chip_vendor() in _VLLM_VENDORS else "ollama"
 
 
 def _kinds_from_brief(kind: str) -> list[Literal["llm", "vlm"]]:

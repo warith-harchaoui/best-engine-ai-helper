@@ -358,7 +358,13 @@ A project usually knows its job more precisely than a machine-wide default can, 
    best-engine-ai-helper resolve --brief llm.brief.yaml --out llm.engine.yaml
    ```
 
-   The backend is chosen for the hardware: **vLLM when a discrete GPU (NVIDIA/AMD) is present, Ollama otherwise** (macOS, CPU-only Linux, Intel iGPU). The pick is deliberately conservative: the memory headroom is capped at 0.5, and among models within a few benchmark points of the best it takes the leanest and fastest, not the largest that merely fits. vLLM picks are sized against full FP16 weights (heavier than the Ollama Q4 estimate), so a vLLM pick is realistic on the real GPU. The output is hardware-specific; add it to `.gitignore`:
+   The backend is chosen by a three-branch decision tree, matching what each backend actually supports well rather than what it merely runs on:
+
+   - **macOS -> Ollama.** vLLM ships no native macOS runtime.
+   - **CPU-only (Linux or macOS) -> Ollama.** vLLM's CPU-only path — notably on Linux — is its own reported weak spot; Ollama's CPU path is the well-trodden one.
+   - **Discrete GPU (NVIDIA/AMD) on Linux — the real production case -> vLLM**, chiefly for the request-batching/concurrency handling it offers under real load, which Ollama does not match.
+
+   Windows falls back to Ollama too (no native vLLM wheel, WSL-only), so in short: **vLLM only on Linux with a discrete GPU; Ollama everywhere else.** The pick is deliberately conservative in other ways too: the memory headroom is capped at 0.5, and among models within a few benchmark points of the best it takes the leanest and fastest, not the largest that merely fits. vLLM picks are sized against full FP16 weights (heavier than the Ollama Q4 estimate), so a vLLM pick is realistic on the real GPU. The output is hardware-specific; add it to `.gitignore`:
 
    ```yaml
    backend: ollama

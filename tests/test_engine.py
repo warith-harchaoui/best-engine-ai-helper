@@ -88,7 +88,9 @@ _BRIEF = {
 
 
 def test_resolve_local_mode_backend_and_headroom(monkeypatch: pytest.MonkeyPatch) -> None:
-    # vLLM only on a real discrete GPU; Ollama for Apple, Intel iGPU, and CPU.
+    # vLLM only on Linux with a real discrete GPU; Ollama everywhere else
+    # (Apple, Intel iGPU, CPU-only, and GPU on a non-Linux platform).
+    monkeypatch.setattr(detect, "platform_name", lambda: "linux")
     monkeypatch.setattr(detect, "chip_vendor", lambda: "nvidia")
     assert engine.default_backend() == "vllm"
     monkeypatch.setattr(detect, "chip_vendor", lambda: "amd")
@@ -96,6 +98,14 @@ def test_resolve_local_mode_backend_and_headroom(monkeypatch: pytest.MonkeyPatch
     for cpu_like in ("apple", "intel", "cpu"):
         monkeypatch.setattr(detect, "chip_vendor", lambda v=cpu_like: v)
         assert engine.default_backend() == "ollama"
+
+    # A discrete GPU off Linux (macOS, Windows) still falls back to Ollama:
+    # vLLM has no native macOS runtime and no native Windows wheel (WSL-only).
+    monkeypatch.setattr(detect, "chip_vendor", lambda: "nvidia")
+    for other_platform in ("darwin", "windows"):
+        monkeypatch.setattr(detect, "platform_name", lambda v=other_platform: v)
+        assert engine.default_backend() == "ollama"
+    monkeypatch.setattr(detect, "platform_name", lambda: "linux")
 
     ollama_eng = engine.resolve(
         _BRIEF, backend="ollama", catalog=_CATALOG, hw=_HW, compute=_COMPUTE

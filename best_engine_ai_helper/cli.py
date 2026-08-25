@@ -263,7 +263,7 @@ def recommend_cmd(
     type=click.Choice(["auto", "ollama", "vllm"]),
     default="auto",
     show_default=True,
-    help="Serving backend. 'auto' = vLLM on a discrete GPU (NVIDIA/AMD), else Ollama.",
+    help="Serving backend. 'auto' = vLLM on Linux with a discrete GPU (NVIDIA/AMD), else Ollama.",
 )
 @click.option(
     "--endpoint",

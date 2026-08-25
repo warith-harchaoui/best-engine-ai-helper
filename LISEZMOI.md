@@ -380,13 +380,23 @@ moteur résolu.
    best-engine-ai-helper resolve --brief llm.brief.yaml --out llm.engine.yaml
    ```
 
-   Le backend est choisi selon le matériel : **vLLM quand un GPU discret (NVIDIA/AMD) est
-   présent, Ollama sinon** (macOS, Linux CPU seul, iGPU Intel). Le choix est délibérément
-   prudent : la marge mémoire est plafonnée à 0,5 et parmi les modèles à quelques points de
-   benchmark du meilleur, il prend le plus léger et le plus rapide, pas le plus gros qui tient
-   tout juste. Les choix vLLM sont dimensionnés sur les poids FP16 complets (plus lourds que
-   l'estimation Ollama Q4), pour qu'un choix vLLM soit réaliste sur le vrai GPU. La sortie est
-   spécifique au matériel ; ajoutez-la au `.gitignore` :
+   Le backend est choisi par un arbre de décision à trois branches, qui reflète ce que chaque
+   moteur supporte réellement bien plutôt que ce sur quoi il tourne tant bien que mal :
+
+   - **macOS -> Ollama.** vLLM n'a pas de runtime natif macOS.
+   - **CPU seul (Linux ou macOS) -> Ollama.** Le chemin CPU seul de vLLM — notamment sous
+     Linux — est son propre point faible signalé ; le chemin CPU d'Ollama est le plus éprouvé.
+   - **GPU discret (NVIDIA/AMD) sous Linux — le vrai cas de production -> vLLM**, notamment
+     pour sa gestion de la concurrence et du batching de requêtes sous charge réelle, qu'Ollama
+     n'égale pas.
+
+   Windows retombe aussi sur Ollama (pas de wheel vLLM natif, WSL uniquement), donc en
+   résumé : **vLLM uniquement sous Linux avec un GPU discret ; Ollama partout ailleurs.** Le
+   choix reste prudent par ailleurs : la marge mémoire est plafonnée à 0,5 et parmi les modèles
+   à quelques points de benchmark du meilleur, il prend le plus léger et le plus rapide, pas le
+   plus gros qui tient tout juste. Les choix vLLM sont dimensionnés sur les poids FP16 complets
+   (plus lourds que l'estimation Ollama Q4), pour qu'un choix vLLM soit réaliste sur le vrai
+   GPU. La sortie est spécifique au matériel ; ajoutez-la au `.gitignore` :
 
    ```yaml
    backend: ollama
