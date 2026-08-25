@@ -2,6 +2,20 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
+## [1.4.2] - 2026-08-25
+
+### Fixed
+
+- **`default_backend()` picked vLLM for any discrete NVIDIA/AMD GPU
+  regardless of OS**, so a GPU on Windows would auto-pick vLLM despite it
+  shipping no native Windows wheel (WSL-only), and macOS has no native
+  vLLM runtime at all. Now vLLM only wins when both a discrete GPU AND
+  Linux are detected — the real production case, where vLLM's
+  request-batching/concurrency handling under load beats Ollama; every
+  other case (macOS, Windows, CPU-only) falls back to Ollama. Docs and
+  CLI help text updated to spell out the three-branch rule and why each
+  backend fits each case.
+
 ## [1.4.1] - 2026-08-25
 
 ### Fixed
