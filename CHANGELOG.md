@@ -2,6 +2,17 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- `score._benchmark_score`'s default (non-`application`) ranking branch used
+  `benchmarks.get("vision") or benchmarks.get("general") or 0`, which treats
+  a legitimately-recorded `0.0` benchmark score the same as a missing one and
+  silently falls through to a different axis. Switched to explicit
+  `is not None` checks, matching the pattern already used in the
+  `application`-priority branch a few lines above.
+
 ## [1.4.2] - 2026-08-25
 
 ### Fixed

@@ -336,12 +336,15 @@ def _benchmark_score(
                     return float(val)
             return 0.0
 
-    # Default: vision axis for VLMs, general for LLMs
+    # Default: vision axis for VLMs, general for LLMs. Explicit None checks
+    # (not `or`) so a legitimately-recorded score of 0.0 is honoured rather
+    # than silently treated as missing and replaced by a fallback axis.
     if kind == "vlm":
-        score = benchmarks.get("vision") or benchmarks.get("general") or 0
+        vision = benchmarks.get("vision")
+        score = vision if vision is not None else benchmarks.get("general")
     else:
-        score = benchmarks.get("general") or 0
-    return float(score)
+        score = benchmarks.get("general")
+    return float(score) if score is not None else 0.0
 
 
 def select(
