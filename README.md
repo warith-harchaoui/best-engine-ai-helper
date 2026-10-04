@@ -34,7 +34,7 @@ This package sits at the base of the AI Helpers suite's model-selection layer: t
 
 ## Documentation
 
-[💻 Documentation](https://harchaoui.org/warith/ai-helpers/docs/best-engine-ai-helper-doc/)
+[💻 Documentation](https://deraison.ai/ai-helpers/docs/best-engine-ai-helper-doc/)
 
 [🗺️ Landscape](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/LANDSCAPE.md)
 

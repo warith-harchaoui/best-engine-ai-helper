@@ -18,7 +18,7 @@ sait-il repérer un défaut visuel évident glissé dans une petite image de tes
 Ralph Eyeball) ? Seul un modèle qui réussit les deux voit son fichier d'environnement
 écrit, le fichier que les projets en aval viennent lire pour trouver le modèle choisi.
 
-[![logo](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/logo.png)](https://harchaoui.org/warith/ai-helpers)
+[![logo](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/logo.png)](https://deraison.ai/ai-helpers)
 
 ## La promesse
 
@@ -45,7 +45,7 @@ Ce paquet est à la base de la couche de sélection de modèles de la suite AI H
 
 ## Documentation
 
-[💻 Documentation](https://harchaoui.org/warith/ai-helpers/docs/best-engine-ai-helper-doc/)
+[💻 Documentation](https://deraison.ai/ai-helpers/docs/best-engine-ai-helper-doc/)
 
 [🗺️ Paysage](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/PAYSAGE.md)
 

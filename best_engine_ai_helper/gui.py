@@ -21,7 +21,7 @@ object, and falls back to the ``meta.default_locale`` declared in the YAML
 (French) for any language the file does not cover.
 
 Visual language matches the sprezzature-figures gallery
-(https://harchaoui.org/warith/sprezzature/figures.html): Roboto / Roboto
+(https://sprezzature.ai/figures.html): Roboto / Roboto
 Serif / Roboto Mono, the #007aff brand blue, a neutral gray scale, and a
 manual light/dark toggle persisted under a ``data-color-scheme`` attribute
 (not hotlinked — fonts are self-served via Google Fonts, not the reference

@@ -13,7 +13,7 @@ library calls the CLI uses (`detect.available_memory()`,
 detect` / `report` run at the same moment.
 
 **Look and feel** matches the [sprezzature-figures
-gallery](https://harchaoui.org/warith/sprezzature/figures.html): Roboto /
+gallery](https://sprezzature.ai/figures.html): Roboto /
 Roboto Serif / Roboto Mono, the `#007aff` brand blue, a neutral gray scale,
 and the same sticky-header / bordered-section rhythm. Light and dark both
 ship; the 🌞/🌙 toggle in the header persists to `localStorage` and defaults
