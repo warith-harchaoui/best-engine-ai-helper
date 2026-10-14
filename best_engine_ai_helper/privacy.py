@@ -21,7 +21,7 @@ GDPR scope. Label outputs "pseudonymized", never "anonymous".
 
 Author
 ------
-Warith Harchaoui <warith.harchaoui@deraison.ai>
+Warith Harchaoui <warith@deraison.ai>
 """
 
 from __future__ import annotations

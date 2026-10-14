@@ -27,7 +27,7 @@ error, because the brief is committed and its absence is a real bug.
 
 Author
 ------
-Warith Harchaoui <warith.harchaoui@deraison.ai>
+Warith Harchaoui <warith@deraison.ai>
 """
 
 from __future__ import annotations

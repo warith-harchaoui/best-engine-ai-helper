@@ -16,7 +16,7 @@ Run the server (HTTP API + MCP endpoint at ``/mcp``)::
 
 Author
 ------
-Warith Harchaoui <warith.harchaoui@deraison.ai>
+Warith Harchaoui <warith@deraison.ai>
 """
 
 from __future__ import annotations

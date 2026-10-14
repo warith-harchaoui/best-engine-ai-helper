@@ -8,7 +8,7 @@ Wraps the ``ollama pull`` and ``ollama rm`` subprocess calls and provides
 
 Author
 ------
-Warith Harchaoui <warith.harchaoui@deraison.ai>
+Warith Harchaoui <warith@deraison.ai>
 """
 
 from __future__ import annotations

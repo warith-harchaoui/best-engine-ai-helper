@@ -77,7 +77,7 @@ or cloud (content policy is independent of who is billed); pass
 
 Author
 ------
-Warith Harchaoui <warith.harchaoui@deraison.ai>
+Warith Harchaoui <warith@deraison.ai>
 """
 
 from __future__ import annotations

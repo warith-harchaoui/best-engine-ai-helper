@@ -13,7 +13,7 @@ OS, background daemons, and the inference server itself for RAM.
 
 Author
 ------
-Warith Harchaoui <warith.harchaoui@deraison.ai>
+Warith Harchaoui <warith@deraison.ai>
 """
 
 from __future__ import annotations

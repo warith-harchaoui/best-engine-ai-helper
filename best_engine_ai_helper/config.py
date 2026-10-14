@@ -21,7 +21,7 @@ inside unit tests — the result is deterministic and never raises.
 
 Author
 ------
-Warith Harchaoui <warith.harchaoui@deraison.ai>
+Warith Harchaoui <warith@deraison.ai>
 """
 
 from __future__ import annotations

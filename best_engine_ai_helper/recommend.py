@@ -29,7 +29,7 @@ section when a report carries a ``"cloud"`` key (see :func:`to_markdown_cloud`).
 
 Author
 ------
-Warith Harchaoui <warith.harchaoui@deraison.ai>
+Warith Harchaoui <warith@deraison.ai>
 """
 
 from __future__ import annotations
