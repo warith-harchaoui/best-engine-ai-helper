@@ -17,6 +17,14 @@ Image scanning has no comparable safe heuristic (a wrong guess is worse
 than an honest "I don't know"), so it degrades to ``"unavailable"`` rather
 than fabricate a verdict.
 
+Installed is not the same as reachable. Both classifiers are fetched from
+HuggingFace on first use, so a cold cache with no network, a cache path
+pointing at an unmounted disk, a rate limit or an HF outage make the extra
+present and the model unusable. Those degrade down the same two paths, with
+a warning — never by raising. A scan is best-effort by construction, and a
+caller must never lose its ``chat()`` call because the scanner could not be
+fetched.
+
 Model choices, and why (see ``.private/keep-track.md`` for the full
 evaluation this repo ran before picking them):
 
@@ -211,7 +219,15 @@ def scan_text(text: str) -> dict[str, Any]:
     except ImportError:
         return {"score": _fallback_text_score(text), "label": "nsfw", "backend": "heuristic"}
 
-    classifier = _cached_nsfw_text_classifier()
+    # `transformers` being importable says nothing about the model being
+    # reachable: the first call fetches ~270 MB from HuggingFace, so a cold
+    # cache on a disconnected machine, a dead HF cache path, a rate limit or
+    # an HF outage all raise OSError here. Loading and scoring sit inside one
+    # guard because both are the classifier's business and both degrade the
+    # same way — to the heuristic, loudly. Letting either escape would crash
+    # the WHOLE chat() call over a scan that is supposed to be best-effort,
+    # the same failure the `truncation=True` below was added to stop.
+    #
     # truncation=True: DistilBERT's positional embeddings top out at 512 tokens.
     # Without it, the pipeline hands the model's embedding layer a longer
     # sequence than it has position slots for and torch raises a bare
@@ -220,7 +236,14 @@ def scan_text(text: str) -> dict[str, Any]:
     # words (a table + instructions, common for this suite's own callers)
     # crashed the WHOLE chat() call instead of degrading, defeating this
     # module's entire "never silently no-op, never crash the caller" design.
-    result = classifier(text, truncation=True)[0]
+    try:
+        classifier = _cached_nsfw_text_classifier()
+        result = classifier(text, truncation=True)[0]
+    except Exception as exc:  # noqa: BLE001 — model fetch/load/inference, not the caller's fault
+        osh.warning(
+            f"safety.scan_text: classifier unavailable ({exc!r}); falling back to the heuristic."
+        )
+        return {"score": _fallback_text_score(text), "label": "nsfw", "backend": "heuristic"}
     # Case-insensitive match against a downloaded, versioned HuggingFace
     # model's own label strings: if a future model update changes casing (or
     # this model is swapped for one with a differently-named label), a bare
@@ -338,6 +361,9 @@ def scan_image(image_bytes: bytes) -> dict[str, Any]:
         session = _cached_onnx_session()
     except ImportError:
         return {"score": 0.0, "label": "unavailable", "backend": "unavailable"}
+    except Exception as exc:  # noqa: BLE001 — a present but unreadable ONNX head
+        osh.warning(f"safety.scan_image: could not load the classifier head: {exc!r}")
+        return {"score": 0.0, "label": "unavailable", "backend": "unavailable"}
 
     try:
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
@@ -345,10 +371,17 @@ def scan_image(image_bytes: bytes) -> dict[str, Any]:
         osh.warning(f"safety.scan_image: could not decode image bytes: {exc!r}")
         return {"score": 0.0, "label": "unavailable", "backend": "unavailable"}
 
-    embedding = _clip_image_embedding(image)
-
-    input_name = session.get_inputs()[0].name
-    score = float(session.run(None, {input_name: embedding})[0].reshape(-1)[0])
+    # The CLIP encoder is fetched from HuggingFace on first use, so this is the
+    # image-side twin of the text classifier's failure modes: cold cache,
+    # dead cache path, offline, rate limit, outage. It was guarded by nothing
+    # at all, so any of those took the whole chat() call down with it.
+    try:
+        embedding = _clip_image_embedding(image)
+        input_name = session.get_inputs()[0].name
+        score = float(session.run(None, {input_name: embedding})[0].reshape(-1)[0])
+    except Exception as exc:  # noqa: BLE001 — encoder fetch/load/inference
+        osh.warning(f"safety.scan_image: classifier unavailable ({exc!r}).")
+        return {"score": 0.0, "label": "unavailable", "backend": "unavailable"}
     return {"score": score, "label": "nsfw", "backend": "clip"}
 
 

@@ -2,6 +2,27 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- `safety.scan_text` guarded only `ImportError`, so having `transformers`
+  installed but the model unreachable took down the caller. The classifier is
+  fetched from HuggingFace on first use: a cold cache with no network, a cache
+  path on an unmounted disk, a rate limit or an outage all raise `OSError` from
+  `_cached_nsfw_text_classifier()`, and that escaped `scan_text`, escaped
+  `check_text`, and failed the whole `chat()` call — for a scan that is
+  best-effort by construction. Loading and scoring now sit inside one guard
+  that degrades to the keyword heuristic and warns, like the existing
+  no-`nsfw`-label path. Same class of bug as the `truncation=True` fix.
+- `safety.scan_image` had the same gap, and worse: `_clip_image_embedding`
+  fetches the CLIP encoder from HuggingFace and was guarded by nothing at all.
+  `_cached_onnx_session()` also caught only `ImportError`, so a present but
+  corrupt ONNX head raised through. Encoder fetch, head load and inference now
+  degrade to `"unavailable"` with a warning.
+- Three regression tests cover the new paths; all three fail against the
+  previous code.
+
 ## [1.4.3] - 2026-09-03
 
 ### Fixed

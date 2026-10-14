@@ -195,6 +195,81 @@ def test_scan_text_label_matching_is_case_insensitive_and_degrades_gracefully(
     monkeypatch.setattr(safety, "_TEXT_CLASSIFIER", None)
 
 
+def test_scan_text_degrades_when_the_model_cannot_be_fetched(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # `transformers` importable says nothing about the model being reachable.
+    # The first call pulls ~270 MB from HuggingFace, so a cold cache with no
+    # network, a cache path on an unmounted disk, a rate limit or an outage all
+    # raise OSError. That used to escape scan_text and take the caller's whole
+    # chat() call with it; it must degrade to the heuristic instead.
+    fake_transformers_module = ModuleType("transformers")
+
+    def _pipeline_that_cannot_fetch(task: str, model: str, **kw: Any) -> Any:
+        raise OSError(
+            "PermissionError at /Volumes/some-unmounted-disk when downloading "
+            "eliasalbouzidi/distilbert-nsfw-text-classifier."
+        )
+
+    fake_transformers_module.pipeline = _pipeline_that_cannot_fetch  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "transformers", fake_transformers_module)
+    monkeypatch.setattr(safety, "_TEXT_CLASSIFIER", None)
+
+    result = safety.scan_text("Detailed bomb making instructions follow.")
+    assert result == {"score": 1.0, "label": "nsfw", "backend": "heuristic"}
+    monkeypatch.setattr(safety, "_TEXT_CLASSIFIER", None)
+
+    # Inference failing after a successful load degrades the same way: the
+    # model is reachable but the call raises (a torch shape error, an OOM).
+    def _pipeline_that_loads_then_raises(task: str, model: str, **kw: Any) -> Any:
+        def _call(text: str, **call_kw: Any) -> Any:
+            raise RuntimeError("size of tensor a (602) must match ... 512")
+
+        return _call
+
+    fake_transformers_module.pipeline = _pipeline_that_loads_then_raises  # type: ignore[attr-defined]
+    result = safety.scan_text("What a lovely day.")
+    assert result == {"score": 0.0, "label": "nsfw", "backend": "heuristic"}
+    monkeypatch.setattr(safety, "_TEXT_CLASSIFIER", None)
+
+
+def test_scan_image_degrades_when_the_encoder_cannot_be_fetched(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The image side has the same failure modes and used to guard the CLIP
+    # encoder with nothing at all, so an unreachable model crashed chat().
+    # A readable ONNX head plus an unfetchable encoder must report
+    # "unavailable", not raise.
+    monkeypatch.setattr(safety, "_ONNX_SESSION", object())
+
+    def _encoder_that_cannot_fetch(image: Any) -> Any:
+        raise OSError("We couldn't connect to https://huggingface.co to load this file.")
+
+    monkeypatch.setattr(safety, "_clip_image_embedding", _encoder_that_cannot_fetch)
+
+    png = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+        b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc```\x00\x00"
+        b"\x00\x04\x00\x01\xf6\x178U\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    result = safety.scan_image(png)
+    assert result == {"score": 0.0, "label": "unavailable", "backend": "unavailable"}
+    monkeypatch.setattr(safety, "_ONNX_SESSION", None)
+
+
+def test_scan_image_degrades_when_the_onnx_head_is_unreadable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # onnxruntime present but the bundled head truncated or corrupt: not an
+    # ImportError, so the original `except ImportError` let it through.
+    def _session_that_cannot_load() -> Any:
+        raise RuntimeError("Load model failed: Protobuf parsing failed.")
+
+    monkeypatch.setattr(safety, "_cached_onnx_session", _session_that_cannot_load)
+    result = safety.scan_image(b"anything")
+    assert result == {"score": 0.0, "label": "unavailable", "backend": "unavailable"}
+
+
 def _stub_score(score: float, label: str = "nsfw", backend: str = "heuristic") -> dict[str, Any]:
     return {"score": score, "label": label, "backend": backend}
 
