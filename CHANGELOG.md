@@ -2,7 +2,7 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
-## [Unreleased]
+## [1.4.4] - 2026-10-14
 
 ### Fixed
 
