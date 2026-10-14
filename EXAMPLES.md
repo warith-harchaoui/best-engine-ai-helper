@@ -256,11 +256,10 @@ from the resolved engine file:
 ```python
 from best_engine_ai_helper import ensure, llm
 
-engine = ensure(".")            # loads llm.engine.yaml, or resolves it from
-                                # llm.brief.yaml on first use
+# loads llm.engine.yaml, or resolves it from llm.brief.yaml on first use
+engine = ensure(".")
 summary = llm.chat(prompt, engine=engine, kind="llm")
-critique = llm.chat(prompt, engine=engine, kind="vlm",
-                    images=[png], json_schema=SCHEMA)
+critique = llm.chat(prompt, engine=engine, kind="vlm", images=[png], json_schema=SCHEMA)
 ```
 
 `chat` reads the backend and model from the engine and dispatches to Ollama
@@ -311,8 +310,8 @@ from best_engine_ai_helper import resolve_usage, resolve_family, list_usages
 for u in list_usages():
     print(u["name"], u["family"], u["status"])
 
-engine = resolve_usage("text2sql")   # best-engine chooses the model here
-family = resolve_family("F1")        # one model for the whole F1 group
+engine = resolve_usage("text2sql")  # best-engine chooses the model here
+family = resolve_family("F1")  # one model for the whole F1 group
 ```
 
 ---
@@ -356,11 +355,11 @@ hw = available_memory()
 catalog = load_catalog()
 
 best_vlm = select(hw, catalog, kind="vlm")
-print(best_vlm["id"])        # e.g. 'gemma3:12b' on a 96 GB machine
-print(best_vlm["ram_gb"])    # e.g. 9.2
+print(best_vlm["id"])  # e.g. 'gemma3:12b' on a 96 GB machine
+print(best_vlm["ram_gb"])  # e.g. 9.2
 
 best_llm = select(hw, catalog, kind="llm")
-print(best_llm["id"])        # e.g. 'qwen3:72b-q4_k_m' on a 96 GB machine
+print(best_llm["id"])  # e.g. 'qwen3:72b-q4_k_m' on a 96 GB machine
 ```
 
 `select` and the `recommend` / `report` output agree on the winner: both put
@@ -380,8 +379,8 @@ report = recommend_engines(
     task="product descriptions and image-quality checks",
     compute=compute_profile(),
 )
-print(report["recommendations"]["vlm"]["chosen"]["id"])   # best VLM
-print(to_markdown(report))                                # human-readable report
+print(report["recommendations"]["vlm"]["chosen"]["id"])  # best VLM
+print(to_markdown(report))  # human-readable report
 ```
 
 ---

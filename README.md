@@ -379,11 +379,10 @@ A project usually knows its job more precisely than a machine-wide default can, 
    ```python
    from best_engine_ai_helper import ensure, llm
 
-   engine = ensure(".")            # loads llm.engine.yaml, or resolves it from
-                                   # llm.brief.yaml on first use
+   # loads llm.engine.yaml, or resolves it from llm.brief.yaml on first use
+   engine = ensure(".")
    summary = llm.chat(prompt, engine=engine, kind="llm")
-   critique = llm.chat(prompt, engine=engine, kind="vlm",
-                       images=[png], json_schema=SCHEMA)
+   critique = llm.chat(prompt, engine=engine, kind="vlm", images=[png], json_schema=SCHEMA)
    ```
 
    `chat` reads the backend and model from the engine file and dispatches to Ollama (`/api/generate`) or vLLM (OpenAI-compatible `/v1/chat/completions`) transparently, with schema-constrained structured output on both.
@@ -474,8 +473,8 @@ from best_engine_ai_helper import resolve_usage, resolve_family, list_usages
 for u in list_usages():
     print(u["name"], u["family"], u["status"])
 
-engine = resolve_usage("text2sql")   # best-engine chooses the model for THIS machine
-family = resolve_family("F1")        # one model for the whole constrained-generation group
+engine = resolve_usage("text2sql")  # best-engine chooses the model for THIS machine
+family = resolve_family("F1")  # one model for the whole constrained-generation group
 ```
 
 best-engine writes the retained models into the gitignored `llm.engine*.yaml` for this machine (the extension of the `env.sh` it already emits); the app reads that file and re-resolution re-decides if the hardware changes. Adding a profile is a few lines in `usages.yaml`; a user overlay at `~/.best-engine-ai-helper/usages_cache.yaml` overrides by name.

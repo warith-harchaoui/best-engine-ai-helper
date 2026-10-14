@@ -269,11 +269,10 @@ le modèle est toujours lu depuis le fichier moteur résolu :
 ```python
 from best_engine_ai_helper import ensure, llm
 
-engine = ensure(".")            # charge llm.engine.yaml ou le résout depuis
-                                # llm.brief.yaml au premier appel
+# charge llm.engine.yaml, ou le résout depuis llm.brief.yaml au premier appel
+engine = ensure(".")
 summary = llm.chat(prompt, engine=engine, kind="llm")
-critique = llm.chat(prompt, engine=engine, kind="vlm",
-                    images=[png], json_schema=SCHEMA)
+critique = llm.chat(prompt, engine=engine, kind="vlm", images=[png], json_schema=SCHEMA)
 ```
 
 `chat` lit le backend et le modèle depuis le moteur, puis délègue à Ollama
@@ -326,8 +325,8 @@ from best_engine_ai_helper import resolve_usage, resolve_family, list_usages
 for u in list_usages():
     print(u["name"], u["family"], u["status"])
 
-engine = resolve_usage("text2sql")   # best-engine choisit le modèle ici
-family = resolve_family("F1")        # un seul modèle pour tout le groupe F1
+engine = resolve_usage("text2sql")  # best-engine choisit le modèle ici
+family = resolve_family("F1")  # un seul modèle pour tout le groupe F1
 ```
 
 ---
@@ -374,11 +373,11 @@ hw = available_memory()
 catalog = load_catalog()
 
 best_vlm = select(hw, catalog, kind="vlm")
-print(best_vlm["id"])        # p. ex. 'gemma3:12b' sur une machine 96 Go
-print(best_vlm["ram_gb"])    # p. ex. 9.2
+print(best_vlm["id"])  # p. ex. 'gemma3:12b' sur une machine 96 Go
+print(best_vlm["ram_gb"])  # p. ex. 9.2
 
 best_llm = select(hw, catalog, kind="llm")
-print(best_llm["id"])        # p. ex. 'qwen3:72b-q4_k_m' sur une machine 96 Go
+print(best_llm["id"])  # p. ex. 'qwen3:72b-q4_k_m' sur une machine 96 Go
 ```
 
 `select` s'accorde avec la sortie de `recommend` et de `report` sur le
@@ -400,8 +399,8 @@ report = recommend_engines(
     task="product descriptions and image-quality checks",
     compute=compute_profile(),
 )
-print(report["recommendations"]["vlm"]["chosen"]["id"])   # meilleur VLM
-print(to_markdown(report))                                # rapport lisible par un humain
+print(report["recommendations"]["vlm"]["chosen"]["id"])  # meilleur VLM
+print(to_markdown(report))  # rapport lisible par un humain
 ```
 
 ---

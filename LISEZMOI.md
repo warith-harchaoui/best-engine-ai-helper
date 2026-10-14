@@ -412,11 +412,10 @@ moteur résolu.
    ```python
    from best_engine_ai_helper import ensure, llm
 
-   engine = ensure(".")            # charge llm.engine.yaml ou le résout depuis
-                                   # llm.brief.yaml au premier usage
+   # charge llm.engine.yaml, ou le résout depuis llm.brief.yaml au premier usage
+   engine = ensure(".")
    summary = llm.chat(prompt, engine=engine, kind="llm")
-   critique = llm.chat(prompt, engine=engine, kind="vlm",
-                       images=[png], json_schema=SCHEMA)
+   critique = llm.chat(prompt, engine=engine, kind="vlm", images=[png], json_schema=SCHEMA)
    ```
 
    `chat` lit le backend et le modèle depuis le fichier moteur et dispatche vers Ollama
@@ -549,8 +548,8 @@ from best_engine_ai_helper import resolve_usage, resolve_family, list_usages
 for u in list_usages():
     print(u["name"], u["family"], u["status"])
 
-engine = resolve_usage("text2sql")   # best-engine choisit le modèle pour CETTE machine
-family = resolve_family("F1")        # un seul modèle pour tout le groupe F1
+engine = resolve_usage("text2sql")  # best-engine choisit le modèle pour CETTE machine
+family = resolve_family("F1")  # un seul modèle pour tout le groupe F1
 ```
 
 best-engine écrit les modèles retenus dans le `llm.engine*.yaml` gitignoré de cette machine
