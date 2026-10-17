@@ -1,0 +1,67 @@
+# best-engine-ai-helper — Compose entry point for the image next to this file.
+#
+#   docker compose up --build                 # API + MCP + GUI on http://localhost:8000
+#   docker compose --profile llm up --build   # ... plus a local Ollama to measure
+#   docker compose run --rm best-engine-ai-helper best-engine-ai-helper recommend
+#
+# The image's own CMD is the one-shot CLI (`recommend`), which is the right
+# default for `docker run`. A Compose service is a different thing — something
+# that stays up — so the command is overridden here to the server entry point.
+# No extra install is needed: fastapi, uvicorn and fastapi-mcp are already in
+# requirements.txt, so the image can serve both doors as built. Per the
+# suite's rule, MCP is never a second implementation: fastapi-mcp mounts /mcp
+# onto the same FastAPI app, and each tool *is* one of its routes.
+#
+# What it needs to see
+# --------------------
+# This helper picks the best available engine, so its answer is only as good
+# as what it can reach. Cloud keys are read from the environment and passed
+# through below — leave them unset and those providers simply drop out of the
+# ranking. The `llm` profile adds a local Ollama for the open-weights side.
+
+services:
+  best-engine-ai-helper:
+    build: .
+    image: best-engine-ai-helper:local
+    command: ["best-engine-ai-helper-mcp"]
+    ports:
+      - "${BEST_ENGINE_PORT:-8000}:8000"
+    environment:
+      PYTHONUNBUFFERED: "1"
+      BEST_ENGINE_HOST: 0.0.0.0
+      BEST_ENGINE_PORT: "8000"
+      # Passed through from your shell; unset keys just remove that provider.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      AZURE_API_KEY: ${AZURE_API_KEY:-}
+      # Defaults to the `llm` profile's service; override for a host Ollama.
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+    healthcheck:
+      # The GUI root, since this app exposes no dedicated /health route.
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import sys, urllib.request
+          sys.exit(0 if urllib.request.urlopen("http://localhost:8000/", timeout=3).status == 200 else 1)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  ollama:
+    profiles: [llm]
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      # Models are large; keep them across restarts.
+      - best-engine-ollama:/root/.ollama
+    restart: unless-stopped
+
+volumes:
+  best-engine-ollama:
