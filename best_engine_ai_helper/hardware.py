@@ -15,7 +15,7 @@ Like the model catalog, the hardware table has two layers:
 
 Author
 ------
-Warith Harchaoui <warith@deraison.ai>
+Warith Harchaoui <warithmetics@deraison.ai>
 """
 
 from __future__ import annotations

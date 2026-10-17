@@ -16,7 +16,7 @@ one is considered functional for the sprezzature visual-critique workflow.
 
 Author
 ------
-Warith Harchaoui <warith@deraison.ai>
+Warith Harchaoui <warithmetics@deraison.ai>
 """
 
 from __future__ import annotations
