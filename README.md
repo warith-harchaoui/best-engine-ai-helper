@@ -479,6 +479,16 @@ family = resolve_family("F1")  # one model for the whole constrained-generation 
 
 best-engine writes the retained models into the gitignored `llm.engine*.yaml` for this machine (the extension of the `env.sh` it already emits); the app reads that file and re-resolution re-decides if the hardware changes. Adding a profile is a few lines in `usages.yaml`; a user overlay at `~/.best-engine-ai-helper/usages_cache.yaml` overrides by name.
 
+## Use it as an agent skill
+
+`skills/best-engine-ai-helper/` packages best-engine-ai-helper as a **Claude Skill** *and* an **OpenCode
+skill**, so an agent can reach for it on your behalf. See
+[`skills/README.md`](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/skills/README.md) to install it (symlink into
+`~/.claude/skills/` and `~/.opencode/skills/`), and
+[`TRIGGERS.md`](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/TRIGGERS.md) for the exhaustive trigger catalogue —
+`scripts/check_triggers.py` keeps the skill's description in sync with it, and
+the test suite fails if a capability stops being named.
+
 ## Author
 
 [Warith HARCHAOUI](https://linkedin.com/in/warith-harchaoui)

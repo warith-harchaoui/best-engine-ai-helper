@@ -558,6 +558,17 @@ nouvelle résolution re-décide si le matériel change. Ajouter un profil = quel
 `usages.yaml` ; un *overlay* utilisateur dans `~/.best-engine-ai-helper/usages_cache.yaml`
 surcharge par nom.
 
+## En tant que skill d'agent
+
+`skills/best-engine-ai-helper/` empaquette best-engine-ai-helper comme **skill Claude** *et* skill
+**OpenCode**, pour qu'un agent puisse s'en saisir à votre place. Voir
+[`skills/README.md`](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/skills/README.md) pour l'installer (liens
+symboliques vers `~/.claude/skills/` et `~/.opencode/skills/`) et
+[`TRIGGERS.md`](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/TRIGGERS.md) pour le catalogue exhaustif des
+déclencheurs — `scripts/check_triggers.py` maintient la description du skill
+alignée dessus ; la suite de tests échoue si une capacité cesse d'être
+nommée.
+
 ## Auteur
 
 [Warith HARCHAOUI](https://linkedin.com/in/warith-harchaoui)
