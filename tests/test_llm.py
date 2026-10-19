@@ -518,9 +518,7 @@ class _FakeStream:
     """A requests-like response that yields Ollama's NDJSON, line by line."""
 
     def __init__(self, pieces, *, done_last=True):
-        self._lines = [
-            json.dumps({"response": piece, "done": False}) for piece in pieces
-        ]
+        self._lines = [json.dumps({"response": piece, "done": False}) for piece in pieces]
         if done_last:
             self._lines.append(json.dumps({"response": "", "done": True}))
         self.sent = None
