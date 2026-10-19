@@ -359,6 +359,7 @@ recommendation that sounds comfortable and one that is.
 | `detect` | Print the detected hardware as JSON |
 | `recommend` | Rank candidates for this hardware (no download) |
 | `report` | Recommend the best engine(s) for a task (Markdown + JSON) |
+| `resolve` | Turn a committed usage brief into this machine's `llm.engine.yaml` |
 | `doctor` | Compare what the engine file resolved against what the daemon can serve |
 | `storage` | Plan capacity: what fits on disk, and what fits in memory together |
 | `catalog show` | Print the merged model catalog |

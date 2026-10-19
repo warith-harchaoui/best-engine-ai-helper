@@ -69,6 +69,26 @@ git config core.hooksPath .githooks
 
 Bypass only when you really mean it: `git push --no-verify`.
 
+**It judges the commit you are pushing, not your working directory.** The hook
+checks that commit out into a throwaway worktree and runs the gate there, which
+matters in both directions:
+
+- A file you have not committed cannot fail your push. That includes files
+  belonging to somebody else working in the same tree — three concurrent
+  sessions blocked each other this way before the hook was changed.
+- A lint error you have committed cannot pass because you already fixed it on
+  disk. The old hook read the fixed file while the broken one was what went
+  out, which is the quieter and worse of the two faults.
+
+So a green gate describes the commit, not your editor. When the two differ the
+hook says so, and your uncommitted work is neither tested nor pushed — commit
+it if you want it gated.
+
+This costs one detached checkout per push. If a repository ever needs a
+gitignored file to run its tests, the gate will fail loudly rather than skip
+quietly; that is the right way round, but it is worth knowing before you go
+looking for the cause.
+
 ## Authorship
 
 Sole author: [Warith Harchaoui](https://www.linkedin.com/in/warith-harchaoui/).
