@@ -6,6 +6,15 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Fixed
 
+- The GUI escapes the values it interpolates into HTML. Every panel builds
+  markup with template literals and assigns it through `innerHTML`, and model
+  ids, provider names and ledger rows went in raw. Nothing here is
+  attacker-controlled in a loopback, single-user GUI, so this is hygiene rather
+  than a patched breach — but the catalog can now be refreshed from a remote
+  source, and "it happens to be safe today" is not a property that survives a
+  new one. One helper is cheaper than re-auditing every call site each time an
+  input arrives from somewhere else.
+
 - **A streamed call leaked its connection and was invisible to the ledger.**
   `chat_stream` never closed its streaming response, so a caller that stopped
   consuming early — the documented use, speaking chunks as they arrive and

@@ -407,6 +407,19 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
     const T = {{JS_T}};
 
     const $ = (id) => document.getElementById(id);
+    // Everything below builds HTML with template literals and assigns it via
+    // innerHTML, so any value that came from outside this file has to be
+    // escaped on the way in. Model ids and provider names are the ones that
+    // travel: the catalog can be refreshed from ollama.com, and an engine file
+    // is hand-editable. None of that is attacker-controlled in a loopback,
+    // single-user GUI, which is why this is hygiene rather than a patched
+    // breach -- but "it happens to be safe today" is not a property that
+    // survives a new source, and one helper is cheaper than re-auditing.
+    const esc = (v) =>
+      String(v ?? "").replace(/[&<>"']/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+      );
+
     const status = (msg) => { $("status").textContent = msg; };
     const fmt1 = (v) => (v === null || v === undefined ? "?" : Number(v).toFixed(1));
     const fmtTps = (v) => (v ? Math.round(v) : "-");
@@ -440,11 +453,11 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
                           dark:bg-amber-900/40 dark:text-amber-300">${T.provNoKey}</span>`;
         const why = p.available
           ? ""
-          : `<p class="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">${p.reason}</p>`;
+          : `<p class="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">${esc(p.reason)}</p>`;
         return `<div class="flex items-start justify-between gap-4 ${dim}">
             <div>
-              <p class="font-medium">${p.provider}
-                <span class="font-mono text-xs text-neutral-500 dark:text-neutral-400">${p.key_env}</span>
+              <p class="font-medium">${esc(p.provider)}
+                <span class="font-mono text-xs text-neutral-500 dark:text-neutral-400">${esc(p.key_env)}</span>
               </p>
               ${why}
             </div>
@@ -537,7 +550,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
       return `
         <div>
           <dt class="text-xs text-neutral-500 dark:text-neutral-400">${label}</dt>
-          <dd class="font-medium">${value}</dd>
+          <dd class="font-medium">${esc(value)}</dd>
         </div>`;
     }
 
@@ -585,7 +598,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
       const cost = row.cost_usd != null ? `$${row.cost_usd.toFixed(4)}` : T.unknownCost;
       return `
         <tr class="border-t border-neutral-200 dark:border-neutral-800">
-          <td class="py-1.5 pr-3 font-mono">${row[keyName]}</td>
+          <td class="py-1.5 pr-3 font-mono">${esc(row[keyName])}</td>
           <td class="py-1.5 pr-3">${row.calls}</td>
           <td class="py-1.5">${cost}</td>
         </tr>`;
@@ -702,7 +715,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
     function candidateRow(r) {
       return `
         <tr class="border-t border-neutral-200 dark:border-neutral-800">
-          <td class="py-1.5 pr-3 font-mono">${r.id}</td>
+          <td class="py-1.5 pr-3 font-mono">${esc(r.id)}</td>
           <td class="py-1.5 pr-3">${fmt1(r.ram_gb)}</td>
           <td class="py-1.5 pr-3">${Math.round(r.score)}</td>
           <td class="py-1.5 pr-3">${r.fits ? T.yes : T.no}</td>
@@ -722,7 +735,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
       const alt = block.lighter_alternative;
       const chosenHtml = chosen ? `
         <p class="flex flex-wrap items-center gap-2 text-sm">
-          ${pill(chosen.id)}
+          ${pill(esc(chosen.id))}
           <span class="text-neutral-600 dark:text-neutral-300">
             ${fmt1(chosen.ram_gb)} ${T.gb}, ${T.score} ${Math.round(chosen.score)}, ~${fmtTps(chosen.est_tokens_per_s)} ${T.tps}
           </span>
@@ -764,8 +777,8 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
     function cloudCandidateRow(r) {
       return `
         <tr class="border-t border-neutral-200 dark:border-neutral-800">
-          <td class="py-1.5 pr-3 font-mono">${r.id}</td>
-          <td class="py-1.5 pr-3">${r.provider}</td>
+          <td class="py-1.5 pr-3 font-mono">${esc(r.id)}</td>
+          <td class="py-1.5 pr-3">${esc(r.provider)}</td>
           <td class="py-1.5 pr-3">${Math.round(r.score)}</td>
           <td class="py-1.5 pr-3">${r.price_per_1m == null ? "?" : r.price_per_1m.toFixed(2)}</td>
           <td class="py-1.5">${r.structured_output === false ? T.no : T.yes}</td>
@@ -776,9 +789,9 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
       const chosen = block.chosen;
       const chosenHtml = chosen ? `
         <p class="flex flex-wrap items-center gap-2 text-sm">
-          ${pill(chosen.id)}
+          ${pill(esc(chosen.id))}
           <span class="text-neutral-600 dark:text-neutral-300">
-            ${chosen.provider}, ${T.score} ${Math.round(chosen.score)}, ${chosen.price_per_1m == null ? T.priceUnknown : `~$${chosen.price_per_1m.toFixed(2)}/1M ${T.blended}`}
+            ${esc(chosen.provider)}, ${T.score} ${Math.round(chosen.score)}, ${chosen.price_per_1m == null ? T.priceUnknown : `~$${chosen.price_per_1m.toFixed(2)}/1M ${T.blended}`}
           </span>
           ${chosen.structured_output === false ? `<span class="text-amber-600 dark:text-amber-400">${T.notStructured}</span>` : ""}
         </p>
