@@ -12,6 +12,8 @@ Commands:
   hardware update Record this machine's chip and memory into the cache.
   pull            Pull the best model and run Ralph validation gates.
   validate        Run Ralph gates on the already-configured model.
+  doctor          Compare what was resolved against what the daemon serves.
+  storage         Plan capacity: disk, and what fits in memory together.
   env             Print the env block for ~/.zshrc or sourcing.
   activity        Summarize the local activity/cost ledger.
 
@@ -910,6 +912,109 @@ def pull_cmd(keep_failed: bool, vllm: bool, application: str | None, min_tps: fl
                 _pull.ollama_rm(tag)
 
     click.echo("No candidate passed both gates.", err=True)
+    sys.exit(1)
+
+
+@main.command("storage")
+@click.option(
+    "--backend",
+    type=click.Choice(["ollama", "vllm"]),
+    default="ollama",
+    show_default=True,
+    help="Serving backend, so footprints are sized the way they will load.",
+)
+def storage_cmd(backend: str) -> None:
+    """Plan capacity: what fits on disk, and what fits in memory together.
+
+    The second question is the one that usually matters. A working setup is a
+    text model, a vision model and an embedder, and what decides the day is
+    whether they can sit in memory *at the same time* rather than taking turns.
+    Each may fit alone while the trio does not, and a per-model view would
+    never say so.
+    """
+    from . import storage as _storage
+    from .pull import installed_tags
+
+    entries = _catalog.load_catalog()
+    hw = _detect.available_memory()
+    budget = _score.effective_budget(hw)
+    present = installed_tags() if backend == "ollama" else set()
+
+    report = _storage.report(entries, budget, installed=present, backend=backend)
+    disk = report["disk"]
+
+    click.echo(
+        f"disk   : {disk['free_gb']} GB free of {disk['total_gb']} "
+        f"({disk['percent_used']}% used); {disk['spendable_gb']} GB spendable"
+    )
+    click.echo(f"memory : {report['memory_budget_gb']} GB available to models together")
+
+    if report["already_here"]:
+        here = ", ".join(f"{r['id']} ({r['disk_gb']} GB)" for r in report["already_here"])
+        click.echo(f"\nalready here: {here}")
+
+    click.echo(f"\nCould be pulled into the space left ({len(report['pullable_now'])}):")
+    for row in report["pullable_now"]:
+        click.echo(f"  {row['disk_gb']:>6.1f} GB  {row['id']}  [{row['kind']}]")
+    if not report["pullable_now"]:
+        click.echo("  (nothing fits in the remaining space)")
+
+    click.echo("\nCan be held in memory at the same time, best first:")
+    for combo in report["resident_sets"]:
+        names = " + ".join(f"{k}:{v}" for k, v in combo["models"].items())
+        click.echo(
+            f"  {combo['total_ram_gb']:>6.1f} GB  {names}   (headroom {combo['headroom_gb']} GB)"
+        )
+    if not report["resident_sets"]:
+        click.echo("  (no one-per-kind combination fits; they must take turns)")
+
+    for warning in report["warnings"]:
+        click.echo(f"\n! {warning}", err=True)
+
+
+@main.command("doctor")
+@click.option(
+    "--directory",
+    default=".",
+    show_default=True,
+    help="Repo directory holding the engine file.",
+)
+@click.option(
+    "--timeout",
+    type=float,
+    default=1.5,
+    show_default=True,
+    help="Seconds to wait for the local daemon.",
+)
+def doctor_cmd(directory: str, timeout: float) -> None:
+    """Compare what the engine file resolved against what the daemon serves.
+
+    "Resolved" and "runnable" are two different claims, and they drift apart
+    quietly: an engine file is written once, while the daemon it names is
+    mutable and ``ollama rm`` leaves no trace in the descriptor. Without this,
+    the gap surfaces at the first inference call -- usually mid-job, which is
+    the worst moment to learn a model was never pullable.
+
+    Diagnoses only. Re-resolving here would hide the drift this exists to show.
+    Exits non-zero when anything the file names cannot be served right now.
+    """
+    from . import engine as _engine
+
+    report = _engine.diagnose(directory, timeout=timeout)
+
+    click.echo(f"engine file : {report['engine_path']}")
+    click.echo(f"backend     : {report['backend'] or '-'}")
+    click.echo(f"daemon      : {'reachable' if report['daemon_reachable'] else 'NOT reachable'}")
+    if report["served"]:
+        click.echo(f"serves      : {', '.join(report['served'])}")
+
+    if report["ok"]:
+        click.echo("\nEverything the engine file names can be served right now.")
+        return
+
+    click.echo("")
+    for finding in report["findings"]:
+        click.echo(f"  - {finding['message']}", err=True)
     sys.exit(1)
 
 

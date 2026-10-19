@@ -26,6 +26,8 @@ Commands (identical to `cli.py`):
   hardware show/update       Manage the hardware chip table.
   pull            Pull the best model and run Ralph validation gates.
   validate        Run Ralph gates on the already-configured model.
+  doctor          Compare what was resolved against what the daemon serves.
+  storage         Plan capacity: disk, and what fits in memory together.
   gui             Launch the minimal browser GUI.
   env             Print the env block for ~/.zshrc or sourcing.
 
@@ -768,6 +770,93 @@ def _handle_pull(ns: argparse.Namespace) -> int:
     return 1
 
 
+def _handle_storage(ns: argparse.Namespace) -> int:
+    """
+    Plan capacity: what fits on disk, and what fits in memory together.
+
+    Parameters
+    ----------
+    ns : argparse.Namespace
+        Parsed CLI arguments: `backend`.
+
+    Returns
+    -------
+    int
+        Process exit code (always 0; this reports, it does not gate).
+    """
+    from . import storage as _storage
+    from .pull import installed_tags
+
+    entries = _catalog.load_catalog()
+    hw = _detect.available_memory()
+    budget = _score.effective_budget(hw)
+    present = installed_tags() if ns.backend == "ollama" else set()
+
+    report = _storage.report(entries, budget, installed=present, backend=ns.backend)
+    disk = report["disk"]
+
+    _emit(
+        f"disk   : {disk['free_gb']} GB free of {disk['total_gb']} "
+        f"({disk['percent_used']}% used); {disk['spendable_gb']} GB spendable"
+    )
+    _emit(f"memory : {report['memory_budget_gb']} GB available to models together")
+
+    if report["already_here"]:
+        here = ", ".join(f"{r['id']} ({r['disk_gb']} GB)" for r in report["already_here"])
+        _emit(f"\nalready here: {here}")
+
+    _emit(f"\nCould be pulled into the space left ({len(report['pullable_now'])}):")
+    for row in report["pullable_now"]:
+        _emit(f"  {row['disk_gb']:>6.1f} GB  {row['id']}  [{row['kind']}]")
+    if not report["pullable_now"]:
+        _emit("  (nothing fits in the remaining space)")
+
+    _emit("\nCan be held in memory at the same time, best first:")
+    for combo in report["resident_sets"]:
+        names = " + ".join(f"{k}:{v}" for k, v in combo["models"].items())
+        _emit(f"  {combo['total_ram_gb']:>6.1f} GB  {names}   (headroom {combo['headroom_gb']} GB)")
+    if not report["resident_sets"]:
+        _emit("  (no one-per-kind combination fits; they must take turns)")
+
+    for warning in report["warnings"]:
+        _emit_err(f"\n! {warning}")
+    return 0
+
+
+def _handle_doctor(ns: argparse.Namespace) -> int:
+    """
+    Compare what the engine file resolved against what the daemon serves.
+
+    Parameters
+    ----------
+    ns : argparse.Namespace
+        Parsed CLI arguments: `directory`, `timeout`.
+
+    Returns
+    -------
+    int
+        0 when everything named can be served now, 1 otherwise.
+    """
+    from . import engine as _engine
+
+    report = _engine.diagnose(ns.directory, timeout=ns.timeout)
+
+    _emit(f"engine file : {report['engine_path']}")
+    _emit(f"backend     : {report['backend'] or '-'}")
+    _emit(f"daemon      : {'reachable' if report['daemon_reachable'] else 'NOT reachable'}")
+    if report["served"]:
+        _emit(f"serves      : {', '.join(report['served'])}")
+
+    if report["ok"]:
+        _emit("\nEverything the engine file names can be served right now.")
+        return 0
+
+    _emit("")
+    for finding in report["findings"]:
+        _emit_err(f"  - {finding['message']}")
+    return 1
+
+
 def _handle_validate(_ns: argparse.Namespace) -> int:
     """
     Run Ralph gates on the already-configured model.
@@ -1057,6 +1146,27 @@ def build_parser() -> argparse.ArgumentParser:
     _add_usages_group(sub)
     _add_catalog_group(sub)
     _add_hardware_group(sub)
+
+    p = sub.add_parser("storage", help="Plan capacity: disk, and what fits in memory together.")
+    p.add_argument(
+        "--backend",
+        choices=["ollama", "vllm"],
+        default="ollama",
+        help="Serving backend, so footprints are sized as they will load.",
+    )
+    p.set_defaults(func=_handle_storage)
+
+    p = sub.add_parser("doctor", help="Compare what was resolved against what the daemon serves.")
+    p.add_argument(
+        "--directory", default=".", help="Repo directory holding the engine file (default: .)."
+    )
+    p.add_argument(
+        "--timeout",
+        type=float,
+        default=1.5,
+        help="Seconds to wait for the local daemon (default: 1.5).",
+    )
+    p.set_defaults(func=_handle_doctor)
 
     p = sub.add_parser("pull", help="Pull the best model and run Ralph validation gates.")
     p.add_argument(

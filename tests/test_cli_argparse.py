@@ -31,6 +31,8 @@ EXPECTED_COMMANDS = {
     "hardware",
     "pull",
     "validate",
+    "doctor",
+    "storage",
     "gui",
     "env",
     "activity",
