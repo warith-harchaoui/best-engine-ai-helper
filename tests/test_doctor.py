@@ -59,11 +59,38 @@ def test_everything_served_is_a_clean_bill(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_a_bare_tag_counts_as_served(tmp_path: Path, monkeypatch) -> None:
-    """`gemma3` and `gemma3:latest` are the same model to Ollama."""
-    monkeypatch.setattr("best_engine_ai_helper.pull.installed_tags", lambda *_a, **_k: {"gemma3"})
-    directory = _write(tmp_path, "backend: ollama\nllm:\n  model: gemma3:latest\n")
+    """`gemma3` and `gemma3:latest` are the same model to Ollama.
+
+    The stub mirrors what `installed_tags` really returns: `/api/tags` always
+    reports a full `name:tag`, and the bare form is added only when that tag is
+    `latest`.
+    """
+    monkeypatch.setattr(
+        "best_engine_ai_helper.pull.installed_tags",
+        lambda *_a, **_k: {"gemma3:latest", "gemma3"},
+    )
+    directory = _write(tmp_path, "backend: ollama\nllm:\n  model: gemma3\n")
 
     assert engine.diagnose(directory)["ok"] is True
+
+
+def test_a_different_size_is_not_served_by_the_latest_tag(tmp_path: Path, monkeypatch) -> None:
+    """The failure this command exists to catch, so it must not cause it.
+
+    Matching on the family name would let `gemma3:12b` pass on a daemon holding
+    nothing but `gemma3:latest` — a clean bill of health for a model that will
+    fail at the first inference call.
+    """
+    monkeypatch.setattr(
+        "best_engine_ai_helper.pull.installed_tags",
+        lambda *_a, **_k: {"gemma3:latest", "gemma3"},
+    )
+    directory = _write(tmp_path, "backend: ollama\nllm:\n  model: gemma3:12b\n")
+
+    report = engine.diagnose(directory)
+
+    assert report["ok"] is False
+    assert "gemma3:12b" in report["findings"][0]["message"]
 
 
 def test_an_unreachable_daemon_is_reported_rather_than_passed(tmp_path: Path, monkeypatch) -> None:

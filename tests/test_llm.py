@@ -515,16 +515,27 @@ def test_cloud_api_key_retry_cache_pseudonymize_and_safety_wiring(
 
 
 class _FakeStream:
-    """A requests-like response that yields Ollama's NDJSON, line by line."""
+    """A requests-like response that yields Ollama's NDJSON, line by line.
 
-    def __init__(self, pieces, *, done_last=True):
+    Records whether it was closed: a streamed response holds its socket until
+    the body is consumed or closed, so "was this released" is a property worth
+    asserting rather than assuming.
+    """
+
+    def __init__(self, pieces, *, done_last=True, final_fields=None):
         self._lines = [json.dumps({"response": piece, "done": False}) for piece in pieces]
         if done_last:
-            self._lines.append(json.dumps({"response": "", "done": True}))
+            last = {"response": "", "done": True}
+            last.update(final_fields or {})
+            self._lines.append(json.dumps(last))
         self.sent = None
+        self.closed = False
 
     def raise_for_status(self):
         return None
+
+    def close(self):
+        self.closed = True
 
     def iter_lines(self, decode_unicode=True):
         yield from self._lines
@@ -624,3 +635,158 @@ def test_a_missing_model_is_named_rather_than_blamed_on_the_url(monkeypatch):
     assert "qwen3:8b" in message, "name the model that is missing"
     assert "gemma3:12b" in message, "and the ones that are there"
     assert "BEST_LLM_TEXT" in message, "and a variable that actually works"
+
+
+# ---------------------------------------------------------------------------
+# What a stream owes the caller after the last chunk
+# ---------------------------------------------------------------------------
+
+
+def _stream_with(monkeypatch, stream):
+    """Point requests.post at `stream` and return the captured observer events."""
+    import requests
+
+    from best_engine_ai_helper import llm
+
+    monkeypatch.setattr(requests, "post", lambda *a, **k: stream)
+    monkeypatch.setitem(__import__("os").environ, "BEST_LLM_TEXT", "gemma3:12b")
+
+    events = []
+    llm.clear_observers()
+    llm.add_observer(events.append)
+    return events
+
+
+def test_a_finished_stream_releases_its_connection(monkeypatch):
+    from best_engine_ai_helper import llm
+
+    stream = _FakeStream(["a", "b"])
+    _stream_with(monkeypatch, stream)
+
+    list(llm.chat_stream("x", safety=False))
+
+    assert stream.closed, "a consumed stream must release its socket"
+    llm.clear_observers()
+
+
+def test_an_abandoned_stream_still_releases_its_connection(monkeypatch):
+    """The documented use is speaking chunks and stopping when interrupted.
+
+    An abandoned generator consumes neither the body nor a close, so without a
+    finally the socket leaks once per interruption.
+    """
+    from best_engine_ai_helper import llm
+
+    stream = _FakeStream(["a", "b", "c", "d"])
+    _stream_with(monkeypatch, stream)
+
+    gen = llm.chat_stream("x", safety=False)
+    next(gen)
+    gen.close()  # the caller stops early
+
+    assert stream.closed
+    llm.clear_observers()
+
+
+def test_a_stream_is_recorded_in_the_ledger_like_any_other_call(monkeypatch):
+    """`chat` emits for every request; a streamed call that emitted nothing
+    would leave a user who streams everything reading an empty ledger."""
+    from best_engine_ai_helper import llm
+
+    stream = _FakeStream(
+        ["Bon", "jour"],
+        final_fields={"prompt_eval_count": 13, "eval_count": 141, "eval_duration": 5_000_000_000},
+    )
+    events = _stream_with(monkeypatch, stream)
+
+    list(llm.chat_stream("salut", safety=False))
+
+    assert len(events) == 1
+    event = events[0]
+    assert event["ok"] is True
+    assert event["in_tokens"] == 13
+    assert event["out_tokens"] == 141
+    assert event["gen_ms"] == 5000.0  # nanoseconds, as the whole-answer path reports
+    assert event["out_chars"] == len("Bonjour")
+    llm.clear_observers()
+
+
+def test_a_cut_stream_reports_none_rather_than_a_zero(monkeypatch):
+    """Zero tokens reads as a measurement; None says the count is unknown."""
+    from best_engine_ai_helper import llm
+
+    stream = _FakeStream(["a", "b"], done_last=False)
+    events = _stream_with(monkeypatch, stream)
+
+    list(llm.chat_stream("x", safety=False))
+
+    assert len(events) == 1
+    assert events[0]["ok"] is False
+    assert events[0]["out_tokens"] is None
+    assert "before the final event" in events[0]["error"]
+    llm.clear_observers()
+
+
+def test_exactly_one_event_is_emitted_per_stream(monkeypatch):
+    """A finally that ran twice would double-count every streamed call."""
+    from best_engine_ai_helper import llm
+
+    events = _stream_with(monkeypatch, _FakeStream(["a"]))
+
+    list(llm.chat_stream("x", safety=False))
+
+    assert len(events) == 1
+    llm.clear_observers()
+
+
+def test_embed_uses_the_model_it_is_given(monkeypatch):
+    """The catalog ships four embedders and usages.py already picks between
+    them; nothing wires that choice to embed(), so the caller must pass it."""
+    from unittest.mock import patch
+
+    from best_engine_ai_helper import llm as _llm
+
+    monkeypatch.setenv("SPREZZATURE_LLM_BACKEND", "ollama")
+    sent = {}
+
+    class _Resp:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"embedding": [0.1, 0.2]}
+
+    def _post(url, json=None, timeout=None, **_kw):
+        sent["model"] = json["model"]
+        return _Resp()
+
+    with patch("requests.post", _post):
+        _llm.embed("hi", model="nomic-embed-text")
+    assert sent["model"] == "nomic-embed-text"
+
+
+def test_embed_defaults_to_the_text_model_rather_than_guessing(monkeypatch):
+    """Vectors from two models are not comparable, so the default is left
+    alone: silently swapping it would poison an existing store."""
+    from unittest.mock import patch
+
+    from best_engine_ai_helper import llm as _llm
+
+    monkeypatch.setenv("SPREZZATURE_LLM_BACKEND", "ollama")
+    monkeypatch.setenv("BEST_LLM_TEXT", "qwen3:8b")
+    sent = {}
+
+    class _Resp:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"embedding": [0.1]}
+
+    def _post(url, json=None, timeout=None, **_kw):
+        sent["model"] = json["model"]
+        return _Resp()
+
+    with patch("requests.post", _post):
+        _llm.embed("hi")
+    assert sent["model"] == "qwen3:8b"

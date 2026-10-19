@@ -766,7 +766,11 @@ def diagnose(
         if not model:
             continue
         named += 1
-        if model in served or model.split(":")[0] in served:
+        # Plain membership is both necessary and sufficient: `pull.installed_tags`
+        # already adds the bare form for a `:latest` tag and only for that, so a
+        # looser `name.split(":")[0]` test would call `gemma3:12b` installed when
+        # the daemon holds nothing but `gemma3:latest` -- a different model.
+        if model in served:
             continue
         report["findings"].append(
             {

@@ -656,11 +656,15 @@ def rank(
         score = _benchmark_score(e, kind, application)
         band = (score // QUALITY_TIE_BAND) * QUALITY_TIE_BAND if QUALITY_TIE_BAND > 0 else score
         ident = str(e.get("id") or "")
-        already_here = bool(present) and (ident in present or ident.split(":")[0] in present)
+        # Plain membership is both necessary and sufficient: `pull.installed_tags`
+        # already adds the bare form for a `:latest` tag and only for that, so a
+        # looser `name.split(":")[0]` test would call `gemma3:12b` installed when
+        # the daemon holds nothing but `gemma3:latest` -- a different model.
+        already_here = ident in present
         return (structured_ok, not measured_slow, band, already_here, score)
 
     ranked = sorted(annotated, key=_sort_key, reverse=True)
     for entry in ranked:
         ident = str(entry.get("id") or "")
-        entry["_installed"] = bool(present) and (ident in present or ident.split(":")[0] in present)
+        entry["_installed"] = ident in present
     return ranked

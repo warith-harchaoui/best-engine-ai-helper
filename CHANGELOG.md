@@ -6,6 +6,31 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Fixed
 
+- **A streamed call leaked its connection and was invisible to the ledger.**
+  `chat_stream` never closed its streaming response, so a caller that stopped
+  consuming early — the documented use, speaking chunks as they arrive and
+  stopping when interrupted — leaked a socket every time. It also emitted no
+  observer event, so streamed calls never reached the SQLite ledger that
+  `activity` and `/api/activity` report: a user who streamed all their work
+  would have read an empty ledger and concluded the tool did nothing. Both are
+  now handled in a `finally`, which also runs when the generator is abandoned.
+
+  The final `done` event carries `eval_count`, `eval_duration` and
+  `prompt_eval_count` — the same counts the whole-answer path records — and
+  they were being discarded. They are now read, so a streamed call is costed
+  like any other and `throughput.Meter` can measure one. A stream cut before
+  that event reports `None` rather than zero: zero reads as a measurement.
+
+- **`gemma3:12b` could be reported as already installed when the daemon held
+  only `gemma3:latest`.** `pull.installed_tags` adds the bare form of a tag
+  only when that tag is `latest`, so plain set membership is both necessary and
+  sufficient; an extra `name.split(":")[0]` fallback matched any size of the
+  family. Introduced in this release's own `doctor`, `storage` and
+  already-installed tiebreak. The consequence was worst in `doctor`, which
+  would have issued a clean bill of health for a model that fails at the first
+  inference call — precisely the failure it exists to catch. `engine.resolve`
+  had it right and is unchanged.
+
 - **A catalog refresh could erase hand-curated benchmark scores.** The cache
   overlays the seed by id with a plain dict replacement, so an entry refreshed
   from a source that publishes no benchmarks handed its nulls to a seed entry
@@ -63,6 +88,18 @@ All notable changes to best-engine-ai-helper are documented here.
   catalog.
 
 ### Added
+
+- `llm.embed()` takes a `model`. The catalog ships four embedders
+  (`nomic-embed-text`, `mxbai-embed-large`, `snowflake-arctic-embed2`,
+  `bge-m3`) and `usages.resolve_usage` already picks between them on MTEB score
+  and available memory — but nothing wired that choice to `embed()`, which
+  silently used the configured *chat* model and still does by default.
+
+  The default is left alone deliberately rather than quietly improved: vectors
+  from two different models are not comparable, so swapping the model under an
+  existing store poisons every similarity it computes. A corruption nobody is
+  told about is worse than a weak default that is written down, so the caveat
+  is now in the docstring and the override is available.
 
 - **The GUI remembers your preferences.** Headroom, the quality-versus-cost
   weight and the live-load toggle persist to

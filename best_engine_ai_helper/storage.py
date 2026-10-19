@@ -172,7 +172,11 @@ def report(
         if not ident:
             continue
         row = {"id": ident, "kind": entry.get("kind"), "disk_gb": round(_disk_gb(entry), 1)}
-        if ident in present or ident.split(":")[0] in present:
+        # Plain membership is both necessary and sufficient: `pull.installed_tags`
+        # already adds the bare form for a `:latest` tag and only for that, so a
+        # looser `name.split(":")[0]` test would call `gemma3:12b` installed when
+        # the daemon holds nothing but `gemma3:latest` -- a different model.
+        if ident in present:
             already.append(row)
         else:
             candidates.append(row)

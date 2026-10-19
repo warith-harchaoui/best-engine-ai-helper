@@ -551,11 +551,33 @@ def test_without_an_installed_set_the_order_is_unchanged(tmp_path, monkeypatch) 
     assert ranked[0]["_installed"] is False
 
 
-def test_a_bare_tag_matches_its_latest_form(tmp_path, monkeypatch) -> None:
-    """`gemma3:12b` should count as present when the daemon reports `gemma3`."""
+def test_a_different_size_of_the_same_family_is_not_installed(tmp_path, monkeypatch) -> None:
+    """`ondisk:8b` is not present just because the daemon holds `ondisk:latest`.
+
+    `pull.installed_tags` already adds the bare form for a `:latest` tag and
+    only for that, so matching on the family name would promote a model that
+    still needs a full download.
+    """
     from best_engine_ai_helper import score
 
     monkeypatch.setattr(throughput, "_STORE_PATH", tmp_path / "none.yaml")
 
-    ranked = score.rank(_ROOMY, _pair(80.5, 80.0), kind="llm", installed={"ondisk"})
-    assert [e["id"] for e in ranked] == ["ondisk:8b", "remote:8b"]
+    ranked = score.rank(
+        _ROOMY, _pair(80.5, 80.0), kind="llm", installed={"ondisk:latest", "ondisk"}
+    )
+    assert [e["id"] for e in ranked] == ["remote:8b", "ondisk:8b"]
+    assert all(e["_installed"] is False for e in ranked)
+
+
+def test_a_bare_tag_is_matched_when_the_daemon_reports_it(tmp_path, monkeypatch) -> None:
+    """The normalisation that IS sound: a bare id against a `:latest` pull."""
+    from best_engine_ai_helper import score
+
+    monkeypatch.setattr(throughput, "_STORE_PATH", tmp_path / "none.yaml")
+    catalog = [
+        {"id": "remote:8b", "kind": "llm", "ram_gb": 6.0, "benchmarks": {"general": 80.5}},
+        {"id": "ondisk", "kind": "llm", "ram_gb": 6.0, "benchmarks": {"general": 80.0}},
+    ]
+
+    ranked = score.rank(_ROOMY, catalog, kind="llm", installed={"ondisk:latest", "ondisk"})
+    assert [e["id"] for e in ranked] == ["ondisk", "remote:8b"]

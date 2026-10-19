@@ -417,7 +417,7 @@ def _chat_ollama(
     model: str,
     temperature: float,
     base_url: str | None = None,
-) -> tuple[str, dict[str, int | None]]:
+) -> tuple[str, dict[str, float | None]]:
     """
     Send a chat request to the Ollama /api/generate endpoint.
 
@@ -518,7 +518,7 @@ def _chat_openai(
     temperature: float,
     base_url: str | None = None,
     api_key: str | None = None,
-) -> tuple[str, dict[str, int | None]]:
+) -> tuple[str, dict[str, float | None]]:
     """
     Send a chat request to an OpenAI-compatible /v1/chat/completions endpoint.
 
@@ -640,7 +640,7 @@ def _chat_langchain(
     json_schema: dict[str, Any] | None,
     model: str,
     temperature: float,
-) -> tuple[str, dict[str, int | None]]:
+) -> tuple[str, dict[str, float | None]]:
     """
     Send a chat request via LangChain wrappers.
 
@@ -749,7 +749,7 @@ def _chat_anthropic(
     temperature: float,
     base_url: str | None = None,
     api_key: str | None = None,
-) -> tuple[str, dict[str, int | None]]:
+) -> tuple[str, dict[str, float | None]]:
     """
     Send a chat request to Anthropic's Messages API.
 
@@ -872,7 +872,7 @@ def _chat_gemini(
     temperature: float,
     base_url: str | None = None,
     api_key: str | None = None,
-) -> tuple[str, dict[str, int | None]]:
+) -> tuple[str, dict[str, float | None]]:
     """
     Send a chat request to Google's Gemini generateContent API.
 
@@ -1092,7 +1092,7 @@ def _dispatch(
     temperature: float,
     base_url: str | None,
     api_key: str | None,
-) -> tuple[str, dict[str, int | None]]:
+) -> tuple[str, dict[str, float | None]]:
     """Run one transport call. Raises on failure; performs no logging/emit."""
     if transport == "ollama":
         return _chat_ollama(
@@ -1152,7 +1152,7 @@ def _dispatch(
     )
 
 
-_RunResult = tuple[str, dict[str, int | None]]
+_RunResult = tuple[str, dict[str, float | None]]
 
 
 def _with_retry(fn: Callable[[], _RunResult], retries: int) -> _RunResult:
@@ -1381,7 +1381,7 @@ def chat(
             _m: str = resolved_model,
             _u: str | None = base_url,
             _k: str | None = api_key,
-        ) -> tuple[str, dict[str, int | None]]:
+        ) -> tuple[str, dict[str, float | None]]:
             return _with_retry(
                 lambda: _dispatch(
                     _t,
@@ -1655,30 +1655,99 @@ def chat_stream(
         payload["system"] = system
 
     url = f"{(base_url or resolved_base_url or _base_url()).rstrip('/')}/api/generate"
+    t0 = time.perf_counter()
     try:
         response = requests.post(url, json=payload, timeout=_timeout(), stream=True)
         response.raise_for_status()
     except requests.RequestException as exc:
         message = _ollama_failure(url, resolved_model, exc)
         osh.error(f"Ollama streaming request failed:\n\t{url}\n\t{message}")
+        # A failed stream is still a call that happened, and the ledger is only
+        # worth consulting if it records the failures too.
+        _emit(
+            {
+                "backend": backend,
+                "model": resolved_model,
+                "kind": kind or "llm",
+                "in_chars": len(prompt),
+                "images": 0,
+                "out_chars": 0,
+                "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
+                "ok": False,
+                "error": repr(exc),
+                "attempt": 0,
+                "cached": False,
+                "in_tokens": None,
+                "out_tokens": None,
+                "gen_ms": None,
+            }
+        )
         raise RuntimeError(message) from exc
 
     seen: list[str] = []
-    for line in response.iter_lines(decode_unicode=True):
-        if not line:
-            continue
+    final: dict[str, Any] = {}
+    try:
+        for line in response.iter_lines(decode_unicode=True):
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                # A partial line. Ollama emits one JSON object per line, so this
+                # means the stream was cut; stopping is better than guessing.
+                break
+            piece = event.get("response", "")
+            if piece:
+                seen.append(str(piece))
+                yield str(piece)
+            if event.get("done"):
+                # The last event carries the counts the whole-answer path
+                # records: eval_count, eval_duration, prompt_eval_count.
+                final = event
+                break
+    finally:
+        # Two things that must happen however this generator ends, including
+        # when the caller stops consuming it and Python throws GeneratorExit in
+        # at the yield above -- the likeliest case here, since the documented
+        # use is speaking chunks as they arrive and stopping when interrupted.
+        #
+        # 1. Release the connection. A streamed response holds its socket until
+        #    the body is consumed or closed, and an abandoned generator consumes
+        #    neither; one leak per interruption adds up in a long-running app.
+        #    Guarded so that a close which somehow fails cannot also cost us
+        #    step 2 -- the two are independent obligations, and skipping the
+        #    ledger write would make the call disappear rather than fail.
         try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            # A partial line. Ollama emits one JSON object per line, so this
-            # means the stream was cut; stopping is better than guessing.
-            break
-        piece = event.get("response", "")
-        if piece:
-            seen.append(str(piece))
-            yield str(piece)
-        if event.get("done"):
-            break
+            response.close()
+        except Exception as exc:  # noqa: BLE001 — nothing left to salvage here
+            osh.debug(f"Could not close the streaming response: {exc!r}")
+
+        # 2. Record the call. `chat` emits for every request, and the ledger is
+        #    what `activity` and /api/activity report -- a user who streams all
+        #    their work would otherwise read an empty ledger and conclude the
+        #    tool costs nothing and does nothing. The counts come from the final
+        #    event when the stream ran to completion, and are None when it did
+        #    not, which is the honest distinction between "measured" and "cut
+        #    short" rather than a zero that reads as a measurement.
+        eval_ns = final.get("eval_duration")
+        _emit(
+            {
+                "backend": backend,
+                "model": resolved_model,
+                "kind": kind or "llm",
+                "in_chars": len(prompt),
+                "images": 0,
+                "out_chars": sum(len(p) for p in seen),
+                "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
+                "ok": bool(final),
+                "error": None if final else "stream ended before the final event",
+                "attempt": 0,
+                "cached": False,
+                "in_tokens": final.get("prompt_eval_count"),
+                "out_tokens": final.get("eval_count"),
+                "gen_ms": (eval_ns / 1e6) if isinstance(eval_ns, (int, float)) else None,
+            }
+        )
 
     # After the fact, and deliberately so — see the docstring. A caller that
     # buffered is protected exactly as chat() protects it; a caller that spoke
@@ -1691,7 +1760,7 @@ def chat_stream(
         _safety.check_text("".join(seen), direction="inbound")
 
 
-def embed(text: str) -> list[float]:
+def embed(text: str, model: str | None = None) -> list[float]:
     """
     Return an embedding vector for the given text.
 
@@ -1699,10 +1768,31 @@ def embed(text: str) -> list[float]:
     embedding endpoint (``/v1/embeddings``) is not yet implemented because the
     retrieval use case is not yet in scope.
 
+    Which model, and why the default is probably not the one you want
+    -----------------------------------------------------------------
+    With no ``model``, this uses the configured **text** model — the chat LLM.
+    Ollama will embed with it, and the result is far worse for retrieval than a
+    purpose-built embedder would give. The catalog ships four
+    (``nomic-embed-text``, ``mxbai-embed-large``,
+    ``snowflake-arctic-embed2``, ``bge-m3``), and
+    :func:`usages.resolve_usage` already picks between them on their MTEB
+    score and this machine's memory — but nothing wires that choice to here,
+    so the caller has to pass it.
+
+    The default is left alone deliberately rather than quietly improved.
+    Vectors from two different models are not comparable: swapping the model
+    under an existing store silently poisons every similarity it computes, and
+    a corruption nobody is told about is worse than a weak default that is
+    written down. Pass ``model`` explicitly — ideally the embedder named by a
+    resolved usage brief.
+
     Parameters
     ----------
     text : str
         Input text to embed.
+    model : str or None
+        Embedding model tag. Defaults to the configured text model; see above
+        for why that default is a caveat rather than a recommendation.
 
     Returns
     -------
@@ -1733,7 +1823,7 @@ def embed(text: str) -> list[float]:
         )
 
     payload = {
-        "model": _text_model(),
+        "model": model or _text_model(),
         "prompt": text,
     }
     url = f"{_base_url()}/api/embeddings"
