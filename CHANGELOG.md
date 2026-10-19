@@ -6,6 +6,23 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Fixed
 
+- **Coverage had slipped under the floor, and nothing local could see it.**
+  CONTRIBUTING documents a 90% floor that CI fails on; six modules added in
+  this release took it to **89.54%**. The pre-push gate ran the tests but not
+  the coverage check, so a gate promising "a red local state never reaches CI"
+  was blind to the one thing CI would have failed on. It now checks the floor
+  in the same run, which is where the check belongs.
+
+  Brought back to **90.38%** by covering paths that were worth pinning rather
+  than by chasing lines: the Ollama library fetch (one bounded request, `limit`
+  keeping the most popular families, a family listed twice recorded once — the
+  real index repeats some — and navigation `<li>` elements ignored), and the
+  Arena history mirror, which had no tests at all despite being the only source
+  that still answers (newest snapshot wins, each board lands on the axis it
+  measures, an unmapped board contributes nothing rather than guessing, a dead
+  mirror returns None rather than raising, a malformed board costs that board
+  and not the lot).
+
 - **The pre-push gate judged the working directory instead of the commit being
   pushed.** It was wrong in both directions, and both were observed rather than
   argued. *False failures:* `ruff check .` walks the filesystem, so untracked

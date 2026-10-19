@@ -283,3 +283,89 @@ def test_arena_is_last_on_every_execution_axis():
         arena_axes = [i for i, k in enumerate(priority) if k.startswith("arena")]
         others = [i for i, k in enumerate(priority) if not k.startswith("arena")]
         assert min(arena_axes) > max(others), f"{application}: arena is not last"
+
+
+# ---------------------------------------------------------------------------
+# The history mirror: the only one that still answers
+# ---------------------------------------------------------------------------
+
+
+class _FakeJSON:
+    """A requests-like session returning a fixed payload per URL."""
+
+    def __init__(self, payload, *, raises=None):
+        self.payload = payload
+        self.raises = raises
+        self.calls = []
+
+    def get(self, url, timeout=None, headers=None):
+        self.calls.append((url, timeout))
+        if self.raises:
+            raise self.raises
+        return self
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self.payload
+
+
+_HISTORY = {
+    "20250101": {"overall": {"overall": {"old-model": 1100.0}}},
+    "20250522": {
+        "overall": {"overall": {"gpt-4o-2024-08-06": 1300.0}},
+        "coding": {"overall": {"gpt-4o-2024-08-06": 1280.0}},
+        "vision": {"overall": {"gpt-4o-2024-08-06": 1250.0}},
+    },
+}
+
+
+def test_the_newest_snapshot_wins_over_older_ones() -> None:
+    """A mirror carries many dates; only the freshest is worth reading."""
+    snapshot, boards = arena._from_history(_FakeJSON(_HISTORY), 5.0)
+
+    assert snapshot == "20250522"
+    assert "old-model" not in boards["arena"]
+
+
+def test_each_board_lands_on_the_axis_it_measures() -> None:
+    _, boards = arena._from_history(_FakeJSON(_HISTORY), 5.0)
+
+    assert set(boards) == {"arena", "arena_code", "arena_vision"}
+    assert boards["arena_code"]["gpt-4o-2024-08-06"] == 1280.0
+
+
+def test_a_board_nobody_mapped_is_left_out() -> None:
+    """ "Overall with style control" and friends answer a different question,
+    so an unmapped board contributes nothing rather than guessing an axis."""
+    payload = {"20250522": {"overall-style-control": {"overall": {"m": 1200.0}}}}
+
+    assert arena._from_history(_FakeJSON(payload), 5.0) is None
+
+
+def test_a_dead_mirror_is_none_rather_than_an_exception() -> None:
+    """Every source here is somebody else's scrape; one rotting must not raise."""
+    import requests
+
+    assert arena._from_history(_FakeJSON(None, raises=requests.RequestException()), 5.0) is None
+
+
+def test_a_mirror_answering_with_nonsense_is_none() -> None:
+    assert arena._from_history(_FakeJSON([]), 5.0) is None
+    assert arena._from_history(_FakeJSON({}), 5.0) is None
+
+
+def test_a_malformed_board_is_skipped_not_fatal() -> None:
+    """A board whose value is not a mapping should cost that board, not the lot."""
+    payload = {
+        "20250522": {
+            "overall": {"overall": {"m": 1200.0}},
+            "coding": "not-a-mapping",
+        }
+    }
+
+    snapshot, boards = arena._from_history(_FakeJSON(payload), 5.0)
+
+    assert snapshot == "20250522"
+    assert set(boards) == {"arena"}

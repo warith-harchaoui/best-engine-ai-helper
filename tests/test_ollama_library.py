@@ -166,3 +166,91 @@ def test_an_axis_the_refresh_is_silent_about_is_kept() -> None:
 def test_a_brand_new_entry_passes_through_unchanged() -> None:
     fresh = {"id": "new:8b", "benchmarks": {"general": None}}
     assert catalog._overlay(None, fresh) == fresh
+
+
+# ---------------------------------------------------------------------------
+# Fetching: wiring, limit, and the page's own quirks
+# ---------------------------------------------------------------------------
+
+
+class _FakePage:
+    """A requests-like response carrying a fixed page."""
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+        self.asked: dict = {}
+
+    def raise_for_status(self) -> None:
+        return None
+
+
+class _FakeSession:
+    def __init__(self, text: str) -> None:
+        self.page = _FakePage(text)
+        self.calls: list[tuple] = []
+
+    def get(self, url, timeout=None, headers=None):
+        self.calls.append((url, timeout, headers))
+        return self.page
+
+
+def test_fetch_reads_the_library_index_once_and_bounded() -> None:
+    """One request, with a timeout: a hung index read would stall a command
+    somebody is sitting in front of."""
+    session = _FakeSession(_PAGE)
+
+    families = lib.fetch_library(session=session, timeout=12.0)
+
+    assert len(session.calls) == 1
+    url, timeout, headers = session.calls[0]
+    assert url == lib.LIBRARY_URL
+    assert timeout == 12.0
+    assert "User-Agent" in headers
+    assert [f["name"] for f in families] == ["qwen3", "llava", "bge-m3", "mixtral"]
+
+
+def test_limit_keeps_the_most_popular_families() -> None:
+    """The page orders by popularity, so a partial refresh should take the
+    models people actually use rather than an arbitrary slice."""
+    session = _FakeSession(_PAGE)
+
+    families = lib.fetch_library(session=session, limit=2)
+
+    assert [f["name"] for f in families] == ["qwen3", "llava"]
+
+
+def test_a_family_listed_twice_is_recorded_once() -> None:
+    """The real index repeats some families (nomic-embed-text appears twice);
+    a duplicate entry would be a duplicate catalog id."""
+    doubled = (
+        _PAGE
+        + """
+      <li class="flex"><a href="/library/qwen3"><h2>qwen3</h2></a><span>8b</span></li>
+    """
+    )
+    families = lib.parse_library(doubled)
+
+    assert [f["name"] for f in families].count("qwen3") == 1
+
+
+def test_list_items_that_are_not_models_are_ignored() -> None:
+    """The page's <li> elements include navigation and footer entries."""
+    noisy = '<li class="nav"><a href="/blog">Blog</a></li>' + _PAGE
+
+    assert [f["name"] for f in lib.parse_library(noisy)] == [
+        "qwen3",
+        "llava",
+        "bge-m3",
+        "mixtral",
+    ]
+
+
+def test_fetch_pullable_models_returns_tags_not_families() -> None:
+    """The end-to-end shape callers use: one spec per concrete pull tag."""
+    session = _FakeSession(_PAGE)
+
+    specs = lib.fetch_pullable_models(session=session)
+
+    ids = {s["id"] for s in specs}
+    assert "qwen3:8b" in ids and "llava:13b" in ids
+    assert all(":" in s["id"] for s in specs), "a family alone is not pullable at a size"

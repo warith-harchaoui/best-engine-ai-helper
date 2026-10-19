@@ -113,8 +113,14 @@ for sha in $SHAS; do
     else
       echo "[pre-push]   note: pytest-timeout not installed; a hung test will not be named."
     fi
-    python -m pytest -q -m "" $TIMEOUT_ARGS || {
-      echo "[pre-push] tests failed - push aborted."; exit 1;
+    # Coverage is checked in the SAME run rather than a second sweep: CI
+    # enforces a 90% floor (see CONTRIBUTING), and a gate that promises "a red
+    # local state never reaches CI" has to check the thing CI actually fails
+    # on. It did not, and that is how six new modules were pushed at 89.54% --
+    # a breach nothing local could see, because the floor only existed in CI.
+    python -m pytest -q -m "" --cov=best_engine_ai_helper --cov-fail-under=90 \
+      $TIMEOUT_ARGS || {
+      echo "[pre-push] tests or coverage floor failed - push aborted."; exit 1;
     }
   ) || exit 1
 
