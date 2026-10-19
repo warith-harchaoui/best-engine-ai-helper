@@ -104,6 +104,18 @@ _DECODE_EFFICIENCY_BY_BACKEND: dict[str, float] = {
 # model drops to ~7 tok/s. Source: MLX / llama.cpp community UX benchmarks.
 COMFORT_TPS: float = 15.0
 
+# Width of the "same quality, really" band on the 0-100 benchmark scale. Two
+# models whose scores land inside the same band are treated as indistinguishable
+# on quality, which lets a cheaper tiebreak decide between them -- in practice,
+# preferring a model already on disk over a 20 GB download.
+#
+# Deliberately narrow. Benchmark scores are not precise to the point, but they
+# are not noise either, and a wide band would quietly let "already pulled" beat
+# a genuinely better model. Two points is about the width of the disagreement
+# between two leaderboards scoring the same model, which is the error bar this
+# is meant to absorb.
+QUALITY_TIE_BAND: float = 2.0
+
 # Live-load derating: knocked off the budget on TOP of headroom when the
 # machine is demonstrably busy right now (see `detect.server_load`), so two
 # machines with identical total capacity do not get identical recommendations
@@ -510,6 +522,7 @@ def rank(
     load: dict[str, Any] | None = None,
     bandwidth_gbs: float | None = None,
     min_tps: float | None = None,
+    installed: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     """
     Return all candidates sorted by benchmark score, annotated with fit status.
@@ -551,6 +564,14 @@ def rank(
         measured here to run optimistic by a wide margin, so letting it
         disqualify anything would reject models that run perfectly well. None
         disables the check entirely.
+    installed : set of str or None
+        Model tags already present on the machine. Used only to break ties
+        between candidates of comparable quality (within
+        :data:`QUALITY_TIE_BAND`), never to promote a worse model over a better
+        one: at equal quality a model already on disk beats a 20 GB download,
+        and at unequal quality the better model still wins. Passed in rather
+        than probed here so that ranking stays a pure function and no network
+        call hides inside a sort.
 
     Returns
     -------
@@ -617,7 +638,14 @@ def rank(
     #    memory, and it is now treated the same. An estimate never demotes --
     #    `_measured_slow` is False unless the figure came from a measurement --
     #    so a machine that has never run `pull` ranks exactly as it did before.
-    def _sort_key(e: dict[str, Any]) -> tuple[bool, bool, float]:
+    # 3. Among candidates of indistinguishable quality, prefer one already on
+    #    disk. This is a tiebreak and nothing more: the banded score is compared
+    #    FIRST, so a genuinely better model still wins however large its
+    #    download. It only decides when the benchmark cannot, which is the case
+    #    where the honest answer is "either, so take the cheap one".
+    present = installed or set()
+
+    def _sort_key(e: dict[str, Any]) -> tuple[bool, bool, float, bool, float]:
         structured_ok = e.get("structured_output", True) is not False
         measured_slow = (
             min_tps is not None
@@ -625,6 +653,14 @@ def rank(
             and e.get("_tps") is not None
             and float(e["_tps"]) < min_tps
         )
-        return (structured_ok, not measured_slow, _benchmark_score(e, kind, application))
+        score = _benchmark_score(e, kind, application)
+        band = (score // QUALITY_TIE_BAND) * QUALITY_TIE_BAND if QUALITY_TIE_BAND > 0 else score
+        ident = str(e.get("id") or "")
+        already_here = bool(present) and (ident in present or ident.split(":")[0] in present)
+        return (structured_ok, not measured_slow, band, already_here, score)
 
-    return sorted(annotated, key=_sort_key, reverse=True)
+    ranked = sorted(annotated, key=_sort_key, reverse=True)
+    for entry in ranked:
+        ident = str(entry.get("id") or "")
+        entry["_installed"] = bool(present) and (ident in present or ident.split(":")[0] in present)
+    return ranked

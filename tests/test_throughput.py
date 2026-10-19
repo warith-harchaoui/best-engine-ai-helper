@@ -506,3 +506,56 @@ def test_a_kept_faster_sample_still_picks_up_a_later_estimate(tmp_path: Path) ->
     row = throughput.load_measurements(store)["gemma3:12b@Apple M2 Max"]
     assert row["tokens_per_second"] == 15.2  # the faster figure is still the one kept
     assert row["calibration_ratio"] == 0.537  # 15.2 / 28.3, not 8.7 / 28.3
+
+
+# ---------------------------------------------------------------------------
+# "Already on disk" as a tiebreak, and the line it must not cross
+# ---------------------------------------------------------------------------
+
+
+def _pair(score_a: float, score_b: float) -> list[dict[str, Any]]:
+    return [
+        {"id": "remote:8b", "kind": "llm", "ram_gb": 6.0, "benchmarks": {"general": score_a}},
+        {"id": "ondisk:8b", "kind": "llm", "ram_gb": 6.0, "benchmarks": {"general": score_b}},
+    ]
+
+
+def test_at_comparable_quality_the_pulled_model_wins(tmp_path, monkeypatch) -> None:
+    """80.5 vs 80.0 is the same model as far as a leaderboard knows."""
+    from best_engine_ai_helper import score
+
+    monkeypatch.setattr(throughput, "_STORE_PATH", tmp_path / "none.yaml")
+
+    ranked = score.rank(_ROOMY, _pair(80.5, 80.0), kind="llm", installed={"ondisk:8b"})
+    assert [e["id"] for e in ranked] == ["ondisk:8b", "remote:8b"]
+    assert ranked[0]["_installed"] is True
+
+
+def test_a_clearly_better_model_still_beats_one_already_on_disk(tmp_path, monkeypatch) -> None:
+    """The tiebreak must never promote a worse model to save a download."""
+    from best_engine_ai_helper import score
+
+    monkeypatch.setattr(throughput, "_STORE_PATH", tmp_path / "none.yaml")
+
+    ranked = score.rank(_ROOMY, _pair(90.0, 70.0), kind="llm", installed={"ondisk:8b"})
+    assert [e["id"] for e in ranked] == ["remote:8b", "ondisk:8b"]
+
+
+def test_without_an_installed_set_the_order_is_unchanged(tmp_path, monkeypatch) -> None:
+    from best_engine_ai_helper import score
+
+    monkeypatch.setattr(throughput, "_STORE_PATH", tmp_path / "none.yaml")
+
+    ranked = score.rank(_ROOMY, _pair(80.5, 80.0), kind="llm")
+    assert [e["id"] for e in ranked] == ["remote:8b", "ondisk:8b"]
+    assert ranked[0]["_installed"] is False
+
+
+def test_a_bare_tag_matches_its_latest_form(tmp_path, monkeypatch) -> None:
+    """`gemma3:12b` should count as present when the daemon reports `gemma3`."""
+    from best_engine_ai_helper import score
+
+    monkeypatch.setattr(throughput, "_STORE_PATH", tmp_path / "none.yaml")
+
+    ranked = score.rank(_ROOMY, _pair(80.5, 80.0), kind="llm", installed={"ondisk"})
+    assert [e["id"] for e in ranked] == ["ondisk:8b", "remote:8b"]

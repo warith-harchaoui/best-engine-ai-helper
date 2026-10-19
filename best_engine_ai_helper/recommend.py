@@ -226,6 +226,8 @@ def _candidate_row(
         # bandwidth is unknown (tps is None) speed can't be estimated, so it is
         # not held against the model — memory fit alone decides.
         "comfortable": fits and (tps is None or tps >= min_tps),
+        # Set by score.rank when the caller supplied the daemon's tag list.
+        "installed": bool(entry.get("_installed")),
         "notes": entry.get("notes", ""),
     }
 
@@ -238,6 +240,12 @@ def _pick_sufficient(pool: list[dict[str, Any]]) -> dict[str, Any]:
     within the margin of it — and no less structured-capable — the one with the
     smallest memory footprint wins. This is the anti-greed pick: good enough on
     quality, cheapest to run, rather than the absolute top scorer.
+
+    Footprint is compared to the nearest gigabyte, and a model already on disk
+    wins inside that rounding. The two costs are not the same kind of thing: a
+    gigabyte of footprint is paid on every single run, while a download is paid
+    once, so leanness stays the primary key and "already here" only decides
+    between models that are equally lean in any sense the user would notice.
     """
     top = pool[0]
     near = [
@@ -246,7 +254,9 @@ def _pick_sufficient(pool: list[dict[str, Any]]) -> dict[str, Any]:
         if r["score"] >= top["score"] - _SUFFICIENT_MARGIN
         and (r["structured_output"] or not top["structured_output"])
     ]
-    return min(near, key=lambda r: r["ram_gb"]) if near else top
+    if not near:
+        return top
+    return min(near, key=lambda r: (round(float(r["ram_gb"])), not r.get("installed", False)))
 
 
 def recommend(
@@ -260,6 +270,7 @@ def recommend(
     backend: str = "ollama",
     kinds: list[Literal["llm", "vlm"]] | None = None,
     load: dict[str, Any] | None = None,
+    installed: set[str] | None = None,
 ) -> dict[str, Any]:
     """
     Recommend the best engine per needed kind for this hardware and task.
@@ -284,6 +295,11 @@ def recommend(
     backend : {'ollama', 'vllm'}
         Serving backend, so memory fit and throughput reflect what actually
         loads. Threaded to :func:`score.rank` and :func:`_candidate_row`.
+    installed : set of str or None
+        Tags the local daemon already serves. Breaks ties between candidates of
+        comparable quality and comparable footprint, so a model already on disk
+        is preferred over an equivalent 20 GB download. Never overrides quality
+        or leanness.
     kinds : list of str or None
         Explicit kinds to resolve (``["llm"]``, ``["vlm"]`` or both), overriding
         the kinds inferred from ``task``. The task text still selects the
@@ -322,7 +338,14 @@ def recommend(
     for kind in needed_kinds:
         axis = parsed["vlm_application"] if kind == "vlm" else parsed["application"]
         ranked = rank(
-            hw, catalog, kind, headroom=headroom, application=axis, backend=backend, load=load
+            hw,
+            catalog,
+            kind,
+            headroom=headroom,
+            application=axis,
+            backend=backend,
+            load=load,
+            installed=installed,
         )
         rows = [_candidate_row(e, budget, bandwidth, axis, min_tps, backend) for e in ranked]
         fitting = [r for r in rows if r["fits"]]
@@ -656,9 +679,13 @@ def to_markdown_cloud(report: dict[str, Any]) -> str:
         lines.append(f"## Best cloud {kind.upper()} (axis: {block['axis']})")
         lines.append("")
         if chosen:
+            price = chosen["price_per_1m"]
+            # None means nobody priced this entry, which is not zero. Printing
+            # "$0.00" would state a fact the catalog does not contain.
+            cost = f"~${price:.2f}/1M tokens (blended)" if price is not None else "price unknown"
             lines.append(
                 f"**→ `{chosen['id']}`** ({chosen['provider']}) — "
-                f"score {chosen['score']:.0f}, ~${chosen['price_per_1m']:.2f}/1M tokens (blended)"
+                f"score {chosen['score']:.0f}, {cost}"
             )
         else:
             lines.append("_No candidate found._")
@@ -666,9 +693,10 @@ def to_markdown_cloud(report: dict[str, Any]) -> str:
         lines.append("| model | provider | score | $/1M | structured |")
         lines.append("|---|---|---|---|---|")
         for r in block["candidates"]:
+            price = r["price_per_1m"]
             lines.append(
                 f"| `{r['id']}` | {r['provider']} | {r['score']:.0f} | "
-                f"{r['price_per_1m']:.2f} | "
+                f"{f'{price:.2f}' if price is not None else '?'} | "
                 f"{'yes' if r.get('structured_output', True) else 'no'} |"
             )
         lines.append("")

@@ -270,6 +270,15 @@ def _resolve_local(
         )
     base_url = _base_url(backend, endpoint)
 
+    # What the daemon has right now. Asked before ranking rather than after, so
+    # the list can break a tie between two comparable candidates instead of only
+    # annotating the winner after the fact.
+    present: set[str] = set()
+    if backend == "ollama":
+        from .pull import installed_tags
+
+        present = installed_tags(base_url)
+
     report = _recommend(
         hw,
         catalog,
@@ -279,6 +288,7 @@ def _resolve_local(
         min_tps=min_tps,
         backend=backend,
         kinds=kinds,
+        installed=present,
     )
 
     memory_gb = hw.get("unified_gb") or hw.get("vram_gb") or hw.get("ram_gb")
@@ -295,14 +305,6 @@ def _resolve_local(
         "headroom": headroom,
         "min_tps": min_tps,
     }
-
-    # What the daemon has right now, so the descriptor can say whether its
-    # own choice is runnable instead of letting the first call find out.
-    present: set[str] = set()
-    if backend == "ollama":
-        from .pull import installed_tags
-
-        present = installed_tags(base_url)
 
     serve: list[str] = []
     for kind in kinds:
@@ -654,3 +656,137 @@ def model_for(engine: dict[str, Any], kind: str) -> tuple[str, str, str]:
             f"or resolution found none for this machine."
         )
     return engine["backend"], engine["base_url"], section["model"]
+
+
+def diagnose(
+    directory: str | Path = ".",
+    *,
+    engine: str = ENGINE_NAME,
+    timeout: float = 1.5,
+) -> dict[str, Any]:
+    """
+    Compare what the engine file *resolved* against what the daemon can *serve*.
+
+    These are two different claims and they drift apart quietly. An engine file
+    is written once, on the machine and catalog of that moment; the daemon it
+    names is mutable, and `ollama rm` leaves no trace in the descriptor. Today
+    the gap surfaces at the first inference call, which is typically in the
+    middle of a job rather than at resolution — the worst possible moment to
+    learn that a model name was never pullable.
+
+    So this asks both sides and reports the difference. It diagnoses only: a
+    command that silently re-resolved would hide the very drift it exists to
+    show.
+
+    Parameters
+    ----------
+    directory : str | Path
+        Repo directory holding the engine file.
+    engine : str
+        Engine filename within ``directory``.
+    timeout : float
+        Seconds to wait on the daemon. Short: an unreachable daemon is a
+        finding here, not a reason to hang.
+
+    Returns
+    -------
+    dict
+        ``{"engine_path", "backend", "daemon_reachable", "served",
+        "findings": [{kind, model, message}], "ok"}``. ``ok`` is True only when
+        every model the file names can be served right now.
+    """
+    directory = Path(directory)
+    engine_path = directory / engine
+    report: dict[str, Any] = {
+        "engine_path": str(engine_path),
+        "backend": None,
+        "daemon_reachable": False,
+        "served": [],
+        "findings": [],
+        "ok": False,
+    }
+
+    if not engine_path.is_file():
+        report["findings"].append(
+            {
+                "kind": None,
+                "model": None,
+                "message": (
+                    f"No engine file at {engine_path}. Run `resolve` first, or point "
+                    "`--directory` at the repo that holds one."
+                ),
+            }
+        )
+        return report
+
+    descriptor = load_engine(engine_path)
+    backend = str(descriptor.get("backend") or "ollama")
+    report["backend"] = backend
+
+    # Only Ollama can be asked what it holds. For anything else the honest
+    # answer is "cannot tell from here", which is a finding rather than a pass.
+    if backend != "ollama":
+        report["findings"].append(
+            {
+                "kind": None,
+                "model": None,
+                "message": (
+                    f"Backend is {backend!r}, which this check cannot interrogate; "
+                    "only an Ollama daemon reports the tags it serves."
+                ),
+            }
+        )
+        return report
+
+    from .pull import installed_tags
+
+    served = installed_tags(str(descriptor.get("base_url") or "") or None, timeout=timeout)
+    report["served"] = sorted(served)
+    report["daemon_reachable"] = bool(served)
+
+    if not served:
+        report["findings"].append(
+            {
+                "kind": None,
+                "model": None,
+                "message": (
+                    f"No Ollama daemon answered at {descriptor.get('base_url')}. "
+                    "Nothing the file names can be served until it is running."
+                ),
+            }
+        )
+        return report
+
+    named = 0
+    for kind in ("llm", "vlm"):
+        block = descriptor.get(kind)
+        if not isinstance(block, dict):
+            continue
+        model = str(block.get("model") or "")
+        if not model:
+            continue
+        named += 1
+        if model in served or model.split(":")[0] in served:
+            continue
+        report["findings"].append(
+            {
+                "kind": kind,
+                "model": model,
+                "message": (
+                    f"{kind}: the engine file names {model!r}, which this daemon does "
+                    f"not serve. Run `ollama pull {model}`, or re-resolve."
+                ),
+            }
+        )
+
+    if named == 0:
+        report["findings"].append(
+            {
+                "kind": None,
+                "model": None,
+                "message": "The engine file names no model for either kind.",
+            }
+        )
+
+    report["ok"] = not report["findings"]
+    return report
