@@ -482,3 +482,27 @@ def test_measuring_one_model_corrects_the_estimate_for_an_unmeasured_one(
     assert corrected is not None
     assert corrected == round(raw * 0.537, 1)
     assert corrected < raw  # the estimator was optimistic, so this pulls it down
+
+
+def test_a_kept_faster_sample_still_picks_up_a_later_estimate(tmp_path: Path) -> None:
+    """The faster row wins, but it should not refuse the estimate offered with the loser.
+
+    The ratio has to be derived against the figure actually kept: pairing the
+    new measurement with the estimate, when the new measurement was discarded,
+    would calibrate against a comparison that never happened.
+    """
+    store = tmp_path / "measurements.yaml"
+    base = {"basis": "eval_duration", "measured_on": "Apple M2 Max"}
+
+    # First record carries no estimate at all.
+    throughput.record("gemma3:12b", {**base, "tokens_per_second": 15.2}, store_path=store)
+    assert throughput.calibration_factor(machine="Apple M2 Max", store_path=store) is None
+
+    # A slower sample arrives, this time with the estimate attached.
+    throughput.record(
+        "gemma3:12b", {**base, "tokens_per_second": 8.7}, store_path=store, estimated_tps=28.3
+    )
+
+    row = throughput.load_measurements(store)["gemma3:12b@Apple M2 Max"]
+    assert row["tokens_per_second"] == 15.2  # the faster figure is still the one kept
+    assert row["calibration_ratio"] == 0.537  # 15.2 / 28.3, not 8.7 / 28.3

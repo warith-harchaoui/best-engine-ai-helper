@@ -374,6 +374,14 @@ def normalize_apxml_spec(spec: dict[str, Any], fetched_at: str) -> dict[str, Any
         "disk_gb": disk_gb,
         "ram_gb": ram_gb,
         "benchmarks": dict(_EMPTY_BENCHMARKS),
+        # Say it rather than leave it to be inferred. ApXML keys its directory
+        # by the paper's slug (`qwen36-35b-a3b`), which is a HuggingFace repo
+        # name and not an `ollama pull` tag, so these entries are vLLM-servable
+        # and nothing else. `servable()` can deduce as much from `source`, and
+        # still does for entries cached by older versions, but a filter that
+        # infers a fact the writer already knew is a net under a gap rather
+        # than a fix for it. Written here, the entry is simply honest.
+        "backends": ["vllm"],
         "vllm_id": spec.get("vllm_id"),
         "context_length": spec.get("context_length"),
         "license": spec.get("license"),

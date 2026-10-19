@@ -257,3 +257,37 @@ def test_a_fresh_snapshot_enriches_and_counts_coverage(monkeypatch) -> None:
     assert by_id["gpt-4o"]["benchmarks"]["arena"] == 64.0
     assert "arena" not in by_id["qwen2.5:3b"]["benchmarks"]  # declined, not guessed
     assert "1/2" in message
+
+
+# ---------------------------------------------------------------------------
+# The ApXML adapter states its backend rather than leaving it to be inferred
+# ---------------------------------------------------------------------------
+
+
+def test_apxml_entries_declare_vllm_explicitly() -> None:
+    """The writer knows these are HuggingFace repo names, so it should say so."""
+    entry = catalog.normalize_apxml_spec({"slug": "qwen36-35b-a3b", "ram_gb": 20.0}, "2026-10-19")
+
+    assert entry is not None
+    assert entry["backends"] == ["vllm"]
+
+
+def test_the_declared_backend_is_what_gates_an_apxml_entry() -> None:
+    """With `backends` present, servable() no longer has to infer from `source`."""
+    entry = catalog.normalize_apxml_spec({"slug": "llama-3-70b", "ram_gb": 40.0}, "2026-10-19")
+    assert entry is not None
+
+    assert catalog.servable(entry, "ollama") is False
+    assert catalog.servable(entry, "vllm") is True
+
+    # Same verdict with `source` stripped: the entry now carries the fact itself.
+    stated = {k: v for k, v in entry.items() if k != "source"}
+    assert catalog.servable(stated, "ollama") is False
+
+
+def test_the_source_rule_still_covers_entries_cached_before_this_change() -> None:
+    """A cache written by an older version has no `backends` key; the net holds."""
+    legacy = {"id": "qwen36-35b-a3b", "source": "apxml"}
+
+    assert catalog.servable(legacy, "ollama") is False
+    assert catalog.servable(legacy, "vllm") is True

@@ -112,18 +112,25 @@ class Meter:
     wall_ms : float
         Wall-clock milliseconds, summed. Always populated.
     calls : int
-        Successful calls observed. Failures are not counted — a request that
-        raised produced no tokens and no usable timing.
+        Calls that yielded a usable output-token count — not calls made. A
+        request that raised, or one whose backend reports no token counts,
+        contributes nothing here, because neither produced anything to divide
+        by. So ``calls`` is the size of the sample, which is what a reader of
+        a measurement wants to know.
 
     Examples
     --------
+    A callable that reports no usage cannot be measured, and the meter says so
+    rather than counting the call and inventing a rate for it:
+
     >>> def fake_chat(prompt, **kw):
     ...     return "ok"
     >>> meter = Meter()
-    >>> _ = meter.wrap(fake_chat)("hello")
-    >>> meter.calls
-    1
-    >>> meter.measurement() is None   # no token counts, so nothing to report
+    >>> meter.wrap(fake_chat)("hello")      # the reply is passed straight through
+    'ok'
+    >>> meter.calls                         # ...but nothing was measurable
+    0
+    >>> meter.measurement() is None
     True
     """
 
@@ -348,6 +355,15 @@ def record(
                 "to overrule."
             )
             kept = {**previous, "samples": samples}
+            # The earlier row may predate the caller being able to supply an
+            # estimate. Keep its (faster, more trustworthy) throughput, but
+            # take the estimate now on offer, and derive the ratio against the
+            # figure actually kept -- pairing the old estimate with the new
+            # measurement, or vice versa, would calibrate against a comparison
+            # that never happened.
+            if estimated_tps and estimated_tps > 0 and "calibration_ratio" not in kept:
+                kept["estimated_tps"] = round(float(estimated_tps), 1)
+                kept["calibration_ratio"] = round(float(old) / float(estimated_tps), 3)
             store[key] = kept
             return _write_store(store, path)
 
