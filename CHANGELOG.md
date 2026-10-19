@@ -6,6 +6,34 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Fixed
 
+- `scripts/measure_absent_vs_zero.py`: counts how often a legitimate value
+  could be read as an absent one, across three candidate rules. It exists
+  because the temptation is to turn such a rule straight into a lint gate, and
+  the only way to know whether a rule is a gate or just noise is to count
+  first. Measured here: `or` on a numeric flags 14 lines (reviewable, and it
+  found the pricing defect above), `.get(k)` with no default flags 266, and
+  `if <name>:` flags 66. One rule in three survived, so this reports and does
+  not gate — a check that fires 266 times teaches people to ignore it.
+
+- **An unpriced cloud model ranked as though it were free.**
+  `blended_price_per_1m` collapsed a missing price to `0.0`, and the cost axis
+  inverts price into a score, so an entry nobody had priced came out at the
+  best possible cost and won that axis outright. The bundled `pricing.yaml` is
+  complete, so nothing was mispriced in practice — but the function was built
+  to tolerate absent prices, which means this would have fired silently the
+  first time anyone added an entry without them. It now returns `None` for "no
+  price at all", distinct from a genuine `0.0`, and the ranker scores unknown
+  cost as the *worst* rather than the best: this package's position elsewhere
+  is that a figure without provenance is worth less than no figure, and
+  pessimism is the safe direction for something that may bill you. Billing on
+  one side only stays a real price, and callers that print the figure now say
+  "price unknown" instead of "$0.00".
+
+  Found by measurement rather than by reading — see
+  `scripts/measure_absent_vs_zero.py`. It is one instance of the family where a
+  legitimate value (`0.0`, a directory slug) is mistaken for an absent one,
+  which is also what the catalog fix above is.
+
 - **A resolved local engine could name a model Ollama cannot pull.** The
   catalog's own contract says `id` IS the Ollama pull tag, and the
   hand-maintained seed honours it — but the ApXML adapter keys entries by the
@@ -24,6 +52,36 @@ All notable changes to best-engine-ai-helper are documented here.
   catalog.
 
 ### Added
+
+- **`storage`: plan capacity, including what fits in memory *together*.**
+  "How many models fit on my SSD" is a subtraction and is answered, but the
+  question behind it is usually different: a working setup is a text model, a
+  vision model and an embedder, and what decides the day is whether they can be
+  resident at once rather than taking turns. Each may fit alone while the trio
+  does not, and no per-model view would ever say so. Disk size and working set
+  are kept as the separate budgets they are, a floor is held clear for the OS
+  rather than filling the disk to the last gigabyte, and the plan is built only
+  from models the backend can actually load — planning around an unpullable
+  name is worse than not planning.
+
+- **`doctor`: compare what was resolved against what the daemon serves.**
+  "Resolved" and "runnable" are two different claims and they drift apart
+  quietly — an engine file is written once, the daemon it names is mutable, and
+  `ollama rm` leaves no trace in the descriptor. Until now the gap surfaced at
+  the first inference call, typically mid-job. It diagnoses only and never
+  re-resolves, because re-resolving would hide the drift it exists to show; an
+  unreachable daemon and a non-Ollama backend are reported as "cannot tell"
+  rather than passed. Exits non-zero when anything named cannot be served now.
+
+- At comparable quality **and** comparable footprint, a model already on disk
+  now wins over an equivalent download. Deliberately the weakest key in the
+  sort: quality is compared first, then footprint to the nearest gigabyte, and
+  only inside that rounding does "already here" decide. The two costs are not
+  the same kind of thing — a gigabyte of footprint is paid on every run, a
+  download once — so leanness stays primary and this never promotes a worse or
+  heavier model to save a fetch. The engine resolver already asked the daemon
+  what it had; it now asks before ranking rather than after, so the answer can
+  inform the choice instead of only annotating it.
 
 - Re-measuring a model keeps the **fastest** sample rather than the latest.
   Found by running the proof while three test suites were competing for the

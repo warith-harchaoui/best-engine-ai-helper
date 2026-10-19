@@ -265,6 +265,9 @@ gui:
   price_blended_suffix:
     fr: (mélangé)
     en: (blended)
+  price_unknown:
+    fr: tarif inconnu
+    en: price unknown
 prompts:
   eyeball_critique:
     system: 'You are a strict visual-quality reviewer. Examine the image and write a

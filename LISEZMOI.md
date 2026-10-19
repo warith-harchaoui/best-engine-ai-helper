@@ -353,6 +353,8 @@ fonction déterministe du seul matériel, ce qui compte pour des rapports reprod
 | `detect` | Affiche le matériel détecté au format JSON |
 | `recommend` | Classe les candidats pour ce matériel (sans téléchargement) |
 | `report` | Recommande le(s) meilleur(s) moteur(s) pour une tâche (Markdown + JSON) |
+| `doctor` | Compare ce que le fichier moteur a résolu avec ce que le démon sait servir |
+| `storage` | Planifie la capacité : ce qui tient sur le disque, puis ce qui tient en mémoire ensemble |
 | `catalog show` | Affiche le catalogue de modèles fusionné |
 | `catalog update` | Rafraîchit le cache modèles depuis l'annuaire open-weight ApXML (`--limit N` pour un rafraîchissement partiel, `--arena` pour fusionner aussi les notes LM Arena) |
 | `hardware show` | Affiche la table des puces matérielles connues |

@@ -137,6 +137,7 @@ _JS_NAME_TO_KEY: dict[str, str] = {
     "thProvider": "th_provider",
     "thPrice": "th_price",
     "blended": "price_blended_suffix",
+    "priceUnknown": "price_unknown",
 }
 
 
@@ -653,7 +654,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
           <td class="py-1.5 pr-3 font-mono">${r.id}</td>
           <td class="py-1.5 pr-3">${r.provider}</td>
           <td class="py-1.5 pr-3">${Math.round(r.score)}</td>
-          <td class="py-1.5 pr-3">${r.price_per_1m.toFixed(2)}</td>
+          <td class="py-1.5 pr-3">${r.price_per_1m == null ? "?" : r.price_per_1m.toFixed(2)}</td>
           <td class="py-1.5">${r.structured_output === false ? T.no : T.yes}</td>
         </tr>`;
     }
@@ -664,7 +665,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
         <p class="flex flex-wrap items-center gap-2 text-sm">
           ${pill(chosen.id)}
           <span class="text-neutral-600 dark:text-neutral-300">
-            ${chosen.provider}, ${T.score} ${Math.round(chosen.score)}, ~$${chosen.price_per_1m.toFixed(2)}/1M ${T.blended}
+            ${chosen.provider}, ${T.score} ${Math.round(chosen.score)}, ${chosen.price_per_1m == null ? T.priceUnknown : `~$${chosen.price_per_1m.toFixed(2)}/1M ${T.blended}`}
           </span>
           ${chosen.structured_output === false ? `<span class="text-amber-600 dark:text-amber-400">${T.notStructured}</span>` : ""}
         </p>

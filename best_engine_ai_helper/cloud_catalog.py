@@ -95,7 +95,7 @@ def load_cloud_catalog(path: Path | None = None) -> list[dict[str, Any]]:
     return entries
 
 
-def blended_price_per_1m(entry: dict[str, Any]) -> float:
+def blended_price_per_1m(entry: dict[str, Any]) -> float | None:
     """
     A single $/1M-token comparability figure for one catalog entry.
 
@@ -105,6 +105,13 @@ def blended_price_per_1m(entry: dict[str, Any]) -> float:
     estimate — the same "rough estimate, not a bill" honesty ``pricing.yaml``
     already documents for the ledger side.
 
+    Returns ``None`` when the entry carries no price at all, which is **not**
+    the same as a price of zero. This used to collapse to ``0.0``, and the
+    consequence was quiet and bad: the ranker inverts price into a cost score,
+    so an entry nobody had priced came out looking *free* and won the cost axis
+    outright. A model whose cost is unknown has not earned that; it has simply
+    not been measured, and the two deserve different answers.
+
     Parameters
     ----------
     entry : dict[str, Any]
@@ -112,16 +119,26 @@ def blended_price_per_1m(entry: dict[str, Any]) -> float:
 
     Returns
     -------
-    float
-        ``(input_per_1m + output_per_1m) / 2``. ``0.0`` when both are absent.
+    float or None
+        ``(input_per_1m + output_per_1m) / 2``, or None when neither price is
+        present. A single missing side is treated as zero for that side, since
+        a provider that bills only for output is a real arrangement.
 
     Examples
     --------
     >>> blended_price_per_1m({"input_per_1m": 2.0, "output_per_1m": 10.0})
     6.0
+    >>> blended_price_per_1m({"input_per_1m": 0.0, "output_per_1m": 0.0})
+    0.0
+    >>> blended_price_per_1m({"id": "nobody-priced-this"}) is None
+    True
     """
-    lo = float(entry.get("input_per_1m", 0.0) or 0.0)
-    hi = float(entry.get("output_per_1m", 0.0) or 0.0)
+    lo_raw = entry.get("input_per_1m")
+    hi_raw = entry.get("output_per_1m")
+    if lo_raw is None and hi_raw is None:
+        return None
+    lo = float(lo_raw) if isinstance(lo_raw, (int, float)) else 0.0
+    hi = float(hi_raw) if isinstance(hi_raw, (int, float)) else 0.0
     return (lo + hi) / 2.0
 
 
@@ -210,8 +227,26 @@ def rank_cloud(
     weight = _clamp_weight(quality_vs_cost)
     scores = [_benchmark_score(e, kind, application) for e in candidates]
     prices = [blended_price_per_1m(e) for e in candidates]
+
+    # Normalise the cost axis over the entries that actually have a price. An
+    # unpriced entry is deliberately left out of the range: letting a None
+    # participate as a zero would both best the cheapest real model and drag
+    # the scale, and the whole point here is that "nobody priced this" is not a
+    # claim about cost.
+    known = [p for p in prices if p is not None]
     lo_s, hi_s = min(scores), max(scores)
-    lo_p, hi_p = min(prices), max(prices)
+    lo_p, hi_p = (min(known), max(known)) if known else (0.0, 0.0)
+
+    unpriced = [
+        str(e.get("id") or "?") for e, p in zip(candidates, prices, strict=True) if p is None
+    ]
+    if unpriced:
+        osh.warning(
+            "No price for "
+            + ", ".join(sorted(unpriced))
+            + "; ranked as the most expensive option rather than as free, so an "
+            "unpriced model never wins on cost. Add the figures to pricing.yaml."
+        )
 
     annotated = []
     for entry, score, price in zip(candidates, scores, prices, strict=True):
@@ -219,7 +254,11 @@ def rank_cloud(
         row["score"] = score
         row["price_per_1m"] = price
         quality_n = _normalize(score, lo_s, hi_s)
-        price_n = _normalize(price, lo_p, hi_p, invert=True)
+        # Unknown cost scores as the worst, not the best. This package's stance
+        # elsewhere is that a figure without provenance is worth less than no
+        # figure; the same applies to a price nobody supplied, and the safe
+        # direction for something that might bill you is pessimism.
+        price_n = 0.0 if price is None else _normalize(price, lo_p, hi_p, invert=True)
         row["combined"] = weight * quality_n + (1.0 - weight) * price_n
         annotated.append(row)
 

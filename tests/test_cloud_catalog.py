@@ -112,4 +112,71 @@ def test_rank_and_pick_cloud_kind_provider_and_weight() -> None:
 
 def test_blended_price_per_1m() -> None:
     assert cloud_catalog.blended_price_per_1m({"input_per_1m": 2.0, "output_per_1m": 10.0}) == 6.0
-    assert cloud_catalog.blended_price_per_1m({}) == 0.0
+    # An entry with no prices used to blend to 0.0, which the cost axis then
+    # inverted into the best possible score -- an unpriced model looked free.
+    # It now says it does not know. See the tests below the next banner.
+    assert cloud_catalog.blended_price_per_1m({}) is None
+
+
+# ---------------------------------------------------------------------------
+# An unpriced model is not a free model
+# ---------------------------------------------------------------------------
+
+
+def test_no_price_is_not_the_same_as_a_price_of_zero() -> None:
+    """Collapsing both to 0.0 is what made an unpriced model look free."""
+    assert cloud_catalog.blended_price_per_1m({"id": "nobody-priced-this"}) is None
+    assert cloud_catalog.blended_price_per_1m({"input_per_1m": 0.0, "output_per_1m": 0.0}) == 0.0
+
+
+def test_billing_on_one_side_only_is_a_real_arrangement() -> None:
+    """A provider that charges for output and not input is priced, not unpriced."""
+    assert cloud_catalog.blended_price_per_1m({"output_per_1m": 10.0}) == 5.0
+
+
+def test_an_unpriced_model_never_wins_the_cost_axis() -> None:
+    """The defect: inverted normalisation turned an absent price into the best score."""
+    catalog = [
+        {
+            "id": "priced-cheap",
+            "kind": "llm",
+            "benchmarks": {"general": 70.0},
+            "input_per_1m": 1.0,
+            "output_per_1m": 1.0,
+        },
+        {
+            "id": "priced-dear",
+            "kind": "llm",
+            "benchmarks": {"general": 70.0},
+            "input_per_1m": 50.0,
+            "output_per_1m": 50.0,
+        },
+        {"id": "unpriced", "kind": "llm", "benchmarks": {"general": 70.0}},
+    ]
+
+    # Rank on cost alone so the price axis is the only thing deciding.
+    ranked = cloud_catalog.rank_cloud(catalog, "llm", quality_vs_cost=0.0)
+    order = [r["id"] for r in ranked]
+
+    assert order[0] == "priced-cheap"
+    assert order[-1] == "unpriced"  # unknown cost is pessimistic, not optimistic
+
+
+def test_an_unpriced_entry_carries_none_through_to_the_caller() -> None:
+    catalog = [{"id": "unpriced", "kind": "llm", "benchmarks": {"general": 70.0}}]
+
+    ranked = cloud_catalog.rank_cloud(catalog, "llm")
+
+    assert ranked[0]["price_per_1m"] is None
+
+
+def test_a_catalog_with_no_prices_at_all_still_ranks() -> None:
+    """Every price unknown must not divide by an empty range."""
+    catalog = [
+        {"id": "a", "kind": "llm", "benchmarks": {"general": 90.0}},
+        {"id": "b", "kind": "llm", "benchmarks": {"general": 50.0}},
+    ]
+
+    ranked = cloud_catalog.rank_cloud(catalog, "llm")
+
+    assert [r["id"] for r in ranked] == ["a", "b"]  # falls back to quality order
