@@ -406,6 +406,59 @@ def normalize_apxml_specs(
     return [e for e in entries if e is not None]
 
 
+def merge_arena_axes(
+    entries: list[dict[str, Any]],
+    timeout: float = 30.0,
+) -> tuple[list[dict[str, Any]], str, bool]:
+    """
+    Add LM Arena conversational axes to ``entries``, and report what happened.
+
+    Lives here rather than in either CLI because the click and argparse front
+    ends mirror each other 1:1; a copy in each would be two places to drift.
+    The callers do the printing, this does the deciding.
+
+    Never raises on a dead mirror. The refresh that precedes this call has
+    already succeeded, and throwing away a good catalog because a third-party
+    scrape rotted would punish the user for someone else's outage. What it
+    refuses to do is return quietly: ``merged`` is False and ``message`` says
+    why whenever no rating was applied, because an axis the user believes is
+    populated is worse than one they know is empty.
+
+    Coverage skews to hosted models. Arena rates what its voters can chat
+    with, which is frontier endpoints rather than small quantised local
+    builds, so this axis serves the cloud catalog far more than the local one.
+
+    Parameters
+    ----------
+    entries : list[dict[str, Any]]
+        Catalog entries to enrich. Not mutated; ``arena.merge_into`` copies.
+    timeout : float
+        Per-request network timeout, in seconds.
+
+    Returns
+    -------
+    (entries, message, merged)
+        ``entries`` enriched when ``merged`` is True, returned unchanged
+        otherwise. ``message`` is always worth showing the user.
+    """
+    from .sources import arena
+
+    try:
+        result = arena.fetch_arena_ratings(timeout=timeout)
+    except Exception as exc:  # a dead mirror must not sink a good refresh
+        return list(entries), f"Arena ratings unavailable: {exc}", False
+
+    merged, report = arena.merge_into(entries, result)
+    note = str(report.get("note") or "no reason given")
+    matched = report.get("matched") or []
+    if not matched:
+        return list(entries), f"No Arena rating merged: {note}", False
+
+    unmatched = report.get("unmatched") or []
+    total = len(matched) + len(unmatched)
+    return merged, f"Arena: matched {len(matched)}/{total} model(s) — {note}", True
+
+
 def write_cache(entries: list[dict[str, Any]], cache_path: Path | None = None) -> Path:
     """
     Merge ``entries`` into the user catalog cache by ``id`` and write it to disk.

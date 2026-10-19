@@ -25,6 +25,21 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Added
 
+- `catalog update --arena` reaches the Arena adapter from the command line, in
+  both CLI twins. It was previously importable and nothing more. The merge
+  decision lives in `catalog.merge_arena_axes()` rather than in either front
+  end, since the click and argparse CLIs mirror each other 1:1 and a copy in
+  each would be two places to drift. A dead mirror is non-fatal — the ApXML
+  refresh it follows has already succeeded, and discarding a good catalog
+  because someone else's scrape rotted would punish the user for an outage
+  they do not own — but a merge that enriched nothing always says so, because
+  an axis the user believes is populated is worse than one they know is empty.
+- Documented the axis's measured coverage in README and LISEZMOI: 6/10 cloud
+  models, 3/20 local ones, every local match a 32B build, and embedders
+  unmatchable by construction. Counter-intuitive for something called a
+  leaderboard, and silence would leave callers expecting tiebreaks it cannot
+  provide.
+
 - **An LM Arena source, and the honesty to say when it has nothing.**
   `sources/arena.py` reads conversational Elo from community mirrors and
   converts it to the same 0-100 scale as the other axes, via the Elo expected-

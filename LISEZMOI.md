@@ -298,7 +298,7 @@ fonction déterministe du seul matériel, ce qui compte pour des rapports reprod
 | `recommend` | Classe les candidats pour ce matériel (sans téléchargement) |
 | `report` | Recommande le(s) meilleur(s) moteur(s) pour une tâche (Markdown + JSON) |
 | `catalog show` | Affiche le catalogue de modèles fusionné |
-| `catalog update` | Rafraîchit le cache modèles depuis l'annuaire open-weight ApXML (`--limit N` pour un rafraîchissement partiel) |
+| `catalog update` | Rafraîchit le cache modèles depuis l'annuaire open-weight ApXML (`--limit N` pour un rafraîchissement partiel, `--arena` pour fusionner aussi les notes LM Arena) |
 | `hardware show` | Affiche la table des puces matérielles connues |
 | `hardware update` | Enregistre la puce et la mémoire de cette machine dans le cache matériel |
 | `pull` | Télécharge le meilleur modèle et exécute les contrôles Ralph |
@@ -315,6 +315,14 @@ fonction déterministe du seul matériel, ce qui compte pour des rapports reprod
 Le catalogue de base intégré (`models.yaml`) couvre les familles Qwen 3, Qwen 2.5, Qwen 2.5-Coder et Gemma 3 (de 3B à 72B paramètres, en Q4_K_M et Q8_0), plus un petit ensemble d'*embedders* textuels (`kind: embed`) pour l'index de recherche. Le catalogue suit la taille sur disque, la RAM de pic estimée et les scores de benchmark issus de l'Open LLM Leaderboard v2, de l'OpenVLM Leaderboard, d'EvalPlus (code) et de MTEB (recherche par *embedding*). C'est l'*espace de recherche* dans lequel best-engine choisit, jamais un choix propre à un usage.
 
 `catalog update` rafraîchit le cache depuis l'[annuaire LLM ApXML](https://apxml.com/models?modelType=open_weight) (modèles à poids ouverts avec leurs besoins VRAM par quantification, consulté régulièrement). Il récupère les fiches, les normalise en entrées de catalogue et les fusionne dans `~/.best-engine-ai-helper/catalog_cache.yaml` par identifiant (le catalogue de base intégré n'est jamais modifié). Utilisez `--limit N` pour un rafraîchissement partiel rapide. Les pages statiques d'ApXML portent des caractéristiques mais aucun score de classement numérique, donc les entrées rafraîchies gardent des benchmarks nuls (et un rang bas) jusqu'à ce qu'une source notée, comme l'Open LLM Leaderboard v2 ou l'OpenVLM Leaderboard, les remplisse.
+
+`--arena` fusionne en plus les notes de préférence conversationnelle issues des miroirs de [LM Arena](https://lmarena.ai). Deux faits mesurés méritent d'être connus avant d'y recourir.
+
+**Cet axe sert le catalogue cloud, pas le catalogue local.** L'Arena note ce avec quoi ses votants peuvent discuter. Apparié aux catalogues livrés (mesuré le 2026-10-19 contre le miroir vivant le plus frais), il couvrait **6 des 10 modèles cloud** de `pricing.yaml` mais seulement **3 des 20 modèles locaux** de `models.yaml`.
+
+Les trois appariements locaux en disent plus que le rapport : `qwen2.5-coder:32b`, `qwen3:32b-q4_k_m` et `qwen3:32b-q8_0` — chaque appariement était un modèle 32B, rien de plus petit n'a été apparié. Les quatre modèles d'embedding (`nomic-embed-text`, `mxbai-embed-large`, `snowflake-arctic-embed2`, `bge-m3`) ne peuvent pas être appariés par construction : personne ne discute avec un encodeur, donc aucun classement de préférences conversationnelles n'en notera jamais un. L'axe n'est donc pas simplement « biaisé cloud » : il note de gros modèles conversationnels, ce qui décrit l'essentiel d'une grille tarifaire cloud puis une minorité d'un catalogue local. C'est l'inverse de ce qu'on attend d'un « classement de modèles », et c'est toute la différence entre bien se servir de cet axe et attendre qu'il départage ce qu'il ne verra jamais. La commande affiche son propre `matched/total` à chaque exécution : vous n'avez pas à croire ce paragraphe sur parole.
+
+**Il peut très bien ne rien retourner du tout.** L'Arena ne publie aucune API, donc chaque source ici est le scrape d'un tiers, et un scrape pourrit : au 2026-10 le site officiel répond 403, un miroir rend des classements vides, et le miroir vivant le plus frais a plus d'un an. L'adaptateur refuse une capture au-delà de sa limite de péremption en nommant la raison plutôt que de la fusionner, parce qu'un Elo d'une génération précédente classerait les modèles de 2025 au-dessus de ceux de 2026 — strictement pire que pas d'Elo. Le cas échéant la commande le dit et laisse l'axe vide ; elle n'annonce pas un succès qui n'a rien enrichi.
 
 ## Table matérielle
 

@@ -7,7 +7,7 @@ Commands:
   detect          Print detected hardware as JSON.
   recommend       Print ranked model candidates for this hardware.
   catalog show    Print the merged model catalog as a table.
-  catalog update  Refresh the catalog cache from the ApXML model directory.
+  catalog update  Refresh the catalog cache; --arena adds Arena ratings.
   hardware show   Print the merged hardware chip table.
   hardware update Record this machine's chip and memory into the cache.
   pull            Pull the best model and run Ralph validation gates.
@@ -605,7 +605,19 @@ def catalog_show() -> None:
     show_default=True,
     help="Per-request network timeout, in seconds.",
 )
-def catalog_update(limit: int | None, timeout: float) -> None:
+@click.option(
+    "--arena",
+    is_flag=True,
+    default=False,
+    help=(
+        "Also merge LM Arena conversational ratings. These cover hosted "
+        "frontier models far better than small local ones, so the axis mostly "
+        "serves the cloud catalog. Arena publishes no API and every mirror is "
+        "a third-party scrape: when none is fresh enough, the command says so "
+        "and leaves the axis empty."
+    ),
+)
+def catalog_update(limit: int | None, timeout: float, arena: bool) -> None:
     """Refresh the catalog cache from the ApXML open-weight model directory.
 
     Fetched specs are normalized to catalog entries and merged into
@@ -613,6 +625,10 @@ def catalog_update(limit: int | None, timeout: float) -> None:
     never modified. ApXML supplies specs and memory-fit figures but no numeric
     benchmarks, so refreshed entries carry null scores until a scored source
     fills them.
+
+    ``--arena`` is one such scored source, with a caveat worth stating up
+    front: it rates what its voters can chat with, so it populates the cloud
+    catalog far better than the local one.
     """
     from .sources import apxml
 
@@ -628,6 +644,13 @@ def catalog_update(limit: int | None, timeout: float) -> None:
     if not entries:
         click.echo("No usable models returned from ApXML; cache unchanged.", err=True)
         sys.exit(1)
+
+    if arena:
+        click.echo("Fetching conversational ratings from LM Arena mirrors…", err=True)
+        entries, message, merged = _catalog.merge_arena_axes(entries, timeout=timeout)
+        if not merged:
+            osh.warning(message)
+        click.echo(message, err=True)
 
     path = _catalog.write_cache(entries)
     click.echo(f"Updated catalog cache with {len(entries)} model(s):\n\t{path}")

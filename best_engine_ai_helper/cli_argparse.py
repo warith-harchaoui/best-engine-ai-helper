@@ -484,7 +484,7 @@ def _handle_catalog_update(ns: argparse.Namespace) -> int:
     Parameters
     ----------
     ns : argparse.Namespace
-        Parsed CLI arguments: `limit`, `timeout`.
+        Parsed CLI arguments: `limit`, `timeout`, `arena`.
 
     Returns
     -------
@@ -506,6 +506,13 @@ def _handle_catalog_update(ns: argparse.Namespace) -> int:
     if not entries:
         _emit_err("No usable models returned from ApXML; cache unchanged.")
         return 1
+
+    if getattr(ns, "arena", False):
+        _emit_err("Fetching conversational ratings from LM Arena mirrors…")
+        entries, message, merged = _catalog.merge_arena_axes(entries, timeout=ns.timeout)
+        if not merged:
+            osh.warning(message)
+        _emit_err(message)
 
     path = _catalog.write_cache(entries)
     _emit(f"Updated catalog cache with {len(entries)} model(s):\n\t{path}")
@@ -1085,6 +1092,17 @@ def _add_catalog_group(sub: argparse._SubParsersAction[argparse.ArgumentParser])
         type=float,
         default=30.0,
         help="Per-request network timeout in seconds (default: 30.0).",
+    )
+    p.add_argument(
+        "--arena",
+        action="store_true",
+        help=(
+            "Also merge LM Arena conversational ratings. These cover hosted "
+            "frontier models far better than small local ones, so the axis "
+            "mostly serves the cloud catalog. Arena publishes no API and every "
+            "mirror is a third-party scrape: when none is fresh enough, the "
+            "command says so and leaves the axis empty."
+        ),
     )
     p.set_defaults(func=_handle_catalog_update)
 

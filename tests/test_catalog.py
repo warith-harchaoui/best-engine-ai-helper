@@ -184,3 +184,76 @@ def test_a_slug_only_catalog_warns_rather_than_raises() -> None:
     )
 
     assert resolved["llm"] is None
+
+
+# ---------------------------------------------------------------------------
+# merge_arena_axes — the seam both CLI twins call
+# ---------------------------------------------------------------------------
+
+
+def _entries() -> list[dict]:
+    return [
+        {"id": "gpt-4o", "benchmarks": {"general": 80.0}},
+        {"id": "qwen2.5:3b", "benchmarks": {"general": 40.0}},
+    ]
+
+
+def test_a_dead_mirror_leaves_the_catalog_intact(monkeypatch) -> None:
+    """A third-party outage must not cost the user a good ApXML refresh."""
+
+    def _boom(**_kwargs):
+        raise RuntimeError("connection reset")
+
+    monkeypatch.setattr("best_engine_ai_helper.sources.arena.fetch_arena_ratings", _boom)
+
+    entries, message, merged = catalog.merge_arena_axes(_entries())
+
+    assert merged is False
+    assert [e["id"] for e in entries] == ["gpt-4o", "qwen2.5:3b"]
+    assert "connection reset" in message
+
+
+def test_an_empty_axis_is_reported_not_swallowed(monkeypatch) -> None:
+    """The expected 2026 outcome: every mirror is stale, and the user hears so."""
+    monkeypatch.setattr(
+        "best_engine_ai_helper.sources.arena.fetch_arena_ratings",
+        lambda **_k: {
+            "source": "lmarena-history",
+            "snapshot": "2025-05-22",
+            "age_days": 515,
+            "ratings": {},
+            "scores": {},
+            "stale": True,
+            "note": "newest snapshot is 515 days old",
+        },
+    )
+
+    entries, message, merged = catalog.merge_arena_axes(_entries())
+
+    assert merged is False
+    assert entries == _entries()  # untouched, not half-enriched
+    assert "515 days old" in message
+
+
+def test_a_fresh_snapshot_enriches_and_counts_coverage(monkeypatch) -> None:
+    """Coverage is reported as matched/total so the skew is visible, not folklore."""
+    monkeypatch.setattr(
+        "best_engine_ai_helper.sources.arena.fetch_arena_ratings",
+        lambda **_k: {
+            "source": "test",
+            "snapshot": "2026-10-01",
+            "age_days": 18,
+            "ratings": {"arena": {"gpt-4o": 1300.0}},
+            "scores": {"arena": {"gpt-4o": 64.0}},
+            "stale": False,
+            "note": "1 rating(s) from test, snapshot 2026-10-01",
+        },
+    )
+
+    entries, message, merged = catalog.merge_arena_axes(_entries())
+
+    assert merged is True
+    by_id = {e["id"]: e for e in entries}
+    assert by_id["gpt-4o"]["benchmarks"]["arena"] == 64.0
+    assert "arena" not in by_id["qwen2.5:3b"]["benchmarks"]  # declined, not guessed
+    assert "1/2" in message

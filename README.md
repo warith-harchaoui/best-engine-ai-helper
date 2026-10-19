@@ -297,7 +297,7 @@ constants in `score.py`.
 | `recommend` | Rank candidates for this hardware (no download) |
 | `report` | Recommend the best engine(s) for a task (Markdown + JSON) |
 | `catalog show` | Print the merged model catalog |
-| `catalog update` | Refresh the model cache from the ApXML open-weight directory (`--limit N` for a partial refresh) |
+| `catalog update` | Refresh the model cache from the ApXML open-weight directory (`--limit N` for a partial refresh, `--arena` to also merge LM Arena ratings) |
 | `hardware show` | Print the known hardware chip table |
 | `hardware update` | Record this machine's chip and memory in the hardware cache |
 | `pull` | Download the best model and run the Ralph gates |
@@ -314,6 +314,14 @@ constants in `score.py`.
 The bundled seed catalog (`models.yaml`) covers the Qwen 3, Qwen 2.5, Qwen 2.5-Coder, and Gemma 3 families (from 3B to 72B parameters, across Q4_K_M and Q8_0), plus a small set of `kind: embed` text embedders for the retrieval index. The catalog tracks on-disk size, estimated peak RAM, and benchmark scores from the Open LLM Leaderboard v2, the OpenVLM Leaderboard, EvalPlus (code), and MTEB (embedding retrieval). This is the *search space* best-engine picks from: it is never a per-usage choice.
 
 `catalog update` refreshes the cache from the [ApXML LLM directory](https://apxml.com/models?modelType=open_weight) (open-weight models with their per-quant VRAM needs, consulted regularly). It fetches the specs, normalizes them to catalog entries, and merges them into `~/.best-engine-ai-helper/catalog_cache.yaml` by id (the bundled seed is never modified). Use `--limit N` for a quick partial refresh. ApXML's static pages carry specs but no numeric leaderboard scores, so refreshed entries keep null benchmarks (and rank low) until a scored source, such as the Open LLM Leaderboard v2 or the OpenVLM Leaderboard, fills them.
+
+`--arena` additionally merges conversational ratings from [LM Arena](https://lmarena.ai) mirrors, and two measured facts about that axis are worth knowing before you reach for it.
+
+**It serves the cloud catalog, not the local one.** Arena rates what its voters can chat with. Matched against the bundled catalogs (measured 2026-10-19 against the freshest working mirror), it covered **6 of the 10 cloud models** in `pricing.yaml` but only **3 of the 20 local models** in `models.yaml`.
+
+The three local hits say more than the ratio does: they were `qwen2.5-coder:32b`, `qwen3:32b-q4_k_m` and `qwen3:32b-q8_0` — every match was a 32B build, and nothing smaller matched at all. The four embedding models (`nomic-embed-text`, `mxbai-embed-large`, `snowflake-arctic-embed2`, `bge-m3`) cannot match by construction: nobody chats with an embedder, so no leaderboard of chat preferences will ever rate one. So the axis is not simply "cloud-biased" — it rates large conversational models, which is most of a cloud price list and a minority of a local catalog. That is the opposite of what most people expect from a "model leaderboard", and it is the difference between using the axis well and waiting for it to break ties it will never see. The command prints its own `matched/total` every run, so you never have to take this paragraph's word for it.
+
+**It may well return nothing at all.** Arena publishes no API, so every source here is a third-party scrape, and scrapes rot: as of 2026-10 the official site answers 403, one mirror returns empty leaderboards, and the freshest working mirror is more than a year stale. The adapter refuses a snapshot past its staleness bar and names the reason rather than merging it, because an Elo from a previous generation of models would rank 2025's models above 2026's — strictly worse than no Elo. When that happens the command says so and leaves the axis empty; it does not report a success that enriched nothing.
 
 ## Hardware table
 
