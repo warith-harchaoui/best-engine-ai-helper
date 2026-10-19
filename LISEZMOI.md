@@ -279,6 +279,62 @@ là où un modèle 8-14B laisse de la marge et va plusieurs fois plus vite.
 
 Quand aucun modèle ne tient, l'outil sélectionne le plus petit du catalogue et le signale.
 
+#### Le débit mesuré, puis pourquoi l'estimation demandait une correction
+
+![La boucle de mesure : prédire, choisir, éprouver, puis réinjecter la mesure dans la prédiction suivante](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/measurement-loop.png)
+
+Tout ce qui précède est une **estimation**. Pour un outil dont l'argument est
+qu'il faut mesurer plutôt que supposer, c'était le seul endroit où il supposait
+— alors `pull` puis `validate` le mesurent désormais.
+
+La mesure ne coûte rien de plus. Les deux commandes tirent déjà un candidat
+puis le soumettent à deux portes Ralph : les jetons sont donc déjà générés, il
+ne manquait qu'un chronomètre. Le chiffre atterrit dans
+`~/.best-engine-ai-helper/measurements.yaml`, indexé par modèle **et** par
+machine, puisque les jetons par seconde sont une propriété des deux.
+
+Le chronométrage s'appuie sur l'`eval_duration` d'Ollama — la phase de décodage
+telle que le démon la mesure — plutôt que sur le temps mural autour de l'appel,
+qui contient aussi le traitement du prompt, HTTP puis l'attente en file. Chaque
+mesure retient de quelle horloge elle vient, et seule celle du démon peut
+disqualifier un modèle : le temps mural sous-estime la vitesse de décodage, et
+sous-estimer est précisément ce qui rejetterait un modèle qui tourne très bien.
+
+Remesurer le même modèle conserve l'échantillon **le plus rapide** plutôt que le
+plus récent, ce qui est une exigence de correction et non de l'optimisme. La
+grandeur que l'on calibre est un **plafond** de bande passante mémoire, et une
+machine occupée ne peut que faire paraître une observation plus lente que le
+matériel ne l'est réellement. La leçon vient du comportement lui-même :
+`gemma3:12b` a mesuré 15,2 jetons/s sur une machine au repos puis 8,7 jetons/s
+avec trois suites de tests en cours — et l'échantillon sous contention aurait
+donné à lui seul une correction de 0,31 contre 0,54 pour la machine au repos,
+faussant toutes les estimations de la machine. Le champ `samples` indique sur
+combien d'observations repose le chiffre retenu.
+
+Trois conséquences, dont la troisième est la plus intéressante :
+
+1. **Une mesure l'emporte sur une estimation** partout où les deux existent.
+   `recommend` la marque d'une `*`.
+2. **`min_tps` est devenu une vraie contrainte.** Chaque brief d'usage portait
+   déjà un plancher de débit, qui ne faisait que classer. Un modèle *mesuré*
+   sous le plancher est maintenant écarté de la sélection automatique, exactement
+   comme un modèle qui ne tient pas en mémoire. Un modèle simplement *estimé*
+   sous le plancher est signalé puis laissé en place : une machine qui n'a jamais
+   lancé `pull` se comporte donc comme avant.
+3. **Mesurer un modèle améliore l'estimation de tous les autres.** Le rapport
+   entre mesure et estimation est une propriété de la machine bien plus que du
+   modèle, donc il se transfère. Sur l'Apple M2 Max qui a servi au développement,
+   `gemma3:12b` décode à **15,2 jetons/s** là où le modèle de bande passante
+   prédisait **28,3** : l'estimateur est optimiste de 86 % sur ce matériel. Ce
+   rapport s'applique ensuite à chaque estimation sur cette machine, y compris
+   pour des modèles jamais tirés.
+
+Le point 3 explique aussi pourquoi le plancher de confort comptait plus qu'il
+n'y paraissait : `COMFORT_TPS` vaut 15 jetons/s, donc une estimation non corrigée
+de 28,3 le franchit sans hésiter alors que la mesure réelle de 15,2 l'effleure.
+La correction fait toute la différence entre une recommandation qui *semble*
+confortable puis une qui l'est.
+
 ### 5. Charge serveur en direct (optionnel, `--live`)
 
 Les quatre facteurs ci-dessus décrivent la capacité *théorique* de la machine. Ajouter
@@ -317,6 +373,8 @@ Le catalogue de base intégré (`models.yaml`) couvre les familles Qwen 3, Qwen 
 `catalog update` rafraîchit le cache depuis l'[annuaire LLM ApXML](https://apxml.com/models?modelType=open_weight) (modèles à poids ouverts avec leurs besoins VRAM par quantification, consulté régulièrement). Il récupère les fiches, les normalise en entrées de catalogue et les fusionne dans `~/.best-engine-ai-helper/catalog_cache.yaml` par identifiant (le catalogue de base intégré n'est jamais modifié). Utilisez `--limit N` pour un rafraîchissement partiel rapide. Les pages statiques d'ApXML portent des caractéristiques mais aucun score de classement numérique, donc les entrées rafraîchies gardent des benchmarks nuls (et un rang bas) jusqu'à ce qu'une source notée, comme l'Open LLM Leaderboard v2 ou l'OpenVLM Leaderboard, les remplisse.
 
 `--arena` fusionne en plus les notes de préférence conversationnelle issues des miroirs de [LM Arena](https://lmarena.ai). Deux faits mesurés méritent d'être connus avant d'y recourir.
+
+![Chaque source Arena essayée tour à tour, puis la raison de son échec aujourd'hui](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/arena-staleness.png)
 
 **Cet axe sert le catalogue cloud, pas le catalogue local.** L'Arena note ce avec quoi ses votants peuvent discuter. Apparié aux catalogues livrés (mesuré le 2026-10-19 contre le miroir vivant le plus frais), il couvrait **6 des 10 modèles cloud** de `pricing.yaml` mais seulement **3 des 20 modèles locaux** de `models.yaml`.
 

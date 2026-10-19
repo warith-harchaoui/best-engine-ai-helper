@@ -1,0 +1,48 @@
+flowchart LR
+    subgraph PREDICT["① Predict"]
+        direction TB
+        HW["Detect this machine<br/><small>memory pool, bandwidth</small>"]
+        EST["<b>Estimate</b> tok/s<br/><small>bandwidth ÷ active bytes</small>"]
+        HW --> EST
+    end
+
+    subgraph CHOOSE["② Choose"]
+        direction TB
+        RANK["<b>Rank</b> candidates<br/><small>benchmark axis + memory fit</small>"]
+        FLOOR{"below<br/>min_tps?"}
+        DEMOTE["<b>measured</b> → demote<br/><small>as unusable as not fitting</small>"]
+        FLAG["estimated → flag only<br/><small>a guess never disqualifies</small>"]
+        RANK --> FLOOR
+        FLOOR --> DEMOTE
+        FLOOR --> FLAG
+    end
+
+    subgraph PROVE["③ Prove"]
+        direction TB
+        GATE["<b>Ralph gates</b><br/><small>prose + vision defect hunt</small>"]
+        MEAS["<b>Measure</b> tok/s on the<br/>same tokens<br/><small>daemon decode clock</small>"]
+        GATE -. "zero extra<br/>inference" .-> MEAS
+    end
+
+    STORE[("measurements.yaml<br/><small>keyed by model AND machine<br/>keeps the fastest sample</small>")]
+
+    EST --> RANK
+    DEMOTE --> GATE
+    FLAG --> GATE
+    MEAS --> STORE
+
+    STORE == "corrects every future<br/>estimate here" ==> EST
+    STORE == "lets the floor<br/>disqualify" ==> FLOOR
+
+    classDef measured fill:#1d4ed8,stroke:#1e3a8a,stroke-width:2px,color:#ffffff
+    classDef guessed fill:#e5e7eb,stroke:#6b7280,color:#111827
+    classDef store fill:#047857,stroke:#065f46,stroke-width:3px,color:#ffffff
+    classDef gate fill:#fef3c7,stroke:#b45309,color:#111827
+    class MEAS,GATE measured
+    class EST,HW guessed
+    class STORE store
+    class FLOOR,DEMOTE,FLAG,RANK gate
+
+    style PREDICT fill:#f9fafb,stroke:#d1d5db
+    style CHOOSE fill:#f9fafb,stroke:#d1d5db
+    style PROVE fill:#f9fafb,stroke:#d1d5db

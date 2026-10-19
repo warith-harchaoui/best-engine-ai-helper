@@ -266,7 +266,10 @@ def effective_budget(
 
 
 def estimated_tokens_per_second(
-    entry: dict[str, Any], bandwidth_gbs: float | None, backend: str = "ollama"
+    entry: dict[str, Any],
+    bandwidth_gbs: float | None,
+    backend: str = "ollama",
+    calibrated: bool = True,
 ) -> float | None:
     """
     Estimate local decode throughput (tokens/s) for a model on this machine.
@@ -295,6 +298,15 @@ def estimated_tokens_per_second(
         differ on identical Ubuntu + discrete-GPU hardware, not just a
         cross-platform artifact).
 
+    calibrated : bool
+        Apply this machine's measured correction factor when one exists (see
+        :func:`throughput.calibration_factor`). On by default: an estimate that
+        has been corrected against a real measurement on this hardware is
+        strictly better than one that has not. Pass False to see the raw
+        bandwidth model, which is what the calibration itself is derived
+        against -- leaving it True there would feed the correction back into
+        its own input.
+
     Returns
     -------
     float or None
@@ -307,7 +319,28 @@ def estimated_tokens_per_second(
     if ram <= 0:
         return None
     efficiency = _DECODE_EFFICIENCY_BY_BACKEND.get(backend, _DECODE_EFFICIENCY)
-    return round(bandwidth_gbs / ram * efficiency, 1)
+    raw = bandwidth_gbs / ram * efficiency
+
+    if calibrated:
+        # `_DECODE_EFFICIENCY` is an average over other people's hardware, so on
+        # any one machine it carries a systematic bias -- measured at 0.54 on an
+        # Apple M2 Max, i.e. optimistic by 86%. The bias belongs to the machine
+        # much more than to the model, so correcting by it transfers: having
+        # measured one model, every other estimate on this machine gets closer
+        # to the truth, including for models that were never pulled.
+        from . import throughput as _throughput
+
+        calibration = _throughput.calibration_factor()
+        if calibration is not None:
+            factor, samples = calibration
+            osh.debug(
+                f"Applying measured throughput calibration {factor} "
+                f"({samples} sample(s) on this machine) to the estimate for "
+                f"{entry.get('id', '?')}."
+            )
+            raw *= factor
+
+    return round(raw, 1)
 
 
 def _benchmark_score(
@@ -475,6 +508,8 @@ def rank(
     application: str | None = None,
     backend: str = "ollama",
     load: dict[str, Any] | None = None,
+    bandwidth_gbs: float | None = None,
+    min_tps: float | None = None,
 ) -> list[dict[str, Any]]:
     """
     Return all candidates sorted by benchmark score, annotated with fit status.
@@ -504,11 +539,25 @@ def rank(
     load : dict or None
         Live server state from :func:`detect.server_load`, forwarded to
         :func:`effective_budget`. None reproduces the load-blind behaviour.
+    bandwidth_gbs : float or None
+        Memory bandwidth from :func:`detect.compute_profile`, used to estimate
+        throughput for candidates with no measurement. None leaves the
+        throughput annotations unpopulated unless a measurement exists.
+    min_tps : float or None
+        Throughput floor in tokens/s. A candidate **measured** below it on this
+        machine is demoted out of auto-selection, in the same way and for the
+        same reason as one that does not fit memory. A candidate merely
+        *estimated* below it is annotated and left in place: the estimator was
+        measured here to run optimistic by a wide margin, so letting it
+        disqualify anything would reject models that run perfectly well. None
+        disables the check entirely.
 
     Returns
     -------
     list[dict[str, Any]]
-        Candidates sorted descending by benchmark score, each with ``_fits``.
+        Candidates sorted descending by benchmark score, each annotated with
+        ``_fits``, and with ``_tps`` / ``_tps_basis`` / ``_comfy`` when a
+        throughput figure could be obtained.
 
     Examples
     --------
@@ -517,6 +566,8 @@ def rank(
     >>> rank({'unified_gb': 96.0, 'vram_gb': None, 'ram_gb': 96.0}, catalog, 'vlm')[0]['_fits']
     True
     """
+    from . import throughput as _throughput
+
     if kind == "vlm":
         candidates = [e for e in catalog if e.get("kind") == "vlm"]
     else:
@@ -531,17 +582,49 @@ def rank(
     for entry in candidates:
         copy = dict(entry)
         copy["_fits"] = model_footprint_gb(entry, backend) <= budget
+
+        # A measurement for this exact (model, machine) pair beats an estimate,
+        # which is the whole argument of this package applied to itself. Only a
+        # figure from the serving daemon's own decode clock is trusted here --
+        # a wall-clock figure also contains prompt processing and queueing, so
+        # it understates speed, and understating is what would wrongly demote a
+        # model below.
+        measured = _throughput.measured_tps(str(copy.get("id") or ""), trusted_only=True)
+        if measured is not None:
+            copy["_tps"] = measured
+            copy["_tps_basis"] = "measured"
+        else:
+            estimated = estimated_tokens_per_second(entry, bandwidth_gbs, backend)
+            copy["_tps"] = estimated
+            copy["_tps_basis"] = "estimated" if estimated is not None else None
+
+        if min_tps is not None and copy["_tps"] is not None:
+            copy["_comfy"] = bool(copy["_fits"]) and copy["_tps"] >= min_tps
         annotated.append(copy)
 
-    # Structured-output capability is a primary sort key, ahead of raw benchmark
-    # score: the helper routes every task through a JSON schema, so a model that
-    # can't honour Ollama structured output (the Qwen3-VL family returns empty)
-    # is disqualified from auto-selection no matter how high it scores. It still
-    # appears in the ranked list -- just never above a structured-capable peer --
-    # so a caller who explicitly wants it for a non-structured task can find it.
-    # Absent field defaults to True (assume capable) for forward compatibility.
-    def _sort_key(e: dict[str, Any]) -> tuple[bool, float]:
+    # Two primary sort keys ahead of raw benchmark score, both of the same
+    # shape: a model that cannot do the job is demoted below one that can, no
+    # matter how well it scores, but stays in the list so a caller who wants it
+    # on purpose can still find it.
+    #
+    # 1. Structured output. The helper routes every task through a JSON schema,
+    #    so a model that can't honour Ollama structured output (the Qwen3-VL
+    #    family returns empty) is out of auto-selection. Absent field defaults
+    #    to True (assume capable) for forward compatibility.
+    # 2. A throughput floor that was actually MEASURED below on this machine.
+    #    This is the half of "fits your hardware" that used to be advisory: a
+    #    model too slow to use here is as unusable as one that does not fit in
+    #    memory, and it is now treated the same. An estimate never demotes --
+    #    `_measured_slow` is False unless the figure came from a measurement --
+    #    so a machine that has never run `pull` ranks exactly as it did before.
+    def _sort_key(e: dict[str, Any]) -> tuple[bool, bool, float]:
         structured_ok = e.get("structured_output", True) is not False
-        return (structured_ok, _benchmark_score(e, kind, application))
+        measured_slow = (
+            min_tps is not None
+            and e.get("_tps_basis") == "measured"
+            and e.get("_tps") is not None
+            and float(e["_tps"]) < min_tps
+        )
+        return (structured_ok, not measured_slow, _benchmark_score(e, kind, application))
 
     return sorted(annotated, key=_sort_key, reverse=True)

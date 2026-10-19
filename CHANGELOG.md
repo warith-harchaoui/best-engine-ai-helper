@@ -25,6 +25,49 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Added
 
+- Re-measuring a model keeps the **fastest** sample rather than the latest.
+  Found by running the proof while three test suites were competing for the
+  machine: the same model measured 15.2 tok/s idle and 8.7 tok/s contended, and
+  the contended figure alone produced a correction of 0.31 against the idle
+  run's 0.54. Since the quantity being calibrated is a bandwidth *ceiling*, and
+  contention can only push an observation below the hardware's real capability,
+  the fastest sample is the closest to what is being predicted.
+  `record(..., replace=True)` overrules this when the hardware genuinely slowed.
+- Two hand-authored SVG diagrams in `assets/diagrams/`, embedded in both
+  READMEs: the predict → choose → prove loop with the real figures on it, and
+  why every LM Arena source fails today.
+
+- **Decode speed is now measured, not only estimated.** This package argued
+  for measuring over assuming while estimating the one thing a competitor
+  measured, which was the most awkward contradiction in it. `throughput.Meter`
+  wraps the chat callable handed to the Ralph gates during `pull` and
+  `validate`, so the figure falls out of inference that was already happening
+  — no extra call, no new command, and `validate_llm.py` / `validate_vlm.py`
+  are untouched. Measured first result: `gemma3:12b` on an Apple M2 Max decodes
+  at **15.2 tok/s** where the bandwidth model predicted **28.3**.
+- Measurements prefer Ollama's `eval_duration`, the decode phase as timed by
+  the daemon, over the caller's wall clock, which also contains prompt
+  processing, HTTP, and queueing. Every measurement records which clock it came
+  from, and only the daemon's can disqualify a model: a wall-clock figure
+  understates decode speed, and understating is what would reject models that
+  run perfectly well. `llm.chat`'s ledger events carry `gen_ms` for the same
+  reason.
+- **`min_tps` became a real constraint.** Every usage brief already carried a
+  throughput floor, and it only ever sorted. A model now *measured* below the
+  floor on this machine is demoted out of auto-selection, exactly as one that
+  does not fit memory is — the missing half of "fits your hardware". A model
+  merely *estimated* below it is annotated and left where it was, so a machine
+  that has never run `pull` ranks precisely as it did before.
+- **A measurement improves the models you never ran.**
+  `throughput.calibration_factor()` is the median measured-over-estimated
+  ratio for the machine, and `score.estimated_tokens_per_second` applies it.
+  The bias belongs to the hardware far more than to the model, so measuring one
+  model pulls every other estimate on that machine toward the truth. Derived
+  from the stored measurements rather than kept as separate state, so it cannot
+  drift away from them; median rather than mean so one odd model cannot drag
+  the machine; and ignored entirely outside [0.2, 3.0], where a bad catalog
+  footprint is a likelier explanation than the hardware.
+
 - `catalog update --arena` reaches the Arena adapter from the command line, in
   both CLI twins. It was previously importable and nothing more. The merge
   decision lives in `catalog.merge_arena_axes()` rather than in either front

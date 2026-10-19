@@ -289,6 +289,59 @@ sizing guides); bandwidth-bound decode `tok/s ≈ bandwidth ÷ active-bytes × 0
 (llama.cpp / MLX community benchmarks). The exact ratios live as documented
 constants in `score.py`.
 
+### Measured throughput, and why the estimate needed correcting
+
+![The measurement loop: predict, choose, prove, and feed the measurement back into the next prediction](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/measurement-loop.png)
+
+Everything above is an *estimate*. For a tool whose argument is that you should
+measure rather than assume, that was the one place it assumed — so `pull` and
+`validate` now measure it.
+
+The measurement costs nothing extra. Both commands already pull a candidate and
+put it through two Ralph gates, which means the tokens have already been
+generated; all that was missing was a stopwatch. The figure lands in
+`~/.best-engine-ai-helper/measurements.yaml`, keyed by model **and** machine,
+since tokens per second is a property of both.
+
+It is timed with Ollama's `eval_duration` — the decode phase as the daemon
+measures it — rather than wall-clock time around the call, which also contains
+prompt processing, HTTP, and any queueing. Each measurement records which clock
+produced it, and only the daemon's clock is allowed to disqualify a model: wall
+time understates decode speed, and understating is what would reject a model
+that runs perfectly well.
+
+Re-measuring the same model keeps the **fastest** sample rather than the latest,
+which is a correctness requirement rather than optimism. The quantity being
+calibrated is a memory-bandwidth *ceiling*, and a busy machine can only ever
+make an observation look slower than the hardware really is. This was learned
+from the behaviour itself: `gemma3:12b` measured 15.2 tok/s on an idle machine
+and 8.7 tok/s with three test suites running — and the contended sample alone
+would have yielded a correction of 0.31 against the idle run's 0.54, skewing
+every estimate on the machine. `samples` records how much evidence stands behind
+the stored figure.
+
+Three things follow, and the third is the interesting one:
+
+1. **A measured figure beats an estimate** wherever both exist. `recommend`
+   marks it with `*`.
+2. **`min_tps` became a real constraint.** Every usage brief already carried a
+   throughput floor and it only ever sorted. A model *measured* below the floor
+   is now demoted out of auto-selection, exactly as one that does not fit in
+   memory is. A model merely *estimated* below it is flagged and left alone, so
+   a machine that has never run `pull` behaves exactly as it did before.
+3. **Measuring one model improves the estimate for all the others.** The ratio
+   of measured to estimated is a property of the machine far more than of the
+   model, so it transfers. On the Apple M2 Max this was developed against,
+   `gemma3:12b` decodes at **15.2 tok/s** where the bandwidth model predicted
+   **28.3** — the estimator runs optimistic by 86% on this hardware. That ratio
+   is applied to every subsequent estimate on this machine, including for
+   models that were never pulled.
+
+Point 3 is also why the comfort floor mattered more than it looked: `COMFORT_TPS`
+is 15 tok/s, so an uncorrected estimate of 28.3 sails past it while the real
+15.2 only just clears it. The correction is the difference between a
+recommendation that sounds comfortable and one that is.
+
 ## Available commands
 
 | Command | Description |
@@ -316,6 +369,8 @@ The bundled seed catalog (`models.yaml`) covers the Qwen 3, Qwen 2.5, Qwen 2.5-C
 `catalog update` refreshes the cache from the [ApXML LLM directory](https://apxml.com/models?modelType=open_weight) (open-weight models with their per-quant VRAM needs, consulted regularly). It fetches the specs, normalizes them to catalog entries, and merges them into `~/.best-engine-ai-helper/catalog_cache.yaml` by id (the bundled seed is never modified). Use `--limit N` for a quick partial refresh. ApXML's static pages carry specs but no numeric leaderboard scores, so refreshed entries keep null benchmarks (and rank low) until a scored source, such as the Open LLM Leaderboard v2 or the OpenVLM Leaderboard, fills them.
 
 `--arena` additionally merges conversational ratings from [LM Arena](https://lmarena.ai) mirrors, and two measured facts about that axis are worth knowing before you reach for it.
+
+![Every Arena source tried in turn, and why each one fails today](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/arena-staleness.png)
 
 **It serves the cloud catalog, not the local one.** Arena rates what its voters can chat with. Matched against the bundled catalogs (measured 2026-10-19 against the freshest working mirror), it covered **6 of the 10 cloud models** in `pricing.yaml` but only **3 of the 20 local models** in `models.yaml`.
 
