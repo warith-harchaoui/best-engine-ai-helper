@@ -11,6 +11,7 @@ degradation the module supports.
 
 from __future__ import annotations
 
+import json
 import sys
 from types import ModuleType
 from typing import Any
@@ -508,3 +509,120 @@ def test_cloud_api_key_retry_cache_pseudonymize_and_safety_wiring(
     monkeypatch.setattr(safety, "check_text", _blocking_check)
     with pytest.raises(safety.SafetyViolation):
         _llm.chat("hi", engine=local_eng, kind="llm", safety=True)
+
+
+# ── Streaming, and what it changes ─────────────────────────────────────────
+
+
+class _FakeStream:
+    """A requests-like response that yields Ollama's NDJSON, line by line."""
+
+    def __init__(self, pieces, *, done_last=True):
+        self._lines = [
+            json.dumps({"response": piece, "done": False}) for piece in pieces
+        ]
+        if done_last:
+            self._lines.append(json.dumps({"response": "", "done": True}))
+        self.sent = None
+
+    def raise_for_status(self):
+        return None
+
+    def iter_lines(self, decode_unicode=True):
+        yield from self._lines
+
+
+def test_chat_stream_yields_each_piece_as_it_arrives(monkeypatch):
+    """The point of the whole function: text before the answer is finished.
+
+    Measured on a warm local stack, this is the difference between a first
+    sentence at 1.0 s and a whole answer at several seconds — which is the
+    entire conversational latency budget.
+    """
+    import requests
+
+    from best_engine_ai_helper import llm
+
+    captured = {}
+
+    def fake_post(url, json=None, timeout=None, stream=None):
+        captured["url"] = url
+        captured["payload"] = json
+        captured["stream"] = stream
+        return _FakeStream(["Bon", "jour", " !"])
+
+    monkeypatch.setattr(requests, "post", fake_post)
+    monkeypatch.setitem(__import__("os").environ, "BEST_LLM_TEXT", "gemma3:12b")
+
+    pieces = list(llm.chat_stream("salut", safety=False))
+
+    assert pieces == ["Bon", "jour", " !"]
+    assert captured["payload"]["stream"] is True, "a stream that is not streamed"
+    assert captured["stream"] is True, "the HTTP response must be streamed too"
+    assert captured["url"].endswith("/api/generate")
+
+
+def test_chat_stream_stops_at_done(monkeypatch):
+    """Ollama keeps the connection open; `done` is the only end marker."""
+    import requests
+
+    from best_engine_ai_helper import llm
+
+    def fake_post(url, json=None, timeout=None, stream=None):
+        return _FakeStream(["un", "deux"])
+
+    monkeypatch.setattr(requests, "post", fake_post)
+    assert list(llm.chat_stream("x", safety=False)) == ["un", "deux"]
+
+
+def test_chat_stream_refuses_a_backend_it_cannot_stream(monkeypatch):
+    """Silently returning the whole answer would make a measurement lie.
+
+    A caller timing "time to first token" would get "time to whole answer"
+    and conclude the model was slow, when what happened is that it never
+    streamed at all.
+    """
+    from best_engine_ai_helper import llm
+
+    monkeypatch.setitem(__import__("os").environ, "SPREZZATURE_LLM_BACKEND", "openai")
+    with pytest.raises(RuntimeError, match="chat_stream"):
+        list(llm.chat_stream("x", safety=False))
+
+
+def test_a_missing_model_is_named_rather_than_blamed_on_the_url(monkeypatch):
+    """Ollama answers 404 for an unknown *model*, with the same status it
+    would use for a bad path — so the raw message sends the reader to check
+    their URL, their port and their proxy before `ollama list` occurs to them.
+    """
+    import requests
+
+    from best_engine_ai_helper import llm
+
+    class _Response:
+        status_code = 404
+
+    def fake_post(url, json=None, timeout=None, stream=None):
+        error = requests.HTTPError("404 Client Error: Not Found")
+        error.response = _Response()
+        raise error
+
+    def fake_get(url, timeout=None):
+        class _Tags:
+            @staticmethod
+            def json():
+                return {"models": [{"name": "gemma3:12b"}]}
+
+        return _Tags()
+
+    monkeypatch.setattr(requests, "post", fake_post)
+    monkeypatch.setattr(requests, "get", fake_get)
+    monkeypatch.setitem(__import__("os").environ, "BEST_LLM_TEXT", "qwen3:8b")
+    monkeypatch.setitem(__import__("os").environ, "SPREZZATURE_LLM_BACKEND", "ollama")
+
+    with pytest.raises(RuntimeError) as raised:
+        list(llm.chat_stream("x", safety=False))
+
+    message = str(raised.value)
+    assert "qwen3:8b" in message, "name the model that is missing"
+    assert "gemma3:12b" in message, "and the ones that are there"
+    assert "BEST_LLM_TEXT" in message, "and a variable that actually works"

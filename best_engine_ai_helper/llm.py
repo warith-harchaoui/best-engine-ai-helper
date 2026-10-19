@@ -87,7 +87,7 @@ import copy
 import json
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any, cast
 
 import os_helper as osh
@@ -457,8 +457,9 @@ def _chat_ollama(
         resp = requests.post(url, json=payload, timeout=_timeout())
         resp.raise_for_status()
     except requests.RequestException as exc:
-        osh.error(f"Ollama request failed:\n\t{url}\n\t{exc}")
-        raise RuntimeError(f"Ollama request to {url} failed: {exc}") from exc
+        message = _ollama_failure(url, model, exc)
+        osh.error(f"Ollama request failed:\n\t{url}\n\t{message}")
+        raise RuntimeError(message) from exc
 
     data = resp.json()
     if "response" not in data:
@@ -1451,6 +1452,204 @@ def chat(
     if last_exc is not None:
         raise last_exc
     raise RuntimeError("no engine could serve the request")
+
+
+def _ollama_failure(url: str, model: str, exc: Exception) -> str:
+    """Say what actually went wrong with an Ollama request.
+
+    A 404 from Ollama almost never means the endpoint is missing — both
+    ``/api/generate`` and ``/api/chat`` have been there for years. It means
+    the **model** is not pulled, and the daemon says so with the same status
+    code it would use for a bad path. The raw message therefore reads
+    "request to http://localhost:11434/api/generate failed: 404 Not Found",
+    which sends the reader to check their URL, their port and their proxy
+    before it occurs to them to check `ollama list`.
+
+    So on a 404 this asks the daemon what it does have, and names the gap.
+    """
+    import requests
+
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    if status != 404:
+        return f"Ollama request to {url} failed: {exc}"
+
+    try:
+        tags = requests.get(f"{url.rsplit('/api/', 1)[0]}/api/tags", timeout=5).json()
+        pulled = [m.get("name", "") for m in tags.get("models", [])]
+    except Exception:  # pragma: no cover - the daemon just answered us
+        pulled = []
+
+    if pulled and model not in pulled:
+        return (
+            f"Ollama has no model {model!r}. It is running and it holds: "
+            f"{', '.join(pulled)}.\n"
+            f"Either pull it (`ollama pull {model}`) or point this at one of "
+            f"those — BEST_LLM_TEXT for the text model, BEST_LLM_VISION for "
+            f"the vision one, or `best-engine-ai-helper resolve` to pick what "
+            f"fits this machine."
+        )
+    return f"Ollama request to {url} failed: {exc}"
+
+
+def chat_stream(
+    prompt: str,
+    *,
+    system: str | None = None,
+    model: str | None = None,
+    temperature: float = 0.2,
+    engine: dict[str, Any] | str | list[Any] | None = None,
+    kind: str | None = None,
+    base_url: str | None = None,
+    safety: bool | None = None,
+) -> Iterator[str]:
+    """Stream a model's answer, a token at a time, as it is generated.
+
+    :func:`chat` returns a finished string, which is the right shape for
+    almost everything this suite does: a caption, an alt text, a summary — all
+    of them are *used* whole, so producing them whole costs nothing.
+
+    A spoken conversation is the exception, and it is a sharp one. There, the
+    number that matters is not how long the answer takes but how long the
+    **silence before it** lasts, and the published budget allows roughly 800 ms
+    between the user's last word and the agent's first sound. Generating a
+    whole answer first spends the entire generation inside that budget;
+    streaming spends only the first sentence's share, because the sentence can
+    be spoken while the rest is still being written. On a local model, that is
+    frequently the difference between a conversation and a wait.
+
+    Scope, stated plainly
+    ---------------------
+    **Ollama only.** It is the suite's default backend and the one every
+    local-first deployment runs; the cloud transports stream too, but each with
+    its own event framing, and shipping one that works beats shipping four that
+    are hard to test. Any other backend raises rather than silently falling
+    back to :func:`chat` — a "stream" that yields the whole answer in one piece
+    would make a caller's latency measurement lie about which mode it was in.
+
+    **No images, no schema.** A grammar-constrained generation is consumed
+    whole by definition, and a vision prompt has no first-sentence advantage
+    worth the extra surface.
+
+    The safety scan, and what streaming does to it
+    ----------------------------------------------
+    :func:`chat` scans the prompt before sending and the reply before
+    returning. Here the prompt is scanned identically — nothing is lost on
+    that side — but the reply **cannot be scanned before the caller sees it**,
+    because seeing it as it arrives is the entire point.
+
+    So the reply is scanned when the stream ends, and that is weaker in a
+    specific, stateable way: a caller that buffers the chunks and uses them
+    afterwards gets the same protection as :func:`chat`, while a caller that
+    *speaks* each chunk as it arrives has already said it. There is no way
+    around that which is not simply :func:`chat`. It is written here rather
+    than discovered, and the check still runs: finding out afterwards is worth
+    more than not finding out.
+
+    Parameters
+    ----------
+    prompt : str
+        User-facing prompt text.
+    system : str or None
+        System-level instructions sent before the user prompt.
+    model : str or None
+        Override the resolved model tag.
+    temperature : float
+        Sampling temperature.
+    engine : dict, str, list or None
+        A resolved engine descriptor, as :func:`chat` takes.
+    kind : str or None
+        ``"llm"`` or ``"vlm"``; defaults to ``"llm"``.
+    base_url : str or None
+        Override the Ollama endpoint.
+
+    Yields
+    ------
+    str
+        Each chunk of text as the model produces it. Chunks are whatever the
+        backend emits — usually sub-word — so a caller that needs sentences
+        must accumulate and split them itself.
+
+    Raises
+    ------
+    RuntimeError
+        When the resolved backend is not Ollama, or the request fails.
+
+    Examples
+    --------
+    >>> # Accumulate into sentences, which is what a speech caller wants:
+    >>> # pending = ""
+    >>> # for piece in chat_stream("Explique la marée."):
+    >>> #     pending += piece
+    """
+    import requests
+
+    backend, resolved_base_url, resolved_model, transport, _ = _resolve_target(
+        _engine_chain(engine, kind or "llm", False)[0] if engine is not None else None,
+        model,
+        None,
+        kind,
+    )
+    if transport != "ollama":
+        raise RuntimeError(
+            f"chat_stream() speaks Ollama's streaming protocol and the resolved "
+            f"backend is {backend!r}. Use chat() there, or set "
+            f"SPREZZATURE_LLM_BACKEND=ollama. Falling back to a whole answer "
+            f"silently would make a latency measurement lie about its own mode."
+        )
+
+    # The outbound half is identical to chat()'s: on by default for every
+    # engine, local or cloud, because a content-policy concern does not depend
+    # on who is billed.
+    do_safety = safety if safety is not None else True
+    if do_safety:
+        from . import safety as _safety
+
+        _safety.check_text(prompt, direction="outbound")
+
+    payload: dict[str, Any] = {
+        "model": resolved_model,
+        "prompt": prompt,
+        "stream": True,
+        "options": {"temperature": temperature},
+    }
+    if system:
+        payload["system"] = system
+
+    url = f"{(base_url or resolved_base_url or _base_url()).rstrip('/')}/api/generate"
+    try:
+        response = requests.post(url, json=payload, timeout=_timeout(), stream=True)
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        message = _ollama_failure(url, resolved_model, exc)
+        osh.error(f"Ollama streaming request failed:\n\t{url}\n\t{message}")
+        raise RuntimeError(message) from exc
+
+    seen: list[str] = []
+    for line in response.iter_lines(decode_unicode=True):
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            # A partial line. Ollama emits one JSON object per line, so this
+            # means the stream was cut; stopping is better than guessing.
+            break
+        piece = event.get("response", "")
+        if piece:
+            seen.append(str(piece))
+            yield str(piece)
+        if event.get("done"):
+            break
+
+    # After the fact, and deliberately so — see the docstring. A caller that
+    # buffered is protected exactly as chat() protects it; a caller that spoke
+    # as it went finds out late, which is still worth more than not finding
+    # out. Raised rather than logged: the caller decides what to do about an
+    # answer it has already shown, and a warning in a log is not a decision.
+    if do_safety and seen:
+        from . import safety as _safety
+
+        _safety.check_text("".join(seen), direction="inbound")
 
 
 def embed(text: str) -> list[float]:
