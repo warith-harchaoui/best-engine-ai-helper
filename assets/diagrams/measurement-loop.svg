@@ -6,8 +6,11 @@
   Choose: candidates are ranked, and a throughput floor demotes a model only when the figure below it
   was measured, never when it was merely estimated. Prove: the Ralph quality gates run, and the same
   tokens they already generate are timed, giving 15.2 tokens per second. The measurement is stored per
-  model and machine, and feeds back in two ways: it lets the floor disqualify, and it corrects every
-  future estimate on this machine by a factor of 0.54.</desc>
+  model and machine, and feeds back in two ways: it lets the floor disqualify, and it corrects
+  future estimates on this machine — by a factor of 0.54 for this pair. Tested by leave-one-out
+  in scripts/validate_calibration.py: the correction transfers to other models, cutting their
+  error from 64-118 percent to 17-25 percent, which is a large improvement rather than
+  precision.</desc>
 
   <style>
     .panel      { fill: #ffffff; stroke: #d6d6d6; stroke-width: 1.5; }
@@ -135,6 +138,6 @@
   <!-- feedback arc 1 : store -> the estimate, the long way round the bottom -->
   <path class="feedback" d="M917 350 L941 350 Q953 350 953 362 L953 418 Q953 430 941 430 L181 430 Q169 430 169 418 L169 292"
         marker-end="url(#arrow-green)" stroke-dasharray="7 5"/>
-  <text class="fb-label" x="500" y="422" text-anchor="middle">× 0.54 — the estimator runs 86 % optimistic on this machine</text>
+  <text class="fb-label" x="500" y="422" text-anchor="middle">× 0.54 for this pair — the estimator ran roughly twice optimistic</text>
   <text class="caption"  x="500" y="456" text-anchor="middle">Measuring one model corrects the estimate for every other model here, including those never pulled.</text>
 </svg>

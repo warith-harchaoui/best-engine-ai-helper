@@ -325,9 +325,21 @@ Trois conséquences, dont la troisième est la plus intéressante :
    entre mesure et estimation est une propriété de la machine bien plus que du
    modèle, donc il se transfère. Sur l'Apple M2 Max qui a servi au développement,
    `gemma3:12b` décode à **15,2 jetons/s** là où le modèle de bande passante
-   prédisait **28,3** : l'estimateur est optimiste de 86 % sur ce matériel. Ce
-   rapport s'applique ensuite à chaque estimation sur cette machine, y compris
-   pour des modèles jamais tirés.
+   prédisait **28,3**. Ce rapport s'applique ensuite à chaque estimation sur
+   cette machine, y compris pour des modèles jamais tirés.
+
+   Cette affirmation est **éprouvée** plutôt que posée :
+   `scripts/validate_calibration.py` calibre sur un modèle, prédit un autre,
+   puis dit si le résultat bat l'estimation brute. C'est le cas dans toutes les
+   directions essayées, l'erreur tombant de **64-118 % à 17-25 %**. Les deux
+   moitiés méritent d'être dites : la correction est grande puis elle n'est pas
+   de la précision. Les rapports s'étalent d'environ **0,46 à 0,61** selon le
+   modèle puis d'une exécution à l'autre du même modèle, ce qui explique
+   pourquoi le facteur est une **médiane** sur plusieurs mesures et non une
+   seule, et pourquoi une vraie mesure l'emporte toujours sur une estimation
+   corrigée quand elle existe. La calibration fait passer une estimation de
+   « fausse d'un facteur deux » à « fausse d'un cinquième » ; elle ne la rend
+   pas juste.
 
 Le point 3 explique aussi pourquoi le plancher de confort comptait plus qu'il
 n'y paraissait : `COMFORT_TPS` vaut 15 jetons/s, donc une estimation non corrigée

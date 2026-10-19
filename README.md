@@ -333,9 +333,19 @@ Three things follow, and the third is the interesting one:
    of measured to estimated is a property of the machine far more than of the
    model, so it transfers. On the Apple M2 Max this was developed against,
    `gemma3:12b` decodes at **15.2 tok/s** where the bandwidth model predicted
-   **28.3** — the estimator runs optimistic by 86% on this hardware. That ratio
-   is applied to every subsequent estimate on this machine, including for
-   models that were never pulled.
+   **28.3**. That ratio is applied to every subsequent estimate on this
+   machine, including for models that were never pulled.
+
+   That claim is tested rather than asserted — `scripts/validate_calibration.py`
+   calibrates on one model, predicts another, and reports whether it beat the
+   raw estimate. It did, in every direction tried, cutting the error from
+   **64-118% down to 17-25%**. Worth stating both halves: the correction is
+   large and it is not precision. Ratios ranged about **0.46 to 0.61** across
+   models and across repeated runs of the same model, which is why the factor
+   is a median over several measurements rather than one, and why a real
+   measurement still outranks a calibrated estimate wherever one exists.
+   Calibration moves an estimate from wrong by a factor of two to wrong by
+   about a fifth; it does not make it right.
 
 Point 3 is also why the comfort floor mattered more than it looked: `COMFORT_TPS`
 is 15 tok/s, so an uncorrected estimate of 28.3 sails past it while the real

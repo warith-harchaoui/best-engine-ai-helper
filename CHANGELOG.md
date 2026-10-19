@@ -110,6 +110,26 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Added
 
+- `scripts/validate_calibration.py` tests the claim the calibration rests on,
+  instead of restating it. Measuring one model is supposed to improve the
+  estimate for others; that is a statement about the world, not about the code,
+  so no unit test can settle it. The script measures several models, calibrates
+  on each, predicts the rest, and prints the failures as plainly as the
+  successes.
+
+  It held: on an Apple M2 Max the correction beat the raw estimate in every
+  direction tried, cutting the error from 64-118% to 17-25%. It also showed the
+  claim was being overstated here — ratios ranged about 0.46 to 0.61 across
+  models and across repeated runs of the *same* model, so the prose, docstrings
+  and diagram said "0.54, i.e. 86% optimistic" with more precision than the
+  measurement supports. All of them now give the band and the residual error,
+  and say the honest version: calibration moves an estimate from wrong by a
+  factor of two to wrong by about a fifth. It does not make it right.
+
+  Two design choices already in place are what that spread justifies: the
+  factor is a median over several measurements rather than one sample, and a
+  real measurement always outranks a calibrated estimate.
+
 - The CLI parity test now pins **flags**, not just command names. The suite
   already asserted that both surfaces expose the same commands, which is the
   cheaper half: drift actually happens one option at a time, when a flag is

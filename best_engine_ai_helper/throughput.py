@@ -474,11 +474,23 @@ def calibration_factor(
     The bandwidth model predicts decode speed from memory bandwidth and a
     community-derived efficiency constant. Those constants are averages over
     other people's hardware, so on any particular machine the prediction has a
-    systematic bias — measured at 0.54 on one Apple M2 Max, i.e. the estimator
-    was optimistic by 86%. That bias is a property of the machine far more than
-    of the model, which is what makes it transferable: measuring *one* model
+    systematic bias. That bias is a property of the machine far more than of
+    the model, which is what makes it transferable: measuring *one* model
     improves the prediction for every model in the catalog, including the ones
     that were never pulled.
+
+    How much it transfers, measured rather than assumed
+    ---------------------------------------------------
+    ``scripts/validate_calibration.py`` runs the leave-one-out version of that
+    claim — calibrate on A, predict B — and on an Apple M2 Max it held in
+    every direction tried: the error fell from 64-118% to 17-25%.
+
+    So the claim is true and it is not precision. Across models and across
+    repeated runs of the same model the ratio ranged roughly 0.46 to 0.61,
+    which is why this returns a **median over several measurements** rather
+    than trusting one, and why a real measurement still outranks a calibrated
+    estimate wherever one exists. Calibration moves an estimate from wrong by
+    a factor of two to wrong by about a fifth; it does not make it right.
 
     Derived from stored measurements rather than kept as separate state, so it
     cannot drift out of agreement with the measurements it summarises. Only

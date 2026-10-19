@@ -335,11 +335,15 @@ def estimated_tokens_per_second(
 
     if calibrated:
         # `_DECODE_EFFICIENCY` is an average over other people's hardware, so on
-        # any one machine it carries a systematic bias -- measured at 0.54 on an
-        # Apple M2 Max, i.e. optimistic by 86%. The bias belongs to the machine
-        # much more than to the model, so correcting by it transfers: having
-        # measured one model, every other estimate on this machine gets closer
-        # to the truth, including for models that were never pulled.
+        # any one machine it carries a systematic bias. The bias belongs to the
+        # machine much more than to the model, so correcting by it transfers:
+        # having measured one model, every other estimate on this machine gets
+        # closer to the truth, including for models that were never pulled.
+        #
+        # Tested rather than asserted (scripts/validate_calibration.py): on an
+        # Apple M2 Max the correction helped in every direction tried, cutting
+        # the error from 64-118% down to 17-25%. Closer, not close -- which is
+        # why a measurement, where one exists, is preferred to this.
         from . import throughput as _throughput
 
         calibration = _throughput.calibration_factor()
