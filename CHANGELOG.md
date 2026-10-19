@@ -63,15 +63,6 @@ All notable changes to best-engine-ai-helper are documented here.
   there, and benchmarks merge per axis so a source silent about an axis does
   not discard it.
 
-- `scripts/measure_absent_vs_zero.py`: counts how often a legitimate value
-  could be read as an absent one, across three candidate rules. It exists
-  because the temptation is to turn such a rule straight into a lint gate, and
-  the only way to know whether a rule is a gate or just noise is to count
-  first. Measured here: `or` on a numeric flags 14 lines (reviewable, and it
-  found the pricing defect above), `.get(k)` with no default flags 266, and
-  `if <name>:` flags 66. One rule in three survived, so this reports and does
-  not gate — a check that fires 266 times teaches people to ignore it.
-
 - **An unpriced cloud model ranked as though it were free.**
   `blended_price_per_1m` collapsed a missing price to `0.0`, and the cost axis
   inverts price into a score, so an entry nobody had priced came out at the
@@ -109,6 +100,15 @@ All notable changes to best-engine-ai-helper are documented here.
   catalog.
 
 ### Added
+
+- `scripts/measure_absent_vs_zero.py`: counts how often a legitimate value
+  could be read as an absent one, across three candidate rules. It exists
+  because the temptation is to turn such a rule straight into a lint gate, and
+  the only way to know whether a rule is a gate or just noise is to count
+  first. Measured here: `or` on a numeric flags 14 lines (reviewable, and it
+  found the pricing defect above), `.get(k)` with no default flags 266, and
+  `if <name>:` flags 66. One rule in three survived, so this reports and does
+  not gate — a check that fires 266 times teaches people to ignore it.
 
 - `scripts/validate_calibration.py` tests the claim the calibration rests on,
   instead of restating it. Measuring one model is supposed to improve the
@@ -298,9 +298,6 @@ All notable changes to best-engine-ai-helper are documented here.
   trails on every execution axis, where preferring agreeable prose to a
   schema-valid query is the known failure. A positional test pins the order so
   a later edit cannot quietly reshuffle it.
-
-### Added
-
 - `pull.installed_tags()`: which tags the local Ollama daemon can serve right
   now, best-effort with a short timeout (no daemon is the common case during
   resolution, not an error). `_resolve_local` uses it to record `available`
