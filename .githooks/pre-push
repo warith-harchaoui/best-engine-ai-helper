@@ -34,9 +34,13 @@
 # gets isolation from concurrent sessions for free: a fresh worktree contains
 # nobody else's untracked files by construction rather than by filtering.
 #
-# Cost: one detached checkout per push. Verified on this repo -- the full
-# sweep is the same 282 passed / 4 skipped in the worktree as in the working
-# tree, so no gitignored artifact is needed to run the tests.
+# Cost: one detached checkout per push, plus coverage instrumentation on the
+# sweep -- measured at roughly +45s here, against a second full sweep which
+# would have doubled it. Before this gate was adopted the suite was run inside
+# a throwaway worktree and compared against the working-tree run: identical,
+# so no gitignored artifact is needed to run the tests. (Deliberately not
+# quoting a test count -- a comment that names one is wrong the next time a
+# test is added, and a stale comment is worse than a vague one.)
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
