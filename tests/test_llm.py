@@ -790,3 +790,43 @@ def test_embed_defaults_to_the_text_model_rather_than_guessing(monkeypatch):
     with patch("requests.post", _post):
         _llm.embed("hi")
     assert sent["model"] == "qwen3:8b"
+
+
+def test_an_unreadable_keychain_degrades_instead_of_crashing(monkeypatch):
+    """`NoKeyringError` is not an `ImportError`, and it is what a headless box
+    raises on every lookup. It used to escape `_cloud_api_key`, which runs
+    *before* the failover loop's try block — so an unreadable keychain took
+    down the whole call instead of falling back to the local model."""
+    import sys
+    import types
+
+    from best_engine_ai_helper import llm as _llm
+
+    class _Boom(Exception):
+        pass
+
+    fake = types.ModuleType("keyring")
+
+    def _raise(*_a, **_k):
+        raise _Boom("the keychain is locked")
+
+    fake.get_password = _raise
+    monkeypatch.setitem(sys.modules, "keyring", fake)
+    # Make sure the settings/.env/env lookup misses so the keychain is reached.
+    monkeypatch.delenv("ACME_API_KEY", raising=False)
+
+    assert _llm._cloud_api_key({"api_key_env": "ACME_API_KEY"}) == ""
+
+
+def test_a_keychain_hit_is_still_returned(monkeypatch):
+    import sys
+    import types
+
+    from best_engine_ai_helper import llm as _llm
+
+    fake = types.ModuleType("keyring")
+    fake.get_password = lambda service, name: "sk-from-the-keychain"
+    monkeypatch.setitem(sys.modules, "keyring", fake)
+    monkeypatch.delenv("ACME_API_KEY", raising=False)
+
+    assert _llm._cloud_api_key({"api_key_env": "ACME_API_KEY"}) == "sk-from-the-keychain"

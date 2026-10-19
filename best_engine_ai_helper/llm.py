@@ -254,9 +254,27 @@ def _cloud_api_key(engine_dict: dict[str, Any] | None) -> str:
 
     try:
         import keyring
-
-        return keyring.get_password("best-engine-ai-helper", env_name) or ""
     except ImportError:
+        return ""
+
+    try:
+        return keyring.get_password("best-engine-ai-helper", env_name) or ""
+    except Exception as exc:  # noqa: BLE001 — a keychain is a courtesy, not a contract
+        # Only ImportError used to be caught, which left every other keyring
+        # failure to propagate. `keyring.errors.NoKeyringError` is not an
+        # ImportError, and it is what a headless Linux box with no secret
+        # service raises on every lookup; a locked macOS keychain raises too.
+        #
+        # That mattered more than it looks: this is called *before* the failover
+        # loop's try block, so the exception escaped `chat` entirely instead of
+        # degrading to the local fallback — the engine chain exists precisely so
+        # a cloud problem falls back to the always-available local model, and an
+        # unreadable keychain is a cloud problem.
+        #
+        # No key found is already a normal outcome here, reported as "". An
+        # unreadable store is the same outcome with a different cause, so it
+        # gets the same answer and a line in the log.
+        osh.debug(f"Keychain lookup for {env_name} failed ({exc!r}); treating as no key.")
         return ""
 
 

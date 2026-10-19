@@ -201,3 +201,96 @@ def test_error_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.delenv("SPREZZATURE_LLM_TEXT", raising=False)
     assert main(["validate"]) == 1
     assert main(["env"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# Flag parity between the two CLI twins
+# ---------------------------------------------------------------------------
+
+# CODING.md 20.1: the argparse twin mirrors every click command 1:1, "same
+# flags, same defaults, same output". The smoke test above pins the command
+# NAMES; this pins the flags, which is where drift actually happens — adding an
+# option to one surface and forgetting the other is a one-line mistake that
+# nothing else catches.
+#
+# Two differences are deliberate and allowed:
+#   detect --json   hidden in click, always True, kept only for compatibility.
+#   report --cloud  click declares the pair `--cloud/--no-cloud`, so it also
+#                   accepts the redundant positive spelling. Both surfaces
+#                   default to cloud ON and both turn it off with --no-cloud,
+#                   so the behaviour is identical.
+_ALLOWED_CLICK_ONLY = {"detect": {"--json"}, "report": {"--cloud"}}
+
+
+def _click_options() -> dict[str, set[str]]:
+    import click
+
+    from best_engine_ai_helper.cli import main as click_main
+
+    def walk(cmd, prefix=""):
+        found: dict[str, set[str]] = {}
+        if isinstance(cmd, click.Group):
+            for name, sub in cmd.commands.items():
+                found.update(walk(sub, f"{prefix}{name} "))
+        else:
+            # `secondary_opts` holds the negative half of a boolean pair
+            # (`--cloud/--no-cloud`); reading only `opts` would report the
+            # other surface's `--no-cloud` as an addition it never made.
+            opts = {
+                o
+                for p in cmd.params
+                if isinstance(p, click.Option)
+                for o in (*p.opts, *p.secondary_opts)
+                if o.startswith("--")
+            }
+            found[prefix.strip()] = opts - {"--help"}
+        return found
+
+    return walk(click_main)
+
+
+def _argparse_options() -> dict[str, set[str]]:
+    def walk(parser, prefix=""):
+        found: dict[str, set[str]] = {}
+        subs = [a for a in parser._actions if a.__class__.__name__ == "_SubParsersAction"]
+        if subs:
+            for name, sub in subs[0].choices.items():
+                found.update(walk(sub, f"{prefix}{name} "))
+        else:
+            opts = {o for a in parser._actions for o in a.option_strings if o.startswith("--")}
+            found[prefix.strip()] = opts - {"--help"}
+        return found
+
+    return walk(build_parser())
+
+
+def test_both_surfaces_expose_the_same_commands() -> None:
+    assert set(_click_options()) == set(_argparse_options())
+
+
+def test_both_surfaces_expose_the_same_flags() -> None:
+    """An option added to one twin and not the other is the drift this catches."""
+    click_opts, argparse_opts = _click_options(), _argparse_options()
+
+    divergent: dict[str, dict[str, list[str]]] = {}
+    for command in sorted(set(click_opts) & set(argparse_opts)):
+        allowed = _ALLOWED_CLICK_ONLY.get(command, set())
+        click_only = click_opts[command] - argparse_opts[command] - allowed
+        argparse_only = argparse_opts[command] - click_opts[command]
+        if click_only or argparse_only:
+            divergent[command] = {
+                "click_only": sorted(click_only),
+                "argparse_only": sorted(argparse_only),
+            }
+
+    assert not divergent, f"the two CLI surfaces have drifted apart: {divergent}"
+
+
+def test_the_allowlist_still_describes_real_differences() -> None:
+    """An allowlist nobody prunes quietly stops being a list of exceptions."""
+    click_opts, argparse_opts = _click_options(), _argparse_options()
+
+    for command, allowed in _ALLOWED_CLICK_ONLY.items():
+        assert command in click_opts, f"{command} no longer exists"
+        stale = allowed - (click_opts[command] - argparse_opts[command])
+        assert not stale, f"{command}: no longer click-only, drop from the allowlist: {stale}"

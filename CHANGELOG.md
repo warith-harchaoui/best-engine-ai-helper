@@ -6,6 +6,18 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Fixed
 
+- **An unreadable keychain took down a cloud call instead of falling back.**
+  `_cloud_api_key` caught only `ImportError` around its `keyring` lookup, but
+  `keyring.errors.NoKeyringError` is not one — it is what a headless Linux box
+  with no secret service raises on *every* lookup, and a locked macOS keychain
+  raises too. The call sits before the failover loop's `try`, so the exception
+  escaped `chat` entirely rather than degrading to the local fallback. The
+  engine chain exists precisely so a cloud problem falls back to the
+  always-available local model, and an unreadable key store is a cloud problem.
+  "No key found" was already a normal outcome reported as `""`; an unreadable
+  store is the same outcome with a different cause, so it now gets the same
+  answer and a line in the log.
+
 - The GUI escapes the values it interpolates into HTML. Every panel builds
   markup with template literals and assigns it through `innerHTML`, and model
   ids, provider names and ledger rows went in raw. Nothing here is
@@ -97,6 +109,15 @@ All notable changes to best-engine-ai-helper are documented here.
   catalog.
 
 ### Added
+
+- The CLI parity test now pins **flags**, not just command names. The suite
+  already asserted that both surfaces expose the same commands, which is the
+  cheaper half: drift actually happens one option at a time, when a flag is
+  added to the click twin and forgotten on the argparse one (or the reverse).
+  That is a one-line mistake nothing else caught, and it nearly shipped twice
+  in this release. Two differences are allowlisted with their reasons, and a
+  third test fails if an allowlisted entry stops being a real difference — an
+  allowlist nobody prunes quietly stops being a list of exceptions.
 
 - `llm.embed()` takes a `model`. The catalog ships four embedders
   (`nomic-embed-text`, `mxbai-embed-large`, `snowflake-arctic-embed2`,
