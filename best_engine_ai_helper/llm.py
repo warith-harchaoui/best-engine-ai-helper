@@ -135,6 +135,27 @@ def add_observer(fn: Callable[[dict[str, Any]], None]) -> None:
     _OBSERVERS.append(fn)
 
 
+def remove_observer(fn: Callable[[dict[str, Any]], None]) -> None:
+    """
+    Unregister one observer, leaving every other one in place.
+
+    Exists so a caller can listen for the span of a single operation and then
+    stop — :mod:`best_engine_ai_helper.throughput` meters one gate run this
+    way. :func:`clear_observers` would also detach the SQLite ledger the user
+    switched on, which is somebody else's subscription to drop.
+
+    Parameters
+    ----------
+    fn : callable
+        The observer to remove. Not being registered is not an error, so this
+        is safe to call from a ``finally`` block that may run twice.
+    """
+    try:
+        _OBSERVERS.remove(fn)
+    except ValueError:
+        pass
+
+
 def clear_observers() -> None:
     """Remove all registered observers (chiefly for tests, or to disable)."""
     _OBSERVERS.clear()
@@ -465,7 +486,20 @@ def _chat_ollama(
     if "response" not in data:
         osh.error(f"Ollama response missing 'response' field: {data!r}")
         raise RuntimeError(f"Ollama response missing 'response' field: {data!r}")
-    usage = {"in_tokens": data.get("prompt_eval_count"), "out_tokens": data.get("eval_count")}
+    # `eval_duration` is the decode phase alone, in nanoseconds, as timed by the
+    # daemon. Kept separate from the caller's wall clock on purpose: wall time
+    # also carries prompt processing, HTTP, and any queueing behind another
+    # request, so dividing tokens by it understates how fast the model actually
+    # decodes -- and understating is what turns a throughput floor into a gate
+    # that rejects models which would have been fine. Only Ollama reports this;
+    # every other backend leaves `gen_ms` None and callers fall back to the
+    # wall clock knowingly.
+    eval_ns = data.get("eval_duration")
+    usage = {
+        "in_tokens": data.get("prompt_eval_count"),
+        "out_tokens": data.get("eval_count"),
+        "gen_ms": (eval_ns / 1e6) if isinstance(eval_ns, (int, float)) else None,
+    }
     return str(data["response"]), usage
 
 
@@ -1403,6 +1437,7 @@ def chat(
                     "cached": False,
                     "in_tokens": None,
                     "out_tokens": None,
+                    "gen_ms": None,
                 }
             )
             continue
@@ -1433,6 +1468,10 @@ def chat(
                 "cached": cached,
                 "in_tokens": usage.get("in_tokens"),
                 "out_tokens": usage.get("out_tokens"),
+                # Decode-only time when the backend reports it (Ollama), so a
+                # throughput figure can be derived later without re-running
+                # the model. None everywhere else.
+                "gen_ms": usage.get("gen_ms"),
             }
         )
 

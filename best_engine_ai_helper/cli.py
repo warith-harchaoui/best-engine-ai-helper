@@ -39,6 +39,7 @@ from . import detect as _detect
 from . import hardware as _hardware
 from . import observe as _observe
 from . import score as _score
+from . import throughput as _throughput
 from .recommend import cloud_recommend as _cloud_recommend
 from .recommend import recommend as _recommend_engines
 from .recommend import to_markdown as _report_markdown
@@ -113,6 +114,59 @@ def main(verbose: int) -> None:
 # ---------------------------------------------------------------------------
 # detect
 # ---------------------------------------------------------------------------
+
+
+def _raw_estimate_for(tag: str) -> float | None:
+    """What the uncalibrated bandwidth model predicts for `tag` on this machine.
+
+    Stored next to a measurement so the two can be compared later. Deliberately
+    uncalibrated: the ratio between them IS the calibration, so feeding an
+    already-corrected estimate in would make the correction chase its own tail.
+
+    Parameters
+    ----------
+    tag : str
+        Model tag to look up in the merged catalog.
+
+    Returns
+    -------
+    float or None
+        The raw estimate, or None when the model or the bandwidth is unknown.
+    """
+    entry = next((e for e in _catalog.load_catalog() if e.get("id") == tag), None)
+    if entry is None:
+        return None
+    bandwidth = _detect.compute_profile().get("bandwidth_gbs")
+    return _score.estimated_tokens_per_second(entry, bandwidth, calibrated=False)
+
+
+def _report_measurement(meter: _throughput.Meter, tag: str) -> None:
+    """Persist and announce what the gates measured, or say nothing was measurable.
+
+    Parameters
+    ----------
+    meter : throughput.Meter
+        The meter the gates ran through.
+    tag : str
+        The model tag that was validated.
+    """
+    measurement = meter.measurement()
+    if measurement is None:
+        # Nothing worth storing: the backend reported no token counts, or the
+        # sample was too short to be more than first-token latency. Silence
+        # here is correct -- a figure invented to fill the field would be
+        # consulted later as though it had been measured.
+        click.echo(f"No usable throughput sample for {tag}; speed stays an estimate.", err=True)
+        return
+
+    path = _throughput.record(tag, measurement, estimated_tps=_raw_estimate_for(tag))
+    basis = "daemon decode clock" if measurement["basis"] == "eval_duration" else "wall clock"
+    click.echo(
+        f"Measured {measurement['tokens_per_second']} tok/s for {tag} "
+        f"on {measurement['measured_on']} "
+        f"({measurement['tokens']} tokens over {measurement['calls']} call(s), {basis}).\n"
+        f"\t{path}"
+    )
 
 
 @main.command("detect")
@@ -214,6 +268,8 @@ def recommend_cmd(
             headroom=headroom,
             application=application,
             load=load,
+            bandwidth_gbs=bandwidth,
+            min_tps=min_tps,
         )
         header = f"\n=== {k.upper()} candidates"
         if application:
@@ -222,8 +278,11 @@ def recommend_cmd(
         click.echo(header)
         rows = []
         for e in ranked:
-            tps = _score.estimated_tokens_per_second(e, bandwidth)
-            comfy = bool(e.get("_fits")) and (tps is None or tps >= min_tps)
+            # rank() has already decided these, and it is the only caller that
+            # knows whether a measurement was available. Recomputing the
+            # estimate here would quietly discard it.
+            tps = e.get("_tps")
+            comfy = bool(e.get("_comfy"))
             rows.append(
                 {
                     "id": e.get("id", "-"),
@@ -235,7 +294,13 @@ def recommend_cmd(
                     )
                     or "-",
                     "fits": "yes" if e.get("_fits") else "NO",
-                    "tok/s": f"{tps:.0f}" if tps else "-",
+                    # A measured figure is marked, because it carries more
+                    # weight than an estimate: only a measurement can demote.
+                    "tok/s": (
+                        f"{tps:.0f}{'*' if e.get('_tps_basis') == 'measured' else ''}"
+                        if tps
+                        else "-"
+                    ),
                     "comfy": "yes" if comfy else "NO",
                     "notes": (e.get("notes") or "")[:40],
                 }
@@ -811,10 +876,16 @@ def pull_cmd(keep_failed: bool, vllm: bool, application: str | None, min_tps: fl
         # whatever was configured BEFORE this pull, not `tag`. That would
         # validate a stale model while promoting an untested one on success.
         chat_for_candidate = functools.partial(_llm.chat, model=tag)
+        # The gates are about to generate tokens either way, so timing them
+        # costs no extra inference -- it is the same work with a stopwatch on
+        # it. This is the one place the package stopped estimating decode speed
+        # and started measuring it.
+        meter = _throughput.Meter()
+        metered_chat = meter.wrap(chat_for_candidate)
         click.echo(f"Running VLM gate on {tag} ...")
-        vlm_ok = _validate_vlm.validate(chat_for_candidate)
+        vlm_ok = _validate_vlm.validate(metered_chat)
         click.echo(f"Running prose gate on {tag} ...")
-        llm_ok = _validate_llm.validate(chat_for_candidate)
+        llm_ok = _validate_llm.validate(metered_chat)
 
         if vlm_ok and llm_ok:
             # Both gates passed: write env.sh and exit successfully
@@ -826,6 +897,7 @@ def pull_cmd(keep_failed: bool, vllm: bool, application: str | None, min_tps: fl
             )
             click.echo(f"Both gates passed. Config written to {env_path}")
             click.echo(f"Source it: source {env_path}")
+            _report_measurement(meter, tag)
             sys.exit(0)
         else:
             click.echo(
@@ -862,8 +934,14 @@ def validate_cmd() -> None:
         sys.exit(1)
 
     click.echo(f"Validating {text_model} ...")
-    vlm_ok = _validate_vlm.validate(_llm.chat)
-    llm_ok = _validate_llm.validate(_llm.chat)
+    meter = _throughput.Meter()
+    metered_chat = meter.wrap(_llm.chat)
+    vlm_ok = _validate_vlm.validate(metered_chat)
+    llm_ok = _validate_llm.validate(metered_chat)
+    # Re-measuring here is the point of running `validate` again after an OS
+    # update changed GPU availability: the gates re-run anyway, so the figure
+    # refreshes for free.
+    _report_measurement(meter, text_model)
 
     click.echo(f"VLM gate: {'pass' if vlm_ok else 'FAIL'}")
     click.echo(f"Prose gate: {'pass' if llm_ok else 'FAIL'}")
