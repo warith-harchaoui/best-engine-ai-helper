@@ -2,6 +2,35 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- **A resolved local engine could name a model Ollama cannot pull.** The
+  catalog's own contract says `id` IS the Ollama pull tag, and the
+  hand-maintained seed honours it — but the ApXML adapter keys entries by the
+  directory's slug (`qwen36-35b-a3b`, `llama-3-70b`), because that is what the
+  directory publishes. Those entries then competed in the recommender, won on
+  size, and produced `llm.engine.yaml` naming a model `ollama pull` cannot
+  resolve. The caller discovered it at its first inference call, usually in
+  the middle of a long job. `catalog.servable()` / `catalog.servable_only()`
+  now gate the pool by backend before the recommender sees it, and
+  `_resolve_local` applies the gate. Deliberately narrow: the discriminator is
+  the entry's **source**, not the shape of its id — `gemma3` is a legal tag
+  that Ollama resolves to `gemma3:latest`, and vLLM is not gated at all
+  because a missing `vllm_id` already falls back to the raw tag with a
+  warning. An entry may also declare `backends: [...]` and that wins. A pool
+  emptied by the gate warns rather than raising, by the same rule as an empty
+  catalog.
+
+### Added
+
+- `pull.installed_tags()`: which tags the local Ollama daemon can serve right
+  now, best-effort with a short timeout (no daemon is the common case during
+  resolution, not an error). `_resolve_local` uses it to record `available`
+  per kind, and a `pull:` command when the chosen model is not there yet —
+  so "resolved" and "runnable" stop being the same claim.
+
 ## [1.4.4] - 2026-10-14
 
 ### Fixed

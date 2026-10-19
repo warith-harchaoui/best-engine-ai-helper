@@ -54,6 +54,103 @@ _QUANT_OVERHEAD: dict[str, float] = {
 _DEFAULT_OVERHEAD = 1.15  # fallback for unknown quant identifiers
 
 
+#: Sources whose ``id`` is a directory slug rather than a registry pull tag.
+#: The catalog's own contract says ``id`` IS the Ollama pull tag, and the
+#: hand-maintained seed honours it; the ApXML adapter cannot, because the
+#: directory it scrapes names models after their paper (``qwen36-35b-a3b``).
+#: Such an entry stays useful — it carries a ``vllm_id`` — but offering it to
+#: Ollama yields a descriptor naming a model that cannot be pulled, and the
+#: caller finds out at its first inference call rather than at resolution.
+_SLUG_SOURCES: frozenset[str] = frozenset({"apxml"})
+
+#: Backends this gate knows how to rule on. vLLM is deliberately absent: an
+#: entry without a ``vllm_id`` already falls back to the raw tag with a
+#: warning, which is a documented behaviour and a reasonable one. The gate
+#: exists for the case that is *not* recoverable — a name Ollama cannot pull.
+_GATED_BACKENDS: frozenset[str] = frozenset({"ollama"})
+
+
+def servable(entry: dict[str, Any], backend: str) -> bool:
+    """
+    Whether a backend can actually serve this catalog entry.
+
+    Parameters
+    ----------
+    entry : dict[str, Any]
+        A catalog entry.
+    backend : str
+        ``ollama``, ``vllm``, or anything else (unknown backends are trusted:
+        this is a gate against a known mismatch, not a whitelist).
+
+    Returns
+    -------
+    bool
+        True when the entry names something the backend can load.
+
+    An entry may say so itself with ``backends: [...]``; otherwise the rule is
+    the source. A bare name is **not** treated as suspect — ``gemma3`` is a
+    perfectly legal pull tag that Ollama resolves to ``gemma3:latest`` — so the
+    discriminator is where the entry came from, not how it is spelled.
+
+    Examples
+    --------
+    >>> servable({"id": "qwen3-vl:8b"}, "ollama")
+    True
+    >>> servable({"id": "gemma3"}, "ollama")          # bare tags are legal
+    True
+    >>> servable({"id": "qwen36-35b-a3b", "source": "apxml"}, "ollama")
+    False
+    >>> servable({"id": "x", "source": "apxml"}, "vllm")   # vLLM is not gated
+    True
+    >>> servable({"id": "x", "backends": ["vllm"]}, "ollama")
+    False
+    >>> servable({"id": "whatever"}, "some-future-backend")
+    True
+    """
+    declared = entry.get("backends")
+    if isinstance(declared, list) and declared:
+        return backend in declared
+    if backend not in _GATED_BACKENDS:
+        return True
+    if not str(entry.get("id") or "").strip():
+        return False
+    return str(entry.get("source") or "").strip() not in _SLUG_SOURCES
+
+
+def servable_only(rows: list[dict[str, Any]], backend: str) -> list[dict[str, Any]]:
+    """
+    Keep the entries a backend can serve, and say what was dropped.
+
+    Parameters
+    ----------
+    rows : list[dict[str, Any]]
+        Catalog entries.
+    backend : str
+        The backend about to be resolved for.
+
+    Returns
+    -------
+    list[dict[str, Any]]
+        The servable subset, in the original order.
+
+    Examples
+    --------
+    >>> rows = [{"id": "gemma3:12b"}, {"id": "llama-3-70b", "source": "apxml"}]
+    >>> [r["id"] for r in servable_only(rows, "ollama")]
+    ['gemma3:12b']
+    >>> len(servable_only(rows, "vllm"))        # vLLM keeps both
+    2
+    """
+    kept = [row for row in rows if servable(row, backend)]
+    dropped = len(rows) - len(kept)
+    if dropped:
+        osh.debug(
+            f"{dropped} catalog entr{'y' if dropped == 1 else 'ies'} cannot be served "
+            f"by {backend} and were left out of the recommendation."
+        )
+    return kept
+
+
 def estimate_ram(disk_gb: float, quant: str) -> float:
     """
     Estimate peak inference RAM from on-disk model size.

@@ -133,3 +133,54 @@ def test_normalize_apxml_spec_and_write_cache(tmp_path: Path) -> None:
     by_id = {e["id"]: e for e in yaml.safe_load(cache.read_text())}
     assert set(by_id) == {"qwen3-8b", "gemma3-4b"}
     assert by_id["qwen3-8b"]["ram_gb"] == 7.0
+
+
+def test_servable_keeps_pull_tags_and_drops_directory_slugs() -> None:
+    """The catalog's contract says ``id`` is the Ollama pull tag.
+
+    The hand-maintained seed honours it; the ApXML adapter cannot, because the
+    directory it scrapes names models after their paper. Recommending one of
+    those to Ollama produces a descriptor naming a model that cannot be
+    pulled — and the caller only finds out at its first inference call.
+    """
+    from best_engine_ai_helper.catalog import servable
+
+    assert servable({"id": "qwen3-vl:8b"}, "ollama")
+    # A bare name is a legal tag: Ollama resolves it to :latest.
+    assert servable({"id": "gemma3"}, "ollama")
+    assert not servable({"id": "qwen36-35b-a3b", "source": "apxml"}, "ollama")
+    # vLLM is not gated: a missing vllm_id already falls back to the raw tag.
+    assert servable({"id": "qwen36-35b-a3b", "source": "apxml"}, "vllm")
+    # An entry may declare its own backends, and that wins.
+    assert not servable({"id": "x:1", "backends": ["vllm"]}, "ollama")
+    assert servable({"id": "x:1", "backends": ["ollama"]}, "ollama")
+    # An unknown backend is trusted rather than guessed at.
+    assert servable({"id": "whatever"}, "some-future-backend")
+
+
+def test_servable_only_filters_in_order() -> None:
+    from best_engine_ai_helper.catalog import servable_only
+
+    rows = [
+        {"id": "gemma3:12b"},
+        {"id": "llama-3-70b", "source": "apxml"},
+        {"id": "qwen3:8b"},
+    ]
+
+    assert [r["id"] for r in servable_only(rows, "ollama")] == ["gemma3:12b", "qwen3:8b"]
+    assert len(servable_only(rows, "vllm")) == 3
+
+
+def test_a_slug_only_catalog_warns_rather_than_raises() -> None:
+    """Unresolved is a warning here, by the same rule as an empty catalog."""
+    from best_engine_ai_helper import engine
+
+    resolved = engine.resolve(
+        {"kind": "llm", "task": "write copy"},
+        backend="ollama",
+        catalog=[{"id": "llama-3-70b", "kind": "llm", "ram_gb": 36.7, "source": "apxml"}],
+        hw={"unified_gb": 64.0, "vram_gb": None, "ram_gb": 64.0},
+        compute={"chip": "Apple M2 Max", "accelerator": "gpu-metal"},
+    )
+
+    assert resolved["llm"] is None

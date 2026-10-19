@@ -51,6 +51,55 @@ def _atomic_write_text(path: Path, content: str) -> None:
         raise
 
 
+def installed_tags(base_url: str | None = None, *, timeout: float = 1.5) -> set[str]:
+    """
+    Which model tags this Ollama daemon can serve right now.
+
+    Best-effort by construction: a daemon that is not running is the common
+    case during resolution, not an error, and an empty set simply means
+    "cannot tell" to every caller.
+
+    Parameters
+    ----------
+    base_url : str or None
+        Daemon URL; ``SPREZZATURE_LLM_BASE_URL`` or localhost by default.
+    timeout : float
+        Seconds to wait. Short on purpose: this runs inside resolution, which
+        must stay fast on a machine with no daemon at all.
+
+    Returns
+    -------
+    set of str
+        Tags as the daemon reports them, plus their ``:latest``-stripped form
+        so ``gemma3:12b`` matches whether or not the suffix is spelled out.
+
+    Examples
+    --------
+    >>> isinstance(installed_tags("http://127.0.0.1:1"), set)
+    True
+    """
+    url = (
+        base_url or os.environ.get("SPREZZATURE_LLM_BASE_URL") or "http://localhost:11434"
+    ).rstrip("/")
+    try:
+        import requests
+
+        response = requests.get(f"{url}/api/tags", timeout=timeout)
+        response.raise_for_status()
+        models = response.json().get("models", [])
+    except Exception as exc:  # noqa: BLE001 — no daemon is normal here
+        osh.debug(f"Ollama /api/tags unreachable ({exc}); availability unknown.")
+        return set()
+
+    tags: set[str] = set()
+    for model in models:
+        name = str(model.get("name") or model.get("model") or "").strip()
+        if name:
+            tags.add(name)
+            tags.add(name.removesuffix(":latest"))
+    return tags
+
+
 def ollama_pull(tag: str, *, timeout: int = 600, out: IO[str] | None = None) -> bool:
     """
     Pull a model via ``ollama pull`` and stream progress to stdout.

@@ -252,6 +252,22 @@ def _resolve_local(
     hw = hw if hw is not None else _detect.available_memory()
     compute = compute if compute is not None else _detect.compute_profile()
     catalog = catalog if catalog is not None else _catalog.load_catalog()
+    # The catalog is a catalog of models; this backend can only run some of
+    # them. Auto-refreshed sources key entries by a directory slug rather than
+    # by a pull tag, and recommending one of those produced a descriptor
+    # naming a model the server cannot load — a failure at the first call
+    # instead of at resolution, which is the worst possible place for it.
+    before = len(catalog)
+    catalog = _catalog.servable_only(catalog, backend)
+    if before and not catalog:
+        # Unresolved is a warning here, never an exception: an empty catalog
+        # already leaves each kind null rather than raising deep inside the
+        # picker, and a catalog emptied by this filter is the same situation.
+        osh.warning(
+            f"No catalog entry can be served by {backend}: every candidate comes from "
+            "a source that names models by slug rather than by pull tag. Run "
+            "`best-engine-ai-helper catalog update`, or resolve for another backend."
+        )
     base_url = _base_url(backend, endpoint)
 
     report = _recommend(
@@ -280,6 +296,14 @@ def _resolve_local(
         "min_tps": min_tps,
     }
 
+    # What the daemon has right now, so the descriptor can say whether its
+    # own choice is runnable instead of letting the first call find out.
+    present: set[str] = set()
+    if backend == "ollama":
+        from .pull import installed_tags
+
+        present = installed_tags(base_url)
+
     serve: list[str] = []
     for kind in kinds:
         chosen = (report.get("recommendations", {}).get(kind) or {}).get("chosen")
@@ -306,6 +330,18 @@ def _resolve_local(
             "fits": chosen["fits"],
             "comfortable": chosen["comfortable"],
         }
+        if backend == "ollama" and present:
+            # "Resolved" and "runnable" are different claims, and a caller
+            # that cannot tell them apart discovers the difference at its
+            # first inference call — usually in the middle of a long job.
+            ready = model in present
+            engine[kind]["available"] = ready
+            if not ready:
+                engine[kind]["pull"] = f"ollama pull {model}"
+                osh.warning(
+                    f"{kind} model {model} is not on this Ollama daemon yet: "
+                    f"run `ollama pull {model}` before the first call."
+                )
         cmd = _serve_command(backend, model, base_url)
         if cmd not in serve:
             serve.append(cmd)

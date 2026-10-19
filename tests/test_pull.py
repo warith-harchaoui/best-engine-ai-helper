@@ -156,3 +156,36 @@ def test_write_env_is_atomic_no_partial_file_on_a_mid_write_failure(
     )
     assert env_path.exists()
     assert {p.name for p in tmp_path.iterdir()} == {"env.sh", "config.json"}
+
+
+def test_installed_tags_is_best_effort(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A daemon that is not running is the common case during resolution.
+
+    An empty set means "cannot tell" to every caller, which is what lets the
+    resolver annotate availability without ever depending on it.
+    """
+    from best_engine_ai_helper import pull
+
+    assert pull.installed_tags("http://127.0.0.1:1", timeout=0.2) == set()
+
+
+def test_installed_tags_normalises_the_latest_suffix(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``gemma3`` and ``gemma3:latest`` are the same model to a caller."""
+    import requests
+
+    from best_engine_ai_helper import pull
+
+    class _Response:
+        ok = True
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, list[dict[str, str]]]:
+            return {"models": [{"name": "gemma3:latest"}, {"model": "qwen3-vl:8b"}]}
+
+    monkeypatch.setattr(requests, "get", lambda *a, **k: _Response())
+
+    tags = pull.installed_tags("http://localhost:11434")
+
+    assert {"gemma3", "gemma3:latest", "qwen3-vl:8b"} <= tags
