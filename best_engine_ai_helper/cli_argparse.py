@@ -560,19 +560,28 @@ def _handle_catalog_update(ns: argparse.Namespace) -> int:
         Process exit code (0 on success, 1 on a network/parse failure or an
         empty feed).
     """
-    from .sources import apxml
+    from_ollama = bool(getattr(ns, "ollama", False))
+    source_name = "the Ollama library" if from_ollama else "ApXML"
 
-    _emit_err("Fetching open-weight models from ApXML…")
+    _emit_err(f"Fetching models from {source_name}…")
     try:
-        specs = apxml.fetch_open_weight_models(timeout=ns.timeout, limit=ns.limit)
+        if from_ollama:
+            from .sources import ollama_library
+
+            specs = ollama_library.fetch_pullable_models(timeout=ns.timeout, limit=ns.limit)
+            entries = _catalog.normalize_ollama_specs(specs)
+        else:
+            from .sources import apxml
+
+            specs = apxml.fetch_open_weight_models(timeout=ns.timeout, limit=ns.limit)
+            entries = _catalog.normalize_apxml_specs(specs)
     except Exception as exc:  # network / parse failures should not traceback
         osh.error(f"catalog update failed:\n\t{exc}")
         _emit_err(f"catalog update failed: {exc}")
         return 1
 
-    entries = _catalog.normalize_apxml_specs(specs)
     if not entries:
-        _emit_err("No usable models returned from ApXML; cache unchanged.")
+        _emit_err(f"No usable models returned from {source_name}; cache unchanged.")
         return 1
 
     if getattr(ns, "arena", False):
@@ -1281,6 +1290,15 @@ def _add_catalog_group(sub: argparse._SubParsersAction[argparse.ArgumentParser])
         type=float,
         default=30.0,
         help="Per-request network timeout in seconds (default: 30.0).",
+    )
+    p.add_argument(
+        "--ollama",
+        action="store_true",
+        help=(
+            "Widen the catalog from the official Ollama library instead of ApXML. "
+            "These entries are real pull tags, so they can actually be served; they "
+            "carry no benchmark scores, so they rank below any scored model."
+        ),
     )
     p.add_argument(
         "--arena",

@@ -356,7 +356,7 @@ fonction déterministe du seul matériel, ce qui compte pour des rapports reprod
 | `doctor` | Compare ce que le fichier moteur a résolu avec ce que le démon sait servir |
 | `storage` | Planifie la capacité : ce qui tient sur le disque, puis ce qui tient en mémoire ensemble |
 | `catalog show` | Affiche le catalogue de modèles fusionné |
-| `catalog update` | Rafraîchit le cache modèles depuis l'annuaire open-weight ApXML (`--limit N` pour un rafraîchissement partiel, `--arena` pour fusionner aussi les notes LM Arena) |
+| `catalog update` | Rafraîchit le cache modèles (`--ollama` pour des tags réellement tirables, `--arena` pour fusionner les notes LM Arena, `--limit N` pour un rafraîchissement partiel) |
 | `hardware show` | Affiche la table des puces matérielles connues |
 | `hardware update` | Enregistre la puce et la mémoire de cette machine dans le cache matériel |
 | `pull` | Télécharge le meilleur modèle et exécute les contrôles Ralph |
@@ -373,6 +373,12 @@ fonction déterministe du seul matériel, ce qui compte pour des rapports reprod
 Le catalogue de base intégré (`models.yaml`) couvre les familles Qwen 3, Qwen 2.5, Qwen 2.5-Coder et Gemma 3 (de 3B à 72B paramètres, en Q4_K_M et Q8_0), plus un petit ensemble d'*embedders* textuels (`kind: embed`) pour l'index de recherche. Le catalogue suit la taille sur disque, la RAM de pic estimée et les scores de benchmark issus de l'Open LLM Leaderboard v2, de l'OpenVLM Leaderboard, d'EvalPlus (code) et de MTEB (recherche par *embedding*). C'est l'*espace de recherche* dans lequel best-engine choisit, jamais un choix propre à un usage.
 
 `catalog update` rafraîchit le cache depuis l'[annuaire LLM ApXML](https://apxml.com/models?modelType=open_weight) (modèles à poids ouverts avec leurs besoins VRAM par quantification, consulté régulièrement). Il récupère les fiches, les normalise en entrées de catalogue et les fusionne dans `~/.best-engine-ai-helper/catalog_cache.yaml` par identifiant (le catalogue de base intégré n'est jamais modifié). Utilisez `--limit N` pour un rafraîchissement partiel rapide. Les pages statiques d'ApXML portent des caractéristiques mais aucun score de classement numérique, donc les entrées rafraîchies gardent des benchmarks nuls (et un rang bas) jusqu'à ce qu'une source notée, comme l'Open LLM Leaderboard v2 ou l'OpenVLM Leaderboard, les remplisse.
+
+`--ollama` élargit le catalogue depuis la [bibliothèque officielle Ollama](https://ollama.com/library) plutôt que depuis ApXML, et il existe parce que le catalogue *servable* plafonnait à vingt modèles pour une raison qui n'a jamais été une question de notation. ApXML peut ajouter des centaines d'entrées, mais il les nomme d'après le papier (`qwen36-35b-a3b`), un nom de dépôt HuggingFace qu'`ollama pull` ne résout pas : ces entrées sont donc réservées à vLLM. La bibliothèque publie au contraire les familles, leurs capacités puis les tailles livrées — et une famille plus une taille **est** un tag de tirage : `qwen3` plus `8b` donne `qwen3:8b`, exactement l'orthographe déjà utilisée par le catalogue de base. 256 familles donnent environ 420 tags, en une seule requête.
+
+Ces entrées ne portent **aucune note de benchmark**, parce que la bibliothèque publie des tailles puis des descriptions, pas des résultats de classement. Elles se classent donc **sous** tout modèle noté, jusqu'à ce qu'une source notée les remplisse. C'est le but plutôt qu'une limite : cela élargit ce que l'outil sait dimensionner puis tirer sans changer ce qu'il recommande, et une note inventée vaudrait moins qu'une note absente — un `null` se classe bas puis reste honnête, une invention se classe mal tout en ayant l'air d'une autorité.
+
+Les tailles viennent d'une constante **mesurée** sur les quatorze entrées Q4 du catalogue de base, pas devinée : 0,646 Go par milliard de paramètres pour un modèle texte, 0,714 pour un modèle vision, puisqu'une tour d'image est réellement plus lourde par paramètre. L'écart aux chiffres connus du catalogue reste sous les 5 %. Une famille qui n'annonce aucune taille est écartée plutôt qu'enregistrée à zéro, ce qui l'aurait fait paraître tenir sur n'importe quelle machine.
 
 `--arena` fusionne en plus les notes de préférence conversationnelle issues des miroirs de [LM Arena](https://lmarena.ai). Deux faits mesurés méritent d'être connus avant d'y recourir.
 

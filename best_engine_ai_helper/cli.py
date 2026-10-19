@@ -673,6 +673,18 @@ def catalog_show() -> None:
     help="Per-request network timeout, in seconds.",
 )
 @click.option(
+    "--ollama",
+    "from_ollama",
+    is_flag=True,
+    default=False,
+    help=(
+        "Widen the catalog from the official Ollama library instead of ApXML. "
+        "These entries are real pull tags, so they can actually be served; "
+        "they carry no benchmark scores, so they rank below any scored model "
+        "until a scored source fills them in."
+    ),
+)
+@click.option(
     "--arena",
     is_flag=True,
     default=False,
@@ -684,7 +696,7 @@ def catalog_show() -> None:
         "and leaves the axis empty."
     ),
 )
-def catalog_update(limit: int | None, timeout: float, arena: bool) -> None:
+def catalog_update(limit: int | None, timeout: float, arena: bool, from_ollama: bool) -> None:
     """Refresh the catalog cache from the ApXML open-weight model directory.
 
     Fetched specs are normalized to catalog entries and merged into
@@ -697,19 +709,26 @@ def catalog_update(limit: int | None, timeout: float, arena: bool) -> None:
     front: it rates what its voters can chat with, so it populates the cloud
     catalog far better than the local one.
     """
-    from .sources import apxml
-
-    click.echo("Fetching open-weight models from ApXML…", err=True)
+    source_name = "the Ollama library" if from_ollama else "ApXML"
+    click.echo(f"Fetching models from {source_name}…", err=True)
     try:
-        specs = apxml.fetch_open_weight_models(timeout=timeout, limit=limit)
+        if from_ollama:
+            from .sources import ollama_library
+
+            specs = ollama_library.fetch_pullable_models(timeout=timeout, limit=limit)
+            entries = _catalog.normalize_ollama_specs(specs)
+        else:
+            from .sources import apxml
+
+            specs = apxml.fetch_open_weight_models(timeout=timeout, limit=limit)
+            entries = _catalog.normalize_apxml_specs(specs)
     except Exception as exc:  # network / parse failures should not traceback
         osh.error(f"catalog update failed:\n\t{exc}")
         click.echo(f"catalog update failed: {exc}", err=True)
         sys.exit(1)
 
-    entries = _catalog.normalize_apxml_specs(specs)
     if not entries:
-        click.echo("No usable models returned from ApXML; cache unchanged.", err=True)
+        click.echo(f"No usable models returned from {source_name}; cache unchanged.", err=True)
         sys.exit(1)
 
     if arena:

@@ -6,6 +6,17 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Fixed
 
+- **A catalog refresh could erase hand-curated benchmark scores.** The cache
+  overlays the seed by id with a plain dict replacement, so an entry refreshed
+  from a source that publishes no benchmarks handed its nulls to a seed entry
+  that had real numbers — widening the catalog quietly degraded it. Latent
+  until now because ApXML, the only refresh source, keys entries by directory
+  slug and never collided with the seed's pull tags; a source that emits real
+  tags collides constantly and surfaced it. The overlay is now field-wise: the
+  refreshed entry wins, except that a null never replaces a value already
+  there, and benchmarks merge per axis so a source silent about an axis does
+  not discard it.
+
 - `scripts/measure_absent_vs_zero.py`: counts how often a legitimate value
   could be read as an absent one, across three candidate rules. It exists
   because the temptation is to turn such a rule straight into a lint gate, and
@@ -52,6 +63,24 @@ All notable changes to best-engine-ai-helper are documented here.
   catalog.
 
 ### Added
+
+- **`catalog update --ollama`: widen the catalog with tags Ollama can pull.**
+  The catalog was stuck at twenty *servable* models, and the reason was not
+  scoring: ApXML can add hundreds, but it names them by the paper's slug, which
+  `ollama pull` cannot resolve, so those entries are vLLM-only. The official
+  library at ollama.com publishes families, capabilities and the sizes each
+  ships — and a family plus a size is a real pull tag, `qwen3` + `8b` being
+  exactly the `qwen3:8b` the seed already uses. 256 families expand to ~420
+  pull tags from a single request, since the index lists sizes inline.
+
+  It invents nothing. The library publishes no benchmarks, so entries land with
+  null scores and rank *below* every scored model — reach widens, ranking does
+  not change until a scored source fills them in. Sizes are derived from a
+  constant measured against the seed's own fourteen Q4 entries rather than
+  guessed (0.646 GB per billion parameters for text models, 0.714 for vision
+  ones, since an image tower is genuinely heavier), which lands within about 5%
+  of the seed's known-good figures. A family listing no size is skipped rather
+  than sized as zero, which would have made it "fit" every machine.
 
 - **The GUI shows which cloud providers are usable, and why the rest are not.**
   This package claims to route on the keys you actually hold, and that claim is

@@ -223,6 +223,72 @@ def _load_yaml_file(path: Path) -> list[dict[str, Any]]:
     return list(raw)
 
 
+def _overlay(base: dict[str, Any] | None, incoming: dict[str, Any]) -> dict[str, Any]:
+    """
+    Lay a refreshed entry over an existing one without erasing what it knows.
+
+    A refresh from a specs directory is a claim about *specs*, not about
+    *scores*. Sources like the Ollama library publish sizes and capabilities
+    and no benchmarks at all, so their entries carry null scores — and a plain
+    dict replacement would hand those nulls to a seed entry that had real,
+    hand-curated numbers. Widening the catalog would then quietly degrade it,
+    which is the opposite of the point.
+
+    The bug stayed hidden while the only refresh source was ApXML, whose ids
+    are directory slugs that never collide with the seed's pull tags. A source
+    that emits real tags collides constantly, and surfaced it.
+
+    So: the incoming entry wins field by field, except that a null never
+    replaces a value that is already there.
+
+    Parameters
+    ----------
+    base : dict or None
+        The entry already held, usually from the seed. None when the incoming
+        entry is new, in which case it is returned unchanged.
+    incoming : dict
+        The refreshed entry.
+
+    Returns
+    -------
+    dict
+        The merged entry. Neither input is mutated.
+
+    Examples
+    --------
+    >>> seed = {"id": "m", "benchmarks": {"general": 77}, "notes": "curated"}
+    >>> fresh = {"id": "m", "benchmarks": {"general": None}, "disk_gb": 8.0}
+    >>> merged = _overlay(seed, fresh)
+    >>> merged["benchmarks"]["general"]      # the real score survives
+    77
+    >>> merged["disk_gb"]                    # the fresh spec lands
+    8.0
+    >>> merged["notes"]                      # untouched fields stay
+    'curated'
+    """
+    if not base:
+        return incoming
+
+    result = dict(base)
+    for key, value in incoming.items():
+        if key == "benchmarks":
+            continue
+        if value is None and result.get(key) is not None:
+            continue
+        result[key] = value
+
+    # Benchmarks merge per axis rather than wholesale: a source may know one
+    # axis and nothing about the others, and replacing the block would discard
+    # every axis it was silent on.
+    scores = dict(base.get("benchmarks") or {})
+    for axis, value in (incoming.get("benchmarks") or {}).items():
+        if value is not None:
+            scores[axis] = value
+    if scores or "benchmarks" in incoming:
+        result["benchmarks"] = scores
+    return result
+
+
 def load_catalog(catalog_path: Path | None = None) -> list[dict[str, Any]]:
     """
     Load the bundled seed catalog merged with the user's local cache.
@@ -273,7 +339,7 @@ def load_catalog(catalog_path: Path | None = None) -> list[dict[str, Any]]:
     if cache_entries:
         osh.info(f"Overlaying {len(cache_entries)} cached entry(ies):\n\t{_CACHE_PATH}")
     for entry in cache_entries:
-        merged[entry["id"]] = entry
+        merged[entry["id"]] = _overlay(merged.get(entry["id"]), entry)
 
     # Preserve seed ordering; append cache-only entries at the end
     result: list[dict[str, Any]] = []
@@ -389,6 +455,82 @@ def normalize_apxml_spec(spec: dict[str, Any], fetched_at: str) -> dict[str, Any
         "source": "apxml",
         "fetched_at": fetched_at,
     }
+
+
+def normalize_ollama_spec(spec: dict[str, Any], fetched_at: str) -> dict[str, Any] | None:
+    """
+    Map one Ollama-library spec onto a catalog entry.
+
+    Unlike the ApXML path, ``id`` here is already a real ``ollama pull`` tag,
+    so the entry carries no ``backends`` restriction and :func:`servable` lets
+    it through for Ollama. That is the whole point of this source: it widens
+    the pool of models that can actually be served, where ApXML widens a pool
+    that only vLLM can load.
+
+    Benchmarks are left null. The library publishes descriptions and sizes, not
+    leaderboard results, and an invented score would be worse than an absent
+    one — a null ranks the entry low, which is honest, whereas a guess would
+    rank it wrongly and look authoritative.
+
+    Parameters
+    ----------
+    spec : dict[str, Any]
+        A spec from ``sources.ollama_library.to_specs``.
+    fetched_at : str
+        ISO 8601 date recorded as the entry's refresh timestamp.
+
+    Returns
+    -------
+    dict[str, Any] or None
+        A catalog entry, or None when the spec has no id or no usable size —
+        an entry whose footprint is unknown cannot be sized against memory,
+        and one that silently became zero would "fit" every machine.
+    """
+    ident = str(spec.get("id") or "").strip()
+    if not ident:
+        osh.debug(f"Ollama-library spec without an id, skipping:\n\t{spec!r}")
+        return None
+
+    disk_gb = spec.get("disk_gb")
+    if not isinstance(disk_gb, (int, float)) or disk_gb <= 0:
+        osh.debug(f"Ollama-library spec without a usable size, skipping:\n\t{ident}")
+        return None
+
+    return {
+        "id": ident,
+        "kind": spec.get("kind", "llm"),
+        "size_b": spec.get("size_b"),
+        "quant": _REFRESH_QUANT,
+        "disk_gb": round(float(disk_gb), 2),
+        "ram_gb": estimate_ram(float(disk_gb), _REFRESH_QUANT),
+        "benchmarks": dict(_EMPTY_BENCHMARKS),
+        "url": spec.get("url"),
+        "source": "ollama-library",
+        "fetched_at": fetched_at,
+    }
+
+
+def normalize_ollama_specs(
+    specs: list[dict[str, Any]], fetched_at: str | None = None
+) -> list[dict[str, Any]]:
+    """
+    Normalize a batch of Ollama-library specs, dropping unusable ones.
+
+    Parameters
+    ----------
+    specs : list[dict[str, Any]]
+        Specs as returned by ``ollama_library.fetch_pullable_models``.
+    fetched_at : str or None
+        Refresh timestamp for every entry; defaults to today (UTC).
+
+    Returns
+    -------
+    list[dict[str, Any]]
+        Catalog entries, in input order, minus specs that could not be sized.
+    """
+    stamp = fetched_at or _today()
+    entries = [normalize_ollama_spec(spec, stamp) for spec in specs]
+    return [e for e in entries if e is not None]
 
 
 def normalize_apxml_specs(

@@ -352,7 +352,7 @@ recommendation that sounds comfortable and one that is.
 | `doctor` | Compare what the engine file resolved against what the daemon can serve |
 | `storage` | Plan capacity: what fits on disk, and what fits in memory together |
 | `catalog show` | Print the merged model catalog |
-| `catalog update` | Refresh the model cache from the ApXML open-weight directory (`--limit N` for a partial refresh, `--arena` to also merge LM Arena ratings) |
+| `catalog update` | Refresh the model cache (`--ollama` for pullable tags from the official library, `--arena` to merge LM Arena ratings, `--limit N` for a partial refresh) |
 | `hardware show` | Print the known hardware chip table |
 | `hardware update` | Record this machine's chip and memory in the hardware cache |
 | `pull` | Download the best model and run the Ralph gates |
@@ -369,6 +369,12 @@ recommendation that sounds comfortable and one that is.
 The bundled seed catalog (`models.yaml`) covers the Qwen 3, Qwen 2.5, Qwen 2.5-Coder, and Gemma 3 families (from 3B to 72B parameters, across Q4_K_M and Q8_0), plus a small set of `kind: embed` text embedders for the retrieval index. The catalog tracks on-disk size, estimated peak RAM, and benchmark scores from the Open LLM Leaderboard v2, the OpenVLM Leaderboard, EvalPlus (code), and MTEB (embedding retrieval). This is the *search space* best-engine picks from: it is never a per-usage choice.
 
 `catalog update` refreshes the cache from the [ApXML LLM directory](https://apxml.com/models?modelType=open_weight) (open-weight models with their per-quant VRAM needs, consulted regularly). It fetches the specs, normalizes them to catalog entries, and merges them into `~/.best-engine-ai-helper/catalog_cache.yaml` by id (the bundled seed is never modified). Use `--limit N` for a quick partial refresh. ApXML's static pages carry specs but no numeric leaderboard scores, so refreshed entries keep null benchmarks (and rank low) until a scored source, such as the Open LLM Leaderboard v2 or the OpenVLM Leaderboard, fills them.
+
+`--ollama` widens the catalog from the [official Ollama library](https://ollama.com/library) instead of ApXML, and it exists because the servable catalog was stuck at twenty models for a reason that was never about scoring. ApXML can add hundreds of entries, but it names them by the paper's slug (`qwen36-35b-a3b`), which is a HuggingFace repo name that `ollama pull` cannot resolve — so those entries are vLLM-only. The library instead publishes families, their capabilities, and the sizes each one ships, and a family plus a size **is** a pull tag: `qwen3` plus `8b` is `qwen3:8b`, exactly the spelling the seed already uses. 256 families expand to roughly 420 pull tags, from a single request.
+
+These entries carry **no benchmark scores**, because the library publishes sizes and descriptions rather than leaderboard results. They therefore rank *below* every scored model until a scored source fills them in. That is the point rather than a limitation: it widens what the tool can size and pull without changing what it recommends, and an invented score would be worse than an absent one — a null ranks low and is honest, a guess ranks wrongly and looks authoritative.
+
+Sizes are derived from a constant **measured** against the seed's own fourteen Q4 entries, not guessed: 0.646 GB per billion parameters for text models and 0.714 for vision ones, since an image tower is genuinely heavier per parameter. That lands within about 5% of the seed's known-good figures. A family listing no size at all is skipped rather than recorded as zero, which would have made it appear to fit every machine.
 
 `--arena` additionally merges conversational ratings from [LM Arena](https://lmarena.ai) mirrors, and two measured facts about that axis are worth knowing before you reach for it.
 
