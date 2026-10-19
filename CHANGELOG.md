@@ -6,6 +6,32 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Fixed
 
+- **The pre-push gate judged the working directory instead of the commit being
+  pushed.** It was wrong in both directions, and both were observed rather than
+  argued. *False failures:* `ruff check .` walks the filesystem, so untracked
+  files belonging to another session failed your push for a commit that did not
+  contain them — three concurrent sessions blocked each other this way on
+  2026-10-19. *False passes:* a lint error that is committed but already fixed
+  in the working tree sailed through, because ruff read the fixed file on disk
+  while the broken version was what got pushed.
+
+  The second was the one nobody had spotted, and it is the worse of the two: a
+  gate that promises "nothing red reaches CI" while not looking at what it
+  sends. Narrowing to tracked files would have fixed only the first.
+
+  The hook now checks out the pushed commit into a throwaway worktree and runs
+  the gate there, which answers the question a pre-push hook is actually for —
+  "is what I am about to publish clean?" — and gets isolation from concurrent
+  sessions for free, by construction rather than by filtering. It also says so
+  when your working tree differs from the commit it judged, so a green gate on
+  a dirty tree is not a surprise.
+
+  Deliberate, because the alternative is worse than strictness: a gate that
+  fires wrongly teaches people to reach for `--no-verify`, which skips the lint
+  and the tests together. Verified here — the sweep is the same 282 passed /
+  4 skipped in the worktree as in the working tree, so no gitignored artifact
+  is needed to run it.
+
 - **An unreadable keychain took down a cloud call instead of falling back.**
   `_cloud_api_key` caught only `ImportError` around its `keyring` lookup, but
   `keyring.errors.NoKeyringError` is not one — it is what a headless Linux box
