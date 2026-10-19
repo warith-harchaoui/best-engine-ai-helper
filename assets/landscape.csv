@@ -1,8 +1,10 @@
-Local LLM Selection,Auto hardware detection,Benchmark-ranked selection,Ralph validation gates,Offline catalog,CI-testable,Programmatic API
-best-engine-ai-helper,5,5,5,5,5,5
-Ollama (CLI),1,1,1,3,2,4
-LM Studio,2,2,1,4,1,3
-Jan.ai,2,2,1,4,1,2
-llm (Simon Willison),1,1,1,2,3,4
-LocalAI,1,1,1,3,2,5
-text-generation-webui,2,1,1,3,1,3
+Model selection,Hardware detection,Local fit,Measures speed on this machine,Paid models in the same decision,Routes on keys present,Scores carry provenance,Catalog breadth,Verifies quality before you depend on it,Programmatic API
+best-engine-ai-helper,5,5,5,5,5,5,2,5,5
+llmfit,5,5,5,1,1,4,5,2,4
+RouteLLM,1,1,1,4,2,3,2,3,5
+LiteLLM,1,1,1,5,4,1,5,1,5
+OpenRouter,1,1,1,5,1,2,5,1,4
+Not Diamond,1,1,1,5,2,2,3,3,4
+Ollama,2,3,3,1,1,1,4,1,4
+LM Studio,3,4,3,1,1,1,4,1,3
+Browser VRAM calculators,1,4,1,1,1,2,3,1,1

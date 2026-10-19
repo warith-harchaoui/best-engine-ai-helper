@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1224" height="946" viewBox="0 0 1224 946" role="img" aria-labelledby="sp-title sp-desc" font-family="Roboto, -apple-system, Helvetica, Arial, sans-serif"><title id="sp-title">Sélection de modèles dans le quadrant</title><desc id="sp-desc">A 2D positioning map of 9 sélection de modèles, Richesse to Efficacité on the horizontal axis, Accessibilité to Maîtrise on the vertical axis.</desc><style>.sp-dot{cursor:pointer}.sp-dot:hover circle,.sp-dot:focus circle{stroke-width:2.4}.sp-dot:hover,.sp-dot:focus{filter:brightness(1.08);outline:none}</style><line x1="190.6" y1="484.0" x2="1003.2" y2="484.0" stroke="#C7C7CC" stroke-width="1.2" stroke-dasharray="2,4"/><line x1="612.0" y1="862.0" x2="612.0" y2="106.0" stroke="#C7C7CC" stroke-width="1.2" stroke-dasharray="2,4"/><text data-pole="right" x="1164.0" y="493.1" font-size="26" font-style="italic" fill="#6E6E73" text-anchor="end">Efficacité</text><text data-pole="left" x="60.0" y="493.1" font-size="26" font-style="italic" fill="#6E6E73" text-anchor="start">Richesse</text><text data-pole="top" x="612.0" y="64.5" font-size="26" font-style="italic" fill="#6E6E73" text-anchor="middle">Maîtrise</text><text data-pole="bottom" x="612.0" y="918.8" font-size="26" font-style="italic" fill="#6E6E73" text-anchor="middle">Accessibilité</text><g class="sp-dot" tabindex="0" role="img" aria-label="Sélection de modèles: best-engine-ai-helper
+role: best
+axis1: 2.53
+axis2: 1.97"><circle cx="912.0" cy="259.0" r="8.65" fill="#FF3B30" stroke="white" stroke-width="1" opacity="0.95"/><title>Sélection de modèles: best-engine-ai-helper
+role: best
+axis1: 2.53
+axis2: 1.97</title></g><text x="899.5" y="264.9" font-size="17" fill="#1C1C1E" text-anchor="end">best-engine-ai-helper</text><g class="sp-dot" tabindex="0" role="img" aria-label="Sélection de modèles: llmfit
+role: right
+axis1: 2.53
+axis2: -0.79"><circle cx="912.0" cy="574.0" r="8.65" fill="#007AFF" stroke="white" stroke-width="1" opacity="0.95"/><title>Sélection de modèles: llmfit
+role: right
+axis1: 2.53
+axis2: -0.79</title></g><text x="924.5" y="580.0" font-size="17" fill="#1C1C1E" text-anchor="start">llmfit</text><g class="sp-dot" tabindex="0" role="img" aria-label="Sélection de modèles: RouteLLM
+role: top
+axis1: -1.41
+axis2: 1.97"><circle cx="444.9" cy="259.0" r="8.65" fill="#AF52DE" stroke="white" stroke-width="1" opacity="0.95"/><title>Sélection de modèles: RouteLLM
+role: top
+axis1: -1.41
+axis2: 1.97</title></g><text x="457.4" y="264.9" font-size="17" fill="#1C1C1E" text-anchor="start">RouteLLM</text><g class="sp-dot" tabindex="0" role="img" aria-label="Sélection de modèles: LiteLLM
+role: competitor
+axis1: -2.53
+axis2: 1.08"><circle cx="312.0" cy="360.1" r="8.65" fill="#9288DD" stroke="white" stroke-width="1" opacity="0.95"/><title>Sélection de modèles: LiteLLM
+role: competitor
+axis1: -2.53
+axis2: 1.08</title></g><text x="324.5" y="366.1" font-size="17" fill="#1C1C1E" text-anchor="start">LiteLLM</text><g class="sp-dot" tabindex="0" role="img" aria-label="Sélection de modèles: OpenRouter
+role: competitor
+axis1: -2.34
+axis2: -0.02"><circle cx="334.6" cy="486.4" r="8.65" fill="#FFA1C1" stroke="white" stroke-width="1" opacity="0.95"/><title>Sélection de modèles: OpenRouter
+role: competitor
+axis1: -2.34
+axis2: -0.02</title></g><text x="347.1" y="527.0" font-size="17" fill="#1C1C1E" text-anchor="start">OpenRouter</text><g class="sp-dot" tabindex="0" role="img" aria-label="Sélection de modèles: Not Diamond
+role: competitor
+axis1: -1.84
+axis2: 1.43"><circle cx="393.7" cy="320.4" r="8.65" fill="#35C8E7" stroke="white" stroke-width="1" opacity="0.95"/><title>Sélection de modèles: Not Diamond
+role: competitor
+axis1: -1.84
+axis2: 1.43</title></g><text x="406.2" y="326.3" font-size="17" fill="#1C1C1E" text-anchor="start">Not Diamond</text><g class="sp-dot" tabindex="0" role="img" aria-label="Sélection de modèles: Ollama
+role: competitor
+axis1: -0.51
+axis2: -1.26"><circle cx="551.9" cy="627.4" r="8.65" fill="#B47819" stroke="white" stroke-width="1" opacity="0.95"/><title>Sélection de modèles: Ollama
+role: competitor
+axis1: -0.51
+axis2: -1.26</title></g><text x="564.4" y="633.4" font-size="17" fill="#1C1C1E" text-anchor="start">Ollama</text><g class="sp-dot" tabindex="0" role="img" aria-label="Sélection de modèles: LM Studio
+role: competitor
+axis1: 0.13
+axis2: -1.72"><circle cx="627.7" cy="679.9" r="8.65" fill="#71B971" stroke="white" stroke-width="1" opacity="0.95"/><title>Sélection de modèles: LM Studio
+role: competitor
+axis1: 0.13
+axis2: -1.72</title></g><text x="640.2" y="685.9" font-size="17" fill="#1C1C1E" text-anchor="start">LM Studio</text><g class="sp-dot" tabindex="0" role="img" aria-label="Sélection de modèles: Calculateurs VRAM en ligne
+role: worst
+axis1: -0.71
+axis2: -1.97"><circle cx="528.3" cy="709.0" r="8.65" fill="#A52A2A" stroke="white" stroke-width="1" opacity="0.95"/><title>Sélection de modèles: Calculateurs VRAM en ligne
+role: worst
+axis1: -0.71
+axis2: -1.97</title></g><text x="540.8" y="715.0" font-size="17" fill="#1C1C1E" text-anchor="start">Calculateurs VRAM en ligne</text><text x="612.0" y="26" font-size="18" font-weight="bold" fill="#000" text-anchor="middle">Sélection de modèles dans le quadrant</text></svg>
