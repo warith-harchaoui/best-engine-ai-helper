@@ -25,6 +25,26 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Added
 
+- **An LM Arena source, and the honesty to say when it has nothing.**
+  `sources/arena.py` reads conversational Elo from community mirrors and
+  converts it to the same 0-100 scale as the other axes, via the Elo expected-
+  score formula rather than a min-max — a min-max rescales every time the
+  leaderboard moves, so a cached catalog would silently disagree with a fresh
+  one. Staleness is a first-class property: Arena publishes no API, every
+  mirror is a third-party scrape, and as of 2026-10 the freshest one is well
+  past the bar, so the adapter **refuses and names the reason** instead of
+  merging ratings from a previous generation of models. Name matching runs
+  five passes from strict to loose (the leaderboard names dated releases,
+  catalogs name aliases); an ambiguous prefix is **declined**, because the
+  ranker acts on a wrong axis and merely ignores an empty one.
+- `score._APP_BENCH_PRIORITY` gains the Arena axes, weighted by position: an
+  Elo leads for `chat`, where it measures exactly what is being asked, and
+  trails on every execution axis, where preferring agreeable prose to a
+  schema-valid query is the known failure. A positional test pins the order so
+  a later edit cannot quietly reshuffle it.
+
+### Added
+
 - `pull.installed_tags()`: which tags the local Ollama daemon can serve right
   now, best-effort with a short timeout (no daemon is the common case during
   resolution, not an error). `_resolve_local` uses it to record `available`

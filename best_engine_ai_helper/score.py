@@ -24,13 +24,26 @@ import os_helper as osh
 
 # Maps an application keyword to an ordered list of benchmark keys to try.
 # The first non-null value found in a catalog entry is used as the score.
+#
+# Position in the list IS the axis's weight, which is where the Arena axes earn
+# their placement. An Arena rating comes from humans comparing two anonymous
+# answers and preferring one, so it measures conversational preference
+# precisely and almost nothing else. For `chat` that is the best public signal
+# there is, and it leads. For `code` it is a weak proxy -- a model that writes
+# agreeable prose outranks one that emits a schema-valid query, because nobody
+# voting was asked to run the query -- so it sits behind the code axis and the
+# generalist axis, as a last resort rather than a tiebreak.
+#
+# `arena_code` is the Arena's own coding board: still a preference vote, but
+# cast on coding prompts, so it outranks the undifferentiated `arena` for code
+# while still deferring to an execution-based benchmark like HumanEval+.
 _APP_BENCH_PRIORITY: dict[str, list[str]] = {
-    "code": ["code", "general"],
-    "math": ["math", "general"],
-    "ocr": ["ocr", "vision", "general"],
-    "vision": ["vision", "general"],
-    "chat": ["general"],
-    "generalist": ["general"],
+    "code": ["code", "general", "arena_code", "arena"],
+    "math": ["math", "general", "arena"],
+    "ocr": ["ocr", "vision", "arena_vision", "general"],
+    "vision": ["vision", "arena_vision", "general"],
+    "chat": ["arena", "general"],
+    "generalist": ["general", "arena"],
 }
 
 
