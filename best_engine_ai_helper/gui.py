@@ -60,6 +60,8 @@ _HTML_TOKEN_TO_KEY: dict[str, str] = {
     "HERO_TITLE": "hero_title",
     "HERO_P": "hero_subtitle",
     "SYS_H2": "system_heading",
+    "PROV_H2": "providers_heading",
+    "PROV_P": "providers_subtitle",
     "REFRESH": "refresh_button",
     "DETECTING": "detecting",
     "TASK_H2": "task_heading",
@@ -138,6 +140,8 @@ _JS_NAME_TO_KEY: dict[str, str] = {
     "thPrice": "th_price",
     "blended": "price_blended_suffix",
     "priceUnknown": "price_unknown",
+    "provNoKey": "provider_no_key",
+    "provReady": "provider_ready",
 }
 
 
@@ -288,6 +292,19 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
       </div>
     </section>
 
+    <!-- 1bis) Cloud providers, and why one is unavailable -->
+    <section class="border-t border-neutral-200/70 dark:border-neutral-800">
+      <div class="mx-auto max-w-4xl px-5 py-10">
+        <h2 class="text-2xl font-bold tracking-tight">{{PROV_H2}}</h2>
+        <p class="mt-2 max-w-3xl text-neutral-600 dark:text-neutral-300">{{PROV_P}}</p>
+        <div id="provider-list"
+             class="mt-4 grid gap-2 rounded-xl border border-neutral-200 bg-white p-5 text-sm shadow-sm
+                    dark:border-neutral-800 dark:bg-neutral-950">
+          <p class="text-neutral-500 dark:text-neutral-400">{{DETECTING}}</p>
+        </div>
+      </div>
+    </section>
+
     <!-- 2) Task description -->
     <section class="border-t border-neutral-200/70 dark:border-neutral-800">
       <div class="mx-auto max-w-4xl px-5 py-10">
@@ -411,6 +428,44 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
     applyThemeIcon();
 
     // --- 1) Hardware snapshot -------------------------------------------
+    function renderProviders(data) {
+      const rows = (data.providers || []).map((p) => {
+        // Unavailable providers are dimmed rather than hidden: the point is to
+        // show the rule being applied, not to quietly shorten the list.
+        const dim = p.available ? "" : "opacity-60";
+        const badge = p.available
+          ? `<span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800
+                          dark:bg-emerald-900/40 dark:text-emerald-300">${T.provReady}</span>`
+          : `<span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800
+                          dark:bg-amber-900/40 dark:text-amber-300">${T.provNoKey}</span>`;
+        const why = p.available
+          ? ""
+          : `<p class="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">${p.reason}</p>`;
+        return `<div class="flex items-start justify-between gap-4 ${dim}">
+            <div>
+              <p class="font-medium">${p.provider}
+                <span class="font-mono text-xs text-neutral-500 dark:text-neutral-400">${p.key_env}</span>
+              </p>
+              ${why}
+            </div>
+            ${badge}
+          </div>`;
+      });
+      $("provider-list").innerHTML =
+        rows.join("") || `<p class="text-neutral-500 dark:text-neutral-400">-</p>`;
+    }
+
+    async function loadProviders() {
+      try {
+        const res = await fetch("/api/providers");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        renderProviders(await res.json());
+      } catch (err) {
+        $("provider-list").innerHTML =
+          `<p class="text-red-600 dark:text-red-400">${T.detectFail}${err}</p>`;
+      }
+    }
+
     async function loadSystem() {
       $("system-grid").innerHTML =
         `<p class="col-span-full text-neutral-500 dark:text-neutral-400">${T.detecting}</p>`;
@@ -451,8 +506,12 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
       $("system-grid").innerHTML = cells.join("");
     }
 
-    $("refresh-system").addEventListener("click", loadSystem);
+    $("refresh-system").addEventListener("click", () => {
+      loadSystem();
+      loadProviders();
+    });
     loadSystem();
+    loadProviders();
 
     // --- 4) Activity ledger ------------------------------------------------
     async function loadActivity() {

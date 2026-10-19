@@ -113,6 +113,25 @@ def system() -> dict[str, Any]:
     return _system_info()
 
 
+@app.get("/api/providers")
+def providers() -> dict[str, Any]:
+    """Which cloud providers are usable right now, and for the rest, why not.
+
+    The package routes on the keys you actually hold, and this is that rule
+    made visible: a provider with no key is not a candidate, and the row says
+    which variable to set rather than leaving a silently shorter list.
+
+    Reports only whether a key resolved and the NAME of the variable it would
+    come from. No key value is ever returned.
+    """
+    rows = _cloud_catalog.provider_status()
+    return {
+        "providers": rows,
+        "available": sum(1 for r in rows if r["available"]),
+        "total": len(rows),
+    }
+
+
 @app.post("/api/recommend")
 def recommend(body: RecommendRequest) -> dict[str, Any]:
     """Best local engine(s) for ``body.task`` on this machine's hardware.

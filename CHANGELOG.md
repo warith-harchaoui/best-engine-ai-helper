@@ -53,6 +53,16 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Added
 
+- **The GUI shows which cloud providers are usable, and why the rest are not.**
+  This package claims to route on the keys you actually hold, and that claim is
+  only worth something if you can watch it being applied. Unavailable providers
+  are dimmed rather than hidden — the point is to show the rule, not to quietly
+  shorten the list — and each one names the variable to set and where it is
+  looked for. New `GET /api/providers` and `cloud_catalog.provider_status()`
+  behind it. Only *whether* a key resolved is reported, never a key value: the
+  reason descriptors store `api_key_env` rather than the secret is that the
+  secret stays out of every screen, and that holds here too.
+
 - **`storage`: plan capacity, including what fits in memory *together*.**
   "How many models fit on my SSD" is a subtraction and is answered, but the
   question behind it is usually different: a working setup is a text model, a

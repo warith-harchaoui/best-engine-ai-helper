@@ -62,6 +62,23 @@ an eGPU or closing memory-heavy apps.
 
 ![Hardware panel](assets/screenshots/gui-hardware.png)
 
+### 1bis. Cloud providers, and why one is unavailable
+
+One row per provider in the bundled price list, saying whether a key resolved
+for it right now. A provider whose key is missing is **not a candidate** for the
+cloud pick, and this is that rule made visible: unavailable rows are **dimmed
+rather than hidden**, because the point is to show the rule being applied, not
+to quietly present a shorter list of options as if it were the whole field.
+
+Each unavailable row names the variable to set, and keys are looked for in
+`settings.yaml`, then a `.env` file, then the environment, then the OS keychain.
+
+Only *whether* a key resolved is ever reported. No key value is read, returned
+or displayed — that is the reason engine descriptors store `api_key_env` (the
+variable's name) rather than the secret, and the same rule holds here.
+
+![Cloud providers panel](assets/screenshots/gui-providers.png)
+
 ### 2. Describe the task → best engine(s)
 
 Type a free-text task (the same kind of phrase `report --task "..."` takes)
@@ -110,13 +127,14 @@ recording enabled. A
 
 ## HTTP surface
 
-The GUI is a client of three JSON endpoints, usable directly (e.g. from
+The GUI is a client of four JSON endpoints, usable directly (e.g. from
 another tool, or `curl`):
 
 | Method | Path | Body | Returns |
 |--------|------|------|---------|
 | `GET`  | `/api/system` | (none) | hardware + compute profile + `memory_budget_gb` |
 | `POST` | `/api/recommend` | `{"task": str \| null, "headroom": float, "live": bool, "cloud": bool, "quality_vs_cost": float, "cloud_provider": str \| null}` | the same report `recommend()` / `report` produce, as JSON, plus the best paid model under `"cloud"` (reference only) unless `cloud: false` |
+| `GET`  | `/api/providers` | (none) | one row per cloud provider: `provider`, `key_env`, `available`, `reason`, `models`. Never a key value |
 | `GET`  | `/api/activity` | (none) | ledger summary: `total_calls`, `total_cost_usd`, `error_rate`, `by_user`, `by_model`, `recent_errors` |
 
 ```sh

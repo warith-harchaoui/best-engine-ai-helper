@@ -307,3 +307,70 @@ def pick_cloud(
     """
     ranked = rank_cloud(catalog, kind, application, quality_vs_cost, provider)
     return ranked[0] if ranked else None
+
+
+def provider_status(catalog: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    """
+    Which cloud providers are usable right now, and for the unusable, why.
+
+    This package claims to route on the keys you actually hold, and that claim
+    is only worth something if a caller can see it being applied. A provider
+    whose key is missing is not a candidate, and saying so plainly — with the
+    name of the variable to set — turns a silently shorter list of options into
+    an actionable one.
+
+    Never returns, logs, or compares a key *value*: only whether one resolved,
+    and the name of the variable it would come from. The whole point of storing
+    ``api_key_env`` rather than the key is that the secret stays out of every
+    descriptor, report and screen, and that holds here too.
+
+    Parameters
+    ----------
+    catalog : list of dict or None
+        Cloud entries to take providers from. Defaults to the bundled
+        ``pricing.yaml``.
+
+    Returns
+    -------
+    list of dict
+        One row per provider, sorted by name:
+        ``{"provider", "key_env", "available", "reason", "models"}``.
+    """
+    from .engine import _DEFAULT_API_KEY_ENV
+    from .llm import _cloud_api_key
+
+    entries = catalog if catalog is not None else load_cloud_catalog()
+
+    providers: dict[str, list[str]] = {}
+    for entry in entries:
+        name = str(entry.get("provider") or "").strip().lower()
+        if name:
+            providers.setdefault(name, []).append(str(entry.get("id") or "?"))
+
+    rows: list[dict[str, Any]] = []
+    for name in sorted(providers):
+        key_env = _DEFAULT_API_KEY_ENV.get(name, f"{name.upper()}_API_KEY")
+        try:
+            resolved = bool(_cloud_api_key({"api_key_env": key_env}))
+        except Exception as exc:  # noqa: BLE001 — a lookup failure is a finding
+            resolved = False
+            reason = f"could not check {key_env}: {exc}"
+        else:
+            reason = (
+                ""
+                if resolved
+                else (
+                    f"no API key found. Set {key_env} in settings.yaml, a .env file, "
+                    "the environment, or the OS keychain."
+                )
+            )
+        rows.append(
+            {
+                "provider": name,
+                "key_env": key_env,
+                "available": resolved,
+                "reason": reason,
+                "models": sorted(providers[name]),
+            }
+        )
+    return rows

@@ -180,3 +180,64 @@ def test_a_catalog_with_no_prices_at_all_still_ranks() -> None:
     ranked = cloud_catalog.rank_cloud(catalog, "llm")
 
     assert [r["id"] for r in ranked] == ["a", "b"]  # falls back to quality order
+
+
+# ---------------------------------------------------------------------------
+# Which providers are usable, and why the rest are not
+# ---------------------------------------------------------------------------
+
+
+def test_provider_status_names_the_variable_to_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A silently shorter list of options is not actionable; a variable name is."""
+    monkeypatch.setattr("best_engine_ai_helper.llm._cloud_api_key", lambda _e: "")
+
+    rows = cloud_catalog.provider_status(_CATALOG)
+
+    by_name = {r["provider"]: r for r in rows}
+    assert set(by_name) == {"acme", "other"}
+    assert by_name["acme"]["available"] is False
+    assert "ACME_API_KEY" in by_name["acme"]["reason"]
+    assert by_name["acme"]["key_env"] == "ACME_API_KEY"
+
+
+def test_a_provider_with_a_key_is_available_and_gives_no_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("best_engine_ai_helper.llm._cloud_api_key", lambda _e: "sk-whatever")
+
+    rows = cloud_catalog.provider_status(_CATALOG)
+
+    assert all(r["available"] for r in rows)
+    assert all(r["reason"] == "" for r in rows)
+
+
+def test_provider_status_never_returns_a_key_value(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The whole point of storing the variable NAME is that the secret stays out."""
+    secret = "sk-this-must-never-appear"
+    monkeypatch.setattr("best_engine_ai_helper.llm._cloud_api_key", lambda _e: secret)
+
+    rows = cloud_catalog.provider_status(_CATALOG)
+
+    assert secret not in repr(rows)
+
+
+def test_a_lookup_that_raises_is_a_finding_not_a_crash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _boom(_entry):
+        raise RuntimeError("keyring is locked")
+
+    monkeypatch.setattr("best_engine_ai_helper.llm._cloud_api_key", _boom)
+
+    rows = cloud_catalog.provider_status(_CATALOG)
+
+    assert all(r["available"] is False for r in rows)
+    assert "keyring is locked" in rows[0]["reason"]
+
+
+def test_providers_carry_the_models_they_serve() -> None:
+    rows = cloud_catalog.provider_status(_CATALOG)
+
+    by_name = {r["provider"]: r for r in rows}
+    assert by_name["other"]["models"] == ["vision-model"]
+    assert "cheap-text" in by_name["acme"]["models"]

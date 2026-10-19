@@ -268,6 +268,25 @@ gui:
   price_unknown:
     fr: tarif inconnu
     en: price unknown
+  providers_heading:
+    fr: Fournisseurs cloud
+    en: Cloud providers
+  providers_subtitle:
+    fr: >-
+      Un fournisseur dont la clé est absente n'est pas un candidat. Les clés sont
+      cherchées dans settings.yaml, puis un fichier .env, puis l'environnement,
+      puis le trousseau du système. Seule leur présence est vérifiée ici : aucune
+      valeur de clé n'est lue ni affichée.
+    en: >-
+      A provider whose key is missing is not a candidate. Keys are looked up in
+      settings.yaml, then a .env file, then the environment, then the OS keychain.
+      Only their presence is checked here; no key value is ever read or shown.
+  provider_ready:
+    fr: clé trouvée
+    en: key found
+  provider_no_key:
+    fr: pas de clé
+    en: no key
 prompts:
   eyeball_critique:
     system: 'You are a strict visual-quality reviewer. Examine the image and write a
