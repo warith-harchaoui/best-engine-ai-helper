@@ -163,3 +163,109 @@ def resolved_models() -> dict[str, str]:
         "text": _resolve(_TEXT_KEYS, DEFAULT_TEXT_MODEL, cfg),
         "vision": _resolve(_VISION_KEYS, DEFAULT_VISION_MODEL, cfg),
     }
+
+
+# ---------------------------------------------------------------------------
+# User preferences (written by the GUI, read by anything that ranks)
+# ---------------------------------------------------------------------------
+
+#: Where preferences live. Deliberately **not** ``settings.yaml``.
+#:
+#: That file holds API keys, and a browser form is the last thing that should
+#: be able to rewrite it: one naive dump and a user's keys are gone. Secrets
+#: and preferences also have different lifetimes, different blast radii, and
+#: different people editing them. Keeping them apart means the GUI can save a
+#: slider position without ever holding a file that contains a secret.
+#:
+#: The YAML stays the source of truth either way — the GUI writes this file and
+#: then reads it back like any other client, rather than keeping its own state.
+_PREFERENCES_YAML = _USER_DIR / "preferences.yaml"
+
+#: Preferences this module will persist, with the default each falls back to.
+#: An unknown key sent by a client is ignored rather than stored: a settings
+#: file that accumulates whatever anyone posted stops being readable.
+_PREFERENCE_DEFAULTS: dict[str, Any] = {
+    # 0 = rank purely on price, 1 = purely on quality.
+    "quality_vs_cost": 0.7,
+    # Fraction of the usable memory pool a model may occupy.
+    "headroom": 0.5,
+    # Throughput floor in tokens/s, below which a model is not comfortable.
+    "min_tps": 15.0,
+    # Never suggest a paid model, whatever keys are present.
+    "local_only": False,
+    # Also weigh what the machine is doing right now, not just its capacity.
+    "live_load": False,
+}
+
+
+def load_preferences() -> dict[str, Any]:
+    """
+    Read the saved preferences, falling back to the defaults for anything unset.
+
+    A missing or unreadable file is not an error: no preferences yet is the
+    normal state, and every value has a usable default. Returns a fresh dict,
+    so a caller mutating the result cannot corrupt the next read.
+
+    Returns
+    -------
+    dict
+        Every key in :data:`_PREFERENCE_DEFAULTS`, saved value or default.
+    """
+    import yaml
+
+    prefs = dict(_PREFERENCE_DEFAULTS)
+    if not _PREFERENCES_YAML.exists():
+        return prefs
+    try:
+        saved = yaml.safe_load(_PREFERENCES_YAML.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001 — a corrupt file must not break ranking
+        osh.warning(f"Could not read preferences, using defaults:\n\t{_PREFERENCES_YAML}\n\t{exc}")
+        return prefs
+    if isinstance(saved, dict):
+        for key in prefs:
+            if saved.get(key) is not None:
+                prefs[key] = saved[key]
+    return prefs
+
+
+def save_preferences(values: dict[str, Any]) -> dict[str, Any]:
+    """
+    Merge `values` into the saved preferences and write them back.
+
+    Only known keys are kept, and each is coerced to the type its default
+    implies — a form posts strings, and a ``headroom`` of ``"0.4"`` that stayed
+    a string would compare wrongly against a float for the rest of its life.
+    A value that cannot be coerced is skipped with a warning rather than stored
+    broken.
+
+    Parameters
+    ----------
+    values : dict
+        Preferences to set. Unknown keys are ignored.
+
+    Returns
+    -------
+    dict
+        The full set of preferences as now saved.
+    """
+    import yaml
+
+    prefs = load_preferences()
+    for key, raw in (values or {}).items():
+        if key not in _PREFERENCE_DEFAULTS:
+            osh.debug(f"Ignoring unknown preference {key!r}")
+            continue
+        default = _PREFERENCE_DEFAULTS[key]
+        try:
+            prefs[key] = bool(raw) if isinstance(default, bool) else type(default)(raw)
+        except (TypeError, ValueError):
+            osh.warning(
+                f"Preference {key!r} could not be read as {type(default).__name__}: {raw!r}"
+            )
+
+    _PREFERENCES_YAML.parent.mkdir(parents=True, exist_ok=True)
+    _PREFERENCES_YAML.write_text(
+        yaml.safe_dump(prefs, sort_keys=True, allow_unicode=True), encoding="utf-8"
+    )
+    osh.info(f"Preferences saved:\n\t{_PREFERENCES_YAML}")
+    return prefs

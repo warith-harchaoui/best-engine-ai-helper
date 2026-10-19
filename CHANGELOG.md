@@ -64,6 +64,20 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Added
 
+- **The GUI remembers your preferences.** Headroom, the quality-versus-cost
+  weight and the live-load toggle persist to
+  `~/.best-engine-ai-helper/preferences.yaml` via `GET`/`POST
+  /api/preferences`, and the page reads them back on load rather than keeping
+  a second copy of the state.
+
+  Deliberately *not* written to `settings.yaml`. That file holds API keys, and
+  a browser form should never be in a position to rewrite a file containing
+  secrets — one naive dump and the keys are gone. Secrets and preferences also
+  have different lifetimes and different blast radii, so they get different
+  files. A form posts strings, so each value is coerced to the type its default
+  implies on the way in; one that cannot be is skipped with a warning rather
+  than stored broken, and an unknown key is ignored rather than accumulated.
+
 - **`catalog update --ollama`: widen the catalog with tags Ollama can pull.**
   The catalog was stuck at twenty *servable* models, and the reason was not
   scoring: ApXML can add hundreds, but it names them by the paper's slug, which

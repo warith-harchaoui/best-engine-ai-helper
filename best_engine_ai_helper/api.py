@@ -113,6 +113,39 @@ def system() -> dict[str, Any]:
     return _system_info()
 
 
+class PreferencesRequest(BaseModel):
+    """Preferences to persist. Every field optional: a form saves what changed."""
+
+    quality_vs_cost: float | None = None
+    headroom: float | None = None
+    min_tps: float | None = None
+    local_only: bool | None = None
+    live_load: bool | None = None
+
+
+@app.get("/api/preferences")
+def preferences_get() -> dict[str, Any]:
+    """The saved preferences, with defaults filled in for anything unset."""
+    from . import config as _config
+
+    return _config.load_preferences()
+
+
+@app.post("/api/preferences")
+def preferences_set(body: PreferencesRequest) -> dict[str, Any]:
+    """Save preferences and return the full set as now stored.
+
+    Writes `~/.best-engine-ai-helper/preferences.yaml`, deliberately **not**
+    `settings.yaml`: that file holds API keys, and a browser form should never
+    be in a position to rewrite a file containing secrets. The YAML remains the
+    source of truth — this endpoint writes it and reads it back like any other
+    client, rather than holding state of its own.
+    """
+    from . import config as _config
+
+    return _config.save_preferences(body.model_dump(exclude_none=True))
+
+
 @app.get("/api/providers")
 def providers() -> dict[str, Any]:
     """Which cloud providers are usable right now, and for the rest, why not.

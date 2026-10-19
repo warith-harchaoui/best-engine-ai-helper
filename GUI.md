@@ -127,13 +127,15 @@ recording enabled. A
 
 ## HTTP surface
 
-The GUI is a client of four JSON endpoints, usable directly (e.g. from
+The GUI is a client of six JSON endpoints, usable directly (e.g. from
 another tool, or `curl`):
 
 | Method | Path | Body | Returns |
 |--------|------|------|---------|
 | `GET`  | `/api/system` | (none) | hardware + compute profile + `memory_budget_gb` |
 | `POST` | `/api/recommend` | `{"task": str \| null, "headroom": float, "live": bool, "cloud": bool, "quality_vs_cost": float, "cloud_provider": str \| null}` | the same report `recommend()` / `report` produce, as JSON, plus the best paid model under `"cloud"` (reference only) unless `cloud: false` |
+| `GET`  | `/api/preferences` | (none) | saved preferences, defaults filled in |
+| `POST` | `/api/preferences` | any of `quality_vs_cost`, `headroom`, `min_tps`, `local_only`, `live_load` | the full set as now saved, to `~/.best-engine-ai-helper/preferences.yaml` — never `settings.yaml`, which holds keys |
 | `GET`  | `/api/providers` | (none) | one row per cloud provider: `provider`, `key_env`, `available`, `reason`, `models`. Never a key value |
 | `GET`  | `/api/activity` | (none) | ledger summary: `total_calls`, `total_cost_usd`, `error_rate`, `by_user`, `by_model`, `recent_errors` |
 

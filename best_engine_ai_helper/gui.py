@@ -466,6 +466,59 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
       }
     }
 
+    // --- Preferences -------------------------------------------------------
+    // The YAML on disk is the source of truth: these handlers write it and read
+    // it back, rather than keeping a second copy of the state in the page.
+    const PREF_FIELDS = {
+      headroom: { el: "headroom", kind: "number" },
+      quality_vs_cost: { el: "qvc", kind: "number" },
+      live_load: { el: "live", kind: "bool" },
+    };
+
+    function applyPreferences(prefs) {
+      for (const [key, spec] of Object.entries(PREF_FIELDS)) {
+        const el = $(spec.el);
+        if (!el || prefs[key] === undefined || prefs[key] === null) continue;
+        if (spec.kind === "bool") el.checked = Boolean(prefs[key]);
+        else el.value = prefs[key];
+      }
+    }
+
+    async function loadPreferences() {
+      try {
+        const res = await fetch("/api/preferences");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        applyPreferences(await res.json());
+      } catch (err) {
+        // Preferences are a convenience, not a prerequisite: the form keeps
+        // its defaults and the page stays usable.
+        console.warn("preferences unavailable:", err);
+      }
+    }
+
+    async function savePreferences() {
+      const body = {};
+      for (const [key, spec] of Object.entries(PREF_FIELDS)) {
+        const el = $(spec.el);
+        if (!el) continue;
+        body[key] = spec.kind === "bool" ? el.checked : Number(el.value);
+      }
+      try {
+        await fetch("/api/preferences", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      } catch (err) {
+        console.warn("preferences not saved:", err);
+      }
+    }
+
+    for (const spec of Object.values(PREF_FIELDS)) {
+      const el = $(spec.el);
+      if (el) el.addEventListener("change", savePreferences);
+    }
+
     async function loadSystem() {
       $("system-grid").innerHTML =
         `<p class="col-span-full text-neutral-500 dark:text-neutral-400">${T.detecting}</p>`;
@@ -512,6 +565,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
     });
     loadSystem();
     loadProviders();
+    loadPreferences();
 
     // --- 4) Activity ledger ------------------------------------------------
     async function loadActivity() {
