@@ -380,3 +380,62 @@ def test_pull_validate_env(
     assert gui_result.exit_code == 0
     assert gui_calls["app"] == "best_engine_ai_helper.api:app"
     assert (gui_calls["host"], gui_calls["port"]) == ("0.0.0.0", 9000)
+
+
+def test_report_sizes_against_the_backend_this_machine_would_serve_with(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`report` must agree with the engine file `resolve` would build.
+
+    It used to size every pick against Ollama Q4 whatever the machine was, so
+    on the one configuration where `resolve` picks vLLM — Linux with a
+    discrete GPU, the documented production case — the two disagreed, and the
+    report was the optimistic one. The README's claim that "vLLM picks are
+    sized against full FP16 weights, so a vLLM pick is realistic on the real
+    GPU" was true of `resolve` and false here.
+    """
+    from best_engine_ai_helper import detect as _detect
+
+    monkeypatch.setattr(_detect, "platform_name", lambda: "linux")
+    monkeypatch.setattr(_detect, "chip_vendor", lambda: "nvidia")
+
+    auto = runner.invoke(main, ["report", "--format", "json", "--task", "write python code"])
+    assert auto.exit_code == 0
+    forced = runner.invoke(
+        main,
+        ["report", "--format", "json", "--task", "write python code", "--backend", "vllm"],
+    )
+    assert forced.exit_code == 0
+    # 'auto' on Linux + a discrete GPU resolves to vLLM, so the two agree.
+    assert json.loads(auto.output) == json.loads(forced.output)
+
+    # And an explicit Ollama run is genuinely different — otherwise the
+    # assertion above would pass on a backend flag that does nothing.
+    ollama = runner.invoke(
+        main,
+        ["report", "--format", "json", "--task", "write python code", "--backend", "ollama"],
+    )
+    assert ollama.exit_code == 0
+    assert json.loads(ollama.output) != json.loads(auto.output)
+
+
+def test_report_prefers_a_model_already_on_disk(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The already-pulled tiebreak only ever fired through `engine.resolve`.
+
+    `report` never passed `installed`, so the whole feature was invisible from
+    the command most people run. Asserted through the report's own
+    `installed` flag rather than the chosen id, since which models tie depends
+    on the bundled catalog.
+    """
+    from best_engine_ai_helper import pull as _pull
+
+    monkeypatch.setattr(_pull, "installed_tags", lambda *a, **k: {"qwen3:8b"})
+    res = runner.invoke(
+        main, ["report", "--format", "json", "--task", "write copy", "--backend", "ollama"]
+    )
+    assert res.exit_code == 0
+    rows = json.loads(res.output)["recommendations"]["llm"]["candidates"]
+    assert any(r["id"] == "qwen3:8b" and r["installed"] for r in rows)
+    assert not any(r["installed"] for r in rows if r["id"] != "qwen3:8b")

@@ -36,6 +36,27 @@ All notable changes to best-engine-ai-helper are documented here.
   anywhere for the measured demotion — `min_tps` appeared in no test of
   `score.rank` at all, which is how a headline feature shipped switched off.
 
+- **`report` sized every pick against Ollama, including on the machines where
+  this tool serves with vLLM.** The command passed neither `backend` nor
+  `installed` to `recommend()`, so it always took the defaults: Ollama Q4
+  footprints, and no knowledge of what is already on disk. On Linux with a
+  discrete GPU — the configuration `engine.default_backend` sends to vLLM, and
+  the one the README calls "the real production case" — the report and the
+  engine file `resolve` builds therefore disagreed, with the report on the
+  optimistic side. Measured on a 48 GB GPU against the bundled catalog: the
+  report offered `qwen2.5-coder:14b` at **9.9 GB** while the engine it would
+  actually build picked `qwen2.5-coder:7b` at **16.1 GB**. A bigger model at a
+  smaller claimed footprint — vLLM loads FP16 weights, roughly three times the
+  Q4 figure, which is the "unrealistic recommendation" `model_footprint_gb`'s
+  own docstring says it guards against.
+
+  `report` now takes `--backend {auto,ollama,vllm}` like `resolve` and
+  `candidates`, defaulting to `auto`, and asks the daemon which tags are
+  present when the backend is Ollama — the same condition `storage` already
+  used. That second half also switches on the already-pulled tiebreak, which
+  had only ever fired through `engine.resolve`: the command most people run
+  could not see it.
+
 - **A catalog entry with no size at all fitted every machine, and was
   recommended on the ones where nothing real fitted.** `model_footprint_gb`
   returned `0.0` for an entry carrying neither `ram_gb` nor `size_b`, and

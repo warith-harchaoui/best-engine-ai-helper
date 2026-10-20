@@ -447,6 +447,13 @@ def resolve_cmd(brief: str, out: str | None, backend: str, endpoint: str | None)
     default=None,
     help="Cloud pick only: restrict to one provider (e.g. openai, anthropic, mistral).",
 )
+@click.option(
+    "--backend",
+    type=click.Choice(["auto", "ollama", "vllm"]),
+    default="auto",
+    show_default=True,
+    help="Serving backend. 'auto' = vLLM on Linux with a discrete GPU (NVIDIA/AMD), else Ollama.",
+)
 def report_cmd(
     task: str | None,
     headroom: float,
@@ -456,13 +463,44 @@ def report_cmd(
     cloud: bool,
     quality_vs_cost: float,
     cloud_provider: str | None,
+    backend: str,
 ) -> None:
     """Recommend the best engine(s) for this hardware and task; emit MD + JSON."""
+    from . import engine as _engine
+    from .pull import installed_tags
+
     hw = _detect.available_memory()
     compute = _detect.compute_profile()
     entries = _catalog.load_catalog()
     load = _detect.server_load() if live else None
-    rep = _recommend_engines(hw, entries, task=task, headroom=headroom, compute=compute, load=load)
+
+    # This command used to size every pick against Ollama Q4 regardless of what
+    # the machine would actually serve with, so on the one configuration where
+    # `resolve` picks vLLM -- Linux with a discrete GPU, the documented
+    # production case -- the report and the engine file disagreed, and the
+    # report was the optimistic one. Measured on a 48 GB GPU: the report
+    # offered `qwen2.5-coder:14b` at 9.9 GB while the engine it would build
+    # picked `qwen2.5-coder:7b` at 16.1 GB. "vLLM picks are sized against full
+    # FP16 weights, so a vLLM pick is realistic on the real GPU" was true of
+    # `resolve` and false here.
+    if backend == "auto":
+        backend = _engine.default_backend()
+
+    # And the already-pulled tiebreak, which only ever fired through
+    # `engine.resolve`. Same condition `storage` uses: the tag list is an
+    # Ollama concept, so it is asked for only when Ollama is the backend.
+    present = installed_tags() if backend == "ollama" else set()
+
+    rep = _recommend_engines(
+        hw,
+        entries,
+        task=task,
+        headroom=headroom,
+        compute=compute,
+        load=load,
+        backend=backend,
+        installed=present,
+    )
     if cloud:
         rep["cloud"] = _cloud_recommend(
             task, quality_vs_cost=quality_vs_cost, provider=cloud_provider

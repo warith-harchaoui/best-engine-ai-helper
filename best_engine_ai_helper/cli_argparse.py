@@ -272,12 +272,32 @@ def _handle_report(ns: argparse.Namespace) -> int:
     int
         Process exit code (always 0).
     """
+    from .engine import default_backend as _default_backend
+    from .pull import installed_tags as _installed_tags
+
     hw = _detect.available_memory()
     compute = _detect.compute_profile()
     entries = _catalog.load_catalog()
     load = _detect.server_load() if ns.live else None
+
+    # Size the picks against the backend this machine would actually serve
+    # with. Hard-coding Ollama here made the report disagree with the engine
+    # file `resolve` builds on Linux with a discrete GPU, and the report was
+    # the optimistic side of the disagreement -- see the note in `cli.py`.
+    backend = ns.backend
+    if backend == "auto":
+        backend = _default_backend()
+    present = _installed_tags() if backend == "ollama" else set()
+
     rep = _recommend_engines(
-        hw, entries, task=ns.task, headroom=ns.headroom, compute=compute, load=load
+        hw,
+        entries,
+        task=ns.task,
+        headroom=ns.headroom,
+        compute=compute,
+        load=load,
+        backend=backend,
+        installed=present,
     )
     if not ns.no_cloud:
         rep["cloud"] = _cloud_recommend(
@@ -1120,6 +1140,13 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     p.add_argument("--out", default=None, help="Path stem to write <stem>.md and <stem>.json.")
+    p.add_argument(
+        "--backend",
+        choices=["auto", "ollama", "vllm"],
+        default="auto",
+        help="Serving backend. 'auto' = vLLM on Linux with a discrete GPU "
+        "(NVIDIA/AMD), else Ollama (default: auto).",
+    )
     p.add_argument(
         "--format",
         dest="format",
