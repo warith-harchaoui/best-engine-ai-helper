@@ -426,6 +426,7 @@ def select(
     text-only LLMs and VLMs (since a VLM handles text-only prompts equally).
 
     Selection order:
+
     1. Filter: keep entries whose ``ram_gb`` fits within the effective budget.
     2. Rank: structured-output capability first (a model that cannot honour
        Ollama structured output is never chosen over one that can), then
