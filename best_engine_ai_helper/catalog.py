@@ -29,7 +29,12 @@ import os_helper as osh
 import yaml
 
 # Root of the installed package; models.yaml sits next to pyproject.toml
-_PACKAGE_ROOT = Path(__file__).resolve().parent.parent
+# Data lives INSIDE the package. These files used to sit beside it, next to
+# pyproject.toml, where `package-data` patterns — which resolve relative to a
+# package directory — could never reach them: the wheel shipped none of them,
+# and `load_catalog()` returned an EMPTY catalogue on any machine without a
+# populated user cache. A repo checkout and a populated cache both hid it.
+_PACKAGE_ROOT = Path(__file__).resolve().parent / "data"
 
 # Default path for the bundled seed catalog
 _SEED_PATH = _PACKAGE_ROOT / "models.yaml"

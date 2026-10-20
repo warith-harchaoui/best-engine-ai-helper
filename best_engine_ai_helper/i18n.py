@@ -37,10 +37,13 @@ from typing import Any
 
 import os_helper as osh
 
-# Root of the installed package; locales/i18n.yaml sits next to pyproject.toml,
-# same convention as models.yaml / hardware.yaml / usages.yaml (see catalog.py).
-_PACKAGE_ROOT = Path(__file__).resolve().parent.parent
-_LOCALES_PATH = _PACKAGE_ROOT / "locales" / "i18n.yaml"
+# Inside the package, not beside it. It used to sit next to pyproject.toml,
+# one level above — which is not package data, and so never entered the wheel:
+# on PyPI up to 1.5.0 a clean `pip install` produced a package whose every GUI
+# string and every prompt raised FileNotFoundError. A repo checkout and an
+# editable install both have the file where the code looked, which is why
+# nothing caught it.
+_LOCALES_PATH = Path(__file__).resolve().parent / "locales" / "i18n.yaml"
 
 #: The namespace holding model-facing templates. Named here rather than in
 #: os-helper, which has no business knowing that prompts are a thing.

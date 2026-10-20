@@ -29,7 +29,12 @@ from typing import Any
 import os_helper as osh
 import yaml
 
-_PACKAGE_ROOT = Path(__file__).resolve().parent.parent
+# Data lives INSIDE the package. These files used to sit beside it, next to
+# pyproject.toml, where `package-data` patterns — which resolve relative to a
+# package directory — could never reach them: the wheel shipped none of them,
+# and `load_catalog()` returned an EMPTY catalogue on any machine without a
+# populated user cache. A repo checkout and a populated cache both hid it.
+_PACKAGE_ROOT = Path(__file__).resolve().parent / "data"
 _SEED_PATH = _PACKAGE_ROOT / "hardware.yaml"
 
 _USER_DIR = Path.home() / ".best-engine-ai-helper"

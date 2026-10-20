@@ -46,7 +46,12 @@ from .score import effective_budget as _effective_budget
 from .score import sizeable_only as _sizeable_only
 
 # Root of the installed package; usages.yaml sits next to models.yaml.
-_PACKAGE_ROOT = Path(__file__).resolve().parent.parent
+# Data lives INSIDE the package. These files used to sit beside it, next to
+# pyproject.toml, where `package-data` patterns — which resolve relative to a
+# package directory — could never reach them: the wheel shipped none of them,
+# and `load_catalog()` returned an EMPTY catalogue on any machine without a
+# populated user cache. A repo checkout and a populated cache both hid it.
+_PACKAGE_ROOT = Path(__file__).resolve().parent / "data"
 _SEED_PATH = _PACKAGE_ROOT / "usages.yaml"
 
 # User-writable overlay, mirroring the model-catalog cache convention.

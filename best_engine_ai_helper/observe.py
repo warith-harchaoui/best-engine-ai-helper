@@ -56,7 +56,12 @@ _DEFAULT_DB_PATH = _USER_DIR / "usage.db"
 
 # Root of the installed package; pricing.yaml sits next to pyproject.toml,
 # same convention as models.yaml / hardware.yaml / usages.yaml (see catalog.py).
-_PACKAGE_ROOT = Path(__file__).resolve().parent.parent
+# Data lives INSIDE the package. These files used to sit beside it, next to
+# pyproject.toml, where `package-data` patterns — which resolve relative to a
+# package directory — could never reach them: the wheel shipped none of them,
+# and `load_catalog()` returned an EMPTY catalogue on any machine without a
+# populated user cache. A repo checkout and a populated cache both hid it.
+_PACKAGE_ROOT = Path(__file__).resolve().parent / "data"
 _PRICING_PATH = _PACKAGE_ROOT / "pricing.yaml"
 
 # Backends that never incur a per-call charge: local inference, whatever the

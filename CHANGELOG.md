@@ -273,6 +273,40 @@ All notable changes to best-engine-ai-helper are documented here.
   anywhere for the measured demotion — `min_tps` appeared in no test of
   `score.rank` at all, which is how a headline feature shipped switched off.
 
+## [1.6.1] - 2026-10-20
+
+### Fixed
+
+- **The wheel shipped none of the package's data, so an installed copy had an
+  empty catalogue.** `models.yaml`, `hardware.yaml`, `usages.yaml`,
+  `pricing.yaml` and `locales/i18n.yaml` sat *beside* the package, next to
+  `pyproject.toml`. `[tool.setuptools.package-data]` listed all five by name —
+  and matched nothing, because those patterns resolve relative to a **package
+  directory**, never to the repo root. A declaration that looks correct and
+  covers nothing is why this survived every release up to 1.5.0.
+
+  Measured on the published 1.5.0 wheel, in a clean virtualenv with an empty
+  `HOME`: `load_catalog()` returned **0 entries** and `i18n.gui_strings()`
+  raised `FileNotFoundError`. The package's whole purpose — pick the best
+  local model — could not work for anyone installing it from PyPI.
+
+  Two things hid it. A repo checkout has every file exactly where the code
+  looked, and a developer machine has a populated `~/.best-engine-ai-helper`
+  cache that `load_catalog()` merges *over* the missing seed, so the entry
+  count looked plausible (20) while the seed contributed nothing.
+
+  The data now lives in `best_engine_ai_helper/data/` and the locale file in
+  `best_engine_ai_helper/locales/`, both inside the package, with
+  package-data patterns that reach them. Verified the same way the defect
+  was: clean virtualenv, empty `HOME`, **20 entries and 89 GUI keys**.
+
+  `tests/test_packaging.py` now asserts the property that survives
+  packaging — every runtime data file resolves under the importable package
+  directory, the build declares it, and nothing is left at the repo root.
+
+**1.6.0 was tagged but never published to PyPI**; this is the first release
+carrying the i18n delegation described below.
+
 ## [1.6.0] - 2026-10-20
 
 ### Changed

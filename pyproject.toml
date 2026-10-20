@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "best-engine-ai-helper"
-version = "1.6.0"
+version = "1.6.1"
 description = "Pick and pull the best local LLM/VLM for the current hardware."
 authors = [{name = "Warith Harchaoui", email = "warithmetics@deraison.ai"}]
 license = {text = "BSD-3-Clause"}
@@ -88,9 +88,18 @@ best-engine-ai-helper-mcp = "best_engine_ai_helper.mcp:main"
 where = ["."]
 include = ["best_engine_ai_helper*"]
 
+# Patterns here resolve relative to a PACKAGE directory, never to the repo
+# root. The previous version listed these same names under "*" while the files
+# sat beside the package — so the patterns matched nothing and the wheel
+# shipped no data at all. They now live in best_engine_ai_helper/data/.
 [tool.setuptools.package-data]
-"*" = ["models.yaml", "hardware.yaml", "usages.yaml", "locales/i18n.yaml", "pricing.yaml"]
-"best_engine_ai_helper" = ["static/**", "models/*.onnx", "models/NOTICE.md"]
+"best_engine_ai_helper" = [
+    "data/*.yaml",
+    "locales/*.yaml",
+    "static/**",
+    "models/*.onnx",
+    "models/NOTICE.md",
+]
 
 [tool.ruff]
 line-length = 100
