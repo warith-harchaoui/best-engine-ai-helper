@@ -70,6 +70,32 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Fixed
 
+- **`pull` wrote two environment variables the tool then ignored.**
+  `pull.write_env` persists four values into `~/.best-engine-ai-helper/env.sh`
+  and `config.json`; the README and LISEZMOI print that export block and tell
+  the reader to source it. Two of the four worked. `BEST_LLM_TEXT` and
+  `BEST_LLM_VISION` resolve through `config.py`; `BEST_LLM_BACKEND` and
+  `BEST_LLM_BASE_URL` were read by nobody, because `llm.py` consulted only the
+  legacy `SPREZZATURE_*` spelling.
+
+  Demonstrated: `pull` writing `vllm` at `http://gpu-box:8000`, with the file
+  sourced exactly as documented, left the transport on `ollama` at
+  `http://localhost:11434`. Anyone serving on a non-default port, or with
+  vLLM, was silently routed somewhere else.
+
+  Half a block working is what made it hard to notice — the model tags were
+  honoured, so the file looked like it was being read. The gap had already
+  been found and closed once on the other half: `_text_model`'s docstring says
+  it "closes the old gap where the transport read only `SPREZZATURE_LLM_TEXT`
+  and ignored a fresh `pull` selection persisted under `BEST_LLM_TEXT`". The
+  identical shape in the two connection settings was left behind.
+
+  Both now resolve through the same `config._resolve` chain as the model tags
+  — canonical env, then legacy env, then `config.json`, then the built-in
+  default — so a value set any documented way is honoured, and nothing that
+  worked before changes. `llm.py`'s environment-variable documentation now
+  leads with the canonical spelling it actually writes.
+
 - **The GUI localised its labels and not its numbers.** Every string goes
   through `locales/i18n.yaml`, but the figures beside them were written with
   `toFixed` and a bare `$` prefix, which are English conventions whatever the

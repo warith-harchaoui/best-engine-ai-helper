@@ -59,6 +59,16 @@ DEFAULT_VISION_MODEL = "gemma3:12b"
 _TEXT_KEYS = ("BEST_LLM_TEXT", "SPREZZATURE_LLM_TEXT")
 _VISION_KEYS = ("BEST_LLM_VISION", "SPREZZATURE_LLM_VISION")
 
+# `pull.write_env` persists four values, not two. The other two resolve here
+# for the same reason the model tags do: the transport used to read only the
+# legacy `SPREZZATURE_*` spelling, so a `BEST_LLM_BACKEND` written by `pull`,
+# documented in the README's export block and sourced by the user was read by
+# nobody. Half the block worked, which is what made it hard to notice.
+DEFAULT_BACKEND = "ollama"
+DEFAULT_BASE_URL = "http://localhost:11434"
+_BACKEND_KEYS = ("BEST_LLM_BACKEND", "SPREZZATURE_LLM_BACKEND")
+_BASE_URL_KEYS = ("BEST_LLM_BASE_URL", "SPREZZATURE_LLM_BASE_URL")
+
 
 def load_config() -> dict[str, Any]:
     """Return the persisted selection dict, or an empty dict if absent/unreadable.
@@ -92,7 +102,7 @@ def load_config() -> dict[str, Any]:
 
 
 def _resolve(keys: tuple[str, ...], default: str, config: dict[str, Any] | None) -> str:
-    """Resolve one model tag by the fixed env -> config -> default precedence.
+    """Resolve one setting by the fixed env -> config -> default precedence.
 
     Parameters
     ----------
@@ -114,14 +124,14 @@ def _resolve(keys: tuple[str, ...], default: str, config: dict[str, Any] | None)
     for key in keys:
         value = os.environ.get(key)
         if value:
-            osh.debug(f"Model tag from env {key}: {value}")
+            osh.debug(f"Resolved from env {key}: {value}")
             return value
     # 2. Otherwise consult the persisted selection from the last `pull`.
     cfg = load_config() if config is None else config
     for key in keys:
         value = cfg.get(key)
         if isinstance(value, str) and value:
-            osh.debug(f"Model tag from config {key}: {value}")
+            osh.debug(f"Resolved from config {key}: {value}")
             return value
     # 3. Nothing decided anywhere: hand back the safe built-in default.
     osh.debug(f"No selection found, using default: {default}")
@@ -146,6 +156,29 @@ def vision_model() -> str:
     hardware, never raises.
     """
     return _resolve(_VISION_KEYS, DEFAULT_VISION_MODEL, None)
+
+
+def backend() -> str:
+    """Return the serving backend for the legacy, no-engine transport path.
+
+    Precedence: ``BEST_LLM_BACKEND`` env (or legacy
+    ``SPREZZATURE_LLM_BACKEND``) -> persisted ``config.json`` ->
+    :data:`DEFAULT_BACKEND`. Lower-cased, because the transport dispatches on
+    an exact string and a sourced env file is hand-editable.
+
+    Does not apply to the ``engine=`` path, where the backend comes from the
+    resolved engine descriptor.
+    """
+    return _resolve(_BACKEND_KEYS, DEFAULT_BACKEND, None).lower()
+
+
+def base_url() -> str:
+    """Return the server base URL for the legacy, no-engine transport path.
+
+    Same precedence as :func:`backend`, with any trailing slash removed so
+    callers can join paths without doubling it.
+    """
+    return _resolve(_BASE_URL_KEYS, DEFAULT_BASE_URL, None).rstrip("/")
 
 
 def resolved_models() -> dict[str, str]:

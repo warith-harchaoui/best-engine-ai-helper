@@ -33,11 +33,14 @@ direction) — see ``engine=`` below and :mod:`best_engine_ai_helper.engine`.
 
 Environment variables
 ---------------------
-SPREZZATURE_LLM_BACKEND
+BEST_LLM_BACKEND (legacy alias: SPREZZATURE_LLM_BACKEND)
     ``ollama`` | ``openai`` | ``anthropic`` | ``gemini`` | ``langchain``.
-    Defaults to ``ollama``. Only consulted on the legacy no-``engine`` path.
-SPREZZATURE_LLM_BASE_URL
-    Base URL of the server. Defaults to ``http://localhost:11434``.
+    When unset, falls back to the selection persisted by ``pull`` in
+    ``~/.best-engine-ai-helper/config.json``, then to ``ollama``. Resolved by
+    :func:`config.backend`. Only consulted on the legacy no-``engine`` path.
+BEST_LLM_BASE_URL (legacy alias: SPREZZATURE_LLM_BASE_URL)
+    Base URL of the server. Same precedence as the backend; defaults to
+    ``http://localhost:11434``. Resolved by :func:`config.base_url`.
 BEST_LLM_TEXT (legacy alias: SPREZZATURE_LLM_TEXT)
     Model tag for text-only prompts. When unset, falls back to the selection
     persisted by ``pull`` in ``~/.best-engine-ai-helper/config.json``, then to
@@ -171,13 +174,28 @@ def _emit(event: dict[str, Any]) -> None:
 
 
 def _backend() -> str:
-    """Return the configured backend name, lower-cased."""
-    return os.environ.get("SPREZZATURE_LLM_BACKEND", "ollama").lower()
+    """Return the configured backend name, lower-cased.
+
+    Delegates to :func:`config.backend`, so the transport honours the same
+    precedence as the model tags: ``BEST_LLM_BACKEND`` (or the legacy
+    ``SPREZZATURE_LLM_BACKEND``) env, then the ``config.json`` written by
+    ``pull``, then the built-in default. Reading only the legacy spelling here
+    is what made `pull` write ``BEST_LLM_BACKEND`` into ``env.sh``, the README
+    tell the user to source it, and the transport ignore it.
+    """
+    from .config import backend
+
+    return backend()
 
 
 def _base_url() -> str:
-    """Return the server base URL, stripping any trailing slash."""
-    return os.environ.get("SPREZZATURE_LLM_BASE_URL", "http://localhost:11434").rstrip("/")
+    """Return the server base URL, stripping any trailing slash.
+
+    Mirror of :func:`_backend`; see there for why it delegates.
+    """
+    from .config import base_url
+
+    return base_url()
 
 
 def _text_model() -> str:
