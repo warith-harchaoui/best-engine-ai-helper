@@ -44,7 +44,7 @@ def test_the_default_and_prompt_locales_are_declared_and_supported() -> None:
     meta = i18n.meta()
     assert meta["default_locale"] in meta["supported_locales"]
     # Prompts are deliberately authored in one language rather than translated
-    # (see the file header and CODING.md 21.3.3), so this one is NOT required
+    # (see the file header and references/CODING.md 21.3.3), so this one is NOT required
     # to be in supported_locales — it only has to be stated.
     assert str(meta["model_prompt_locale"]).strip()
 

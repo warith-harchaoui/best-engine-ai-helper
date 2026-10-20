@@ -1,6 +1,6 @@
 # Human-language source of truth for best-engine-ai-helper.
 # `gui:` -> GUI strings (fr/en). `prompts:` -> model-facing prompts
-# (English only; see meta.model_prompt_locale and CODING.md section 21.3.3).
+# (English only; see meta.model_prompt_locale and references/CODING.md 21.3.3).
 # Code refers to these keys; this file owns the wording.
 
 meta:

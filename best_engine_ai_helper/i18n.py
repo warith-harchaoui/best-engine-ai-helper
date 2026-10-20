@@ -13,7 +13,8 @@ top-level namespaces:
     VLM by :mod:`best_engine_ai_helper.ralph`, :mod:`best_engine_ai_helper.validate_llm`,
     and :mod:`best_engine_ai_helper.validate_vlm`), authored in a single language
     declared at ``meta.model_prompt_locale`` (English here) rather than
-    translated — see ``locales/i18n.yaml``'s header and CODING.md section 21.3.3
+    translated — see ``locales/i18n.yaml``'s header and ``references/CODING.md``
+    section 21.3.3
     for why prompt wording is not localized like GUI copy.
 
 This module owns parsing and caching the file; it does not know what any
