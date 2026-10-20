@@ -40,6 +40,22 @@ def test_every_gui_string_exists_in_every_supported_locale() -> None:
     assert not missing, f"GUI strings missing a translation: {missing}"
 
 
+def test_the_locale_file_satisfies_the_shared_validator() -> None:
+    """The §21.3.7 check, which the shared loader makes a one-liner.
+
+    `problems()` reports every missing translation, undeclared locale and
+    mismatched placeholder at once. It is worth asserting here rather than
+    trusting the hand-rolled checks below, because it also covers the faults
+    nobody thought to write a test for.
+
+    It only reads clean because `meta.unlocalized_sections` declares
+    `prompts`: that section is keyed by role, not by locale, and without the
+    declaration its role names read as undeclared locales — 38 findings about
+    translations that were never meant to exist.
+    """
+    assert i18n.locales().problems() == []
+
+
 def test_the_default_and_prompt_locales_are_declared_and_supported() -> None:
     meta = i18n.meta()
     assert meta["default_locale"] in meta["supported_locales"]

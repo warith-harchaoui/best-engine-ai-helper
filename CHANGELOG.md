@@ -242,6 +242,38 @@ All notable changes to best-engine-ai-helper are documented here.
   anywhere for the measured demotion — `min_tps` appeared in no test of
   `score.rank` at all, which is how a headline feature shipped switched off.
 
+## [1.6.0] - 2026-10-20
+
+### Changed
+
+- **`i18n` now delegates to `os_helper.Locales` instead of re-implementing
+  it.** Parsing, locale resolution and validation were written here and
+  written again in another member of the suite — two packages holding two
+  answers to the same question, which is how they drift. They now come from
+  the loader shared by the whole suite (os-helper 2.4.0, hence the raised
+  floor).
+
+  What stays in this module is the part os-helper must not know: that a
+  `prompts` section exists at all, and what a prompt's fields mean. The
+  generic mechanism belongs in the foundation, the domain vocabulary belongs
+  where the domain is. `meta()`, `gui_strings()` and `prompt()` keep their
+  exact signatures, so no call site moved.
+
+- **`locales/i18n.yaml` declares `meta.unlocalized_sections: [prompts]`.**
+  That section is keyed by ROLE — `system`, `user`, `text` — and not by
+  locale, because this product authors one model-facing language rather than
+  translating it (references/CODING.md 21.3.3). The declaration is what tells
+  a validator so. Without it the shared validator read every role name as an
+  undeclared locale and every key as missing both translations: **38 findings
+  about translations that were never meant to exist**. With it, none.
+
+### Added
+
+- A test asserting the locale file satisfies the shared validator outright
+  (`problems() == []`), which is the section 21.3.7 check and is now a single
+  line. It covers the faults nobody thought to write a test for, which the
+  four hand-rolled checks beside it cannot.
+
 ## [1.5.0] - 2026-10-20
 
 ### Fixed

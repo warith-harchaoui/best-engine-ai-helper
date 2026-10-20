@@ -1,5 +1,5 @@
 """
-i18n — shared loader for ``locales/i18n.yaml``, the human-language source of truth.
+i18n — this package's view of ``locales/i18n.yaml``, the human-language source of truth.
 
 Every GUI-visible string and every model-facing prompt template used by this
 package is authored once, in ``locales/i18n.yaml`` (package root), under two
@@ -14,11 +14,15 @@ top-level namespaces:
     and :mod:`best_engine_ai_helper.validate_vlm`), authored in a single language
     declared at ``meta.model_prompt_locale`` (English here) rather than
     translated — see ``locales/i18n.yaml``'s header and ``references/CODING.md``
-    section 21.3.3
-    for why prompt wording is not localized like GUI copy.
+    section 21.3.3 for why prompt wording is not localized like GUI copy.
 
-This module owns parsing and caching the file; it does not know what any
-individual key means to its caller.
+Parsing, locale resolution and validation are **not** done here: they are
+:class:`os_helper.Locales`, the loader shared by the whole suite. This module
+used to re-implement them, which is how two packages came to hold two answers
+to the same question. What stays is the part os-helper must not know: that a
+``prompts`` section exists at all, and what a prompt's fields mean. That
+separation is the point — the generic mechanism lives in the foundation, the
+domain vocabulary lives where the domain is.
 
 Author
 ------
@@ -31,37 +35,40 @@ import functools
 from pathlib import Path
 from typing import Any
 
-import yaml
+import os_helper as osh
 
 # Root of the installed package; locales/i18n.yaml sits next to pyproject.toml,
 # same convention as models.yaml / hardware.yaml / usages.yaml (see catalog.py).
 _PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 _LOCALES_PATH = _PACKAGE_ROOT / "locales" / "i18n.yaml"
 
-_REQUIRED_SECTIONS = ("meta", "gui", "prompts")
+#: The namespace holding model-facing templates. Named here rather than in
+#: os-helper, which has no business knowing that prompts are a thing.
+PROMPTS_SECTION = "prompts"
 
 
 @functools.lru_cache(maxsize=1)
-def _document() -> dict[str, Any]:
-    """Parse and cache ``locales/i18n.yaml`` in full.
+def locales() -> osh.Locales:
+    """Return the parsed locale file, loaded once.
 
     Returns
     -------
-    dict
-        The parsed document (``meta``, ``gui``, ``prompts`` top-level keys).
+    os_helper.Locales
+        The shared loader bound to this package's ``locales/i18n.yaml``.
 
     Raises
     ------
     RuntimeError
-        If a required top-level section is missing, so a malformed locale
-        file fails loudly at first use rather than surfacing as a confusing
-        ``KeyError`` deep inside a caller.
+        If the file is malformed or lacks its ``meta`` section — a broken
+        locale file fails loudly at first use rather than surfacing as a
+        confusing ``KeyError`` deep inside a caller.
+
+    Examples
+    --------
+    >>> sorted(locales().supported_locales)
+    ['en', 'fr']
     """
-    raw: dict[str, Any] = yaml.safe_load(_LOCALES_PATH.read_text(encoding="utf-8")) or {}
-    missing = [section for section in _REQUIRED_SECTIONS if section not in raw]
-    if missing:
-        raise RuntimeError(f"{_LOCALES_PATH} is missing required section(s): {missing}")
-    return raw
+    return osh.Locales.from_path(_LOCALES_PATH)
 
 
 def meta() -> dict[str, Any]:
@@ -71,14 +78,15 @@ def meta() -> dict[str, Any]:
     Returns
     -------
     dict
-        Keys ``default_locale``, ``supported_locales``, ``model_prompt_locale``.
+        Keys ``default_locale``, ``supported_locales``, ``model_prompt_locale``
+        and ``unlocalized_sections``.
 
     Examples
     --------
-    >>> sorted(meta().keys())
-    ['default_locale', 'model_prompt_locale', 'supported_locales']
+    >>> meta()["model_prompt_locale"]
+    'en'
     """
-    result: dict[str, Any] = _document()["meta"]
+    result: dict[str, Any] = locales().document[osh.META_SECTION]
     return result
 
 
@@ -96,7 +104,7 @@ def gui_strings() -> dict[str, dict[str, str]]:
     >>> "hero_title" in gui_strings()
     True
     """
-    result: dict[str, dict[str, str]] = _document()["gui"]
+    result: dict[str, dict[str, str]] = locales().section("gui")
     return result
 
 
@@ -130,5 +138,7 @@ def prompt(key: str, field: str = "user") -> str:
     >>> prompt("writing_charter_excerpt", "text").startswith("Rule 5")
     True
     """
-    entry = _document()["prompts"][key]
+    # ``raw``, not ``text``: this section is declared unlocalized, so its
+    # sub-keys are roles and no locale could resolve them.
+    entry = locales().raw(PROMPTS_SECTION, key)
     return str(entry[field])

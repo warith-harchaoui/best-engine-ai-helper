@@ -9,6 +9,13 @@ meta:
   - fr
   - en
   model_prompt_locale: en
+  # `prompts:` is keyed by ROLE (system / user / text), not by locale, because
+  # this product authors one model-facing language rather than translating it
+  # (references/CODING.md 21.3.3). Declaring it here is what stops the shared
+  # validator reading those role names as locale codes and reporting a wall of
+  # translations that were never meant to exist.
+  unlocalized_sections:
+  - prompts
 gui:
   meta_description:
     fr: Caractéristiques matérielles de cette machine et meilleur moteur local (LLM / VLM) pour une tâche
