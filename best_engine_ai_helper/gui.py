@@ -422,7 +422,11 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
 
     const status = (msg) => { $("status").textContent = msg; };
     const fmt1 = (v) => (v === null || v === undefined ? "?" : Number(v).toFixed(1));
-    const fmtTps = (v) => (v ? Math.round(v) : "-");
+    // Same notation as the `candidates` CLI table: a trailing "*" means the
+    // figure was measured on this machine, "~" that it was estimated from
+    // memory bandwidth. One marker for one fact, across every surface.
+    const fmtTpsBasis = (v, basis) =>
+      !v ? "-" : basis === "measured" ? Math.round(v) + "*" : "~" + Math.round(v);
 
     // --- Theme toggle ------------------------------------------------------
     const themeBtn = $("theme-toggle");
@@ -720,7 +724,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
           <td class="py-1.5 pr-3">${Math.round(r.score)}</td>
           <td class="py-1.5 pr-3">${r.fits ? T.yes : T.no}</td>
           <td class="py-1.5 pr-3">${r.structured_output === false ? T.no : T.yes}</td>
-          <td class="py-1.5">${fmtTps(r.est_tokens_per_s)}</td>
+          <td class="py-1.5">${fmtTpsBasis(r.est_tokens_per_s, r.tps_basis)}</td>
         </tr>`;
     }
 
@@ -737,12 +741,12 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
         <p class="flex flex-wrap items-center gap-2 text-sm">
           ${pill(esc(chosen.id))}
           <span class="text-neutral-600 dark:text-neutral-300">
-            ${fmt1(chosen.ram_gb)} ${T.gb}, ${T.score} ${Math.round(chosen.score)}, ~${fmtTps(chosen.est_tokens_per_s)} ${T.tps}
+            ${fmt1(chosen.ram_gb)} ${T.gb}, ${T.score} ${Math.round(chosen.score)}, ${fmtTpsBasis(chosen.est_tokens_per_s, chosen.tps_basis)} ${T.tps}
           </span>
           ${chosen.fits ? "" : `<span class="text-red-600 dark:text-red-400">${T.overBudget}</span>`}
           ${chosen.structured_output === false ? `<span class="text-amber-600 dark:text-amber-400">${T.notStructured}</span>` : ""}
         </p>
-        ${alt ? `<p class="mt-2 text-xs text-neutral-500 dark:text-neutral-400">${T.lighterAlt} <span class="font-mono">${alt.id}</span> — ${fmt1(alt.ram_gb)} ${T.gb}, ${T.score} ${Math.round(alt.score)}, ~${fmtTps(alt.est_tokens_per_s)} ${T.tps}.</p>` : ""}
+        ${alt ? `<p class="mt-2 text-xs text-neutral-500 dark:text-neutral-400">${T.lighterAlt} <span class="font-mono">${alt.id}</span> — ${fmt1(alt.ram_gb)} ${T.gb}, ${T.score} ${Math.round(alt.score)}, ${fmtTpsBasis(alt.est_tokens_per_s, alt.tps_basis)} ${T.tps}.</p>` : ""}
       ` : `<p class="text-sm text-neutral-500 dark:text-neutral-400">${T.noCandidate}</p>`;
 
       return `

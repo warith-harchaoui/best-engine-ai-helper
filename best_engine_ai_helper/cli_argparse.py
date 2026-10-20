@@ -398,7 +398,11 @@ def _echo_resolved(descriptor: dict[str, Any], out: str | None) -> None:
         if isinstance(section, dict) and section.get("model"):
             ram = section.get("ram_gb")
             tps = section.get("est_tokens_per_s")
-            extra = f", ~{tps:.0f} tok/s" if isinstance(tps, (int, float)) else ""
+            # Same notation as the `candidates` table: "*" measured here,
+            # "~" estimated. The engine file now records which this was.
+            measured = section.get("tps_basis") == "measured"
+            shown = f"{tps:.0f}*" if measured else f"~{tps:.0f}"
+            extra = f", {shown} tok/s" if isinstance(tps, (int, float)) else ""
             chosen.append(f"{kind}={section['model']} ({ram} GB{extra})")
     _emit(
         f"{label}: backend {descriptor.get('backend')}  "

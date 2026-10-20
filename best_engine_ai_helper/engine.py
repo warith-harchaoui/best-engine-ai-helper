@@ -327,6 +327,11 @@ def _resolve_local(
             "model": model,
             "ram_gb": chosen["ram_gb"],
             "est_tokens_per_s": chosen["est_tokens_per_s"],
+            # Whether that figure was measured on this machine or estimated
+            # from memory bandwidth. The engine file is the artefact other
+            # packages read, and every other number in it already says where
+            # it came from; this one used to be the exception.
+            "tps_basis": chosen.get("tps_basis"),
             "structured_output": chosen["structured_output"],
             "score": chosen["score"],
             "fits": chosen["fits"],

@@ -4,6 +4,48 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The measured-throughput gate never fired on the path everything uses.**
+  1.5.0 shipped the claim that a model *measured* too slow on this machine is
+  demoted out of auto-selection, "exactly as one that does not fit in memory
+  is" — the thing this package does that tools which measure and report do
+  not. `recommend()` is the path the CLI, `engine.resolve`, the HTTP API and
+  the GUI all take, and on that path the gate was off. Two independent
+  defects, either of which alone was enough:
+
+  `recommend()` called `rank()` without `min_tps`, which defaults to `None`,
+  meaning "no floor" — so `rank` collected the measurement and then had
+  nothing to compare it against. It also omitted `bandwidth_gbs`, so `rank`
+  could not estimate for the unmeasured candidates either.
+
+  `_candidate_row()` then recomputed the bandwidth estimate instead of reading
+  the `_tps` / `_tps_basis` that `rank` had already resolved, so the
+  measurement could not reach `comfortable` — and `comfortable` is what builds
+  the pool `_pick_sufficient` chooses from. Even with the ranking fixed, the
+  anti-greed pick would have reinstated the slow model, because it takes the
+  **leanest** candidate within a few benchmark points, and the model too slow
+  to use is very often the small one. The hazard was already named in
+  `cli.py`, where the `candidates` command carries the comment "recomputing
+  the estimate here would quietly discard it"; the other path did precisely
+  that.
+
+  Demonstrated rather than argued, and now pinned by four tests: a model
+  measured at **8 tok/s** against a 20 tok/s floor was selected and reported
+  as `comfortable: true` at its estimated **43 tok/s**. There was no test
+  anywhere for the measured demotion — `min_tps` appeared in no test of
+  `score.rank` at all, which is how a headline feature shipped switched off.
+
+- **Every surface printed a measurement as though it were an estimate.** The
+  candidate row carries `tps_basis` now (`"measured"` / `"estimated"` /
+  `None`), the engine file records it alongside `est_tokens_per_s`, and the
+  Markdown report, the GUI table and the CLI engine summary mark a measured
+  figure with a trailing `*` — the notation the `candidates` command already
+  used and the README already documented, rather than a second one invented
+  for the same fact. The "fits but decodes slowly" warning now says *measured
+  at* when it was, instead of inviting the reader to discount a real number as
+  a guess.
+
 ## [1.5.0] - 2026-10-20
 
 ### Fixed

@@ -207,7 +207,23 @@ def _candidate_row(
     ram = model_footprint_gb(entry, backend)
     kind = entry.get("kind", "llm")
     fits = ram <= budget
-    tps = estimated_tokens_per_second(entry, bandwidth_gbs, backend)
+
+    # Take the figure `rank` already resolved rather than recomputing one.
+    # `rank` is the only place that knows whether a measurement exists for this
+    # exact (model, machine) pair, and recomputing the estimate here discarded
+    # it: a model measured at 8 tok/s against a 20 tok/s floor came back
+    # `comfortable` at its estimated 43 tok/s, which put it back in the pool
+    # `_pick_sufficient` chooses from -- so the measurement demoted it in the
+    # ranking and then lost the decision anyway. Entries that did not come
+    # through `rank` (none today, but the function does not require it) still
+    # get the estimate.
+    if "_tps_basis" in entry:
+        tps = entry.get("_tps")
+        basis = entry.get("_tps_basis")
+    else:
+        tps = estimated_tokens_per_second(entry, bandwidth_gbs, backend)
+        basis = "estimated" if tps is not None else None
+
     return {
         "id": entry.get("id"),
         # HuggingFace id (vLLM) and parameter count carried through so the
@@ -222,8 +238,13 @@ def _candidate_row(
         # for the helper's schema-driven tasks (see score.rank).
         "structured_output": entry.get("structured_output", True) is not False,
         "est_tokens_per_s": tps,
+        # Where that number came from: "measured" on this machine, "estimated"
+        # from memory bandwidth, or None when neither was available. Carried
+        # into the row because every display of `est_tokens_per_s` would
+        # otherwise read as an estimate, including the ones that are not.
+        "tps_basis": basis,
         # Fits in memory AND decodes fast enough to be usable interactively. When
-        # bandwidth is unknown (tps is None) speed can't be estimated, so it is
+        # throughput is unknown (tps is None) speed can't be judged, so it is
         # not held against the model — memory fit alone decides.
         "comfortable": fits and (tps is None or tps >= min_tps),
         # Set by score.rank when the caller supplied the daemon's tag list.
@@ -345,6 +366,16 @@ def recommend(
             application=axis,
             backend=backend,
             load=load,
+            # Both of these were missing, and their absence silently switched
+            # off the measured-throughput gate on this path. `rank` only
+            # demotes a model it has *measured* below the floor, and it can
+            # only do that when it is told the floor -- `min_tps` defaults to
+            # None, which means "no floor", so every measurement was collected
+            # and then ignored. `bandwidth_gbs` is the same kind of omission
+            # one layer down: without it `rank` cannot estimate at all, so
+            # entries with no measurement came back with `_tps = None`.
+            bandwidth_gbs=bandwidth,
+            min_tps=min_tps,
             installed=installed,
         )
         rows = [_candidate_row(e, budget, bandwidth, axis, min_tps, backend) for e in ranked]
@@ -378,9 +409,17 @@ def recommend(
                 # Fits in memory but decodes below the comfort floor: the classic
                 # "it loads, but it crawls" pick. Say so plainly instead of
                 # silently recommending a model that makes the machine feel stuck.
+                #
+                # Name the basis. "Estimated at 8 tok/s" invites the reader to
+                # discount the number as a model's guess; "measured at 8 tok/s"
+                # does not, and when it was measured here the second sentence is
+                # the true one. Reaching this line at all means nothing
+                # comfortable was available, so the warning is the only place
+                # the distinction still gets made.
+                how = "measured at " if chosen.get("tps_basis") == "measured" else "estimated at ~"
                 osh.warning(
-                    f"Chosen {kind} '{chosen['id']}' fits memory but is estimated at "
-                    f"~{chosen['est_tokens_per_s']} tok/s (< {min_tps:.0f} comfortable); "
+                    f"Chosen {kind} '{chosen['id']}' fits memory but is {how}"
+                    f"{chosen['est_tokens_per_s']} tok/s (< {min_tps:.0f} comfortable); "
                     "expect sluggish interactive use — a smaller model would feel faster."
                 )
         # Lightest model within 3 benchmark points of the chosen one: the
@@ -536,8 +575,18 @@ def cloud_recommend(
     }
 
 
-def _fmt_tps(v: float | None) -> str:
-    return f"{v:.0f}" if v else "-"
+def _fmt_tps(v: float | None, basis: str | None = None) -> str:
+    """Format tokens/s, marking a measured figure with a trailing ``*``.
+
+    The convention is the one `candidates` already prints and the README
+    already documents: ``*`` means measured on this machine, anything else is
+    an estimate from memory bandwidth. Reusing it rather than inventing a
+    second marker for the same distinction, since two notations for one fact
+    is worse than either.
+    """
+    if not v:
+        return "-"
+    return f"{v:.0f}*" if basis == "measured" else f"~{v:.0f}"
 
 
 def to_markdown(report: dict[str, Any]) -> str:
@@ -596,7 +645,7 @@ def to_markdown(report: dict[str, Any]) -> str:
         lines.append(f"## Best {kind.upper()} (axis: {block['axis']})")
         lines.append("")
         if chosen:
-            tps = _fmt_tps(chosen["est_tokens_per_s"])
+            tps = _fmt_tps(chosen["est_tokens_per_s"], chosen.get("tps_basis"))
             if not chosen["fits"]:
                 flag = "  ⚠️ exceeds memory budget (spills to CPU)"
             elif not chosen.get("comfortable", True):
@@ -605,7 +654,7 @@ def to_markdown(report: dict[str, Any]) -> str:
                 flag = ""
             lines.append(
                 f"**→ `{chosen['id']}`** — {chosen['ram_gb']:.1f} GB, "
-                f"score {chosen['score']:.0f}, ~{tps} tok/s" + flag
+                f"score {chosen['score']:.0f}, {tps} tok/s" + flag
             )
             alt = block["lighter_alternative"]
             if alt:
@@ -613,19 +662,25 @@ def to_markdown(report: dict[str, Any]) -> str:
                 lines.append(
                     f"Lighter alternative: `{alt['id']}` — "
                     f"{alt['ram_gb']:.1f} GB, score {alt['score']:.0f}, "
-                    f"~{_fmt_tps(alt['est_tokens_per_s'])} tok/s."
+                    f"{_fmt_tps(alt['est_tokens_per_s'], alt.get('tps_basis'))} tok/s."
                 )
         else:
             lines.append("_No candidate found._")
         lines.append("")
-        lines.append("| model | RAM GB | score | fits | ~tok/s | comfy |")
+        lines.append("| model | RAM GB | score | fits | tok/s | comfy |")
         lines.append("|---|---|---|---|---|---|")
         for r in block["candidates"]:
             lines.append(
                 f"| `{r['id']}` | {r['ram_gb']:.1f} | {r['score']:.0f} | "
-                f"{'yes' if r['fits'] else 'no'} | {_fmt_tps(r['est_tokens_per_s'])} | "
+                f"{'yes' if r['fits'] else 'no'} | "
+                f"{_fmt_tps(r['est_tokens_per_s'], r.get('tps_basis'))} | "
                 f"{'yes' if r.get('comfortable') else 'no'} |"
             )
+        lines.append("")
+        lines.append(
+            "`*` marks a figure measured on this machine; "
+            "`~` marks an estimate from memory bandwidth."
+        )
         lines.append("")
 
     lines.append("## How this was decided")

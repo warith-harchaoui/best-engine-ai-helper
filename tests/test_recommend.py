@@ -233,3 +233,117 @@ def test_cloud_recommend_and_markdown() -> None:
 
     # Without a "cloud" key, no cloud section is emitted at all.
     assert "Best cloud engine" not in recommend.to_markdown(local_rep | {"cloud": None})
+
+
+# A model measured too slow on this machine must lose the decision, not merely
+# the ranking. Catalog built so the two defects that used to break this are
+# both reachable: `lean-slow` is leaner AND within _SUFFICIENT_MARGIN of
+# `mid-ok`, so the anti-greed pick prefers it on every ground except the one
+# that matters.
+_TPS_CATALOG = [
+    {"id": "lean-slow", "kind": "llm", "ram_gb": 6.0, "benchmarks": {"general": 80}},
+    {"id": "mid-ok", "kind": "llm", "ram_gb": 12.0, "benchmarks": {"general": 81}},
+]
+
+
+def test_measured_throughput_disqualifies_rather_than_only_demoting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A measurement below the floor must remove a model from the pool.
+
+    This is the package's own claim over tools that measure and report, so it
+    is pinned rather than assumed. It used to fail in two independent places
+    at once: `recommend` called `rank` without `min_tps` (so nothing was ever
+    demoted) and `_candidate_row` recomputed the bandwidth estimate (so the
+    measurement never reached `comfortable`, and therefore never reached the
+    pool `_pick_sufficient` chooses from).
+
+    The numbers: at 400 GB/s both models estimate well above a 20 tok/s floor
+    (~43 and ~22), while `lean-slow` has been measured here at 8.
+    """
+    from best_engine_ai_helper import throughput
+
+    monkeypatch.setattr(
+        throughput,
+        "measured_tps",
+        lambda model, *a, **k: 8.0 if model == "lean-slow" else None,
+    )
+
+    block = recommend.recommend(
+        _HW, _TPS_CATALOG, task="write code", compute=_COMPUTE, min_tps=20.0
+    )["recommendations"]["llm"]
+
+    rows = {r["id"]: r for r in block["candidates"]}
+    # The measurement is what the row reports, and it says so.
+    assert rows["lean-slow"]["est_tokens_per_s"] == 8.0
+    assert rows["lean-slow"]["tps_basis"] == "measured"
+    assert rows["lean-slow"]["comfortable"] is False
+    # An unmeasured model keeps its estimate, and is still labelled honestly.
+    assert rows["mid-ok"]["tps_basis"] == "estimated"
+    assert rows["mid-ok"]["comfortable"] is True
+    # And the decision follows the measurement rather than the estimate.
+    assert block["chosen"]["id"] == "mid-ok"
+
+
+def test_without_a_measurement_nothing_changes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The gate must be inert on a machine that has never measured anything.
+
+    The anti-greed pick is what makes this worth pinning: with no measurement
+    `lean-slow` is the correct answer (leaner, within the quality margin), and
+    a floor that disqualified on estimates would wrongly reject it.
+    """
+    from best_engine_ai_helper import throughput
+
+    monkeypatch.setattr(throughput, "measured_tps", lambda model, *a, **k: None)
+
+    block = recommend.recommend(
+        _HW, _TPS_CATALOG, task="write code", compute=_COMPUTE, min_tps=20.0
+    )["recommendations"]["llm"]
+
+    assert block["chosen"]["id"] == "lean-slow"
+    assert all(r["tps_basis"] == "estimated" for r in block["candidates"])
+
+
+def test_markdown_marks_an_estimate_and_leaves_a_measurement_bare(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`~` means "about". Printing it on a measured figure would be a lie."""
+    from best_engine_ai_helper import throughput
+
+    monkeypatch.setattr(
+        throughput,
+        "measured_tps",
+        lambda model, *a, **k: 8.0 if model == "lean-slow" else None,
+    )
+    report = recommend.recommend(
+        _HW, _TPS_CATALOG, task="write code", compute=_COMPUTE, min_tps=20.0
+    )
+    md = recommend.to_markdown(report)
+
+    assert "| 8* |" in md  # measured: the convention `candidates` already uses
+    assert "| ~22 |" in md  # estimated
+    assert "`*` marks a figure measured on this machine" in md
+
+
+def test_a_measured_slow_model_still_wins_when_nothing_else_fits(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Disqualification is a preference, not a refusal to answer.
+
+    `pool = comfortable or fitting or rows` already encoded this: a slow model
+    beats no model. What matters is that the warning then names the basis —
+    "estimated at ~8" invites the reader to discount the number, and here that
+    would be wrong.
+    """
+    from best_engine_ai_helper import throughput
+
+    monkeypatch.setattr(throughput, "measured_tps", lambda model, *a, **k: 8.0)
+
+    with caplog.at_level(logging.WARNING, logger="os_helper"):
+        block = recommend.recommend(
+            _HW, _TPS_CATALOG, task="write code", compute=_COMPUTE, min_tps=20.0
+        )["recommendations"]["llm"]
+
+    assert block["chosen"] is not None
+    assert block["chosen"]["comfortable"] is False
+    assert any("measured at 8.0 tok/s" in r.message for r in caplog.records)
