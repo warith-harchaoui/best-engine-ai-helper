@@ -421,12 +421,44 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
       );
 
     const status = (msg) => { $("status").textContent = msg; };
-    const fmt1 = (v) => (v === null || v === undefined ? "?" : Number(v).toFixed(1));
+
+    // Numbers are localised, not just the labels around them. `toFixed` and a
+    // bare "$" prefix write English conventions whatever the page language is,
+    // so the French GUI read "47.2 GB" and "$0.0020" where French writes
+    // "47,2" and puts the currency after the amount. Intl does the whole job
+    // with no dependency, and the formatters are built once rather than per
+    // cell: this page redraws whole tables.
+    const LOCALE = {{JS_LOCALE}};
+    const _nf = (min, max) =>
+      new Intl.NumberFormat(LOCALE, { minimumFractionDigits: min, maximumFractionDigits: max });
+    const _nf0 = _nf(0, 0);
+    const _nf1 = _nf(1, 1);
+    const _money = new Intl.NumberFormat(LOCALE, {
+      style: "currency", currency: "USD",
+      minimumFractionDigits: 4, maximumFractionDigits: 4,
+    });
+    const _pct = new Intl.NumberFormat(LOCALE, {
+      style: "percent", minimumFractionDigits: 1, maximumFractionDigits: 1,
+    });
+    const _money2 = new Intl.NumberFormat(LOCALE, {
+      style: "currency", currency: "USD",
+      minimumFractionDigits: 2, maximumFractionDigits: 2,
+    });
+    // Two different shapes arrive here: `error_rate` is a fraction, the load
+    // figures are already percentages. Intl's percent style multiplies by 100,
+    // so the second kind is divided first rather than formatted as 2500 %.
+    const _pct0 = new Intl.NumberFormat(LOCALE, { style: "percent", maximumFractionDigits: 0 });
+    const fmt0 = (v) => _nf0.format(Number(v));
+    const fmtPrice = (v) => _money2.format(Number(v));
+    const fmtPctOf100 = (v) => _pct0.format(Number(v) / 100);
+    const fmtMoney = (v) => _money.format(Number(v));
+    const fmtPct = (v) => _pct.format(Number(v));
+    const fmt1 = (v) => (v === null || v === undefined ? "?" : _nf1.format(Number(v)));
     // Same notation as the `candidates` CLI table: a trailing "*" means the
     // figure was measured on this machine, "~" that it was estimated from
     // memory bandwidth. One marker for one fact, across every surface.
     const fmtTpsBasis = (v, basis) =>
-      !v ? "-" : basis === "measured" ? Math.round(v) + "*" : "~" + Math.round(v);
+      !v ? "-" : basis === "measured" ? fmt0(v) + "*" : "~" + fmt0(v);
 
     // --- Theme toggle ------------------------------------------------------
     const themeBtn = $("theme-toggle");
@@ -570,7 +602,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
         field(T.fVendor, info.chip_vendor ?? "?"),
         field(T.fChip, `${comp.chip ?? "?"} (${comp.accelerator ?? "?"})`),
         field(poolLabel, `${fmt1(pool)} ${T.gb}`),
-        field(T.fBandwidth, comp.bandwidth_gbs ? `${Math.round(comp.bandwidth_gbs)} ${T.gbs}` : T.unknown),
+        field(T.fBandwidth, comp.bandwidth_gbs ? `${fmt0(comp.bandwidth_gbs)} ${T.gbs}` : T.unknown),
         field(T.fBudget, `${fmt1(info.memory_budget_gb)} ${T.gb}`),
       ];
       $("system-grid").innerHTML = cells.join("");
@@ -599,7 +631,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
     }
 
     function activityRow(row, keyName) {
-      const cost = row.cost_usd != null ? `$${row.cost_usd.toFixed(4)}` : T.unknownCost;
+      const cost = row.cost_usd != null ? fmtMoney(row.cost_usd) : T.unknownCost;
       return `
         <tr class="border-t border-neutral-200 dark:border-neutral-800">
           <td class="py-1.5 pr-3 font-mono">${esc(row[keyName])}</td>
@@ -630,12 +662,12 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
           `<p class="text-neutral-500 dark:text-neutral-400">${T.noActivity}</p>`;
         return;
       }
-      const cost = data.total_cost_usd != null ? `$${data.total_cost_usd.toFixed(4)}` : T.unknownCost;
+      const cost = data.total_cost_usd != null ? fmtMoney(data.total_cost_usd) : T.unknownCost;
       const parts = [`
         <p>
           <span class="font-semibold">${data.total_calls}</span> ${T.calls} ·
           ${T.totalCost} <span class="font-semibold">${cost}</span> ·
-          ${T.errorRate} <span class="font-semibold">${(data.error_rate * 100).toFixed(1)}%</span>
+          ${T.errorRate} <span class="font-semibold">${fmtPct(data.error_rate)}</span>
         </p>`];
       parts.push(activityTable(T.byUser, data.by_user, "user"));
       parts.push(activityTable(T.byModel, data.by_model, "model"));
@@ -721,7 +753,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
         <tr class="border-t border-neutral-200 dark:border-neutral-800">
           <td class="py-1.5 pr-3 font-mono">${esc(r.id)}</td>
           <td class="py-1.5 pr-3">${fmt1(r.ram_gb)}</td>
-          <td class="py-1.5 pr-3">${Math.round(r.score)}</td>
+          <td class="py-1.5 pr-3">${fmt0(r.score)}</td>
           <td class="py-1.5 pr-3">${r.fits ? T.yes : T.no}</td>
           <td class="py-1.5 pr-3">${r.structured_output === false ? T.no : T.yes}</td>
           <td class="py-1.5">${fmtTpsBasis(r.est_tokens_per_s, r.tps_basis)}</td>
@@ -741,12 +773,12 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
         <p class="flex flex-wrap items-center gap-2 text-sm">
           ${pill(esc(chosen.id))}
           <span class="text-neutral-600 dark:text-neutral-300">
-            ${fmt1(chosen.ram_gb)} ${T.gb}, ${T.score} ${Math.round(chosen.score)}, ${fmtTpsBasis(chosen.est_tokens_per_s, chosen.tps_basis)} ${T.tps}
+            ${fmt1(chosen.ram_gb)} ${T.gb}, ${T.score} ${fmt0(chosen.score)}, ${fmtTpsBasis(chosen.est_tokens_per_s, chosen.tps_basis)} ${T.tps}
           </span>
           ${chosen.fits ? "" : `<span class="text-red-600 dark:text-red-400">${T.overBudget}</span>`}
           ${chosen.structured_output === false ? `<span class="text-amber-600 dark:text-amber-400">${T.notStructured}</span>` : ""}
         </p>
-        ${alt ? `<p class="mt-2 text-xs text-neutral-500 dark:text-neutral-400">${T.lighterAlt} <span class="font-mono">${alt.id}</span> — ${fmt1(alt.ram_gb)} ${T.gb}, ${T.score} ${Math.round(alt.score)}, ${fmtTpsBasis(alt.est_tokens_per_s, alt.tps_basis)} ${T.tps}.</p>` : ""}
+        ${alt ? `<p class="mt-2 text-xs text-neutral-500 dark:text-neutral-400">${T.lighterAlt} <span class="font-mono">${alt.id}</span> — ${fmt1(alt.ram_gb)} ${T.gb}, ${T.score} ${fmt0(alt.score)}, ${fmtTpsBasis(alt.est_tokens_per_s, alt.tps_basis)} ${T.tps}.</p>` : ""}
       ` : `<p class="text-sm text-neutral-500 dark:text-neutral-400">${T.noCandidate}</p>`;
 
       return `
@@ -783,8 +815,8 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
         <tr class="border-t border-neutral-200 dark:border-neutral-800">
           <td class="py-1.5 pr-3 font-mono">${esc(r.id)}</td>
           <td class="py-1.5 pr-3">${esc(r.provider)}</td>
-          <td class="py-1.5 pr-3">${Math.round(r.score)}</td>
-          <td class="py-1.5 pr-3">${r.price_per_1m == null ? "?" : r.price_per_1m.toFixed(2)}</td>
+          <td class="py-1.5 pr-3">${fmt0(r.score)}</td>
+          <td class="py-1.5 pr-3">${r.price_per_1m == null ? "?" : fmtPrice(r.price_per_1m)}</td>
           <td class="py-1.5">${r.structured_output === false ? T.no : T.yes}</td>
         </tr>`;
     }
@@ -795,7 +827,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
         <p class="flex flex-wrap items-center gap-2 text-sm">
           ${pill(esc(chosen.id))}
           <span class="text-neutral-600 dark:text-neutral-300">
-            ${esc(chosen.provider)}, ${T.score} ${Math.round(chosen.score)}, ${chosen.price_per_1m == null ? T.priceUnknown : `~$${chosen.price_per_1m.toFixed(2)}/1M ${T.blended}`}
+            ${esc(chosen.provider)}, ${T.score} ${fmt0(chosen.score)}, ${chosen.price_per_1m == null ? T.priceUnknown : `~${fmtPrice(chosen.price_per_1m)}/1M ${T.blended}`}
           </span>
           ${chosen.structured_output === false ? `<span class="text-amber-600 dark:text-amber-400">${T.notStructured}</span>` : ""}
         </p>
@@ -855,12 +887,12 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
       } else {
         const load = report.server_load;
         if (load) {
-          const gpuPart = load.gpu_percent != null ? `, GPU ${Math.round(load.gpu_percent)}%` : "";
+          const gpuPart = load.gpu_percent != null ? `, GPU ${fmtPctOf100(load.gpu_percent)}` : "";
           parts.push(`
             <div class="mt-3 rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-xs text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
               <span class="font-medium text-neutral-700 dark:text-neutral-300">${T.serverLoad}</span>
-              ${fmt1(load.available_ram_gb)} ${T.gb} ${T.ramFree}, CPU ${Math.round(load.cpu_percent)}%${gpuPart},
-              ${T.diskFree} ${fmt1(load.disk_free_gb)} ${T.gb} (${Math.round(load.disk_percent_used)}%),
+              ${fmt1(load.available_ram_gb)} ${T.gb} ${T.ramFree}, CPU ${fmtPctOf100(load.cpu_percent)}${gpuPart},
+              ${T.diskFree} ${fmt1(load.disk_free_gb)} ${T.gb} (${fmtPctOf100(load.disk_percent_used)}),
               ${T.runningEngines} ${load.running_engines}
             </div>`);
         }
@@ -894,7 +926,8 @@ def render_gui(lang: str = _DEFAULT_LANG) -> str:
     str
         The complete HTML document for that language.
     """
-    strings = _strings_for(lang if lang in _SUPPORTED_LANGS else _DEFAULT_LANG)
+    resolved = lang if lang in _SUPPORTED_LANGS else _DEFAULT_LANG
+    strings = _strings_for(resolved)
     page = _GUI_TEMPLATE
     for token, value in strings["html"].items():
         # Escape every value: these labels land in attributes (placeholder, aria,
@@ -903,6 +936,9 @@ def render_gui(lang: str = _DEFAULT_LANG) -> str:
         page = page.replace("{{" + token + "}}", html.escape(value, quote=True))
     # Emit the JS strings as a JSON literal so quotes/accents are escaped safely.
     page = page.replace("{{JS_T}}", json.dumps(strings["js"], ensure_ascii=False))
+    # The page formats its own numbers, so it needs the locale it resolved to --
+    # not the one that was asked for, which may have fallen back.
+    page = page.replace("{{JS_LOCALE}}", json.dumps(resolved))
     return page
 
 

@@ -70,6 +70,33 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Fixed
 
+- **The GUI localised its labels and not its numbers.** Every string goes
+  through `locales/i18n.yaml`, but the figures beside them were written with
+  `toFixed` and a bare `$` prefix, which are English conventions whatever the
+  page language is. The French GUI therefore read `47.2 GB`, `$0.0020` and
+  `73%` where French writes `47,2`, `0,0020 $US` and `73 %`. `Intl` does the
+  whole job in the browser with no dependency: the page is now given the
+  locale it actually resolved to — not the one that was asked for, which may
+  have fallen back — and every figure goes through a formatter built from it.
+
+  Pinned as "no raw formatter survives in the rendered page", because that is
+  the property that rots: a new cell written with `toFixed` would be wrong in
+  exactly one of the two languages, which is the kind of defect nobody
+  reports.
+
+### Added
+
+- **Tests for `i18n`, which had none.** The module is the single source of
+  truth for every GUI string and every model-facing prompt, and the invariants
+  behind that claim were guarded by nothing. Audited by hand first and all
+  four held — 89 GUI keys with complete `fr`/`en` parity, every key `gui.py`
+  asks for present, all eight prompt templates resolving, and no user-visible
+  literal bypassing the file (only the product, package and author names,
+  which are not translated). They are now tests, because an invariant that
+  holds today and is guarded by nothing is the one the next feature breaks —
+  and the GUI's fallback is what makes it worth guarding specifically: a
+  missing English translation would quietly show French rather than fail.
+
 - **The documented way to switch the safety gate from `warn` to `block` did
   nothing.** `safety.py`'s module docstring tells the operator how to tighten
   the policy once the classifier has earned trust: "Raise the bar
