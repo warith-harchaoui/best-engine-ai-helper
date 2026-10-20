@@ -4,6 +4,8 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-20
+
 ### Fixed
 
 - **Coverage had slipped under the floor, and nothing local could see it.**

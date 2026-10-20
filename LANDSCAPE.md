@@ -10,14 +10,16 @@ you actually have and the API keys you actually hold, and prove the choice works
 A tool optimised for a different job is not being criticised; the score reflects fit to
 *this* niche. Several of the entries below are excellent at theirs.
 
-Surveyed 2026-10-19. Nine criteria, two of them added after this project started measuring decode speed rather than estimating it.
+Surveyed 2026-10-19. Nine criteria, two of them added after this project started measuring
+decode speed rather than estimating it. One cell re-measured on 2026-10-20 — see [the
+column this project loses](#the-column-this-project-loses).
 
 ## At a glance
 
 <!-- TABLE:START -->
 | Model selection | Hardware detection | Local fit | Measures speed on this machine | Paid models in the same decision | Routes on keys present | Scores carry provenance | Catalog breadth | Verifies quality before you depend on it | Programmatic API |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **best-engine-ai-helper** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
+| **best-engine-ai-helper** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
 | llmfit | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐ | ⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐ |
 | RouteLLM | ⭐ | ⭐ | ⭐ | ⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
 | LiteLLM | ⭐ | ⭐ | ⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐ | ⭐⭐⭐⭐⭐ | ⭐ | ⭐⭐⭐⭐⭐ |
@@ -35,29 +37,38 @@ Surveyed 2026-10-19. Nine criteria, two of them added after this project started
 
 ![Positioning map](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/landscape.png)
 
-Read it as a shape, not a scoreboard. The axes read **Horizontal — Abundance ↔ Precision**
-and **Vertical — Adaptability ↔ Control**.
+Read it as a shape, not a scoreboard. The figure prints **Horizontal — Valuable ↔
+Resourceful** and **Vertical — Diverse ↔ Precise**, and those pole names are written by the
+model that drew the map — the loadings under them are the part that does not change between
+runs, so read those. Horizontal is built almost entirely from hardware detection, local fit
+and measured decode speed, each loading about 0.50: *right* means **knows the machine in
+front of it**. Vertical is built from paid models in the same decision, routing on keys
+present, the programmatic API and verified quality, each between 0.44 and 0.50: *up* means
+**decides across both worlds, then checks the answer**. The two carry 75% of the variance
+between them, so a quarter of the table is not on this picture.
 <!-- FIGURE:END -->
 
 ## What the map actually shows
 
 Two readings, and the second is the one that moved.
 
-**Left — abundance.** LiteLLM, OpenRouter, Not Diamond, RouteLLM. They reach hundreds of
-models through one surface and answer *"which provider should this request go to, and
-what will it cost?"*. Excellent at that, and entirely unaware of the machine the caller
-is sitting at: none of them will ever answer "actually, run it locally for nothing".
+**Left — reach, blind to the machine.** LiteLLM, OpenRouter, Not Diamond, RouteLLM. They
+reach hundreds of models through one surface and answer *"which provider should this
+request go to, and what will it cost?"*. Excellent at that, and entirely unaware of the
+machine the caller is sitting at: none of them will ever answer "actually, run it locally
+for nothing".
 
-**Bottom — adaptability.** Ollama, LM Studio, the browser VRAM calculators. They answer
-*"will this model fit, and how do I start it?"*, on whatever hardware you put them on.
-Also excellent, and entirely unaware that a paid API exists.
+**Bottom — fit, blind to the bill.** Ollama, LM Studio, the browser VRAM calculators.
+They answer *"will this model fit, and how do I start it?"*, on whatever hardware you put
+them on. Also excellent, and entirely unaware that a paid API exists.
 
 **Top-right — a decision that has been checked.** `best-engine-ai-helper` sits alone
-there. `llmfit` is the nearest neighbour on the precision axis and sits well below it on
-control, which is the honest shape of the difference: `llmfit` and this project now both
-*measure* decode speed on the machine in front of them, but `llmfit` measures and
-reports, where this project measures, then lets the number disqualify a model and
-re-weight every estimate that follows.
+there, and the honest detail is that it is not alone on the horizontal axis: `llmfit` lands
+at the *same* coordinate, both of them at its maximum. On "knows the machine in front of
+it" the two are tied, which is the correct reading — `llmfit` and this project now both
+*measure* decode speed rather than estimating it. The gap is vertical, and it is two full
+units: `llmfit` measures and reports, where this project measures, then lets the number
+disqualify a model and re-weight every estimate that follows.
 
 **The gap is still the top-right.** No surveyed tool combines *"what does this machine
 run"* with *"what would a provider charge, and do I even hold that key"* in a single
@@ -66,14 +77,35 @@ this project is for.
 
 ### The column this project loses
 
-**Catalog breadth: ⭐⭐ against `llmfit`'s ⭐⭐⭐⭐⭐.** Twenty hand-maintained seed entries
-against hundreds. The constraint is deliberate rather than accidental — every entry
-carries a `source:` and a `fetched_at`, and an entry with no provenance is worth less
-than no entry — but a constraint you chose is still a constraint, and a reader comparing
-the two tools on catalogue size should pick `llmfit`.
+**Catalog breadth: ⭐⭐⭐⭐ against `llmfit`'s ⭐⭐⭐⭐⭐.** This column read ⭐⭐ until
+2026-10-20, and the reason it gave was wrong. It blamed provenance discipline: twenty
+hand-maintained entries, every one carrying a `source:` and a `fetched_at`, because an
+entry with no provenance is worth less than no entry. That sounded like a principled
+trade-off. It was a misdiagnosis — `catalog update --ollama` now reaches **420 pullable
+tags** in a single request — the official library lists 257 families, 221 of them declare
+the sizes they ship, and those sizes are what makes a tag — and every one of those entries
+carries the same `source:` and `fetched_at` as the seed. Provenance was never
+what held the catalog at twenty; a naming mismatch was. ApXML names models by the paper's
+slug, which `ollama pull` cannot resolve, so the one automatic source available could add
+hundreds of entries without widening what could actually be served.
 
-It is on the map on purpose. A landscape where the author wins every column is a
-landscape nobody believes, and this is the column where the work is genuinely unfinished.
+What did *not* change is the part worth being precise about. Those 420 entries carry null
+scores on all five benchmark axes, because the library publishes sizes and descriptions
+rather than leaderboard results — so they rank *below* every scored model until a scored
+source fills them in. The breadth of what this tool can size, fit and pull is now in the
+hundreds; the breadth of what it can **rank on quality** is still the twenty curated
+entries. A null ranks low and stays honest, where a guessed score would rank wrongly
+while looking authoritative.
+
+That is also why this is ⭐⭐⭐⭐ and not ⭐⭐⭐⭐⭐: `llmfit` ships its hundreds in the box,
+with no network call and nothing to opt into. Here the breadth is one command and one
+request away, which is close enough to matter and not the same thing.
+
+The column stays on the map on purpose. A landscape where the author wins every column is
+a landscape nobody believes — and the useful lesson is the one this entry just
+demonstrated against itself: a page that explains a weakness is asserting a cause, and a
+cause goes stale exactly like a number does. The old ⭐⭐ survived a day longer than the
+limitation it described.
 
 ## Positioning
 

@@ -1,0 +1,193 @@
+meta:
+  reference: best-engine-ai-helper
+  rotation_deg: 28.924
+  explained_variance_ratio:
+  - 0.4279
+  - 0.3221
+  cumulative_variance: 0.75
+  n_approaches: 9
+  attributes:
+  - Détection du matériel
+  - Tenue en mémoire locale
+  - Mesure la vitesse sur cette machine
+  - Modèles payants dans la même décision
+  - Route selon les clés présentes
+  - Provenance des scores
+  - Largeur du catalogue
+  - Éprouve la qualité avant qu'on en dépende
+  - API programmatique
+  lower_is_better: []
+axes:
+  axis_1:
+    name: Richesse ↔ Efficacité
+    pole_left: Richesse
+    pole_right: Efficacité
+    loadings:
+      Détection du matériel: 0.5096
+      Tenue en mémoire locale: 0.4977
+      Mesure la vitesse sur cette machine: 0.5079
+      Modèles payants dans la même décision: -0.2401
+      Route selon les clés présentes: 0.0509
+      Provenance des scores: 0.3395
+      Largeur du catalogue: 0.1518
+      Éprouve la qualité avant qu'on en dépende: 0.1883
+      API programmatique: -0.0255
+  axis_2:
+    name: Diversité ↔ Maîtrise
+    pole_bottom: Diversité
+    pole_top: Maîtrise
+    loadings:
+      Détection du matériel: 0.047
+      Tenue en mémoire locale: -0.1893
+      Mesure la vitesse sur cette machine: 0.0136
+      Modèles payants dans la même décision: 0.5023
+      Route selon les clés présentes: 0.4687
+      Provenance des scores: 0.2866
+      Largeur du catalogue: -0.0549
+      Éprouve la qualité avant qu'on en dépende: 0.4401
+      API programmatique: 0.4593
+approaches:
+- name: best-engine-ai-helper
+  coordinates:
+    axis_1: 2.5032
+    axis_2: 1.9612
+  role: best
+  color: '#FF3B30'
+  attributes:
+    Détection du matériel: 5.0
+    Tenue en mémoire locale: 5.0
+    Mesure la vitesse sur cette machine: 5.0
+    Modèles payants dans la même décision: 5.0
+    Route selon les clés présentes: 5.0
+    Provenance des scores: 5.0
+    Largeur du catalogue: 4.0
+    Éprouve la qualité avant qu'on en dépende: 5.0
+    API programmatique: 5.0
+- name: llmfit
+  coordinates:
+    axis_1: 2.5032
+    axis_2: -0.123
+  role: right
+  color: '#007AFF'
+  attributes:
+    Détection du matériel: 5.0
+    Tenue en mémoire locale: 5.0
+    Mesure la vitesse sur cette machine: 5.0
+    Modèles payants dans la même décision: 1.0
+    Route selon les clés présentes: 1.0
+    Provenance des scores: 4.0
+    Largeur du catalogue: 5.0
+    Éprouve la qualité avant qu'on en dépende: 2.0
+    API programmatique: 4.0
+- name: RouteLLM
+  coordinates:
+    axis_1: -2.116
+    axis_2: 1.9612
+  role: top
+  color: '#AF52DE'
+  attributes:
+    Détection du matériel: 1.0
+    Tenue en mémoire locale: 1.0
+    Mesure la vitesse sur cette machine: 1.0
+    Modèles payants dans la même décision: 4.0
+    Route selon les clés présentes: 2.0
+    Provenance des scores: 3.0
+    Largeur du catalogue: 2.0
+    Éprouve la qualité avant qu'on en dépende: 3.0
+    API programmatique: 5.0
+- name: LiteLLM
+  coordinates:
+    axis_1: -2.5032
+    axis_2: 1.6311
+  role: competitor
+  color: '#00A7C6'
+  attributes:
+    Détection du matériel: 1.0
+    Tenue en mémoire locale: 1.0
+    Mesure la vitesse sur cette machine: 1.0
+    Modèles payants dans la même décision: 5.0
+    Route selon les clés présentes: 4.0
+    Provenance des scores: 1.0
+    Largeur du catalogue: 5.0
+    Éprouve la qualité avant qu'on en dépende: 1.0
+    API programmatique: 5.0
+- name: OpenRouter
+  coordinates:
+    axis_1: -2.3352
+    axis_2: 0.468
+  role: competitor
+  color: '#C0B7FF'
+  attributes:
+    Détection du matériel: 1.0
+    Tenue en mémoire locale: 1.0
+    Mesure la vitesse sur cette machine: 1.0
+    Modèles payants dans la même décision: 5.0
+    Route selon les clés présentes: 1.0
+    Provenance des scores: 2.0
+    Largeur du catalogue: 5.0
+    Éprouve la qualité avant qu'on en dépende: 1.0
+    API programmatique: 4.0
+- name: Not Diamond
+  coordinates:
+    axis_1: -2.3222
+    axis_2: 1.57
+  role: competitor
+  color: '#81C980'
+  attributes:
+    Détection du matériel: 1.0
+    Tenue en mémoire locale: 1.0
+    Mesure la vitesse sur cette machine: 1.0
+    Modèles payants dans la même décision: 5.0
+    Route selon les clés présentes: 2.0
+    Provenance des scores: 2.0
+    Largeur du catalogue: 3.0
+    Éprouve la qualité avant qu'on en dépende: 3.0
+    API programmatique: 4.0
+- name: Ollama
+  coordinates:
+    axis_1: -0.7124
+    axis_2: -0.9217
+  role: competitor
+  color: '#C26383'
+  attributes:
+    Détection du matériel: 2.0
+    Tenue en mémoire locale: 3.0
+    Mesure la vitesse sur cette machine: 3.0
+    Modèles payants dans la même décision: 1.0
+    Route selon les clés présentes: 1.0
+    Provenance des scores: 1.0
+    Largeur du catalogue: 4.0
+    Éprouve la qualité avant qu'on en dépende: 1.0
+    API programmatique: 4.0
+- name: LM Studio
+  coordinates:
+    axis_1: -0.0808
+    axis_2: -1.3889
+  role: competitor
+  color: '#D59741'
+  attributes:
+    Détection du matériel: 3.0
+    Tenue en mémoire locale: 4.0
+    Mesure la vitesse sur cette machine: 3.0
+    Modèles payants dans la même décision: 1.0
+    Route selon les clés présentes: 1.0
+    Provenance des scores: 1.0
+    Largeur du catalogue: 4.0
+    Éprouve la qualité avant qu'on en dépende: 1.0
+    API programmatique: 3.0
+- name: Calculateurs VRAM en ligne
+  coordinates:
+    axis_1: -1.1882
+    axis_2: -1.9612
+  role: worst
+  color: '#A52A2A'
+  attributes:
+    Détection du matériel: 1.0
+    Tenue en mémoire locale: 4.0
+    Mesure la vitesse sur cette machine: 1.0
+    Modèles payants dans la même décision: 1.0
+    Route selon les clés présentes: 1.0
+    Provenance des scores: 2.0
+    Largeur du catalogue: 3.0
+    Éprouve la qualité avant qu'on en dépende: 1.0
+    API programmatique: 1.0

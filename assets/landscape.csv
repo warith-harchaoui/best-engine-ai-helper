@@ -1,5 +1,5 @@
 Model selection,Hardware detection,Local fit,Measures speed on this machine,Paid models in the same decision,Routes on keys present,Scores carry provenance,Catalog breadth,Verifies quality before you depend on it,Programmatic API
-best-engine-ai-helper,5,5,5,5,5,5,2,5,5
+best-engine-ai-helper,5,5,5,5,5,5,4,5,5
 llmfit,5,5,5,1,1,4,5,2,4
 RouteLLM,1,1,1,4,2,3,2,3,5
 LiteLLM,1,1,1,5,4,1,5,1,5

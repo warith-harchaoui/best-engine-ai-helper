@@ -129,7 +129,7 @@ best-engine-ai-helper report --task "extract line items from an invoice"
 # **→ `gpt-4o`** (openai) — score 69, ~$6.25/1M tokens (blended)
 ```
 
-Désactivez-la avec `--no-cloud`, ou orientez-la avec `--quality-vs-cost 0..1`
+Désactivez-la avec `--no-cloud` ou orientez-la avec `--quality-vs-cost 0..1`
 (1.0 = meilleur score sans égard au prix, 0.0 = le moins cher sans égard à la
 qualité ; défaut 0.7) et `--cloud-provider openai|mistral|...` (limiter à un
 seul fournisseur).
@@ -269,7 +269,7 @@ le modèle est toujours lu depuis le fichier moteur résolu :
 ```python
 from best_engine_ai_helper import ensure, llm
 
-# charge llm.engine.yaml, ou le résout depuis llm.brief.yaml au premier appel
+# charge llm.engine.yaml ou le résout depuis llm.brief.yaml au premier appel
 engine = ensure(".")
 summary = llm.chat(prompt, engine=engine, kind="llm")
 critique = llm.chat(prompt, engine=engine, kind="vlm", images=[png], json_schema=SCHEMA)

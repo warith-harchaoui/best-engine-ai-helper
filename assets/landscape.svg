@@ -1,55 +1,55 @@
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1224" height="946" viewBox="0 0 1224 946" role="img" aria-labelledby="sp-title sp-desc" font-family="Roboto, -apple-system, Helvetica, Arial, sans-serif"><title id="sp-title">Model selections in the Quadrant</title><desc id="sp-desc">A 2D positioning map of 9 model selections, Abundance to Precision on the horizontal axis, Adaptability to Control on the vertical axis.</desc><style>.sp-dot{cursor:pointer}.sp-dot:hover circle,.sp-dot:focus circle{stroke-width:2.4}.sp-dot:hover,.sp-dot:focus{filter:brightness(1.08);outline:none}</style><line x1="205.7" y1="484.0" x2="1018.3" y2="484.0" stroke="#C7C7CC" stroke-width="1.2" stroke-dasharray="2,4"/><line x1="612.0" y1="862.0" x2="612.0" y2="106.0" stroke="#C7C7CC" stroke-width="1.2" stroke-dasharray="2,4"/><text data-pole="right" x="1164.0" y="493.1" font-size="26" font-style="italic" fill="#6E6E73" text-anchor="end">Precision</text><text data-pole="left" x="60.0" y="493.1" font-size="26" font-style="italic" fill="#6E6E73" text-anchor="start">Abundance</text><text data-pole="top" x="612.0" y="64.5" font-size="26" font-style="italic" fill="#6E6E73" text-anchor="middle">Control</text><text data-pole="bottom" x="612.0" y="918.8" font-size="26" font-style="italic" fill="#6E6E73" text-anchor="middle">Adaptability</text><g class="sp-dot" tabindex="0" role="img" aria-label="Model selections: best-engine-ai-helper
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1224" height="946" viewBox="0 0 1224 946" role="img" aria-labelledby="sp-title sp-desc" font-family="Roboto, -apple-system, Helvetica, Arial, sans-serif"><title id="sp-title">Model selections in the Quadrant</title><desc id="sp-desc">A 2D positioning map of 9 model selections, Valuable to Resourceful on the horizontal axis, Diverse to Precise on the vertical axis.</desc><style>.sp-dot{cursor:pointer}.sp-dot:hover circle,.sp-dot:focus circle{stroke-width:2.4}.sp-dot:hover,.sp-dot:focus{filter:brightness(1.08);outline:none}</style><line x1="190.6" y1="484.0" x2="988.1" y2="484.0" stroke="#C7C7CC" stroke-width="1.2" stroke-dasharray="2,4"/><line x1="612.0" y1="862.0" x2="612.0" y2="106.0" stroke="#C7C7CC" stroke-width="1.2" stroke-dasharray="2,4"/><text data-pole="right" x="1164.0" y="493.1" font-size="26" font-style="italic" fill="#6E6E73" text-anchor="end">Resourceful</text><text data-pole="left" x="60.0" y="493.1" font-size="26" font-style="italic" fill="#6E6E73" text-anchor="start">Valuable</text><text data-pole="top" x="612.0" y="64.5" font-size="26" font-style="italic" fill="#6E6E73" text-anchor="middle">Precise</text><text data-pole="bottom" x="612.0" y="918.8" font-size="26" font-style="italic" fill="#6E6E73" text-anchor="middle">Diverse</text><g class="sp-dot" tabindex="0" role="img" aria-label="Model selections: best-engine-ai-helper
 role: best
-axis1: 2.53
-axis2: 1.97"><circle cx="912.0" cy="259.0" r="8.65" fill="#FF3B30" stroke="white" stroke-width="1" opacity="0.95"/><title>Model selections: best-engine-ai-helper
+axis1: 2.50
+axis2: 1.96"><circle cx="912.0" cy="259.0" r="8.65" fill="#FF3B30" stroke="white" stroke-width="1" opacity="0.95"/><title>Model selections: best-engine-ai-helper
 role: best
-axis1: 2.53
-axis2: 1.97</title></g><text x="899.5" y="264.9" font-size="17" fill="#1C1C1E" text-anchor="end">best-engine-ai-helper</text><g class="sp-dot" tabindex="0" role="img" aria-label="Model selections: llmfit
+axis1: 2.50
+axis2: 1.96</title></g><text x="899.5" y="264.9" font-size="17" fill="#1C1C1E" text-anchor="end">best-engine-ai-helper</text><g class="sp-dot" tabindex="0" role="img" aria-label="Model selections: llmfit
 role: right
-axis1: 2.53
-axis2: -0.79"><circle cx="912.0" cy="574.0" r="8.65" fill="#007AFF" stroke="white" stroke-width="1" opacity="0.95"/><title>Model selections: llmfit
+axis1: 2.50
+axis2: -0.12"><circle cx="912.0" cy="498.1" r="8.65" fill="#007AFF" stroke="white" stroke-width="1" opacity="0.95"/><title>Model selections: llmfit
 role: right
-axis1: 2.53
-axis2: -0.79</title></g><text x="924.5" y="580.0" font-size="17" fill="#1C1C1E" text-anchor="start">llmfit</text><g class="sp-dot" tabindex="0" role="img" aria-label="Model selections: RouteLLM
+axis1: 2.50
+axis2: -0.12</title></g><text x="924.5" y="504.1" font-size="17" fill="#1C1C1E" text-anchor="start">llmfit</text><g class="sp-dot" tabindex="0" role="img" aria-label="Model selections: RouteLLM
 role: top
-axis1: -1.41
-axis2: 1.97"><circle cx="444.9" cy="259.0" r="8.65" fill="#AF52DE" stroke="white" stroke-width="1" opacity="0.95"/><title>Model selections: RouteLLM
+axis1: -2.12
+axis2: 1.96"><circle cx="358.4" cy="259.0" r="8.65" fill="#AF52DE" stroke="white" stroke-width="1" opacity="0.95"/><title>Model selections: RouteLLM
 role: top
-axis1: -1.41
-axis2: 1.97</title></g><text x="457.4" y="264.9" font-size="17" fill="#1C1C1E" text-anchor="start">RouteLLM</text><g class="sp-dot" tabindex="0" role="img" aria-label="Model selections: LiteLLM
+axis1: -2.12
+axis2: 1.96</title></g><text x="370.9" y="264.9" font-size="17" fill="#1C1C1E" text-anchor="start">RouteLLM</text><g class="sp-dot" tabindex="0" role="img" aria-label="Model selections: LiteLLM
 role: competitor
-axis1: -2.53
-axis2: 1.08"><circle cx="312.0" cy="360.1" r="8.65" fill="#9288DD" stroke="white" stroke-width="1" opacity="0.95"/><title>Model selections: LiteLLM
+axis1: -2.50
+axis2: 1.63"><circle cx="312.0" cy="296.9" r="8.65" fill="#00A7C6" stroke="white" stroke-width="1" opacity="0.95"/><title>Model selections: LiteLLM
 role: competitor
-axis1: -2.53
-axis2: 1.08</title></g><text x="324.5" y="366.1" font-size="17" fill="#1C1C1E" text-anchor="start">LiteLLM</text><g class="sp-dot" tabindex="0" role="img" aria-label="Model selections: OpenRouter
+axis1: -2.50
+axis2: 1.63</title></g><text x="299.5" y="302.8" font-size="17" fill="#1C1C1E" text-anchor="end">LiteLLM</text><g class="sp-dot" tabindex="0" role="img" aria-label="Model selections: OpenRouter
 role: competitor
 axis1: -2.34
-axis2: -0.02"><circle cx="334.6" cy="486.4" r="8.65" fill="#FFA1C1" stroke="white" stroke-width="1" opacity="0.95"/><title>Model selections: OpenRouter
+axis2: 0.47"><circle cx="332.1" cy="430.3" r="8.65" fill="#C0B7FF" stroke="white" stroke-width="1" opacity="0.95"/><title>Model selections: OpenRouter
 role: competitor
 axis1: -2.34
-axis2: -0.02</title></g><text x="347.1" y="527.0" font-size="17" fill="#1C1C1E" text-anchor="start">OpenRouter</text><g class="sp-dot" tabindex="0" role="img" aria-label="Model selections: Not Diamond
+axis2: 0.47</title></g><text x="344.6" y="436.3" font-size="17" fill="#1C1C1E" text-anchor="start">OpenRouter</text><g class="sp-dot" tabindex="0" role="img" aria-label="Model selections: Not Diamond
 role: competitor
-axis1: -1.84
-axis2: 1.43"><circle cx="393.7" cy="320.4" r="8.65" fill="#35C8E7" stroke="white" stroke-width="1" opacity="0.95"/><title>Model selections: Not Diamond
+axis1: -2.32
+axis2: 1.57"><circle cx="333.7" cy="303.9" r="8.65" fill="#81C980" stroke="white" stroke-width="1" opacity="0.95"/><title>Model selections: Not Diamond
 role: competitor
-axis1: -1.84
-axis2: 1.43</title></g><text x="406.2" y="326.3" font-size="17" fill="#1C1C1E" text-anchor="start">Not Diamond</text><g class="sp-dot" tabindex="0" role="img" aria-label="Model selections: Ollama
+axis1: -2.32
+axis2: 1.57</title></g><text x="346.2" y="309.8" font-size="17" fill="#1C1C1E" text-anchor="start">Not Diamond</text><g class="sp-dot" tabindex="0" role="img" aria-label="Model selections: Ollama
 role: competitor
-axis1: -0.51
-axis2: -1.26"><circle cx="551.9" cy="627.4" r="8.65" fill="#B47819" stroke="white" stroke-width="1" opacity="0.95"/><title>Model selections: Ollama
-role: competitor
-axis1: -0.51
-axis2: -1.26</title></g><text x="564.4" y="633.4" font-size="17" fill="#1C1C1E" text-anchor="start">Ollama</text><g class="sp-dot" tabindex="0" role="img" aria-label="Model selections: LM Studio
-role: competitor
-axis1: 0.13
-axis2: -1.72"><circle cx="627.7" cy="679.9" r="8.65" fill="#71B971" stroke="white" stroke-width="1" opacity="0.95"/><title>Model selections: LM Studio
-role: competitor
-axis1: 0.13
-axis2: -1.72</title></g><text x="640.2" y="685.9" font-size="17" fill="#1C1C1E" text-anchor="start">LM Studio</text><g class="sp-dot" tabindex="0" role="img" aria-label="Model selections: Browser VRAM calculators
-role: worst
 axis1: -0.71
-axis2: -1.97"><circle cx="528.3" cy="709.0" r="8.65" fill="#A52A2A" stroke="white" stroke-width="1" opacity="0.95"/><title>Model selections: Browser VRAM calculators
-role: worst
+axis2: -0.92"><circle cx="526.6" cy="589.7" r="8.65" fill="#C26383" stroke="white" stroke-width="1" opacity="0.95"/><title>Model selections: Ollama
+role: competitor
 axis1: -0.71
-axis2: -1.97</title></g><text x="540.8" y="715.0" font-size="17" fill="#1C1C1E" text-anchor="start">Browser VRAM calculators</text><text x="612.0" y="26" font-size="18" font-weight="bold" fill="#000" text-anchor="middle">Model selections in the Quadrant</text></svg>
+axis2: -0.92</title></g><text x="539.1" y="595.7" font-size="17" fill="#1C1C1E" text-anchor="start">Ollama</text><g class="sp-dot" tabindex="0" role="img" aria-label="Model selections: LM Studio
+role: competitor
+axis1: -0.08
+axis2: -1.39"><circle cx="602.3" cy="643.3" r="8.65" fill="#D59741" stroke="white" stroke-width="1" opacity="0.95"/><title>Model selections: LM Studio
+role: competitor
+axis1: -0.08
+axis2: -1.39</title></g><text x="589.8" y="649.3" font-size="17" fill="#1C1C1E" text-anchor="end">LM Studio</text><g class="sp-dot" tabindex="0" role="img" aria-label="Model selections: Browser VRAM calculators
+role: worst
+axis1: -1.19
+axis2: -1.96"><circle cx="469.6" cy="709.0" r="8.65" fill="#A52A2A" stroke="white" stroke-width="1" opacity="0.95"/><title>Model selections: Browser VRAM calculators
+role: worst
+axis1: -1.19
+axis2: -1.96</title></g><text x="482.1" y="715.0" font-size="17" fill="#1C1C1E" text-anchor="start">Browser VRAM calculators</text><text x="612.0" y="26" font-size="18" font-weight="bold" fill="#000" text-anchor="middle">Model selections in the Quadrant</text></svg>

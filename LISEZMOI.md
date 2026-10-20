@@ -71,7 +71,7 @@ Ce paquet est à la base de la couche de sélection de modèles de la suite AI H
   section `resolve`
   d'EXEMPLES.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXEMPLES.md#resolve)
   pour le déroulé complet ; les deux se dégradent proprement (une
-  heuristique par mots-clés, ou un verdict « indisponible ») en leur
+  heuristique par mots-clés ou un verdict « indisponible ») en leur
   absence, jamais un échec brutal.
 
 ## Installation
@@ -296,13 +296,13 @@ machine, puisque les jetons par seconde sont une propriété des deux.
 Le chronométrage s'appuie sur l'`eval_duration` d'Ollama — la phase de décodage
 telle que le démon la mesure — plutôt que sur le temps mural autour de l'appel,
 qui contient aussi le traitement du prompt, HTTP puis l'attente en file. Chaque
-mesure retient de quelle horloge elle vient, et seule celle du démon peut
+mesure retient de quelle horloge elle vient et seule celle du démon peut
 disqualifier un modèle : le temps mural sous-estime la vitesse de décodage, et
 sous-estimer est précisément ce qui rejetterait un modèle qui tourne très bien.
 
 Remesurer le même modèle conserve l'échantillon **le plus rapide** plutôt que le
 plus récent, ce qui est une exigence de correction et non de l'optimisme. La
-grandeur que l'on calibre est un **plafond** de bande passante mémoire, et une
+grandeur que l'on calibre est un **plafond** de bande passante mémoire et une
 machine occupée ne peut que faire paraître une observation plus lente que le
 matériel ne l'est réellement. La leçon vient du comportement lui-même :
 `gemma3:12b` a mesuré 15,2 jetons/s sur une machine au repos puis 8,7 jetons/s
@@ -336,7 +336,7 @@ Trois conséquences, dont la troisième est la plus intéressante :
    de la précision. Les rapports s'étalent d'environ **0,46 à 0,61** selon le
    modèle puis d'une exécution à l'autre du même modèle, ce qui explique
    pourquoi le facteur est une **médiane** sur plusieurs mesures et non une
-   seule, et pourquoi une vraie mesure l'emporte toujours sur une estimation
+   seule et pourquoi une vraie mesure l'emporte toujours sur une estimation
    corrigée quand elle existe. La calibration fait passer une estimation de
    « fausse d'un facteur deux » à « fausse d'un cinquième » ; elle ne la rend
    pas juste.
@@ -387,9 +387,9 @@ Le catalogue de base intégré (`models.yaml`) couvre les familles Qwen 3, Qwen 
 
 `catalog update` rafraîchit le cache depuis l'[annuaire LLM ApXML](https://apxml.com/models?modelType=open_weight) (modèles à poids ouverts avec leurs besoins VRAM par quantification, consulté régulièrement). Il récupère les fiches, les normalise en entrées de catalogue et les fusionne dans `~/.best-engine-ai-helper/catalog_cache.yaml` par identifiant (le catalogue de base intégré n'est jamais modifié). Utilisez `--limit N` pour un rafraîchissement partiel rapide. Les pages statiques d'ApXML portent des caractéristiques mais aucun score de classement numérique, donc les entrées rafraîchies gardent des benchmarks nuls (et un rang bas) jusqu'à ce qu'une source notée, comme l'Open LLM Leaderboard v2 ou l'OpenVLM Leaderboard, les remplisse.
 
-`--ollama` élargit le catalogue depuis la [bibliothèque officielle Ollama](https://ollama.com/library) plutôt que depuis ApXML, et il existe parce que le catalogue *servable* plafonnait à vingt modèles pour une raison qui n'a jamais été une question de notation. ApXML peut ajouter des centaines d'entrées, mais il les nomme d'après le papier (`qwen36-35b-a3b`), un nom de dépôt HuggingFace qu'`ollama pull` ne résout pas : ces entrées sont donc réservées à vLLM. La bibliothèque publie au contraire les familles, leurs capacités puis les tailles livrées — et une famille plus une taille **est** un tag de tirage : `qwen3` plus `8b` donne `qwen3:8b`, exactement l'orthographe déjà utilisée par le catalogue de base. 256 familles donnent environ 420 tags, en une seule requête.
+`--ollama` élargit le catalogue depuis la [bibliothèque officielle Ollama](https://ollama.com/library) plutôt que depuis ApXML. Il existe parce que le catalogue *servable* plafonnait à vingt modèles pour une raison qui n'a jamais été une question de notation. ApXML peut ajouter des centaines d'entrées, mais il les nomme d'après le papier (`qwen36-35b-a3b`), un nom de dépôt HuggingFace qu'`ollama pull` ne résout pas : ces entrées sont donc réservées à vLLM. La bibliothèque publie au contraire les familles, leurs capacités puis les tailles livrées — et une famille plus une taille **est** un tag de tirage : `qwen3` plus `8b` donne `qwen3:8b`, exactement l'orthographe déjà utilisée par le catalogue de base. 256 familles donnent environ 420 tags, en une seule requête.
 
-Ces entrées ne portent **aucune note de benchmark**, parce que la bibliothèque publie des tailles puis des descriptions, pas des résultats de classement. Elles se classent donc **sous** tout modèle noté, jusqu'à ce qu'une source notée les remplisse. C'est le but plutôt qu'une limite : cela élargit ce que l'outil sait dimensionner puis tirer sans changer ce qu'il recommande, et une note inventée vaudrait moins qu'une note absente — un `null` se classe bas puis reste honnête, une invention se classe mal tout en ayant l'air d'une autorité.
+Ces entrées ne portent **aucune note de benchmark**, parce que la bibliothèque publie des tailles puis des descriptions, pas des résultats de classement. Elles se classent donc **sous** tout modèle noté, jusqu'à ce qu'une source notée les remplisse. C'est le but plutôt qu'une limite : cela élargit ce que l'outil sait dimensionner puis tirer sans changer ce qu'il recommande ; une note inventée vaudrait moins qu'une note absente — un `null` se classe bas puis reste honnête, une invention se classe mal tout en ayant l'air d'une autorité.
 
 Les tailles viennent d'une constante **mesurée** sur les quatorze entrées Q4 du catalogue de base, pas devinée : 0,646 Go par milliard de paramètres pour un modèle texte, 0,714 pour un modèle vision, puisqu'une tour d'image est réellement plus lourde par paramètre. L'écart aux chiffres connus du catalogue reste sous les 5 %. Une famille qui n'annonce aucune taille est écartée plutôt qu'enregistrée à zéro, ce qui l'aurait fait paraître tenir sur n'importe quelle machine.
 
@@ -399,9 +399,9 @@ Les tailles viennent d'une constante **mesurée** sur les quatorze entrées Q4 d
 
 **Cet axe sert le catalogue cloud, pas le catalogue local.** L'Arena note ce avec quoi ses votants peuvent discuter. Apparié aux catalogues livrés (mesuré le 2026-10-19 contre le miroir vivant le plus frais), il couvrait **6 des 10 modèles cloud** de `pricing.yaml` mais seulement **3 des 20 modèles locaux** de `models.yaml`.
 
-Les trois appariements locaux en disent plus que le rapport : `qwen2.5-coder:32b`, `qwen3:32b-q4_k_m` et `qwen3:32b-q8_0` — chaque appariement était un modèle 32B, rien de plus petit n'a été apparié. Les quatre modèles d'embedding (`nomic-embed-text`, `mxbai-embed-large`, `snowflake-arctic-embed2`, `bge-m3`) ne peuvent pas être appariés par construction : personne ne discute avec un encodeur, donc aucun classement de préférences conversationnelles n'en notera jamais un. L'axe n'est donc pas simplement « biaisé cloud » : il note de gros modèles conversationnels, ce qui décrit l'essentiel d'une grille tarifaire cloud puis une minorité d'un catalogue local. C'est l'inverse de ce qu'on attend d'un « classement de modèles », et c'est toute la différence entre bien se servir de cet axe et attendre qu'il départage ce qu'il ne verra jamais. La commande affiche son propre `matched/total` à chaque exécution : vous n'avez pas à croire ce paragraphe sur parole.
+Les trois appariements locaux en disent plus que le rapport : `qwen2.5-coder:32b`, `qwen3:32b-q4_k_m` et `qwen3:32b-q8_0` — chaque appariement était un modèle 32B, rien de plus petit n'a été apparié. Les quatre modèles d'embedding (`nomic-embed-text`, `mxbai-embed-large`, `snowflake-arctic-embed2`, `bge-m3`) ne peuvent pas être appariés par construction : personne ne discute avec un encodeur, donc aucun classement de préférences conversationnelles n'en notera jamais un. L'axe n'est donc pas simplement « biaisé cloud » : il note de gros modèles conversationnels, ce qui décrit l'essentiel d'une grille tarifaire cloud puis une minorité d'un catalogue local. C'est l'inverse de ce qu'on attend d'un « classement de modèles » ; c'est toute la différence entre bien se servir de cet axe et attendre qu'il départage ce qu'il ne verra jamais. La commande affiche son propre `matched/total` à chaque exécution : vous n'avez pas à croire ce paragraphe sur parole.
 
-**Il peut très bien ne rien retourner du tout.** L'Arena ne publie aucune API, donc chaque source ici est le scrape d'un tiers, et un scrape pourrit : au 2026-10 le site officiel répond 403, un miroir rend des classements vides, et le miroir vivant le plus frais a plus d'un an. L'adaptateur refuse une capture au-delà de sa limite de péremption en nommant la raison plutôt que de la fusionner, parce qu'un Elo d'une génération précédente classerait les modèles de 2025 au-dessus de ceux de 2026 — strictement pire que pas d'Elo. Le cas échéant la commande le dit et laisse l'axe vide ; elle n'annonce pas un succès qui n'a rien enrichi.
+**Il peut très bien ne rien retourner du tout.** L'Arena ne publie aucune API, donc chaque source ici est le scrape d'un tiers et un scrape pourrit : au 2026-10 le site officiel répond 403, un miroir rend des classements vides puis le miroir vivant le plus frais a plus d'un an. L'adaptateur refuse une capture au-delà de sa limite de péremption en nommant la raison plutôt que de la fusionner, parce qu'un Elo d'une génération précédente classerait les modèles de 2025 au-dessus de ceux de 2026 — strictement pire que pas d'Elo. Le cas échéant la commande le dit et laisse l'axe vide ; elle n'annonce pas un succès qui n'a rien enrichi.
 
 ## Table matérielle
 
@@ -499,7 +499,7 @@ moteur résolu.
    ```python
    from best_engine_ai_helper import ensure, llm
 
-   # charge llm.engine.yaml, ou le résout depuis llm.brief.yaml au premier usage
+   # charge llm.engine.yaml ou le résout depuis llm.brief.yaml au premier usage
    engine = ensure(".")
    summary = llm.chat(prompt, engine=engine, kind="llm")
    critique = llm.chat(prompt, engine=engine, kind="vlm", images=[png], json_schema=SCHEMA)
@@ -523,7 +523,7 @@ deux se résolvent vers le même type de fichier moteur et le même point d'appe
 
 ### Local (gratuit, par défaut)
 
-`mode: local`, ou l'absence de champ `mode`, correspond à [la promesse](#la-promesse) : la
+`mode: local` — ou l'absence de champ `mode` — correspond à [la promesse](#la-promesse) : la
 détection matérielle, la sélection du modèle et chaque garde qualité tournent sur cette
 machine, contre un modèle déjà tiré via Ollama ou servi via vLLM. Chaque appel coûte **0,0 $**,
 toujours (voir [Journal d'activité](#journal-dactivité)) : il n'y a aucun appel API payant à
@@ -544,7 +544,7 @@ choisir le modèle :
   mode local choisit depuis `models.yaml`, sauf que la ressource budgétée est le **prix**, pas
   la mémoire, puisque tout modèle payant tourne sur n'importe quelle machine. Un curseur
   `quality_vs_cost` (0 à 1, défaut 0,7) oriente le choix : `1.0` choisit uniquement sur le
-  score, `0.0` uniquement sur le prix, et le défaut privilégie la qualité avec le prix en
+  score, `0.0` uniquement sur le prix et le défaut privilégie la qualité avec le prix en
   départage.
 
 ```yaml
