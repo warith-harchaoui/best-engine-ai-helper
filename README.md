@@ -496,6 +496,8 @@ quality_vs_cost: 0.7           # optional, 0..1; auto-pick only, default 0.7
 task: extract structured line items from an invoice PDF's OCR text
 ```
 
+Three further keys exist for the pinned case, and the brief is the only place they can be set. `vlm_model` pins the vision slot separately — with `kind: both` and only `model` given, the same model serves both. `base_url` overrides the provider's endpoint (for a proxy or a regional deployment), and `api_key_env` overrides the NAME of the environment variable the key is read from, which defaults to the provider's conventional one. Neither ever holds the key itself.
+
 ```sh
 best-engine-ai-helper resolve --brief llm.brief.yaml --out llm.engine.yaml
 # Wrote llm.engine.yaml

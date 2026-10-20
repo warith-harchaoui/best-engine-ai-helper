@@ -9,7 +9,10 @@ the ``ensure`` missing-file policy.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
+import yaml
 
 import best_engine_ai_helper.detect as detect
 from best_engine_ai_helper import engine, llm
@@ -442,3 +445,80 @@ def test_chat_engine_routes_backend_and_base_url(monkeypatch: pytest.MonkeyPatch
     assert captured["fn"] == "ollama"
     assert captured["model"] == "qwen3:8b"
     assert captured["base_url"] == "http://localhost:11434"
+
+
+# ---------------------------------------------------------------------------
+# The brief's own word on whether the job needs schemas
+# ---------------------------------------------------------------------------
+#
+# `structured_output` is documented as a brief key — `resolve`'s docstring
+# lists it, and the README's local example shows it — and the cloud path reads
+# it as an override. The local path never did. Proven before the fix: a brief
+# saying `structured_output: false`, meaning "my job does not need schemas",
+# got the same pick as `true`, so the consumer was denied an 18-point better
+# model that fitted comfortably.
+#
+# The gate itself is right by default: the helper routes its own tasks through
+# a JSON schema, so a brief that says nothing must keep it on. Only an explicit
+# `false` relaxes it.
+
+_SCHEMA_CATALOG = [
+    {
+        "id": "strong-no-schema:12b",
+        "kind": "llm",
+        "ram_gb": 8.0,
+        "size_b": 12,
+        "benchmarks": {"general": 92},
+        "structured_output": False,
+    },
+    {
+        "id": "weaker-schema:8b",
+        "kind": "llm",
+        "ram_gb": 6.0,
+        "size_b": 8,
+        "benchmarks": {"general": 74},
+        "structured_output": True,
+    },
+]
+_SCHEMA_HW = {"unified_gb": 64.0, "vram_gb": None, "ram_gb": 64.0}
+_SCHEMA_COMPUTE = {"accelerator": "gpu-metal", "chip": "M2", "bandwidth_gbs": 400.0}
+
+
+def _resolve_with(tmp_path: Path, **brief_extra: object) -> dict:
+    brief = tmp_path / "llm.brief.yaml"
+    brief.write_text(yaml.safe_dump({"kind": "llm", "task": "write prose", **brief_extra}))
+    return engine.resolve(
+        brief,
+        backend="ollama",
+        catalog=_SCHEMA_CATALOG,
+        hw=_SCHEMA_HW,
+        compute=_SCHEMA_COMPUTE,
+    )
+
+
+def test_a_brief_that_does_not_need_schemas_gets_the_stronger_model(tmp_path: Path) -> None:
+    descriptor = _resolve_with(tmp_path, structured_output=False)
+    assert descriptor["llm"]["model"] == "strong-no-schema:12b"
+    # And the engine file still reports the model's real capability, so a
+    # consumer reading it is not misled about what the model can do.
+    assert descriptor["llm"]["structured_output"] is False
+
+
+def test_saying_nothing_keeps_the_gate_on(tmp_path: Path) -> None:
+    """A brief that is silent must not be widened on its behalf."""
+    assert _resolve_with(tmp_path)["llm"]["model"] == "weaker-schema:8b"
+
+
+def test_asking_for_schemas_rules_out_the_higher_scorer(tmp_path: Path) -> None:
+    assert _resolve_with(tmp_path, structured_output=True)["llm"]["model"] == "weaker-schema:8b"
+
+
+def test_no_false_warning_when_schemas_were_never_wanted(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The "will fail on schema-driven tasks" warning is wrong here, not useful."""
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="os_helper"):
+        _resolve_with(tmp_path, structured_output=False)
+    assert not [r for r in caplog.records if "structured JSON output" in r.message]

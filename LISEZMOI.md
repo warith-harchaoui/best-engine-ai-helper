@@ -555,6 +555,8 @@ quality_vs_cost: 0.7           # optionnel, 0..1 ; choix automatique seulement, 
 task: extraire les lignes structurées d'une facture PDF depuis son texte OCR
 ```
 
+Trois autres clés existent pour le cas épinglé ; le brief est le seul endroit où les poser. `vlm_model` épingle séparément la place vision — avec `kind: both` puis `model` seul, le même modèle sert les deux. `base_url` remplace le point d'entrée du fournisseur (mandataire ou déploiement régional), puis `api_key_env` remplace le NOM de la variable d'environnement d'où la clé est lue, qui vaut par défaut celui du fournisseur. Ni l'une ni l'autre ne contient jamais la clé elle-même.
+
 ```sh
 best-engine-ai-helper resolve --brief llm.brief.yaml --out llm.engine.yaml
 # Wrote llm.engine.yaml

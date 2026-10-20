@@ -253,7 +253,7 @@ def _candidate_row(
     }
 
 
-def _pick_sufficient(pool: list[dict[str, Any]]) -> dict[str, Any]:
+def _pick_sufficient(pool: list[dict[str, Any]], require_structured: bool = True) -> dict[str, Any]:
     """Return the leanest model within :data:`_SUFFICIENT_MARGIN` points of the best.
 
     ``pool`` is sorted best-first (structured-capable, then benchmark score), so
@@ -273,7 +273,7 @@ def _pick_sufficient(pool: list[dict[str, Any]]) -> dict[str, Any]:
         r
         for r in pool
         if r["score"] >= top["score"] - _SUFFICIENT_MARGIN
-        and (r["structured_output"] or not top["structured_output"])
+        and (not require_structured or r["structured_output"] or not top["structured_output"])
     ]
     if not near:
         return top
@@ -292,6 +292,7 @@ def recommend(
     kinds: list[Literal["llm", "vlm"]] | None = None,
     load: dict[str, Any] | None = None,
     installed: set[str] | None = None,
+    require_structured: bool = True,
 ) -> dict[str, Any]:
     """
     Recommend the best engine per needed kind for this hardware and task.
@@ -316,6 +317,11 @@ def recommend(
     backend : {'ollama', 'vllm'}
         Serving backend, so memory fit and throughput reflect what actually
         loads. Threaded to :func:`score.rank` and :func:`_candidate_row`.
+    require_structured : bool
+        Whether the job needs schema-constrained output. True (the default)
+        keeps a model that cannot honour it out of auto-selection; False lets
+        such a model win on score alone, which is what a brief saying
+        ``structured_output: false`` is asking for.
     installed : set of str or None
         Tags the local daemon already serves. Breaks ties between candidates of
         comparable quality and comparable footprint, so a model already on disk
@@ -377,6 +383,7 @@ def recommend(
             bandwidth_gbs=bandwidth,
             min_tps=min_tps,
             installed=installed,
+            require_structured=require_structured,
         )
         rows = [_candidate_row(e, budget, bandwidth, axis, min_tps, backend) for e in ranked]
         fitting = [r for r in rows if r["fits"]]
@@ -387,7 +394,7 @@ def recommend(
         # the LEANEST model within a few benchmark points of the best (anti-greed)
         # rather than the top scorer.
         pool = comfortable or fitting or rows
-        chosen: dict[str, Any] | None = _pick_sufficient(pool) if pool else None
+        chosen: dict[str, Any] | None = _pick_sufficient(pool, require_structured) if pool else None
         if chosen is None:
             osh.warning(f"No candidate found for kind '{kind}' on axis '{axis}'")
         else:
@@ -395,7 +402,7 @@ def recommend(
                 f"Chosen {kind} on axis '{axis}': {chosen['id']} "
                 f"({chosen['ram_gb']:.1f} GB, {'fits' if chosen['fits'] else 'over budget'})"
             )
-            if not chosen.get("structured_output", True):
+            if require_structured and not chosen.get("structured_output", True):
                 # Only happens when no structured-capable model fits the budget
                 # (e.g. a small machine, where the only VLMs that fit are the
                 # Qwen3-VL family). Say so plainly so the caller can warn the user
@@ -433,7 +440,11 @@ def recommend(
                 r
                 for r in (comfortable or fitting)
                 if r["score"] >= chosen["score"] - 3
-                and (r["structured_output"] or not chosen["structured_output"])
+                and (
+                    not require_structured
+                    or r["structured_output"]
+                    or not chosen["structured_output"]
+                )
             ]
             if near:
                 lighter = min(near, key=lambda r: r["ram_gb"])

@@ -248,6 +248,13 @@ def _resolve_local(
     min_tps = float(spec.get("min_tps", COMFORT_TPS))
     kinds = _kinds_from_brief(spec.get("kind", "both"))
     task = spec.get("task")
+    # The brief's own word on whether the job needs schema-constrained output.
+    # Absent means "did not say", which keeps the gate on: the helper's own
+    # tasks go through a JSON schema, so widening by default would be the
+    # wrong direction. Only an explicit `false` relaxes it -- and that case
+    # used to be read on the cloud path and ignored here, so a consumer that
+    # does not need schemas was denied the better model for nothing.
+    require_structured = spec.get("structured_output") is not False
 
     hw = hw if hw is not None else _detect.available_memory()
     compute = compute if compute is not None else _detect.compute_profile()
@@ -286,6 +293,7 @@ def _resolve_local(
         headroom=headroom,
         compute=compute,
         min_tps=min_tps,
+        require_structured=require_structured,
         backend=backend,
         kinds=kinds,
         installed=present,

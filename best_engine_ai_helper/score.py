@@ -503,6 +503,7 @@ def select(
     application: str | None = None,
     backend: str = "ollama",
     load: dict[str, Any] | None = None,
+    require_structured: bool = True,
 ) -> dict[str, Any]:
     """
     Pick the best-scoring model that fits in available memory.
@@ -596,7 +597,8 @@ def select(
         # rank()[0] in agreement, so the library and the CLI recommend the same
         # model. Absent field defaults to capable.
         def _sort_key(e: dict[str, Any]) -> tuple[bool, float]:
-            structured_ok = e.get("structured_output", True) is not False
+            # See rank(): only a demotion when the job actually needs schemas.
+            structured_ok = not require_structured or e.get("structured_output", True) is not False
             return (structured_ok, _benchmark_score(e, kind, application))
 
         return max(fitting, key=_sort_key)
@@ -622,6 +624,7 @@ def rank(
     bandwidth_gbs: float | None = None,
     min_tps: float | None = None,
     installed: set[str] | None = None,
+    require_structured: bool = True,
 ) -> list[dict[str, Any]]:
     """
     Return all candidates sorted by benchmark score, annotated with fit status.
@@ -663,6 +666,11 @@ def rank(
         measured here to run optimistic by a wide margin, so letting it
         disqualify anything would reject models that run perfectly well. None
         disables the check entirely.
+    require_structured : bool
+        Whether schema-constrained output is a requirement of the job. True
+        (the default) demotes a model that cannot honour Ollama structured
+        output below one that can, however well it scores. False drops that
+        key entirely, for a caller whose brief says it does not need schemas.
     installed : set of str or None
         Model tags already present on the machine. Used only to break ties
         between candidates of comparable quality (within
@@ -751,7 +759,10 @@ def rank(
     present = installed or set()
 
     def _sort_key(e: dict[str, Any]) -> tuple[bool, bool, float, bool, float]:
-        structured_ok = e.get("structured_output", True) is not False
+        # Only a demotion when the caller says the job needs schemas. A brief
+        # declaring `structured_output: false` is saying the opposite, and
+        # ignoring it cost that caller the better model for nothing.
+        structured_ok = not require_structured or e.get("structured_output", True) is not False
         measured_slow = (
             min_tps is not None
             and e.get("_tps_basis") == "measured"

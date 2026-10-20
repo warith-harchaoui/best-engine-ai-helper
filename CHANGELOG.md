@@ -70,6 +70,28 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Fixed
 
+- **A brief saying it does not need schemas was ignored on the local path.**
+  `structured_output` is documented as a brief key — `resolve`'s docstring
+  lists it, the README's local example shows it — and `_resolve_cloud` reads
+  it as an override. `_resolve_local` never did.
+
+  The gate itself is right by default: the helper routes its own tasks through
+  a JSON schema, so a model that cannot honour Ollama structured output is
+  demoted out of auto-selection. But `resolve` builds an engine for a
+  *downstream consumer*, and one whose job needs no schema was saying so in
+  its brief and being overruled. Demonstrated: a brief with
+  `structured_output: false`, a catalog holding a non-schema model scoring 92
+  and a schema-capable one scoring 74, both fitting comfortably — the brief got
+  the 74.
+
+  `require_structured` now threads from the brief through `recommend` into
+  `rank`, `select` and `_pick_sufficient`, and the "will fail on schema-driven
+  tasks" warning no longer fires for a job that never wanted them. Only an
+  explicit `false` relaxes the gate: a brief that says nothing keeps today's
+  behaviour, because widening on behalf of a caller who did not ask is the
+  wrong direction. The engine file still reports the chosen model's real
+  capability, so nobody is misled about what it can do.
+
 - **Not holding a cloud key was logged as an error.** `osh.get_config` logs at
   ERROR before raising when a key is absent, and absent is the ordinary state
   for a provider you do not use — `_cloud_api_key`'s own contract is that `""`
@@ -133,6 +155,13 @@ All notable changes to best-engine-ai-helper are documented here.
   `--json` for a script. It never prints a key value, only whether one
   resolved — the point of storing `api_key_env` rather than the key is that
   the secret stays out of every report, and that holds here too.
+
+- **The three cloud brief keys that only the API docstring knew about.**
+  `vlm_model`, `base_url` and `api_key_env` are read by `resolve` and were
+  absent from the README's and LISEZMOI's brief sections, so the only way to
+  learn them was to read `engine.py`. Documented where the reader is told to
+  look, including the part that is not guessable: with `kind: both` and only
+  `model` pinned, the same model serves both slots.
 
 - **`settings.yaml.example` documents every provider the catalog ships.** It
   listed `MISTRAL_API_KEY` alone while the bundled catalog carries four
