@@ -250,18 +250,37 @@ def test_every_candidate_is_sized_once_rather_than_once_per_combination(monkeypa
     assert calls["n"] <= 2 * len(entries)
 
 
-def test_a_catalog_the_product_could_never_enumerate_still_answers() -> None:
-    """200 x 200 x 200 is 8 million combinations; the oracle cannot run this."""
-    import time
+def test_a_catalog_the_product_could_never_enumerate_still_answers(monkeypatch) -> None:
+    """200 x 200 x 200 is 8 million combinations; the oracle cannot run this.
+
+    Counted rather than timed. An earlier version of this test asserted
+    ``elapsed < 1.0``, passed in 0.25 s in isolation, and failed under the
+    pre-push gate, where the same work runs with coverage instrumentation on a
+    busy machine. A wall clock measures the machine as much as the code, and a
+    gate that fires wrongly is how people learn to reach for ``--no-verify``.
+
+    ``_Set`` is built exactly once per feasible complete set the search
+    reaches, so counting its construction counts the leaves visited — which is
+    the thing actually claimed, and it does not move with the load.
+    """
+    created = {"n": 0}
+    real = storage._Set
+
+    class _Counting(real):  # type: ignore[misc,valid-type]
+        __slots__ = ()
+
+        def __init__(self, *args: object) -> None:
+            created["n"] += 1
+            super().__init__(*args)
+
+    monkeypatch.setattr(storage, "_Set", _Counting)
 
     entries = [
         {"id": f"{kind}-{j}", "kind": kind, "ram_gb": 0.5 + j * 0.37}
         for kind in ("llm", "vlm", "embed")
         for j in range(200)
     ]
-    started = time.perf_counter()
     rows = storage.resident_sets(entries, budget_gb=120.0, limit=5)
-    elapsed = time.perf_counter() - started
 
     assert len(rows) == 5
     assert all(r["total_ram_gb"] <= 120.0 for r in rows)
@@ -269,9 +288,10 @@ def test_a_catalog_the_product_could_never_enumerate_still_answers() -> None:
     assert [r["total_ram_gb"] for r in rows] == sorted(
         (r["total_ram_gb"] for r in rows), reverse=True
     )
-    # Generous on purpose: the product would need minutes, so any threshold
-    # under a second separates the two without being sensitive to a busy machine.
-    assert elapsed < 1.0
+    # 8,000,000 combinations exist. Anything of that order means the bounds
+    # stopped working; the generous ceiling is deliberate, since the claim is
+    # "not exponential", not a particular node count.
+    assert created["n"] < 10_000
 
 
 def test_a_limit_of_zero_or_less_asks_for_nothing() -> None:
