@@ -36,6 +36,42 @@ All notable changes to best-engine-ai-helper are documented here.
   anywhere for the measured demotion — `min_tps` appeared in no test of
   `score.rank` at all, which is how a headline feature shipped switched off.
 
+- **A catalog entry with no size at all fitted every machine, and was
+  recommended on the ones where nothing real fitted.** `model_footprint_gb`
+  returned `0.0` for an entry carrying neither `ram_gb` nor `size_b`, and
+  `0.0 GB` does not mean "unknown" — it means "fits anywhere". The entry
+  therefore passed the fit test, won the leanest-candidate tiebreak in
+  `_pick_sufficient`, won `select`'s "smallest model" fallback, and won all
+  three of the equivalent steps in embedder resolution. On a 4 GB machine,
+  with a real 8B model that genuinely did not fit, the phantom was the
+  recommendation.
+
+  Reachable from the shipped sources, not only in theory: ApXML does not carry
+  a Q4 VRAM figure for every model, `normalize_apxml_spec` skipped only
+  records without a slug, and a `None` went straight into the cache.
+
+  This is the defect family `scripts/measure_absent_vs_zero.py` was written to
+  hunt — and the line, `score.py:172`, was **on its survivor list**. The hand
+  review cleared all thirteen survivors on the grounds that "the fallback
+  equals the value it would swallow". For this one it does not, which is worth
+  recording: the detector did its job, and the judgement call after it is
+  where the defect got through.
+
+  Fixed at the root rather than at the four call sites. An entry that cannot
+  be sized now reports an infinite footprint, so it fails every fit test by
+  construction; `is_sizeable` and `sizeable_only` name the rule, and `rank`,
+  `select` and embedder resolution drop such entries **with a warning** rather
+  than silently, since a pool that quietly shrinks reads as one that was fully
+  considered. `normalize_apxml_spec` now skips a sizeless record at ingest,
+  which is the rule `ollama_library.to_specs` already stated and already
+  followed: an entry whose size is unknown cannot be sized.
+
+  `model_footprint_gb` had no test of any kind before this, including none for
+  the FP16 sizing the README advertises as what keeps a vLLM pick realistic on
+  the real GPU. It has eight now. An existing test caught the one regression
+  the change caused — an unsizeable entry briefly estimated at a confident
+  `0.0 tok/s`, where the honest answer is no estimate at all.
+
 - **Every surface printed a measurement as though it were an estimate.** The
   candidate row carries `tps_basis` now (`"measured"` / `"estimated"` /
   `None`), the engine file records it alongside `est_tokens_per_s`, and the

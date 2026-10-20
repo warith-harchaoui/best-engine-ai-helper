@@ -427,6 +427,15 @@ def normalize_apxml_spec(spec: dict[str, Any], fetched_at: str) -> dict[str, Any
         return None
 
     ram_gb = spec.get("ram_gb")
+    if ram_gb is None and spec.get("size_b") is None:
+        # ApXML does not carry a Q4 VRAM figure for every model, and a record
+        # with neither that nor a parameter count cannot be sized against this
+        # machine's memory -- which is the catalog's entire job. Skipped rather
+        # than stored with a null, exactly as `ollama_library.to_specs` skips a
+        # family that lists no sizes.
+        osh.debug(f"ApXML spec with no size information, skipping:\n\t{slug!r}")
+        return None
+
     # Invert estimate_ram: disk ≈ ram / overhead. Estimate only, like the seed.
     disk_gb = (
         round(float(ram_gb) / _QUANT_OVERHEAD[_REFRESH_QUANT], 2) if ram_gb is not None else None

@@ -42,6 +42,7 @@ from . import catalog as _catalog
 from . import detect as _detect
 from . import engine as _engine
 from .score import effective_budget as _effective_budget
+from .score import sizeable_only as _sizeable_only
 
 # Root of the installed package; usages.yaml sits next to models.yaml.
 _PACKAGE_ROOT = Path(__file__).resolve().parent.parent
@@ -441,6 +442,11 @@ def _resolve_embedding(
         def _score(e: dict[str, Any]) -> float:
             return float((e.get("benchmarks") or {}).get(_EMBED_SCORE_KEY) or 0.0)
 
+        # An embedder with no ram_gb used to be sized 0.0, which made it fit
+        # every budget, win the lighter-is-better tiebreak, and win the
+        # "smallest embedder" fallback as well -- three wins on a number that
+        # meant "unknown".
+        embedders = _sizeable_only(embedders, where="embedder resolution")
         fitting = [e for e in embedders if float(e.get("ram_gb", 0) or 0) <= budget]
         if fitting:
             # Best retrieval quality that fits; ties broken toward the lighter one.

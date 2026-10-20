@@ -18,6 +18,7 @@ Warith Harchaoui <warithmetics@deraison.ai>
 
 from __future__ import annotations
 
+import math
 from typing import Any, Literal
 
 import os_helper as osh
@@ -170,9 +171,23 @@ def model_footprint_gb(entry: dict[str, Any], backend: str = "ollama") -> float:
         Estimated peak memory in GB.
     """
     ram = float(entry.get("ram_gb", 0) or 0)
-    if backend != "vllm":
-        return ram
     size_b = float(entry.get("size_b", 0) or 0)
+
+    # An entry carrying neither figure cannot be sized, and saying so is the
+    # only safe answer. It used to return 0.0 -- absent read as a legitimate
+    # zero, the defect family `scripts/measure_absent_vs_zero.py` exists to
+    # hunt, and this very line was on its survivor list. The hand review
+    # cleared it on the grounds that "the fallback equals the value it would
+    # swallow"; here it does not. Zero GB does not mean "unknown", it means
+    # "fits on any machine", so a catalog entry with no size at all beat every
+    # real model on fit AND on leanness, and was recommended on a machine where
+    # nothing real fit. `ollama_library.to_specs` already states the rule this
+    # restores: an entry whose size is unknown cannot be sized.
+    if ram <= 0 and size_b <= 0:
+        return math.inf
+
+    if backend != "vllm":
+        return ram if ram > 0 else math.inf
     if size_b <= 0:
         # No parameter count to size FP16 weights from: fall back to the Ollama
         # figure rather than pretend it is free.
@@ -181,6 +196,68 @@ def model_footprint_gb(entry: dict[str, Any], backend: str = "ollama") -> float:
     # Never report a vLLM footprint smaller than the Q4 estimate — FP16 is always
     # heavier, so the Ollama number is a hard floor.
     return round(max(fp16, ram), 3)
+
+
+def is_sizeable(entry: dict[str, Any], backend: str = "ollama") -> bool:
+    """
+    True when `entry` carries enough information to be sized on `backend`.
+
+    A model that cannot be sized is not a candidate: the whole job here is
+    comparing a footprint against this machine's memory, and an entry that
+    cannot supply one has nothing to compare. Separate from
+    :func:`model_footprint_gb` so the call sites that *filter* read as filters
+    rather than as float comparisons against infinity.
+
+    Parameters
+    ----------
+    entry : dict[str, Any]
+        Catalog entry.
+    backend : {'ollama', 'vllm'}
+        Serving backend the footprint would be estimated for.
+
+    Returns
+    -------
+    bool
+        False when neither ``ram_gb`` nor ``size_b`` yields a usable footprint.
+    """
+    return math.isfinite(model_footprint_gb(entry, backend))
+
+
+def sizeable_only(
+    entries: list[dict[str, Any]], backend: str = "ollama", where: str = "selection"
+) -> list[dict[str, Any]]:
+    """
+    Drop entries that cannot be sized, saying how many and from where.
+
+    Announced rather than silent, by the same rule the backend gate follows: a
+    pool quietly shrinking is how a caller concludes their catalog was
+    considered when half of it was skipped.
+
+    Parameters
+    ----------
+    entries : list of dict
+        Candidate catalog entries.
+    backend : {'ollama', 'vllm'}
+        Serving backend the footprint would be estimated for.
+    where : str
+        Caller name, used in the warning so the message names the decision the
+        entries were dropped from.
+
+    Returns
+    -------
+    list of dict
+        Only the entries that can be sized.
+    """
+    kept = [e for e in entries if is_sizeable(e, backend)]
+    dropped = len(entries) - len(kept)
+    if dropped:
+        subject = "entry carries" if dropped == 1 else "entries carry"
+        osh.warning(
+            f"{dropped} catalog {subject} neither ram_gb nor size_b and cannot "
+            f"be sized; excluded from {where}. An entry with no size would "
+            "otherwise fit every machine."
+        )
+    return kept
 
 
 def effective_budget(
@@ -328,7 +405,11 @@ def estimated_tokens_per_second(
     if not bandwidth_gbs:
         return None
     ram = model_footprint_gb(entry, backend)
-    if ram <= 0:
+    # `<= 0` no longer covers it: an entry that cannot be sized now reports an
+    # infinite footprint, and dividing by that yields a confident 0.0 tok/s
+    # where the honest answer is "no estimate". Same distinction as the
+    # footprint itself — unknown is not a very small number.
+    if ram <= 0 or not math.isfinite(ram):
         return None
     efficiency = _DECODE_EFFICIENCY_BY_BACKEND.get(backend, _DECODE_EFFICIENCY)
     raw = bandwidth_gbs / ram * efficiency
@@ -490,6 +571,14 @@ def select(
     if not candidates:
         candidates = list(catalog)
 
+    # Before anything is compared against a budget: an entry with no size is
+    # not a smaller model, it is an unknown one. Left in, it won both the fit
+    # test and the `smallest` fallback below.
+    candidates = sizeable_only(candidates, backend, where="select()")
+    if not candidates:
+        osh.error("No catalog entry carries a usable size; cannot select a model.")
+        raise ValueError("No catalog entry carries a usable size; cannot select a model.")
+
     budget = effective_budget(hw, headroom=headroom, load=load)
 
     # Keep only models whose backend-specific footprint fits the safety budget
@@ -601,6 +690,12 @@ def rank(
 
     if not candidates:
         candidates = list(catalog)
+
+    # Same rule as `select`, and the reason it has to be here too: `recommend`
+    # reaches `_pick_sufficient` through this function, and that pick takes the
+    # LEANEST candidate within a few benchmark points -- which an unsizeable
+    # entry wins outright at a reported 0.0 GB.
+    candidates = sizeable_only(candidates, backend, where="ranking")
 
     budget = effective_budget(hw, headroom=headroom, load=load)
 

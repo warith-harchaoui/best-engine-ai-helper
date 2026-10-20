@@ -10,6 +10,8 @@ regression is easy to read.
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from best_engine_ai_helper import score
@@ -153,3 +155,82 @@ def test_select_and_rank() -> None:
     # No bandwidth or zero size -> not estimable.
     assert score.estimated_tokens_per_second({"ram_gb": 8.0}, None) is None
     assert score.estimated_tokens_per_second({"ram_gb": 0}, 400.0) is None
+
+
+# --- An entry with no size is unknown, not weightless -----------------------
+#
+# `model_footprint_gb` had no test of any kind, including for the vLLM sizing
+# the README advertises as what keeps a vLLM pick realistic. It also returned
+# 0.0 for an entry carrying neither `ram_gb` nor `size_b`, which made such an
+# entry fit every machine and win every leanness tiebreak. The line was on
+# `scripts/measure_absent_vs_zero.py`'s survivor list and the hand review
+# cleared it; these tests are what the review should have been.
+
+_SIZELESS = {"id": "ghost", "kind": "llm", "benchmarks": {"general": 70}}
+_REAL = {
+    "id": "real-8b",
+    "kind": "llm",
+    "ram_gb": 5.6,
+    "size_b": 8.0,
+    "benchmarks": {"general": 74},
+}
+
+
+def test_vllm_is_sized_against_fp16_not_the_q4_figure() -> None:
+    """The guard the README names: a vLLM pick must be sized heavier."""
+    q4 = score.model_footprint_gb(_REAL, "ollama")
+    vllm = score.model_footprint_gb(_REAL, "vllm")
+    assert q4 == 5.6
+    # 8B x 2 bytes/param x 1.15 overhead = 18.4 GB, ~3x the Q4 estimate.
+    assert vllm == pytest.approx(18.4)
+    assert vllm > q4
+
+    # No parameter count: fall back to the Q4 figure rather than invent one.
+    assert score.model_footprint_gb({"ram_gb": 5.0}, "vllm") == 5.0
+    # FP16 is always heavier, so the Q4 number is a hard floor.
+    assert score.model_footprint_gb({"ram_gb": 40.0, "size_b": 1.0}, "vllm") == 40.0
+    # An unknown backend gets the conservative catalog figure.
+    assert score.model_footprint_gb(_REAL, "something-else") == 5.6
+
+
+def test_an_unsizeable_entry_reports_infinity_rather_than_zero() -> None:
+    import math
+
+    assert math.isinf(score.model_footprint_gb(_SIZELESS, "ollama"))
+    assert math.isinf(score.model_footprint_gb(_SIZELESS, "vllm"))
+    assert score.is_sizeable(_SIZELESS) is False
+    assert score.is_sizeable(_REAL) is True
+
+
+def test_unsizeable_entries_are_dropped_from_rank_and_select_and_announced(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Dropped, and said out loud — a pool that shrinks silently reads as covered."""
+    hw = {"unified_gb": 96.0, "vram_gb": None, "ram_gb": 96.0}
+
+    with caplog.at_level(logging.WARNING, logger="os_helper"):
+        ranked = score.rank(hw, [_REAL, _SIZELESS], kind="llm")
+    assert [e["id"] for e in ranked] == ["real-8b"]
+    assert any("cannot be sized" in r.message for r in caplog.records)
+    caplog.clear()
+
+    assert score.select(hw, [_REAL, _SIZELESS], kind="llm")["id"] == "real-8b"
+
+    # Nothing sizeable at all is an error, not a silent empty answer.
+    with pytest.raises(ValueError, match="usable size"):
+        score.select(hw, [_SIZELESS], kind="llm")
+
+
+def test_a_sizeless_entry_no_longer_beats_a_real_one_on_a_small_machine() -> None:
+    """The end-to-end shape of the defect: it won precisely where it hurt.
+
+    On a machine too small for the real model, the entry with no size at all
+    was reported as fitting and was recommended.
+    """
+    from best_engine_ai_helper import recommend as _recommend
+
+    tiny = {"unified_gb": 4.0, "vram_gb": None, "ram_gb": 4.0}
+    block = _recommend.recommend(tiny, [_REAL, _SIZELESS], task="write code")
+    rows = block["recommendations"]["llm"]["candidates"]
+    assert [r["id"] for r in rows] == ["real-8b"]
+    assert block["recommendations"]["llm"]["chosen"]["id"] == "real-8b"
