@@ -87,11 +87,11 @@ affirmation sur la couverture et c'est la raison d'être de ce projet.
 ⭐⭐ jusqu'au 2026-10-20 puis la raison qu'elle en donnait était fausse. Elle accusait la
 discipline de provenance : vingt entrées maintenues à la main, chacune portant un `source:`
 puis un `fetched_at`, parce qu'une entrée sans provenance vaut moins que pas d'entrée. Cela
-sonnait comme un arbitrage assumé. C'était un mauvais diagnostic — `catalog update --ollama`
+sonnait comme un arbitrage assumé. C'était un mauvais diagnostic. `catalog update --ollama`
 atteint désormais **420 tags tirables** en une seule requête — la bibliothèque officielle
-liste 257 familles, 221 d'entre elles annoncent les tailles qu'elles livrent puis ce sont
-ces tailles qui font un tag — et chacune de ces entrées porte le même `source:` puis le
-même `fetched_at` que le catalogue de base. Ce n'est jamais la provenance qui a maintenu le
+liste 257 familles, dont 221 annoncent les tailles qu'elles livrent ; une famille plus une
+taille fait un tag. Chacune de ces entrées porte le même `source:` puis le même
+`fetched_at` que le catalogue de base. Ce n'est jamais la provenance qui a maintenu le
 catalogue à vingt : c'est une discordance de nommage. ApXML nomme les modèles d'après le
 slug du papier, qu'`ollama pull` ne sait pas résoudre, si bien que la seule source
 automatique disponible pouvait ajouter des centaines d'entrées sans élargir d'un pouce ce

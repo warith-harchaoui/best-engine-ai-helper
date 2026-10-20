@@ -144,6 +144,41 @@ All notable changes to best-engine-ai-helper are documented here.
   emptied by the gate warns rather than raising, by the same rule as an empty
   catalog.
 
+- **The landscape scored a limitation this release had already removed.**
+  `LANDSCAPE.md` and `PAYSAGE.md` rated catalog breadth ⭐⭐ and explained it
+  with provenance discipline: twenty hand-maintained entries, each carrying a
+  `source:` and a `fetched_at`, because an entry without provenance is worth
+  less than no entry. The explanation was a misdiagnosis, and `catalog update
+  --ollama` — added in this same release, six hours after those pages were
+  written — proved it: 420 pullable tags in one request, every one of them
+  carrying the same `source:` and `fetched_at` as the seed. Provenance was
+  never what held the catalog at twenty; ApXML naming models by the paper's
+  slug, which `ollama pull` cannot resolve, was.
+
+  Re-scored to ⭐⭐⭐⭐ against `llmfit`'s ⭐⭐⭐⭐⭐, with the limit that does
+  still hold stated instead: those 420 entries carry null benchmarks, so they
+  rank below every scored model, and what the tool can **rank on quality** is
+  still the twenty curated entries. ⭐⭐⭐⭐ rather than ⭐⭐⭐⭐⭐ because
+  `llmfit` ships its hundreds in the box, where here they are one command and
+  one request away. The column is still one this project loses, which is the
+  point of keeping it on the map.
+
+  Both maps were regenerated from the corrected tables, so the figures match
+  what the tables say; `assets/landscape.yaml` and `assets/paysage.yaml` are
+  now committed alongside them, which makes the coordinates and axis loadings
+  quoted in the prose checkable rather than merely quoted. `standpoint` names
+  the axis poles with a model, so the names moved between runs — the pages now
+  print the names *and* the loadings underneath them, and say which of the two
+  is stable.
+
+  The pattern is the one this release keeps running into: a page that explains
+  a weakness asserts a *cause*, and a cause goes stale exactly like a number
+  does. This one outlived the limitation it described by a day.
+
+- French prose across `LISEZMOI.md`, `PAYSAGE.md` and `EXEMPLES.md` no longer
+  puts a comma before `et` or `ou`. Thirty-two occurrences, each rewritten
+  rather than stripped where dropping the comma alone would have read badly.
+
 ### Added
 
 - `scripts/measure_absent_vs_zero.py`: counts how often a legitimate value

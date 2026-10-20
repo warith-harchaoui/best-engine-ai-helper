@@ -81,10 +81,10 @@ this project is for.
 2026-10-20, and the reason it gave was wrong. It blamed provenance discipline: twenty
 hand-maintained entries, every one carrying a `source:` and a `fetched_at`, because an
 entry with no provenance is worth less than no entry. That sounded like a principled
-trade-off. It was a misdiagnosis — `catalog update --ollama` now reaches **420 pullable
-tags** in a single request — the official library lists 257 families, 221 of them declare
-the sizes they ship, and those sizes are what makes a tag — and every one of those entries
-carries the same `source:` and `fetched_at` as the seed. Provenance was never
+trade-off. It was a misdiagnosis. `catalog update --ollama` now reaches **420
+pullable tags** in a single request — the official library lists 257 families, 221 of
+which declare the sizes they ship, and a family plus a size is a pull tag. Every one of
+those entries carries the same `source:` and `fetched_at` as the seed. Provenance was never
 what held the catalog at twenty; a naming mismatch was. ApXML names models by the paper's
 slug, which `ollama pull` cannot resolve, so the one automatic source available could add
 hundreds of entries without widening what could actually be served.
