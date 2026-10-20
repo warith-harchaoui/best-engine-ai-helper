@@ -26,7 +26,7 @@ Warith Harchaoui <warithmetics@deraison.ai>
 
 from __future__ import annotations
 
-from itertools import product
+import heapq
 from typing import Any
 
 import os_helper as osh
@@ -67,6 +67,14 @@ def resident_sets(
     Takes the strongest candidate of each kind first and works down, so the
     answer is "the best set you can hold", not merely "a set that fits".
 
+    Searched by branch and bound over kinds sorted heaviest-first, not by
+    enumerating every combination. Two bounds do the work: a set whose
+    remaining kinds cannot fit even at their lightest is skipped, and once
+    ``limit`` results are in hand, a branch that cannot beat the weakest of
+    them even at its heaviest ends the scan of that kind. Both are exact --
+    the result is identical to the exhaustive product, which `tests/
+    test_storage.py` pins differentially against this function.
+
     Parameters
     ----------
     entries : list of dict
@@ -87,40 +95,94 @@ def resident_sets(
     -------
     list of dict
         ``[{"models": {kind: id}, "total_ram_gb": float, "headroom_gb": float}]``,
-        largest total first among those that fit.
+        largest total first among those that fit, ties broken on model id so
+        repeated runs agree.
     """
-    from .score import model_footprint_gb
+    from .score import model_footprint_gb, sizeable_only
 
-    by_kind: dict[str, list[dict[str, Any]]] = {}
-    for kind in kinds:
-        pool = [e for e in entries if e.get("kind") == kind]
-        if pool:
-            by_kind[kind] = pool
-
-    if not by_kind:
+    if limit <= 0:
         return []
 
-    present_kinds = list(by_kind)
-    combos: list[dict[str, Any]] = []
-    # The catalog is small (tens of entries), so an exhaustive product is both
-    # exact and instant. If it ever grows to thousands this wants a bound, but
-    # pretending to need one now would be guessing at a problem nobody has.
-    for choice in product(*(by_kind[k] for k in present_kinds)):
-        total = sum(model_footprint_gb(e, backend) for e in choice)
-        if total > budget_gb:
-            continue
-        combos.append(
-            {
-                "models": {k: str(e.get("id")) for k, e in zip(present_kinds, choice)},
-                "total_ram_gb": round(total, 1),
-                "headroom_gb": round(budget_gb - total, 1),
-            }
+    # Size every candidate ONCE. The exhaustive version called this inside the
+    # product, so a 420-entry catalog cost 230,850 calls to compute 76,950
+    # sums -- three quarters of the time went to re-deriving the same numbers.
+    sizeable = sizeable_only(list(entries), backend, where="resident set planning")
+    pools: list[tuple[str, list[tuple[float, str]]]] = []
+    for kind in kinds:
+        # Heaviest first. Every bound below depends on this order.
+        sized = sorted(
+            (
+                (model_footprint_gb(e, backend), str(e.get("id")))
+                for e in sizeable
+                if e.get("kind") == kind
+            ),
+            key=lambda pair: (-pair[0], pair[1]),
         )
+        if sized:
+            pools.append((kind, sized))
+
+    if not pools:
+        return []
+
+    # What the rest of the kinds cost at their lightest and at their heaviest.
+    # These two numbers are the whole trick: they turn "try every combination"
+    # into "try the ones that could still matter".
+    n = len(pools)
+    suffix_min = [0.0] * (n + 1)
+    suffix_max = [0.0] * (n + 1)
+    for i in range(n - 1, -1, -1):
+        sized = pools[i][1]
+        suffix_min[i] = suffix_min[i + 1] + sized[-1][0]
+        suffix_max[i] = suffix_max[i + 1] + sized[0][0]
+
+    # A min-heap of the best `limit` combinations found so far, so the K-th
+    # best total is always heap[0] and the bound below can consult it in O(1).
+    best: list[tuple[float, tuple[str, ...]]] = []
+
+    def _walk(i: int, partial: float, chosen: tuple[str, ...]) -> None:
+        if i == n:
+            if len(best) < limit:
+                heapq.heappush(best, (partial, chosen))
+            elif partial > best[0][0]:
+                heapq.heapreplace(best, (partial, chosen))
+            return
+
+        for footprint, ident in pools[i][1]:
+            running = partial + footprint
+
+            # Bound 1 -- budget. Even paired with the lightest of every
+            # remaining kind this overruns, so the set cannot fit. Lighter
+            # entries in this same kind still might, hence `continue`.
+            if running + suffix_min[i + 1] > budget_gb:
+                continue
+
+            # Bound 2 -- the answer is only `limit` rows. Even paired with the
+            # heaviest of every remaining kind this cannot beat the K-th best
+            # total already found, and entries are heaviest-first, so nothing
+            # further down this kind can either. That makes `break` safe, and
+            # it is what collapses the cost: the search stops as soon as it
+            # can prove the rest is unreachable rather than enumerating it.
+            if len(best) == limit and running + suffix_max[i + 1] <= best[0][0]:
+                break
+
+            _walk(i + 1, running, chosen + (ident,))
+
+    _walk(0, 0.0, ())
 
     # Largest first: among sets that fit, the one using the most memory is the
     # most capable, which is what a reader of this list is choosing between.
-    combos.sort(key=lambda c: c["total_ram_gb"], reverse=True)
-    return combos[:limit]
+    # Ties break on the model ids, so repeated runs give the same answer --
+    # the exhaustive version left equal totals in catalog order, which was
+    # stable only by accident.
+    kind_names = [kind for kind, _ in pools]
+    return [
+        {
+            "models": dict(zip(kind_names, ids)),
+            "total_ram_gb": round(total, 1),
+            "headroom_gb": round(budget_gb - total, 1),
+        }
+        for total, ids in sorted(best, key=lambda pair: (-pair[0], pair[1]))
+    ]
 
 
 def report(

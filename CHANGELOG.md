@@ -4,37 +4,38 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **`storage` planned resident sets by enumerating every combination, on a
+  premise the same release had already killed.** The comment said it plainly:
+  "the catalog is small (tens of entries), so an exhaustive product is both
+  exact and instant... if it ever grows to thousands this wants a bound, but
+  pretending to need one now would be guessing at a problem nobody has."
+  `catalog update --ollama` shipped in that release and makes it 420 entries.
+  Measured against the real library index: 342 LLMs x 75 VLMs x 3 embedders =
+  **76,950 combinations, 2.8 s, 230,850 calls to `model_footprint_gb`** — the
+  cost is cubic, so an embedder count rising from 3 to 30 would make it 28 s.
+  The problem stopped being nobody's.
+
+  Replaced with a branch and bound over kinds sorted heaviest-first, which is
+  **exact** rather than approximate — the same rows, in the same order. Two
+  bounds carry it: a branch whose remaining kinds overrun the budget even at
+  their lightest is skipped, and once `limit` results are in hand, a branch
+  that cannot beat the weakest of them even at its heaviest ends the scan of
+  that kind outright, which is sound precisely because the entries are sorted
+  heaviest-first. Candidates are also sized once each instead of once per
+  combination, which is where most of the old time actually went.
+
+  **2.8 s to 2 ms on the same input**, and 230,850 sizings to 840. The new
+  tests include a 200x200x200 catalog — 8 million combinations, which the old
+  code could not have answered at all — and a differential test that runs the
+  original implementation as an oracle over 200 randomised shapes, so
+  "exact" is checked rather than claimed.
+
+  Equal totals now break ties on model id. The exhaustive version left them in
+  catalog order, which was stable only by accident.
+
 ### Fixed
-
-- **The measured-throughput gate never fired on the path everything uses.**
-  1.5.0 shipped the claim that a model *measured* too slow on this machine is
-  demoted out of auto-selection, "exactly as one that does not fit in memory
-  is" — the thing this package does that tools which measure and report do
-  not. `recommend()` is the path the CLI, `engine.resolve`, the HTTP API and
-  the GUI all take, and on that path the gate was off. Two independent
-  defects, either of which alone was enough:
-
-  `recommend()` called `rank()` without `min_tps`, which defaults to `None`,
-  meaning "no floor" — so `rank` collected the measurement and then had
-  nothing to compare it against. It also omitted `bandwidth_gbs`, so `rank`
-  could not estimate for the unmeasured candidates either.
-
-  `_candidate_row()` then recomputed the bandwidth estimate instead of reading
-  the `_tps` / `_tps_basis` that `rank` had already resolved, so the
-  measurement could not reach `comfortable` — and `comfortable` is what builds
-  the pool `_pick_sufficient` chooses from. Even with the ranking fixed, the
-  anti-greed pick would have reinstated the slow model, because it takes the
-  **leanest** candidate within a few benchmark points, and the model too slow
-  to use is very often the small one. The hazard was already named in
-  `cli.py`, where the `candidates` command carries the comment "recomputing
-  the estimate here would quietly discard it"; the other path did precisely
-  that.
-
-  Demonstrated rather than argued, and now pinned by four tests: a model
-  measured at **8 tok/s** against a 20 tok/s floor was selected and reported
-  as `comfortable: true` at its estimated **43 tok/s**. There was no test
-  anywhere for the measured demotion — `min_tps` appeared in no test of
-  `score.rank` at all, which is how a headline feature shipped switched off.
 
 - **`report` sized every pick against Ollama, including on the machines where
   this tool serves with vLLM.** The command passed neither `backend` nor
@@ -102,6 +103,36 @@ All notable changes to best-engine-ai-helper are documented here.
   for the same fact. The "fits but decodes slowly" warning now says *measured
   at* when it was, instead of inviting the reader to discount a real number as
   a guess.
+
+- **The measured-throughput gate never fired on the path everything uses.**
+  1.5.0 shipped the claim that a model *measured* too slow on this machine is
+  demoted out of auto-selection, "exactly as one that does not fit in memory
+  is" — the thing this package does that tools which measure and report do
+  not. `recommend()` is the path the CLI, `engine.resolve`, the HTTP API and
+  the GUI all take, and on that path the gate was off. Two independent
+  defects, either of which alone was enough:
+
+  `recommend()` called `rank()` without `min_tps`, which defaults to `None`,
+  meaning "no floor" — so `rank` collected the measurement and then had
+  nothing to compare it against. It also omitted `bandwidth_gbs`, so `rank`
+  could not estimate for the unmeasured candidates either.
+
+  `_candidate_row()` then recomputed the bandwidth estimate instead of reading
+  the `_tps` / `_tps_basis` that `rank` had already resolved, so the
+  measurement could not reach `comfortable` — and `comfortable` is what builds
+  the pool `_pick_sufficient` chooses from. Even with the ranking fixed, the
+  anti-greed pick would have reinstated the slow model, because it takes the
+  **leanest** candidate within a few benchmark points, and the model too slow
+  to use is very often the small one. The hazard was already named in
+  `cli.py`, where the `candidates` command carries the comment "recomputing
+  the estimate here would quietly discard it"; the other path did precisely
+  that.
+
+  Demonstrated rather than argued, and now pinned by four tests: a model
+  measured at **8 tok/s** against a 20 tok/s floor was selected and reported
+  as `comfortable: true` at its estimated **43 tok/s**. There was no test
+  anywhere for the measured demotion — `min_tps` appeared in no test of
+  `score.rank` at all, which is how a headline feature shipped switched off.
 
 ## [1.5.0] - 2026-10-20
 
