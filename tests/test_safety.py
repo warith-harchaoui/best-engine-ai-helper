@@ -301,3 +301,82 @@ def test_check_text_and_image_actions(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     unavailable = safety.check_image(b"img", direction="outbound", action="block", threshold=0.0)
     assert unavailable["flagged"] is False
+
+
+# ---------------------------------------------------------------------------
+# The policy constants have to be readable at call time, not at import time
+# ---------------------------------------------------------------------------
+#
+# The module docstring tells the operator how to tighten the gate: reassign
+# `DEFAULT_ACTION = "block"` once the classifier has earned trust on real
+# traffic. That instruction did nothing. `action: Action = DEFAULT_ACTION`
+# binds the value once, when the module is imported, so a later reassignment
+# never reached the check — the text was scanned, flagged, logged, and let
+# through. A control that is documented, used, and inert is worse than one
+# that does not exist, since the absence would at least be noticed.
+
+
+def test_reassigning_the_default_action_actually_blocks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        safety, "scan_text", lambda text: {"score": 0.99, "label": "unsafe", "backend": "stub"}
+    )
+
+    # Shipped policy is warn: flagged, logged, allowed through.
+    result = safety.check_text("whatever", direction="outbound")
+    assert result["flagged"] is True
+    assert result["text"] == "whatever"
+
+    # The documented way to raise the bar, which used to be a no-op.
+    monkeypatch.setattr(safety, "DEFAULT_ACTION", "block")
+    with pytest.raises(safety.SafetyViolation):
+        safety.check_text("whatever", direction="outbound")
+
+    monkeypatch.setattr(safety, "DEFAULT_ACTION", "redact")
+    assert safety.check_text("whatever", direction="outbound")["text"] != "whatever"
+
+
+def test_reassigning_the_default_threshold_moves_the_bar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        safety, "scan_text", lambda text: {"score": 0.5, "label": "unsafe", "backend": "stub"}
+    )
+
+    # 0.5 is under the shipped 0.8 floor.
+    assert safety.check_text("whatever", direction="outbound")["flagged"] is False
+    monkeypatch.setattr(safety, "DEFAULT_THRESHOLD", 0.4)
+    assert safety.check_text("whatever", direction="outbound")["flagged"] is True
+
+
+def test_an_explicit_argument_still_beats_the_module_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late binding must not take the call site's say away from it."""
+    monkeypatch.setattr(
+        safety, "scan_text", lambda text: {"score": 0.99, "label": "unsafe", "backend": "stub"}
+    )
+    monkeypatch.setattr(safety, "DEFAULT_ACTION", "block")
+
+    # Asked for warn explicitly: no exception, despite the module default.
+    assert safety.check_text("whatever", direction="outbound", action="warn")["flagged"] is True
+    # And an explicit threshold overrides a reassigned one.
+    monkeypatch.setattr(safety, "DEFAULT_THRESHOLD", 0.1)
+    assert (
+        safety.check_text("whatever", direction="outbound", action="warn", threshold=1.0)["flagged"]
+        is False
+    )
+
+
+def test_the_image_check_reads_the_constants_at_call_time_too(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        safety, "scan_image", lambda data: {"score": 0.99, "label": "nsfw", "backend": "stub"}
+    )
+    assert safety.check_image(b"x", direction="outbound")["flagged"] is True
+
+    monkeypatch.setattr(safety, "DEFAULT_ACTION", "block")
+    with pytest.raises(safety.SafetyViolation):
+        safety.check_image(b"x", direction="outbound")

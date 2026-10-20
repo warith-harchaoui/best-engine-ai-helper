@@ -95,8 +95,9 @@ outbound prompt/images and the inbound response.
 Default policy is deliberately ``warn``, not ``block``: this is a new
 feature with no track record on real traffic yet, and a false positive that
 silently blocks a legitimate cloud call is a worse failure mode than a
-logged warning. Raise the bar (``DEFAULT_ACTION = "block"``) once you trust
-it on your traffic.
+logged warning. Raise the bar by reassigning ``DEFAULT_ACTION = "block"``
+once you trust it on your traffic: both checks read these two constants at
+call time, so the change applies to every later call without re-importing.
 
 Author
 ------
@@ -389,8 +390,8 @@ def check_text(
     text: str,
     *,
     direction: str,
-    action: Action = DEFAULT_ACTION,
-    threshold: float = DEFAULT_THRESHOLD,
+    action: Action | None = None,
+    threshold: float | None = None,
 ) -> dict[str, Any]:
     """
     Scan text and enforce ``action`` when the score meets ``threshold``.
@@ -405,14 +406,17 @@ def check_text(
         Text to scan (an outbound prompt or an inbound response).
     direction : str
         ``"outbound"`` or ``"inbound"`` — logged for the audit trail only.
-    action : {'block', 'redact', 'warn'}
-        What to do when flagged. ``block`` raises :class:`SafetyViolation`.
+    action : {'block', 'redact', 'warn'} or None
+        What to do when flagged. ``None`` reads :data:`DEFAULT_ACTION` **at
+        call time**, so reassigning that constant takes effect immediately.
+        ``block`` raises :class:`SafetyViolation`.
         ``redact`` returns a placeholder in the result's ``text`` field
         instead of the original — the caller must use that field, not the
         input, when this is set. ``warn`` logs only and passes the original
         text through unchanged.
-    threshold : float
-        Score at or above which the text is flagged, in [0, 1].
+    threshold : float or None
+        Score at or above which the text is flagged, in [0, 1]. ``None`` reads
+        :data:`DEFAULT_THRESHOLD` at call time.
 
     Returns
     -------
@@ -432,6 +436,17 @@ def check_text(
     >>> sorted(result)
     ['backend', 'flagged', 'label', 'score', 'text']
     """
+    # Resolved here, not in the signature. A default argument is evaluated
+    # once, when the module is imported, so `action: Action = DEFAULT_ACTION`
+    # froze the policy at import time -- and the only way this module offers
+    # to change that policy is to reassign the constant, which the module
+    # docstring invites you to do. Setting `safety.DEFAULT_ACTION = "block"`
+    # therefore did nothing at all: the text was scanned, flagged, logged, and
+    # let through. A control that is documented, used, and inert is worse than
+    # one that does not exist, because the absence would at least be noticed.
+    action = DEFAULT_ACTION if action is None else action
+    threshold = DEFAULT_THRESHOLD if threshold is None else threshold
+
     result = scan_text(text)
     flagged = result["score"] >= threshold
     out_text = text
@@ -453,8 +468,8 @@ def check_image(
     image_bytes: bytes,
     *,
     direction: str,
-    action: Action = DEFAULT_ACTION,
-    threshold: float = DEFAULT_THRESHOLD,
+    action: Action | None = None,
+    threshold: float | None = None,
 ) -> dict[str, Any]:
     """
     Scan an image and enforce ``action`` when the score meets ``threshold``.
@@ -493,6 +508,17 @@ def check_image(
     >>> result["flagged"]
     False
     """
+    # Resolved here, not in the signature. A default argument is evaluated
+    # once, when the module is imported, so `action: Action = DEFAULT_ACTION`
+    # froze the policy at import time -- and the only way this module offers
+    # to change that policy is to reassign the constant, which the module
+    # docstring invites you to do. Setting `safety.DEFAULT_ACTION = "block"`
+    # therefore did nothing at all: the text was scanned, flagged, logged, and
+    # let through. A control that is documented, used, and inert is worse than
+    # one that does not exist, because the absence would at least be noticed.
+    action = DEFAULT_ACTION if action is None else action
+    threshold = DEFAULT_THRESHOLD if threshold is None else threshold
+
     result = scan_image(image_bytes)
     flagged = result["score"] >= threshold and result["backend"] != "unavailable"
     if flagged:

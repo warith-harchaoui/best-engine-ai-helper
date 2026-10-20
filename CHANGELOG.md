@@ -70,6 +70,28 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Fixed
 
+- **The documented way to switch the safety gate from `warn` to `block` did
+  nothing.** `safety.py`'s module docstring tells the operator how to tighten
+  the policy once the classifier has earned trust: "Raise the bar
+  (`DEFAULT_ACTION = \"block\"`) once you trust it on your traffic."
+  `check_text` and `check_image` took `action: Action = DEFAULT_ACTION`, and a
+  default argument is evaluated **once, at import**. Reassigning the constant
+  afterwards therefore never reached either check. Demonstrated: with
+  `DEFAULT_ACTION = "block"` set and a text scoring 0.99, the call returned
+  `flagged: True`, logged the warning, and raised nothing. `DEFAULT_THRESHOLD`
+  was frozen the same way, so the bar could not be moved in either direction.
+
+  Both constants are now read inside the function body, with `None` meaning
+  "take the constant as it stands at call time". An explicit argument still
+  wins, so no call site changes behaviour. Four tests pin it, including that
+  the shipped `warn` policy still passes flagged text through — the point of
+  the default is that a false positive should not break a legitimate call.
+
+  Worth separating from the other entries here: this one is not a parameter
+  that went unwired between two layers, it is a **control that was documented,
+  reachable and inert**. That is the worse shape, because the absence of a
+  safety control gets noticed and the presence of a broken one does not.
+
 - **`report` sized every pick against Ollama, including on the machines where
   this tool serves with vLLM.** The command passed neither `backend` nor
   `installed` to `recommend()`, so it always took the defaults: Ollama Q4
