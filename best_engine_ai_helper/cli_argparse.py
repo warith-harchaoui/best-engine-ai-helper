@@ -861,6 +861,53 @@ def _handle_storage(ns: argparse.Namespace) -> int:
     return 0
 
 
+def _handle_providers(ns: argparse.Namespace) -> int:
+    """
+    Print which cloud providers are usable, and for the others, why not.
+
+    The answer already existed -- `cloud_catalog.provider_status`, served at
+    `/api/providers` -- but only through the GUI, so the surface most people
+    use could not ask the question.
+
+    Parameters
+    ----------
+    ns : argparse.Namespace
+        Parsed CLI arguments: `json`.
+
+    Returns
+    -------
+    int
+        Process exit code (always 0).
+    """
+    from . import cloud_catalog as _cc
+
+    rows = _cc.provider_status()
+    if ns.json:
+        _emit(json.dumps(rows, indent=2))
+        return 0
+
+    _emit(
+        _fmt_table(
+            [
+                {
+                    "provider": r["provider"],
+                    "key_env": r["key_env"],
+                    "usable": "yes" if r["available"] else "NO",
+                    "models": len(r["models"]),
+                    "why not": r["reason"][:60],
+                }
+                for r in rows
+            ],
+            ["provider", "key_env", "usable", "models", "why not"],
+        )
+    )
+    usable = sum(1 for r in rows if r["available"])
+    _emit(f"\n{usable} of {len(rows)} provider(s) usable.")
+    if usable < len(rows):
+        _emit("Set a key in settings.yaml, a .env file, the environment, or the keychain.")
+    return 0
+
+
 def _handle_doctor(ns: argparse.Namespace) -> int:
     """
     Compare what the engine file resolved against what the daemon serves.
@@ -1200,6 +1247,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Serving backend, so footprints are sized as they will load.",
     )
     p.set_defaults(func=_handle_storage)
+
+    p = sub.add_parser("providers", help="Which cloud providers are usable, and why not the rest.")
+    p.add_argument("--json", action="store_true", help="Emit the rows as JSON.")
+    p.set_defaults(func=_handle_providers)
 
     p = sub.add_parser("doctor", help="Compare what was resolved against what the daemon serves.")
     p.add_argument(

@@ -1037,6 +1037,47 @@ def storage_cmd(backend: str) -> None:
         click.echo(f"\n! {warning}", err=True)
 
 
+@main.command("providers")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Emit the rows as JSON.")
+def providers_cmd(as_json: bool) -> None:
+    """Which cloud providers are usable right now, and for the others, why not.
+
+    This package claims to route on the keys you actually hold, and that claim
+    is only worth something if you can see it being applied. The answer existed
+    -- `cloud_catalog.provider_status`, served at `/api/providers` -- but only
+    through the GUI, so the surface most people use could not ask the question.
+
+    Never prints a key value: only whether one resolved, and the NAME of the
+    variable it would come from.
+    """
+    from . import cloud_catalog as _cc
+
+    rows = _cc.provider_status()
+    if as_json:
+        click.echo(json.dumps(rows, indent=2))
+        return
+
+    click.echo(
+        _fmt_table(
+            [
+                {
+                    "provider": r["provider"],
+                    "key_env": r["key_env"],
+                    "usable": "yes" if r["available"] else "NO",
+                    "models": len(r["models"]),
+                    "why not": r["reason"][:60],
+                }
+                for r in rows
+            ],
+            ["provider", "key_env", "usable", "models", "why not"],
+        )
+    )
+    usable = sum(1 for r in rows if r["available"])
+    click.echo(f"\n{usable} of {len(rows)} provider(s) usable.")
+    if usable < len(rows):
+        click.echo("Set a key in settings.yaml, a .env file, the environment, or the keychain.")
+
+
 @main.command("doctor")
 @click.option(
     "--directory",

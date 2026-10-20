@@ -439,3 +439,53 @@ def test_report_prefers_a_model_already_on_disk(
     rows = json.loads(res.output)["recommendations"]["llm"]["candidates"]
     assert any(r["id"] == "qwen3:8b" and r["installed"] for r in rows)
     assert not any(r["installed"] for r in rows if r["id"] != "qwen3:8b")
+
+
+def test_providers_lists_every_provider_and_never_prints_a_key(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The routing claim is only worth something if you can see it applied.
+
+    `provider_status` existed and was served at `/api/providers`, but only the
+    GUI could ask: there was no CLI command, so the surface most people use
+    could not answer "why is this provider not being offered to me".
+    """
+    from best_engine_ai_helper import llm as _llm
+
+    monkeypatch.setattr(
+        _llm, "_cloud_api_key", lambda spec: "sk-secret" if "MISTRAL" in spec["api_key_env"] else ""
+    )
+
+    res = runner.invoke(main, ["providers"])
+    assert res.exit_code == 0
+    # Every shipped provider is accounted for, usable or not.
+    for provider in ("mistral", "openai", "anthropic", "gemini"):
+        assert provider in res.output
+    # The variable to set is named, which is what makes the row actionable.
+    assert "OPENAI_API_KEY" in res.output
+    # The key value itself never appears.
+    assert "sk-secret" not in res.output
+
+    as_json = runner.invoke(main, ["providers", "--json"])
+    assert as_json.exit_code == 0
+    rows = json.loads(as_json.output)
+    assert {r["provider"] for r in rows} >= {"mistral", "openai", "anthropic", "gemini"}
+    assert all("key_env" in r and "available" in r for r in rows)
+    assert "sk-secret" not in as_json.output
+
+
+def test_a_missing_cloud_key_is_not_an_error(
+    runner: CliRunner, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Not holding a key you do not use is the ordinary state, not a failure.
+
+    `osh.get_config` logs at ERROR before raising when a key is absent, so
+    `providers` printed one red line per unconfigured provider. A red that
+    lies costs the same credibility as a green that lies.
+    """
+    import logging
+
+    with caplog.at_level(logging.ERROR, logger="os_helper"):
+        res = runner.invoke(main, ["providers"])
+    assert res.exit_code == 0
+    assert not [r for r in caplog.records if "cloud API key" in r.message]

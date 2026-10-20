@@ -368,6 +368,7 @@ fonction déterministe du seul matériel, ce qui compte pour des rapports reprod
 | `resolve` | Transforme un brief d'usage commité en `llm.engine.yaml` propre à cette machine |
 | `doctor` | Compare ce que le fichier moteur a résolu avec ce que le démon sait servir |
 | `storage` | Planifie la capacité : ce qui tient sur le disque, puis ce qui tient en mémoire ensemble |
+| `providers` | Quels fournisseurs cloud sont utilisables, puis pour les autres la variable à poser |
 | `catalog show` | Affiche le catalogue de modèles fusionné |
 | `catalog update` | Rafraîchit le cache modèles (`--ollama` pour des tags réellement tirables, `--arena` pour fusionner les notes LM Arena, `--limit N` pour un rafraîchissement partiel) |
 | `hardware show` | Affiche la table des puces matérielles connues |

@@ -362,6 +362,7 @@ recommendation that sounds comfortable and one that is.
 | `resolve` | Turn a committed usage brief into this machine's `llm.engine.yaml` |
 | `doctor` | Compare what the engine file resolved against what the daemon can serve |
 | `storage` | Plan capacity: what fits on disk, and what fits in memory together |
+| `providers` | Which cloud providers are usable right now, and for the others, the variable to set |
 | `catalog show` | Print the merged model catalog |
 | `catalog update` | Refresh the model cache (`--ollama` for pullable tags from the official library, `--arena` to merge LM Arena ratings, `--limit N` for a partial refresh) |
 | `hardware show` | Print the known hardware chip table |

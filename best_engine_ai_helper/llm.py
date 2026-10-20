@@ -88,6 +88,7 @@ from __future__ import annotations
 import base64
 import copy
 import json
+import logging
 import os
 import time
 from collections.abc import Callable, Iterator
@@ -265,7 +266,21 @@ def _cloud_api_key(engine_dict: dict[str, Any] | None) -> str:
         return _api_key()
 
     try:
-        config = osh.get_config([env_name], "cloud API key", path="settings.yaml")
+        # `osh.get_config` logs at ERROR before raising when a key is absent,
+        # and absent is a perfectly normal outcome here: this function's own
+        # contract is that "" means no key, and `chat` falls back to the local
+        # model on exactly that. Left alone, `providers` printed three red
+        # ERROR lines for the ordinary state of not holding a key you do not
+        # use -- a red that lies costs the same credibility as a green that
+        # lies. Narrowed to this one call so a real failure elsewhere still
+        # surfaces.
+        _osh_log = logging.getLogger("os_helper")
+        previous_level = _osh_log.level
+        _osh_log.setLevel(logging.CRITICAL)
+        try:
+            config = osh.get_config([env_name], "cloud API key", path="settings.yaml")
+        finally:
+            _osh_log.setLevel(previous_level)
         return str(config[env_name])
     except RuntimeError:
         pass  # not in settings.yaml, any .env file, or the environment — try keyring

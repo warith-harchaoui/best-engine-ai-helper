@@ -241,3 +241,47 @@ def test_providers_carry_the_models_they_serve() -> None:
     by_name = {r["provider"]: r for r in rows}
     assert by_name["other"]["models"] == ["vision-model"]
     assert "cheap-text" in by_name["acme"]["models"]
+
+
+# ---------------------------------------------------------------------------
+# What ships must be documented where the reader is told to look
+# ---------------------------------------------------------------------------
+#
+# The bundled catalog carries four providers; `settings.yaml.example` — the
+# file README tells you to copy — listed one. The mechanism was never broken
+# (any `api_key_env` name resolves, and `provider_status` names it at runtime),
+# but someone holding an OpenAI key had to read an internal map in `engine.py`
+# to learn what to call it. These two tests make the example file's
+# completeness an invariant rather than something to remember when a provider
+# is added to `pricing.yaml`.
+
+
+def _documented_keys() -> set[str]:
+    example = Path(__file__).resolve().parent.parent / "settings.yaml.example"
+    return {
+        line.split(":", 1)[0].strip()
+        for line in example.read_text().splitlines()
+        if ":" in line and not line.strip().startswith("#")
+    }
+
+
+def test_every_shipped_provider_resolves_a_key_variable_name() -> None:
+    """A provider with no name to look up could never be authenticated."""
+    from best_engine_ai_helper import engine
+
+    providers = {entry["provider"] for entry in cloud_catalog.load_cloud_catalog()}
+    assert providers, "the bundled catalog is empty; the test is broken, not the code"
+    unnamed = sorted(p for p in providers if not engine._DEFAULT_API_KEY_ENV.get(p))
+    assert not unnamed, f"shipped providers with no api_key_env default: {unnamed}"
+
+
+def test_every_shipped_provider_is_documented_in_the_settings_example() -> None:
+    from best_engine_ai_helper import engine
+
+    providers = {entry["provider"] for entry in cloud_catalog.load_cloud_catalog()}
+    needed = {engine._DEFAULT_API_KEY_ENV[p] for p in providers}
+    documented = _documented_keys()
+    assert needed <= documented, (
+        "settings.yaml.example is the file the README tells the reader to copy; "
+        f"these shipped providers have no entry there: {sorted(needed - documented)}"
+    )

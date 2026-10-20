@@ -32,6 +32,7 @@ EXPECTED_COMMANDS = {
     "pull",
     "validate",
     "doctor",
+    "providers",
     "storage",
     "gui",
     "env",

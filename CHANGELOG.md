@@ -70,6 +70,15 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Fixed
 
+- **Not holding a cloud key was logged as an error.** `osh.get_config` logs at
+  ERROR before raising when a key is absent, and absent is the ordinary state
+  for a provider you do not use — `_cloud_api_key`'s own contract is that `""`
+  means no key, and `chat` falls back to the local model on exactly that. The
+  new `providers` command therefore printed one red ERROR line per
+  unconfigured provider for a perfectly normal situation. A red that lies
+  costs the same credibility as a green that lies. Narrowed to that one
+  lookup, so a real failure elsewhere still surfaces.
+
 - **`pull` wrote two environment variables the tool then ignored.**
   `pull.write_env` persists four values into `~/.best-engine-ai-helper/env.sh`
   and `config.json`; the README and LISEZMOI print that export block and tell
@@ -111,6 +120,28 @@ All notable changes to best-engine-ai-helper are documented here.
   reports.
 
 ### Added
+
+- **`providers`, a CLI command for a feature only the GUI could reach.** This
+  package claims to route on the keys you actually hold, and
+  `cloud_catalog.provider_status` answers "which cloud providers are usable
+  right now, and for the others, the variable to set". It shipped in 1.5.0
+  served at `/api/providers` — and nowhere else. The CLI is this project's
+  primary surface and it could not ask the question. Same shape as the Arena
+  reader that was written, tested, and wired to no command.
+
+  `providers` prints one row per provider with the variable name to set, or
+  `--json` for a script. It never prints a key value, only whether one
+  resolved — the point of storing `api_key_env` rather than the key is that
+  the secret stays out of every report, and that holds here too.
+
+- **`settings.yaml.example` documents every provider the catalog ships.** It
+  listed `MISTRAL_API_KEY` alone while the bundled catalog carries four
+  providers, so a reader holding an OpenAI key had to find the name in an
+  internal map in `engine.py`. The mechanism was never broken — any
+  `api_key_env` name resolves — but the file the README tells you to copy is
+  where that is supposed to be visible. Two tests now make it an invariant
+  rather than something to remember: every shipped provider must resolve a key
+  variable name, and that name must appear in the example file.
 
 - **Tests for `i18n`, which had none.** The module is the single source of
   truth for every GUI string and every model-facing prompt, and the invariants

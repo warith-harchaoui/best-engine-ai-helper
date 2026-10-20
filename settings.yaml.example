@@ -1,6 +1,20 @@
+# Copy to settings.yaml (gitignored) and fill in the providers you hold a key
+# for. Every one is optional: the local Ollama model is the default, and a
+# provider with no key is simply not a candidate — `best-engine-ai-helper
+# providers` says which are usable and names the variable each one needs.
+#
+# A key may equally live in a .env file, the process environment, or the OS
+# keychain; this file is only the most convenient of the four. Only the
+# variable NAME is ever stored in an engine file or printed in a report.
 
-# Paid LLM/VLM backend (opt-in "backup generator" — local Ollama is the default). Empty ⇒
-# cloud LLM/VLM stays off; --llm-backend/--vlm-backend cloud fall back to local without it.
-# Get a key at https://console.mistral.ai/api-keys
+# https://console.mistral.ai/api-keys
 MISTRAL_API_KEY: ""
 
+# https://platform.openai.com/api-keys
+OPENAI_API_KEY: ""
+
+# https://console.anthropic.com/settings/keys
+ANTHROPIC_API_KEY: ""
+
+# https://aistudio.google.com/app/apikey
+GEMINI_API_KEY: ""
