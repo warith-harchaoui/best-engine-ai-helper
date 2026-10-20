@@ -6,6 +6,39 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Changed
 
+- **`storage` ranked resident sets by how much memory they used.** The comment
+  argued the case — "among sets that fit, the one using the most memory is the
+  most capable" — and it is a proxy, not the thing meant: a 20 GB model
+  scoring 70 is not a better companion than a 16 GB one scoring 85. Measured
+  on the bundled catalog at a 48 GB budget, the old rule's top answer was
+  `qwen3:32b-q8_0` + `qwen3-vl:14b` at **score 232.7, 47.9 GB**, while
+  `qwen3:32b-q4_k_m` + `qwen3-vl:32b` at **score 236.0, 47.2 GB** came fifth.
+  It preferred the heavier, weaker set, which is the proxy failing in exactly
+  the direction that costs the reader something.
+
+  Sets are now ranked on benchmark score, with total memory as the tiebreak
+  and model id below that. Keeping memory as the *second* key is what makes
+  this safe rather than disruptive: hundreds of entries from the Ollama
+  library publish sizes and no leaderboard results, and for a catalog where
+  nothing is scored the order is byte-for-byte the one it always was. Each row
+  now reports `total_score`, and both CLIs print it first — a list ordered by
+  an invisible key asks the reader to take the order on trust.
+
+  Kinds are not scored on one axis, so the score is read per kind: `general`
+  for a text model, `vision` for a vision model, `mteb` for an embedder
+  (asking an embedder for a general score returns nothing, which would have
+  ranked every embedder identically). The sum mixes figures from different
+  leaderboards, so it orders sets against each other and is not a measurement;
+  the docstring says so.
+
+  The branch and bound still holds, on the new composite. The differential
+  test against the exhaustive oracle was extended with scores and caught a
+  real defect in the process: on sets tied in both score and memory, the heap
+  that keeps the best `limit` compared model ids in the opposite direction to
+  the published order, so the set that should have been returned was the one
+  discarded. Hence `_Set`, whose ordering is written out once rather than
+  inferred from tuple comparison.
+
 - **`storage` planned resident sets by enumerating every combination, on a
   premise the same release had already killed.** The comment said it plainly:
   "the catalog is small (tens of entries), so an exhaustive product is both

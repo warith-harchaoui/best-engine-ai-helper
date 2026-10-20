@@ -105,6 +105,11 @@ _DECODE_EFFICIENCY_BY_BACKEND: dict[str, float] = {
 # model drops to ~7 tok/s. Source: MLX / llama.cpp community UX benchmarks.
 COMFORT_TPS: float = 15.0
 
+#: Benchmark axis an embedding model is judged on. Embedders are not scored on
+#: the general/vision axes the other kinds use, so anything ranking them has to
+#: reach for this one by name.
+EMBED_SCORE_KEY = "mteb"
+
 # Width of the "same quality, really" band on the 0-100 benchmark scale. Two
 # models whose scores land inside the same band are treated as indistinguishable
 # on quality, which lets a cheaper tiebreak decide between them -- in practice,

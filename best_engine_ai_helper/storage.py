@@ -53,6 +53,55 @@ def _disk_gb(entry: dict[str, Any]) -> float:
     return float(fallback) if isinstance(fallback, (int, float)) and fallback > 0 else 0.0
 
 
+class _Set:
+    """One candidate set, ordered weakest-first.
+
+    The ranking is score, then memory, then model id — but the id reads
+    *backwards* from the other two: a larger id is the weaker tiebreak, since
+    the published order is ids ascending. A plain tuple would therefore put
+    the wrong member of a tie at the top of the min-heap below, and the set
+    that should have been published would be the one discarded. Found by the
+    differential test rather than by reading: the heap and the final sort
+    agreed on score and on memory, and disagreed only when both tied.
+    """
+
+    __slots__ = ("ids", "ram", "score")
+
+    def __init__(self, score: float, ram: float, ids: tuple[str, ...]) -> None:
+        self.score = score
+        self.ram = ram
+        self.ids = ids
+
+    def __lt__(self, other: _Set) -> bool:
+        """True when this set is the weaker of the two."""
+        if self.score != other.score:
+            return self.score < other.score
+        if self.ram != other.ram:
+            return self.ram < other.ram
+        return self.ids > other.ids
+
+
+def _quality(entry: dict[str, Any], kind: str) -> float:
+    """
+    The benchmark score this kind is judged on, or 0.0 when it carries none.
+
+    The three kinds are not scored on the same axis: a text model is read on
+    ``general``, a vision model on ``vision``, an embedder on
+    :data:`score.EMBED_SCORE_KEY`. Asking an embedder for a general score
+    returns nothing, which would rank every embedder identically.
+
+    A missing score reads as 0.0 rather than being guessed at, which puts
+    unscored entries below every scored one — the same rule the catalog
+    follows for the hundreds of library entries that publish sizes but no
+    leaderboard results.
+    """
+    from .score import EMBED_SCORE_KEY, _benchmark_score
+
+    if kind == "embed":
+        return float((entry.get("benchmarks") or {}).get(EMBED_SCORE_KEY) or 0.0)
+    return float(_benchmark_score(entry, "vlm" if kind == "vlm" else "llm"))
+
+
 def resident_sets(
     entries: list[dict[str, Any]],
     budget_gb: float,
@@ -67,13 +116,27 @@ def resident_sets(
     Takes the strongest candidate of each kind first and works down, so the
     answer is "the best set you can hold", not merely "a set that fits".
 
-    Searched by branch and bound over kinds sorted heaviest-first, not by
+    Ranked on **quality first**, memory second. Earlier versions ordered on
+    total memory alone, on the argument that among sets that fit, the one
+    using the most is the most capable. That is a proxy, and a weak one: a
+    20 GB model scoring 60 is not a better companion than an 18 GB model
+    scoring 85. Benchmark score is the thing actually meant, so it is the
+    thing sorted on; total memory stays as the tiebreak, which keeps the old
+    order exactly when nothing is scored — the normal state for the hundreds
+    of library entries that publish sizes but no leaderboard results.
+
+    Searched by branch and bound over kinds sorted best-first, not by
     enumerating every combination. Two bounds do the work: a set whose
     remaining kinds cannot fit even at their lightest is skipped, and once
     ``limit`` results are in hand, a branch that cannot beat the weakest of
-    them even at its heaviest ends the scan of that kind. Both are exact --
-    the result is identical to the exhaustive product, which `tests/
-    test_storage.py` pins differentially against this function.
+    them even at its best ends the scan of that kind. Both are exact -- the
+    result is identical to an exhaustive product, which `tests/test_storage.py`
+    pins differentially against this function.
+
+    The score is a **sum across kinds of figures from different leaderboards**,
+    so it ranks sets against each other and is not a measurement of anything.
+    It is reported as ``total_score`` so the ordering is visible rather than
+    being an invisible key the reader has to take on trust.
 
     Parameters
     ----------
@@ -94,9 +157,9 @@ def resident_sets(
     Returns
     -------
     list of dict
-        ``[{"models": {kind: id}, "total_ram_gb": float, "headroom_gb": float}]``,
-        largest total first among those that fit, ties broken on model id so
-        repeated runs agree.
+        ``[{"models": {kind: id}, "total_score": float, "total_ram_gb": float,
+        "headroom_gb": float}]``, best total score first among those that fit,
+        then largest total memory, then model id so repeated runs agree.
     """
     from .score import model_footprint_gb, sizeable_only
 
@@ -107,16 +170,19 @@ def resident_sets(
     # product, so a 420-entry catalog cost 230,850 calls to compute 76,950
     # sums -- three quarters of the time went to re-deriving the same numbers.
     sizeable = sizeable_only(list(entries), backend, where="resident set planning")
-    pools: list[tuple[str, list[tuple[float, str]]]] = []
+    pools: list[tuple[str, list[tuple[float, float, str]]]] = []
     for kind in kinds:
-        # Heaviest first. Every bound below depends on this order.
+        # Best first, on the same composite the answer is ranked by: score,
+        # then memory. Every bound below depends on this order, because a
+        # bound may only `break` out of a scan whose objective cannot rise
+        # again.
         sized = sorted(
             (
-                (model_footprint_gb(e, backend), str(e.get("id")))
+                (_quality(e, kind), model_footprint_gb(e, backend), str(e.get("id")))
                 for e in sizeable
                 if e.get("kind") == kind
             ),
-            key=lambda pair: (-pair[0], pair[1]),
+            key=lambda row: (-row[0], -row[1], row[2]),
         )
         if sized:
             pools.append((kind, sized))
@@ -124,64 +190,75 @@ def resident_sets(
     if not pools:
         return []
 
-    # What the rest of the kinds cost at their lightest and at their heaviest.
-    # These two numbers are the whole trick: they turn "try every combination"
-    # into "try the ones that could still matter".
+    # What the remaining kinds can contribute at best, and what they cost at
+    # their lightest. These are the whole trick: they turn "try every
+    # combination" into "try the ones that could still matter".
     n = len(pools)
-    suffix_min = [0.0] * (n + 1)
-    suffix_max = [0.0] * (n + 1)
+    cheapest_rest = [0.0] * (n + 1)
+    best_score_rest = [0.0] * (n + 1)
+    best_ram_rest = [0.0] * (n + 1)
     for i in range(n - 1, -1, -1):
         sized = pools[i][1]
-        suffix_min[i] = suffix_min[i + 1] + sized[-1][0]
-        suffix_max[i] = suffix_max[i + 1] + sized[0][0]
+        cheapest_rest[i] = cheapest_rest[i + 1] + min(row[1] for row in sized)
+        best_score_rest[i] = best_score_rest[i + 1] + sized[0][0]
+        best_ram_rest[i] = best_ram_rest[i + 1] + max(row[1] for row in sized)
 
-    # A min-heap of the best `limit` combinations found so far, so the K-th
-    # best total is always heap[0] and the bound below can consult it in O(1).
-    best: list[tuple[float, tuple[str, ...]]] = []
+    # A min-heap of the best `limit` sets found so far, keyed by the ranking
+    # composite, so the weakest kept set is always heap[0] and the bound below
+    # can consult it in O(1).
+    best: list[_Set] = []
 
-    def _walk(i: int, partial: float, chosen: tuple[str, ...]) -> None:
+    def _walk(i: int, score: float, ram: float, chosen: tuple[str, ...]) -> None:
         if i == n:
+            found = _Set(score, ram, chosen)
             if len(best) < limit:
-                heapq.heappush(best, (partial, chosen))
-            elif partial > best[0][0]:
-                heapq.heapreplace(best, (partial, chosen))
+                heapq.heappush(best, found)
+            elif best[0] < found:
+                heapq.heapreplace(best, found)
             return
 
-        for footprint, ident in pools[i][1]:
-            running = partial + footprint
+        for entry_score, footprint, ident in pools[i][1]:
+            run_score = score + entry_score
+            run_ram = ram + footprint
 
             # Bound 1 -- budget. Even paired with the lightest of every
-            # remaining kind this overruns, so the set cannot fit. Lighter
-            # entries in this same kind still might, hence `continue`.
-            if running + suffix_min[i + 1] > budget_gb:
+            # remaining kind this overruns, so the set cannot fit. Entries
+            # further down this kind may still be light enough, so this skips
+            # rather than stops.
+            if run_ram + cheapest_rest[i + 1] > budget_gb:
                 continue
 
             # Bound 2 -- the answer is only `limit` rows. Even paired with the
-            # heaviest of every remaining kind this cannot beat the K-th best
-            # total already found, and entries are heaviest-first, so nothing
-            # further down this kind can either. That makes `break` safe, and
-            # it is what collapses the cost: the search stops as soon as it
-            # can prove the rest is unreachable rather than enumerating it.
-            if len(best) == limit and running + suffix_max[i + 1] <= best[0][0]:
+            # best of every remaining kind, this branch cannot reach the
+            # weakest set already kept; and the scan is ordered best-first on
+            # the same composite, so nothing further down can either. Strictly
+            # worse, not merely equal: an equal branch can still win on the id
+            # tiebreak, and pruning it would make the answer depend on search
+            # order. That strictness is also why this still prunes hard when
+            # nothing is scored at all -- the comparison then falls through to
+            # memory, which is exactly the old behaviour.
+            if len(best) == limit and (
+                run_score + best_score_rest[i + 1],
+                run_ram + best_ram_rest[i + 1],
+            ) < (best[0].score, best[0].ram):
                 break
 
-            _walk(i + 1, running, chosen + (ident,))
+            _walk(i + 1, run_score, run_ram, chosen + (ident,))
 
-    _walk(0, 0.0, ())
+    _walk(0, 0.0, 0.0, ())
 
-    # Largest first: among sets that fit, the one using the most memory is the
-    # most capable, which is what a reader of this list is choosing between.
-    # Ties break on the model ids, so repeated runs give the same answer --
-    # the exhaustive version left equal totals in catalog order, which was
-    # stable only by accident.
+    # Best first: the strongest set you can hold, with memory breaking ties
+    # and the model ids breaking those, so repeated runs give the same answer.
     kind_names = [kind for kind, _ in pools]
     return [
         {
-            "models": dict(zip(kind_names, ids)),
-            "total_ram_gb": round(total, 1),
-            "headroom_gb": round(budget_gb - total, 1),
+            "models": dict(zip(kind_names, found.ids)),
+            "total_score": round(found.score, 1),
+            "total_ram_gb": round(found.ram, 1),
+            "headroom_gb": round(budget_gb - found.ram, 1),
         }
-        for total, ids in sorted(best, key=lambda pair: (-pair[0], pair[1]))
+        # `_Set` orders weakest-first, so strongest-first is that reversed.
+        for found in sorted(best, reverse=True)
     ]
 
 

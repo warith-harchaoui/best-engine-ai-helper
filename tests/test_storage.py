@@ -131,8 +131,8 @@ def test_an_entry_without_a_disk_figure_falls_back_to_the_memory_one() -> None:
 # nothing, and a little; limits above and below the number of feasible sets).
 
 
-def _brute_force(entries: list[dict], budget: float, limit: int = 5) -> list[float]:
-    """The original implementation, kept here as the oracle."""
+def _brute_force(entries: list[dict], budget: float, limit: int = 5) -> list[tuple]:
+    """Every combination, scored and sorted. The oracle the pruned search must match."""
     from itertools import product
 
     from best_engine_ai_helper.score import model_footprint_gb
@@ -144,32 +144,84 @@ def _brute_force(entries: list[dict], budget: float, limit: int = 5) -> list[flo
             by_kind[kind] = pool
     if not by_kind:
         return []
-    totals = []
-    for choice in product(*by_kind.values()):
-        total = sum(model_footprint_gb(e) for e in choice)
-        if total <= budget:
-            totals.append(round(total, 1))
-    return sorted(totals, reverse=True)[:limit]
+    present = list(by_kind)
+    rows = []
+    for choice in product(*(by_kind[k] for k in present)):
+        ram = sum(model_footprint_gb(e) for e in choice)
+        if ram > budget:
+            continue
+        score = sum(storage._quality(e, k) for k, e in zip(present, choice))
+        rows.append((score, ram, tuple(str(e["id"]) for e in choice)))
+    rows.sort(key=lambda row: (-row[0], -row[1], row[2]))
+    return [(round(s, 1), round(r, 1), ids) for s, r, ids in rows[:limit]]
+
+
+def _random_catalog(rng) -> list[dict]:
+    """A catalog with scores on roughly two entries in three, as the real one is."""
+    axis = {"llm": "general", "vlm": "vision", "embed": "mteb"}
+    return [
+        {
+            "id": f"{kind}-{j}",
+            "kind": kind,
+            "ram_gb": round(rng.uniform(0.3, 30.0), 1),
+            "benchmarks": {} if rng.random() < 0.3 else {axis[kind]: rng.randint(30, 95)},
+        }
+        for kind, count in (
+            ("llm", rng.randint(0, 10)),
+            ("vlm", rng.randint(0, 7)),
+            ("embed", rng.randint(0, 4)),
+        )
+        for j in range(count)
+    ]
 
 
 def test_pruning_returns_exactly_what_the_exhaustive_product_returned() -> None:
     import random
 
-    rng = random.Random(7)
-    for _ in range(200):
-        entries = [
-            {"id": f"{kind}-{j}", "kind": kind, "ram_gb": round(rng.uniform(0.3, 30.0), 1)}
-            for kind, count in (
-                ("llm", rng.randint(0, 12)),
-                ("vlm", rng.randint(0, 8)),
-                ("embed", rng.randint(0, 5)),
-            )
-            for j in range(count)
-        ]
+    rng = random.Random(11)
+    for _ in range(300):
+        entries = _random_catalog(rng)
         budget = rng.uniform(1.0, 60.0)
         limit = rng.choice([1, 3, 5])
-        got = [c["total_ram_gb"] for c in storage.resident_sets(entries, budget, limit=limit)]
+        got = [
+            (c["total_score"], c["total_ram_gb"], tuple(c["models"].values()))
+            for c in storage.resident_sets(entries, budget, limit=limit)
+        ]
         assert got == _brute_force(entries, budget, limit)
+
+
+def test_a_better_set_wins_even_when_it_uses_less_memory() -> None:
+    """The point of ranking on quality: the old rule picked the heavier, weaker set.
+
+    Taken from the bundled catalog at a 48 GB budget, where ordering on memory
+    alone put `qwen3:32b-q8_0` + `qwen3-vl:14b` (score 232.7, 47.9 GB) above
+    `qwen3:32b-q4_k_m` + `qwen3-vl:32b` (score 236.0, 47.2 GB) — a better set
+    that happened to weigh less. Reproduced in miniature so the assertion does
+    not depend on catalog contents.
+    """
+    entries = [
+        {"id": "heavy-weak", "kind": "llm", "ram_gb": 20.0, "benchmarks": {"general": 70}},
+        {"id": "light-strong", "kind": "llm", "ram_gb": 16.0, "benchmarks": {"general": 85}},
+        {"id": "eyes", "kind": "vlm", "ram_gb": 6.0, "benchmarks": {"vision": 80}},
+    ]
+    rows = storage.resident_sets(entries, 30.0, limit=2)
+    assert rows[0]["models"]["llm"] == "light-strong"
+    assert rows[0]["total_ram_gb"] < rows[1]["total_ram_gb"]
+    assert rows[0]["total_score"] > rows[1]["total_score"]
+
+
+def test_with_nothing_scored_the_order_is_the_memory_one_it_always_was() -> None:
+    """Hundreds of library entries publish sizes and no leaderboard results.
+
+    Quality cannot order those, so memory — the old rule — must still do it,
+    rather than the answer collapsing into an arbitrary tie.
+    """
+    entries = [{"id": f"llm-{j}", "kind": "llm", "ram_gb": float(j)} for j in range(1, 6)] + [
+        {"id": "eyes", "kind": "vlm", "ram_gb": 1.0}
+    ]
+    rows = storage.resident_sets(entries, 20.0, limit=3)
+    assert all(r["total_score"] == 0.0 for r in rows)
+    assert [r["total_ram_gb"] for r in rows] == [6.0, 5.0, 4.0]
 
 
 def test_every_candidate_is_sized_once_rather_than_once_per_combination(monkeypatch) -> None:

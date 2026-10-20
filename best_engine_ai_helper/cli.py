@@ -1023,8 +1023,12 @@ def storage_cmd(backend: str) -> None:
     click.echo("\nCan be held in memory at the same time, best first:")
     for combo in report["resident_sets"]:
         names = " + ".join(f"{k}:{v}" for k, v in combo["models"].items())
+        # Score first, because it is what the list is ordered by. Printing
+        # only the memory left the reader to infer an order from a column
+        # that no longer decides it.
         click.echo(
-            f"  {combo['total_ram_gb']:>6.1f} GB  {names}   (headroom {combo['headroom_gb']} GB)"
+            f"  score {combo['total_score']:>6.1f}  {combo['total_ram_gb']:>6.1f} GB  "
+            f"{names}   (headroom {combo['headroom_gb']} GB)"
         )
     if not report["resident_sets"]:
         click.echo("  (no one-per-kind combination fits; they must take turns)")

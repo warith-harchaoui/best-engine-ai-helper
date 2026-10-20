@@ -41,6 +41,7 @@ import yaml
 from . import catalog as _catalog
 from . import detect as _detect
 from . import engine as _engine
+from .score import EMBED_SCORE_KEY as _EMBED_KEY
 from .score import effective_budget as _effective_budget
 from .score import sizeable_only as _sizeable_only
 
@@ -58,7 +59,7 @@ CACHE_PATH = _CACHE_PATH
 _OLLAMA_URL = "http://localhost:11434"
 
 # Benchmark key the embeddings family ranks its candidates on (MTEB average).
-_EMBED_SCORE_KEY = "mteb"
+_EMBED_SCORE_KEY = _EMBED_KEY
 
 
 def _load_doc(path: Path) -> dict[str, Any]:

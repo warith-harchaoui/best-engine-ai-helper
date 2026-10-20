@@ -847,7 +847,12 @@ def _handle_storage(ns: argparse.Namespace) -> int:
     _emit("\nCan be held in memory at the same time, best first:")
     for combo in report["resident_sets"]:
         names = " + ".join(f"{k}:{v}" for k, v in combo["models"].items())
-        _emit(f"  {combo['total_ram_gb']:>6.1f} GB  {names}   (headroom {combo['headroom_gb']} GB)")
+        # Score first: it is what the list is ordered by, and the memory
+        # column on its own no longer explains the order.
+        _emit(
+            f"  score {combo['total_score']:>6.1f}  {combo['total_ram_gb']:>6.1f} GB  "
+            f"{names}   (headroom {combo['headroom_gb']} GB)"
+        )
     if not report["resident_sets"]:
         _emit("  (no one-per-kind combination fits; they must take turns)")
 
