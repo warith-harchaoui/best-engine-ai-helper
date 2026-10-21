@@ -2,6 +2,43 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
+## [1.8.0] - 2026-10-21
+
+### Changed
+
+- **The GUI's strings moved from `locales/i18n.yaml` to a `gettext`
+  catalogue** — the last of the suite's eight GUIs to migrate, completing the
+  move to one mechanism (os-helper 2.6.0). The English is now the source,
+  written in the markup as `{{_("…")}}`; the French lives in
+  `best_engine_ai_helper/locales/fr/LC_MESSAGES/best_engine_ai_helper.po`, at
+  84 entries the largest catalogue in the suite.
+
+  A string the French catalogue has not caught up with renders as **readable
+  English** instead of as a key. The cost is the mirror image — rewording the
+  English orphans its French entry, and gettext would quietly serve the
+  English — so `tests/test_gui_i18n.py` hands every source string to
+  `Catalog.problems`, which names both halves of that fault.
+
+- **The prompts stay in `locales/i18n.yaml`, and that is not an exception to
+  the rule.** They are single-language, model-facing templates keyed on
+  meaning: there is no `fr`/`en` pair anywhere under `prompts`, so there is
+  nothing for gettext to translate. `Locales` remains the right loader for
+  text keyed that way, and the YAML now says so in a comment where the `gui`
+  section used to be. What the package no longer has is two mechanisms for the
+  *same* kind of text.
+
+- **The English task placeholder now uses curly quotes**, matching the French
+  guillemets it sits beside: `e.g. “write product descriptions…”`. The ASCII
+  quotes it carried before had to be HTML-escaped to survive the attribute
+  they render into; curly quotes cannot break out of it at all. The regression
+  guard that a raw `"` never reaches `placeholder="…"` is kept.
+
+### Removed
+
+- `i18n.gui_strings()`, which nothing reads now that the GUI resolves through
+  `Catalog`. `i18n.locales()`, `i18n.prompt()` and `PROMPTS_SECTION` stay —
+  they serve the prompts.
+
 ## [1.7.0] - 2026-10-21
 
 ### Fixed

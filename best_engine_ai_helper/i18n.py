@@ -46,7 +46,10 @@ import os_helper as osh
 _LOCALES_PATH = Path(__file__).resolve().parent / "locales" / "i18n.yaml"
 
 #: The namespace holding model-facing templates. Named here rather than in
-#: os-helper, which has no business knowing that prompts are a thing.
+#: os-helper, which has no business knowing that prompts are a thing. Since
+#: the GUI moved to gettext, this is the only section this module reads: the
+#: prompts are single-language templates keyed on meaning, which is exactly
+#: what `Locales` is for and exactly what gettext is not.
 PROMPTS_SECTION = "prompts"
 
 
@@ -90,24 +93,6 @@ def meta() -> dict[str, Any]:
     'en'
     """
     result: dict[str, Any] = locales().document[osh.META_SECTION]
-    return result
-
-
-def gui_strings() -> dict[str, dict[str, str]]:
-    """
-    Return the ``gui`` namespace: semantic key -> ``{locale: text}``.
-
-    Returns
-    -------
-    dict
-        One entry per GUI string; each value maps a locale code to its text.
-
-    Examples
-    --------
-    >>> "hero_title" in gui_strings()
-    True
-    """
-    result: dict[str, dict[str, str]] = locales().section("gui")
     return result
 
 

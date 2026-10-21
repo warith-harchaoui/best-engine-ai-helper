@@ -151,8 +151,14 @@ def test_activity_gui_and_static_endpoints(client: TestClient, tmp_path: Path) -
     assert '<html lang="en"' in en and "Best local or cloud LLM / VLM" in en
     assert "Meilleur LLM / VLM local ou cloud" not in en
     assert "Local (free)" in en and "Cloud (paid)" in en
-    # The EN placeholder's double quotes must be HTML-escaped (regression guard).
-    assert "&quot;write product descriptions" in en and 'placeholder="e.g. "write' not in en
+    # The EN placeholder quotes the example task, and the attribute it sits in
+    # must survive that. It now uses curly quotes — matching the French
+    # guillemets, and typographically what English copy wants — so there is no
+    # ASCII quote left to escape and none can break out of the attribute. The
+    # second half is the regression guard that matters either way: a raw `"`
+    # inside `placeholder="..."` would terminate it early.
+    assert "“write product descriptions" in en
+    assert 'placeholder="e.g. "write' not in en
 
     # An unknown language falls back to French rather than erroring.
     assert '<html lang="fr"' in client.get("/gui", params={"lang": "zz"}).text

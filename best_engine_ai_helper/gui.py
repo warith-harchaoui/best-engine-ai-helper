@@ -34,149 +34,128 @@ Warith Harchaoui <warithmetics@deraison.ai>
 
 from __future__ import annotations
 
+import functools
 import html
 import json
+import re
+from pathlib import Path
 
-from . import i18n
+import os_helper as osh
 
-# ---------------------------------------------------------------------------
-# Template-token <-> locale-key maps
-# ---------------------------------------------------------------------------
-# The markup and inline script below were written once against these short
-# token names; renaming every {{TOKEN}} / T.name reference to match the YAML's
-# semantic keys would only add churn, so these maps are the single place that
-# bridges the two vocabularies. `_HTML_TOKEN_TO_KEY` fills {{TOKEN}} placeholders;
-# `_JS_NAME_TO_KEY` builds the `const T = {...}` object the page's script reads.
-
-_HTML_TOKEN_TO_KEY: dict[str, str] = {
-    "META_DESC": "meta_description",
-    "SKIP": "skip_to_content",
-    "NAV_ARIA": "nav_aria",
-    "GITHUB": "github_link_label",
-    "THEME_ARIA": "theme_toggle_aria",
-    "LANG_HREF": "lang_toggle_href",
-    "LANG_LABEL": "lang_toggle_flag",
-    "LANG_ARIA": "lang_toggle_aria",
-    "HERO_TITLE": "hero_title",
-    "HERO_P": "hero_subtitle",
-    "SYS_H2": "system_heading",
-    "PROV_H2": "providers_heading",
-    "PROV_P": "providers_subtitle",
-    "REFRESH": "refresh_button",
-    "DETECTING": "detecting",
-    "TASK_H2": "task_heading",
-    "TASK_P": "task_subtitle",
-    "TASK_LABEL": "task_label",
-    "TASK_PLACEHOLDER": "task_placeholder",
-    "RUN_BTN": "run_button",
-    "HEADROOM": "headroom_label",
-    "LIVE_LABEL": "live_toggle_label",
-    "MODE_LABEL": "mode_select_label",
-    "MODE_LOCAL": "mode_local_option",
-    "MODE_CLOUD": "mode_cloud_option",
-    "QVC_LABEL": "quality_vs_cost_label",
-    "FOOTER_NOTE": "footer_note",
-    "ACTIVITY_H2": "activity_heading",
-    "ACTIVITY_P": "activity_subtitle",
-    "ACTIVITY_LOADING": "activity_loading",
-}
-_JS_NAME_TO_KEY: dict[str, str] = {
-    "detecting": "detecting",
-    "detectFail": "detect_failed",
-    "fPlatform": "field_platform",
-    "fVendor": "field_vendor",
-    "fChip": "field_chip",
-    "poolUnified": "pool_unified",
-    "poolVram": "pool_vram",
-    "poolRam": "pool_ram",
-    "fBandwidth": "field_bandwidth",
-    "unknown": "unknown",
-    "fBudget": "field_budget",
-    "gb": "unit_gb",
-    "gbs": "unit_gbs",
-    "analyzing": "analyzing",
-    "done": "done",
-    "recFail": "recommend_failed",
-    "error": "error_generic",
-    "yes": "yes",
+# The inline script's strings. The JS names are the contract between this
+# module and the script below; the English beside each one is the msgid, so
+# the script's copy lives in the same place as the markup's and is checked
+# by the same test. Injected as JSON, which is the one encoding an
+# apostrophe cannot break out of — and French copy is full of them.
+_JS_NAME_TO_SOURCE: dict[str, str] = {
+    "activityFail": "Failed to load: ",
+    "activityLoading": "Loading…",
+    "allCandidates": "All candidates",
+    "analyzing": "Analyzing task and hardware…",
+    "axis": "axis:",
+    "best": "Best",
+    "blended": "(blended)",
+    "byModel": "By model",
+    "byUser": "By user",
+    "calls": "calls",
+    "cloudNote": "Reference only — no API key read, no network call.",
+    "detectFail": "Detection failed: ",
+    "detecting": "Detecting…",
+    "diskFree": "disk free",
+    "done": "Done.",
+    "error": "Error.",
+    "errorRate": "Error rate:",
+    "fBandwidth": "Memory bandwidth",
+    "fBudget": "Usable model budget",
+    "fChip": "Chip / accelerator",
+    "fPlatform": "Platform",
+    "fVendor": "Vendor",
+    "gb": "GB",
+    "gbs": "GB/s",
+    "genericAssistant": "general-purpose text assistant",
+    "language": "Detected language:",
+    "lighterAlt": "Lighter alternative:",
+    "matched": "Detected keywords:",
+    "needs": "Needs:",
     "no": "no",
-    "best": "best_label",
-    "axis": "axis_label",
-    "overBudget": "over_budget_warning",
-    "notStructured": "not_structured_warning",
-    "lighterAlt": "lighter_alternative",
-    "score": "score_label",
-    "noCandidate": "no_candidate",
-    "allCandidates": "all_candidates",
-    "thStructured": "th_structured",
-    "thModel": "th_model",
-    "thRam": "th_ram",
-    "thScore": "th_score",
-    "thFits": "th_fits",
-    "thTps": "th_tps",
-    "task": "task_prefix",
-    "language": "language_prefix",
-    "serverLoad": "server_load_label",
-    "ramFree": "ram_free_label",
-    "diskFree": "disk_free_label",
-    "runningEngines": "running_engines_label",
-    "activityLoading": "activity_loading",
-    "activityFail": "activity_failed",
-    "noActivity": "no_activity",
-    "unknownCost": "unknown_cost",
-    "thCalls": "th_calls",
-    "thCost": "th_cost",
-    "calls": "calls_label",
-    "totalCost": "total_cost_label",
-    "errorRate": "error_rate_label",
-    "byUser": "by_user_label",
-    "byModel": "by_model_label",
-    "genericAssistant": "generic_assistant",
-    "matched": "matched_keywords",
-    "needs": "needs_label",
-    "tps": "unit_tps",
-    "cloudNote": "cloud_reference_note",
-    "thProvider": "th_provider",
-    "thPrice": "th_price",
-    "blended": "price_blended_suffix",
-    "priceUnknown": "price_unknown",
-    "provNoKey": "provider_no_key",
-    "provReady": "provider_ready",
+    "noActivity": "No calls recorded yet.",
+    "noCandidate": "No candidate found.",
+    "notStructured": "no structured JSON output — unfit for schema-driven tasks",
+    "overBudget": "exceeds the memory budget — will be slow",
+    "poolRam": "System RAM",
+    "poolUnified": "Unified memory",
+    "poolVram": "VRAM",
+    "priceUnknown": "price unknown",
+    "provNoKey": "no key",
+    "provReady": "key found",
+    "ramFree": "RAM free",
+    "recFail": "Recommendation failed: ",
+    "runningEngines": "already-running engines:",
+    "score": "score",
+    "serverLoad": "Server load:",
+    "task": "Task:",
+    "thCalls": "calls",
+    "thCost": "cost",
+    "thFits": "fits",
+    "thModel": "model",
+    "thPrice": "$/1M tokens",
+    "thProvider": "provider",
+    "thRam": "GB RAM",
+    "thScore": "score",
+    "thStructured": "structured",
+    "thTps": "tok/s",
+    "totalCost": "Total cost:",
+    "tps": "tok/s",
+    "unknown": "unknown",
+    "unknownCost": "unknown cost",
+    "yes": "yes",
 }
 
 
-# Default language when the query string names none or an unknown one — read
-# from the YAML's own declared default so the file stays the single source of
-# truth for locale metadata (see references/CODING.md section 21.3.4).
-_DEFAULT_LANG: str = str(i18n.meta()["default_locale"])
-_SUPPORTED_LANGS: set[str] = set(i18n.meta()["supported_locales"])
+#: Where the compiled catalogues live, inside the package so they travel in
+#: the wheel. Up to 1.5.0 this package shipped its locale file one level above
+#: the package directory, which is not package data: a clean `pip install` gave
+#: a package whose every GUI string raised FileNotFoundError, while a checkout
+#: and an editable install both worked.
+_LOCALES_DIR = Path(__file__).resolve().parent / "locales"
+
+#: The gettext domain, and therefore each ``.mo`` file's stem.
+_DOMAIN = "best_engine_ai_helper"
+
+#: Default language when the query string names none or an unknown one.
+_DEFAULT_LANG: str = "fr"
 
 
-def _strings_for(lang: str) -> dict[str, dict[str, str]]:
-    """Build the ``{"html": ..., "js": ...}`` label tables for one language.
+@functools.lru_cache(maxsize=1)
+def _catalog() -> osh.Catalog:
+    """Resolve the catalogue directory once, through the suite's shared loader."""
+    return osh.Catalog.from_package(_LOCALES_DIR, _DOMAIN, default_language=_DEFAULT_LANG)
 
-    Parameters
-    ----------
-    lang : str
-        Requested language code.
 
-    Returns
-    -------
-    dict
-        ``html`` maps template tokens to text; ``js`` maps the names the
-        inline script reads off ``T``. A key missing for ``lang`` falls back
-        to ``_DEFAULT_LANG``'s value, then to the bare key itself — the file
-        should never omit an entry, but a page must never 500 over copy.
-    """
-    gui = i18n.gui_strings()
+def supported_languages() -> tuple[str, ...]:
+    """Language codes the GUI can render: English plus every compiled catalogue."""
+    return _catalog().languages
 
-    def pick(key: str) -> str:
-        entry = gui.get(key, {})
-        return entry.get(lang) or entry.get(_DEFAULT_LANG) or key
 
-    html_strings = {"LANG": lang, **{tok: pick(k) for tok, k in _HTML_TOKEN_TO_KEY.items()}}
-    js_strings = {name: pick(k) for name, k in _JS_NAME_TO_KEY.items()}
-    return {"html": html_strings, "js": js_strings}
+def default_language() -> str:
+    """The language an unknown or absent ``?lang=`` falls back to."""
+    return _catalog().default_language
+
+
+# The language toggle is computed, not translated. Both of its parts mean "the
+# other language", which is data rather than copy: a msgid of ``?lang=fr``
+# whose translation is ``?lang=en`` would be nonsense, and `Catalog.problems`
+# would rightly treat it as prose that had drifted.
+#
+#: How each language names itself. Deliberately NOT translated: a French page
+#: offering English says "English version" in English, which is what a reader
+#: scanning for their own language actually looks for.
+_ENDONYMS: dict[str, str] = {"fr": "Version française", "en": "English version"}
+
+#: One ``{{_("…")}}`` site in the template. Non-greedy and newline-free, so a
+#: run of them on one line stays separate and an unterminated one is left
+#: alone rather than swallowing the rest of the page.
+_SOURCE_RE = re.compile(r'\{\{_\("(.*?)"\)\}\}')
 
 
 # The document template. Human-facing text is tokenised as {{TOKEN}} (HTML) or
@@ -188,7 +167,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Best Engine AI Helper</title>
-  <meta name="description" content="{{META_DESC}}" />
+  <meta name="description" content="{{_("This machine's hardware characteristics and the best local engine (LLM / VLM) for a given task.")}}" />
   <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#0B0B0C" media="(prefers-color-scheme: dark)" />
 
@@ -238,10 +217,10 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
   </style>
 </head>
 <body class="bg-white text-neutral-900 antialiased dark:bg-[#0B0B0C] dark:text-neutral-100 font-sans">
-  <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-3 focus:left-3 focus:rounded-lg focus:bg-brand-blue focus:px-4 focus:py-2 focus:text-white">{{SKIP}}</a>
+  <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-3 focus:left-3 focus:rounded-lg focus:bg-brand-blue focus:px-4 focus:py-2 focus:text-white">{{_("Skip to content")}}</a>
 
   <header class="sticky top-0 z-40 border-b border-neutral-200/70 bg-white/80 backdrop-blur dark:border-neutral-800 dark:bg-[#0B0B0C]/80">
-    <nav class="mx-auto flex max-w-4xl items-center justify-between px-5 py-3" aria-label="{{NAV_ARIA}}">
+    <nav class="mx-auto flex max-w-4xl items-center justify-between px-5 py-3" aria-label="{{_("Main")}}">
       <span class="flex items-center gap-2 font-semibold tracking-tight">
         <img src="/static/icons/android-chrome-192x192.png" alt="" width="28" height="28" class="rounded-lg" />
         Best Engine AI Helper
@@ -249,13 +228,13 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
       <div class="flex items-center gap-3 text-sm">
         <a href="https://github.com/warith-harchaoui/best-engine-ai-helper"
            class="hidden rounded px-1 hover:text-brand-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue sm:inline">
-          {{GITHUB}}
+          {{_("⭐️ on GitHub")}}
         </a>
         <a href="{{LANG_HREF}}" aria-label="{{LANG_ARIA}}"
            class="rounded px-1.5 py-1 font-mono text-xs font-semibold hover:text-brand-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue">
-          {{LANG_LABEL}}
+          {{_("🇫🇷")}}
         </a>
-        <button id="theme-toggle" type="button" aria-label="{{THEME_ARIA}}"
+        <button id="theme-toggle" type="button" aria-label="{{_("Toggle theme")}}"
                 class="rounded-full px-2 py-1 text-lg leading-none hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue dark:hover:bg-neutral-800">
           🌞
         </button>
@@ -266,9 +245,9 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
   <main id="main">
     <section class="mx-auto max-w-4xl px-5 py-14">
       <p class="font-mono text-sm text-brand-blue">best-engine-ai-helper</p>
-      <h1 class="mt-1 font-serif text-4xl font-bold tracking-tight sm:text-5xl">{{HERO_TITLE}}</h1>
+      <h1 class="mt-1 font-serif text-4xl font-bold tracking-tight sm:text-5xl">{{_("Best local or cloud LLM / VLM")}}</h1>
       <p class="mt-3 max-w-2xl text-base text-neutral-600 dark:text-neutral-300">
-        {{HERO_P}}
+        {{_("This machine's characteristics, and the best engine (LLM / VLM), local or cloud, for the task you describe.")}}
       </p>
     </section>
 
@@ -276,18 +255,18 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
     <section class="border-t border-neutral-200/70 dark:border-neutral-800">
       <div class="mx-auto max-w-4xl px-5 py-10">
         <div class="mb-4 flex items-center justify-between">
-          <h2 class="text-2xl font-bold tracking-tight">{{SYS_H2}}</h2>
+          <h2 class="text-2xl font-bold tracking-tight">{{_("System characteristics")}}</h2>
           <button id="refresh-system"
                   class="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium
                          hover:border-brand-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue
                          dark:border-neutral-600">
-            {{REFRESH}}
+            {{_("Refresh")}}
           </button>
         </div>
         <div id="system-grid"
              class="grid grid-cols-2 gap-4 rounded-xl border border-neutral-200 bg-white p-5 text-sm shadow-sm
                     sm:grid-cols-3 dark:border-neutral-800 dark:bg-neutral-950">
-          <p class="col-span-full text-neutral-500 dark:text-neutral-400">{{DETECTING}}</p>
+          <p class="col-span-full text-neutral-500 dark:text-neutral-400">{{_("Detecting…")}}</p>
         </div>
       </div>
     </section>
@@ -295,12 +274,12 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
     <!-- 1bis) Cloud providers, and why one is unavailable -->
     <section class="border-t border-neutral-200/70 dark:border-neutral-800">
       <div class="mx-auto max-w-4xl px-5 py-10">
-        <h2 class="text-2xl font-bold tracking-tight">{{PROV_H2}}</h2>
-        <p class="mt-2 max-w-3xl text-neutral-600 dark:text-neutral-300">{{PROV_P}}</p>
+        <h2 class="text-2xl font-bold tracking-tight">{{_("Cloud providers")}}</h2>
+        <p class="mt-2 max-w-3xl text-neutral-600 dark:text-neutral-300">{{_("A provider whose key is missing is not a candidate. Keys are looked up in settings.yaml, then a .env file, then the environment, then the OS keychain. Only their presence is checked here; no key value is ever read or shown.")}}</p>
         <div id="provider-list"
              class="mt-4 grid gap-2 rounded-xl border border-neutral-200 bg-white p-5 text-sm shadow-sm
                     dark:border-neutral-800 dark:bg-neutral-950">
-          <p class="text-neutral-500 dark:text-neutral-400">{{DETECTING}}</p>
+          <p class="text-neutral-500 dark:text-neutral-400">{{_("Detecting…")}}</p>
         </div>
       </div>
     </section>
@@ -308,13 +287,13 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
     <!-- 2) Task description -->
     <section class="border-t border-neutral-200/70 dark:border-neutral-800">
       <div class="mx-auto max-w-4xl px-5 py-10">
-        <h2 class="text-2xl font-bold tracking-tight">{{TASK_H2}}</h2>
+        <h2 class="text-2xl font-bold tracking-tight">{{_("Describe the task")}}</h2>
         <p class="mt-2 max-w-3xl text-neutral-600 dark:text-neutral-300">
-          {{TASK_P}}
+          {{_("One sentence is enough — visual keywords add a VLM to the recommendation.")}}
         </p>
         <div class="mt-6 rounded-xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-950">
-          <label for="task" class="sr-only">{{TASK_LABEL}}</label>
-          <textarea id="task" rows="3" placeholder="{{TASK_PLACEHOLDER}}"
+          <label for="task" class="sr-only">{{_("Task description")}}</label>
+          <textarea id="task" rows="3" placeholder="{{_("e.g. “write product descriptions and check photo quality”")}}"
                     class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900
                            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue
                            dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100"></textarea>
@@ -323,22 +302,22 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
                     class="rounded-lg bg-brand-blue px-4 py-2 text-sm font-semibold text-white
                            hover:bg-brand-bluedark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue
                            disabled:opacity-50">
-              {{RUN_BTN}}
+              {{_("Recommend the best engine(s)")}}
             </button>
             <label class="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-600
                           dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
-              {{MODE_LABEL}}
+              {{_("Mode")}}
               <select id="mode"
                       class="rounded border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-900
                              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue
                              dark:border-neutral-600 dark:bg-neutral-950 dark:text-neutral-100">
-                <option value="local">{{MODE_LOCAL}}</option>
-                <option value="cloud">{{MODE_CLOUD}}</option>
+                <option value="local">{{_("Local (free)")}}</option>
+                <option value="cloud">{{_("Cloud (paid)")}}</option>
               </select>
             </label>
             <label id="headroom-field" class="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-600
                           dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
-              {{HEADROOM}}
+              {{_("Memory headroom")}}
               <input id="headroom" type="number" min="0" max="0.5" step="0.05" value="0.5"
                      class="w-16 rounded border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-900
                             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue
@@ -349,11 +328,11 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
               <input id="live" type="checkbox"
                      class="rounded border-neutral-300 text-brand-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue
                             dark:border-neutral-600" />
-              {{LIVE_LABEL}}
+              {{_("Live server load")}}
             </label>
             <label id="qvc-field" style="display:none" class="items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-600
                           dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
-              {{QVC_LABEL}}
+              {{_("quality / cost")}}
               <input id="qvc" type="number" min="0" max="1" step="0.1" value="0.7"
                      class="w-14 rounded border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-900
                             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue
@@ -376,17 +355,17 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
     <section class="border-t border-neutral-200/70 dark:border-neutral-800">
       <div class="mx-auto max-w-4xl px-5 py-10">
         <div class="mb-4 flex items-center justify-between">
-          <h2 class="text-2xl font-bold tracking-tight">{{ACTIVITY_H2}}</h2>
+          <h2 class="text-2xl font-bold tracking-tight">{{_("Activity")}}</h2>
           <button id="refresh-activity"
                   class="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium
                          hover:border-brand-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue
                          dark:border-neutral-600">
-            {{REFRESH}}
+            {{_("Refresh")}}
           </button>
         </div>
-        <p class="mb-4 max-w-2xl text-sm text-neutral-600 dark:text-neutral-300">{{ACTIVITY_P}}</p>
+        <p class="mb-4 max-w-2xl text-sm text-neutral-600 dark:text-neutral-300">{{_("Local call ledger (user, model, cost) — see the `activity` command.")}}</p>
         <div id="activity" class="rounded-xl border border-neutral-200 bg-white p-5 text-sm shadow-sm dark:border-neutral-800 dark:bg-neutral-950">
-          <p class="text-neutral-500 dark:text-neutral-400">{{ACTIVITY_LOADING}}</p>
+          <p class="text-neutral-500 dark:text-neutral-400">{{_("Loading…")}}</p>
         </div>
       </div>
     </section>
@@ -396,7 +375,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
     <div class="mx-auto max-w-4xl px-5 text-sm text-neutral-500 dark:text-neutral-400">
       <p>
         <a class="underline hover:text-brand-blue" href="https://github.com/warith-harchaoui/best-engine-ai-helper">best-engine-ai-helper</a>
-        · {{FOOTER_NOTE}} ·
+        · {{_("local only, no telemetry")}} ·
         <a class="underline hover:text-brand-blue" href="https://www.linkedin.com/in/warith-harchaoui/">Warith Harchaoui</a>
       </p>
     </div>
@@ -917,25 +896,40 @@ def render_gui(lang: str = _DEFAULT_LANG) -> str:
     Parameters
     ----------
     lang : str
-        Two-letter language code. Any value outside ``locales/i18n.yaml``'s
-        ``meta.supported_locales`` (``"fr"``, ``"en"``) falls back to
-        ``meta.default_locale`` so an unknown ``?lang=`` never 500s.
+        Two-letter language code. Anything without a compiled catalogue falls
+        back to :data:`_DEFAULT_LANG`, so an unknown ``?lang=`` never 500s.
 
     Returns
     -------
     str
         The complete HTML document for that language.
     """
-    resolved = lang if lang in _SUPPORTED_LANGS else _DEFAULT_LANG
-    strings = _strings_for(resolved)
-    page = _GUI_TEMPLATE
-    for token, value in strings["html"].items():
-        # Escape every value: these labels land in attributes (placeholder, aria,
-        # href) and text nodes alike, and some carry quotes (the EN placeholder)
-        # that would otherwise break out of the attribute they sit in.
-        page = page.replace("{{" + token + "}}", html.escape(value, quote=True))
+    cat = _catalog()
+    resolved = cat.resolve(lang)
+    translate = cat.translator_for(resolved).gettext
+
+    # The other language, for the toggle. With two languages this is "the one
+    # that is not current"; with more it is the next one round, which keeps the
+    # link a cycle rather than a dead end.
+    languages = cat.languages
+    other = languages[(languages.index(resolved) + 1) % len(languages)]
+
+    def _render_source(match: re.Match[str]) -> str:
+        """Translate one ``{{_("…")}}`` site and escape it for HTML.
+
+        Escaping is not optional: these land in attributes (placeholder, aria,
+        href) as readily as in text nodes, and a French apostrophe — or the
+        curly quotes in the task placeholder — would close the attribute early.
+        """
+        return html.escape(translate(match.group(1)), quote=True)
+
+    page = _SOURCE_RE.sub(_render_source, _GUI_TEMPLATE)
+    page = page.replace("{{LANG}}", html.escape(resolved, quote=True))
+    page = page.replace("{{LANG_HREF}}", html.escape(f"/gui?lang={other}", quote=True))
+    page = page.replace("{{LANG_ARIA}}", html.escape(_ENDONYMS.get(other, other), quote=True))
     # Emit the JS strings as a JSON literal so quotes/accents are escaped safely.
-    page = page.replace("{{JS_T}}", json.dumps(strings["js"], ensure_ascii=False))
+    table = {name: translate(source) for name, source in _JS_NAME_TO_SOURCE.items()}
+    page = page.replace("{{JS_T}}", json.dumps(table, ensure_ascii=False))
     # The page formats its own numbers, so it needs the locale it resolved to --
     # not the one that was asked for, which may have fallen back.
     page = page.replace("{{JS_LOCALE}}", json.dumps(resolved))

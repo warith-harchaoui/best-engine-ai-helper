@@ -1,0 +1,264 @@
+# fr catalogue for best-engine-ai-helper.
+#
+# msgid is the English source string as it appears in the code, so a
+# reworded source needs its entry reworded too — os_helper.Catalog.problems
+# reports the mismatch rather than letting the page half-revert to English.
+msgid ""
+msgstr ""
+"Project-Id-Version: best-engine-ai-helper\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "$/1M tokens"
+msgstr "$/1M jetons"
+
+msgid "(blended)"
+msgstr "(mélangé)"
+
+msgid "A provider whose key is missing is not a candidate. Keys are looked up in settings.yaml, then a .env file, then the environment, then the OS keychain. Only their presence is checked here; no key value is ever read or shown."
+msgstr "Un fournisseur dont la clé est absente n'est pas un candidat. Les clés sont cherchées dans settings.yaml, puis un fichier .env, puis l'environnement, puis le trousseau du système. Seule leur présence est vérifiée ici : aucune valeur de clé n'est lue ni affichée."
+
+msgid "Activity"
+msgstr "Activité"
+
+msgid "All candidates"
+msgstr "Tous les candidats"
+
+msgid "Analyzing task and hardware…"
+msgstr "Analyse de la tâche et du matériel…"
+
+msgid "Best"
+msgstr "Meilleur"
+
+msgid "Best local or cloud LLM / VLM"
+msgstr "Meilleur LLM / VLM local ou cloud"
+
+msgid "By model"
+msgstr "Par modèle"
+
+msgid "By user"
+msgstr "Par utilisateur"
+
+msgid "Chip / accelerator"
+msgstr "Puce / accélérateur"
+
+msgid "Cloud (paid)"
+msgstr "Cloud (payant)"
+
+msgid "Cloud providers"
+msgstr "Fournisseurs cloud"
+
+msgid "Describe the task"
+msgstr "Décrire la tâche"
+
+msgid "Detected keywords:"
+msgstr "Mots-clés détectés :"
+
+msgid "Detected language:"
+msgstr "Langue détectée :"
+
+msgid "Detecting…"
+msgstr "Détection en cours…"
+
+msgid "Detection failed: "
+msgstr "Détection impossible : "
+
+msgid "Done."
+msgstr "Terminé."
+
+msgid "Error rate:"
+msgstr "Taux d'erreur :"
+
+msgid "Error."
+msgstr "Erreur."
+
+msgid "Failed to load: "
+msgstr "Échec du chargement : "
+
+msgid "GB"
+msgstr "Go"
+
+msgid "GB RAM"
+msgstr "Go RAM"
+
+msgid "GB/s"
+msgstr "Go/s"
+
+msgid "Lighter alternative:"
+msgstr "Alternative plus légère :"
+
+msgid "Live server load"
+msgstr "Charge serveur en direct"
+
+msgid "Loading…"
+msgstr "Chargement…"
+
+msgid "Local (free)"
+msgstr "Local (gratuit)"
+
+msgid "Local call ledger (user, model, cost) — see the `activity` command."
+msgstr "Journal local des appels (utilisateur, modèle, coût) — voir la commande `activity`."
+
+msgid "Main"
+msgstr "Principal"
+
+msgid "Memory bandwidth"
+msgstr "Bande passante mémoire"
+
+msgid "Memory headroom"
+msgstr "Marge mémoire"
+
+msgid "Mode"
+msgstr "Mode"
+
+msgid "Needs:"
+msgstr "Besoins :"
+
+msgid "No calls recorded yet."
+msgstr "Aucun appel enregistré pour le moment."
+
+msgid "No candidate found."
+msgstr "Aucun candidat trouvé."
+
+msgid "One sentence is enough — visual keywords add a VLM to the recommendation."
+msgstr "Une phrase suffit — les mots-clés visuels ajoutent un VLM à la recommandation."
+
+msgid "Platform"
+msgstr "Plateforme"
+
+msgid "RAM free"
+msgstr "RAM libre"
+
+msgid "Recommend the best engine(s)"
+msgstr "Recommander le(s) meilleur(s) moteur(s)"
+
+msgid "Recommendation failed: "
+msgstr "Échec de la recommandation : "
+
+msgid "Reference only — no API key read, no network call."
+msgstr "Référence seulement — aucune clé API lue, aucun appel réseau."
+
+msgid "Refresh"
+msgstr "Rafraîchir"
+
+msgid "Server load:"
+msgstr "Charge serveur :"
+
+msgid "Skip to content"
+msgstr "Aller au contenu"
+
+msgid "System RAM"
+msgstr "RAM système"
+
+msgid "System characteristics"
+msgstr "Caractéristiques système"
+
+msgid "Task description"
+msgstr "Description de la tâche"
+
+msgid "Task:"
+msgstr "Tâche :"
+
+msgid "This machine's characteristics, and the best engine (LLM / VLM), local or cloud, for the task you describe."
+msgstr "Caractéristiques de cette machine et le meilleur moteur (LLM / VLM), local ou cloud, pour la tâche que vous décrivez."
+
+msgid "This machine's hardware characteristics and the best local engine (LLM / VLM) for a given task."
+msgstr "Caractéristiques matérielles de cette machine et meilleur moteur local (LLM / VLM) pour une tâche donnée."
+
+msgid "Toggle theme"
+msgstr "Changer de thème"
+
+msgid "Total cost:"
+msgstr "Coût total :"
+
+msgid "Unified memory"
+msgstr "Mémoire unifiée"
+
+msgid "Usable model budget"
+msgstr "Budget modèle utilisable"
+
+msgid "VRAM"
+msgstr "VRAM"
+
+msgid "Vendor"
+msgstr "Fournisseur"
+
+msgid "already-running engines:"
+msgstr "moteurs déjà lancés :"
+
+msgid "axis:"
+msgstr "axe :"
+
+msgid "calls"
+msgstr "appels"
+
+msgid "cost"
+msgstr "coût"
+
+msgid "disk free"
+msgstr "disque libre"
+
+msgid "e.g. “write product descriptions and check photo quality”"
+msgstr "ex. « rédiger des fiches produit et vérifier la qualité de photos »"
+
+msgid "exceeds the memory budget — will be slow"
+msgstr "dépasse le budget mémoire — sera lent"
+
+msgid "fits"
+msgstr "tient"
+
+msgid "general-purpose text assistant"
+msgstr "assistant texte généraliste"
+
+msgid "key found"
+msgstr "clé trouvée"
+
+msgid "local only, no telemetry"
+msgstr "local uniquement, aucune télémétrie"
+
+msgid "model"
+msgstr "modèle"
+
+msgid "no"
+msgstr "non"
+
+msgid "no key"
+msgstr "pas de clé"
+
+msgid "no structured JSON output — unfit for schema-driven tasks"
+msgstr "pas de sortie JSON structurée — inadapté aux tâches à schéma"
+
+msgid "price unknown"
+msgstr "tarif inconnu"
+
+msgid "provider"
+msgstr "fournisseur"
+
+msgid "quality / cost"
+msgstr "qualité / coût"
+
+msgid "score"
+msgstr "score"
+
+msgid "structured"
+msgstr "structuré"
+
+msgid "tok/s"
+msgstr "tok/s"
+
+msgid "unknown"
+msgstr "inconnue"
+
+msgid "unknown cost"
+msgstr "coût inconnu"
+
+msgid "yes"
+msgstr "oui"
+
+msgid "⭐️ on GitHub"
+msgstr "⭐️ sur GitHub"
+
+msgid "🇫🇷"
+msgstr "🇬🇧"
