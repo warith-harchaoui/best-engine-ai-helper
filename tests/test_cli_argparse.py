@@ -295,3 +295,56 @@ def test_the_allowlist_still_describes_real_differences() -> None:
         assert command in click_opts, f"{command} no longer exists"
         stale = allowed - (click_opts[command] - argparse_opts[command])
         assert not stale, f"{command}: no longer click-only, drop from the allowlist: {stale}"
+
+
+def test_storage_providers_and_doctor_parity(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Three handlers the twin carried without a single test through it.
+
+    The module docstring's bargain is that business logic is verified once,
+    through click, and this file only proves the argparse plumbing reaches
+    the same library call. These three never had even that, which is how the
+    twin could have been wired to nothing and still looked green.
+    """
+    from best_engine_ai_helper import engine as _engine
+    from best_engine_ai_helper import pull as _pull
+
+    monkeypatch.setattr(_pull, "installed_tags", lambda *a, **k: {"qwen3:8b"})
+
+    assert main(["storage"]) == 0
+    out = capsys.readouterr().out
+    assert "disk   :" in out and "already here: qwen3:8b" in out
+    assert "Can be held in memory at the same time" in out
+
+    assert main(["storage", "--backend", "vllm"]) == 0
+    assert "already here" not in capsys.readouterr().out
+
+    assert main(["providers"]) == 0
+    providers_out = capsys.readouterr().out
+    for provider in ("mistral", "openai", "anthropic", "gemini"):
+        assert provider in providers_out
+    assert "provider(s) usable" in providers_out
+
+    assert main(["providers", "--json"]) == 0
+    rows = json.loads(capsys.readouterr().out)
+    assert {r["provider"] for r in rows} >= {"mistral", "openai", "anthropic", "gemini"}
+
+    # Missing engine file: a finding and a non-zero exit, not a traceback.
+    assert main(["doctor", "--directory", str(tmp_path)]) == 1
+    assert "No engine file at" in capsys.readouterr().err
+
+    monkeypatch.setattr(
+        _engine,
+        "diagnose",
+        lambda directory, timeout=1.5: {
+            "engine_path": str(tmp_path / "llm.engine.yaml"),
+            "backend": "ollama",
+            "daemon_reachable": True,
+            "served": ["qwen3:8b"],
+            "findings": [],
+            "ok": True,
+        },
+    )
+    assert main(["doctor", "--directory", str(tmp_path)]) == 0
+    assert "Everything the engine file names can be served right now." in capsys.readouterr().out

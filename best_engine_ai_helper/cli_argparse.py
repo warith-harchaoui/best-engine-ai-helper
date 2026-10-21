@@ -58,6 +58,7 @@ from . import observe as _observe
 from . import score as _score
 from . import throughput as _throughput
 from .cli import _VALID_APPLICATIONS, _fmt_table
+from .recommend import _fmt_tps
 from .recommend import cloud_recommend as _cloud_recommend
 from .recommend import recommend as _recommend_engines
 from .recommend import to_markdown as _report_markdown
@@ -420,9 +421,17 @@ def _echo_resolved(descriptor: dict[str, Any], out: str | None) -> None:
             tps = section.get("est_tokens_per_s")
             # Same notation as the `candidates` table: "*" measured here,
             # "~" estimated. The engine file now records which this was.
-            measured = section.get("tps_basis") == "measured"
-            shown = f"{tps:.0f}*" if measured else f"~{tps:.0f}"
-            extra = f", {shown} tok/s" if isinstance(tps, (int, float)) else ""
+            #
+            # Borrowed from `recommend` rather than written again: the two
+            # hand-rolled copies formatted the number before testing whether
+            # there was one, so a machine the bandwidth probe cannot read
+            # (a CI container, for one) crashed the command on
+            # `None.__format__`. One formatter cannot disagree with itself.
+            extra = (
+                f", {_fmt_tps(tps, section.get('tps_basis'))} tok/s"
+                if isinstance(tps, (int, float))
+                else ""
+            )
             chosen.append(f"{kind}={section['model']} ({ram} GB{extra})")
     _emit(
         f"{label}: backend {descriptor.get('backend')}  "

@@ -594,8 +594,22 @@ def _fmt_tps(v: float | None, basis: str | None = None) -> str:
     an estimate from memory bandwidth. Reusing it rather than inventing a
     second marker for the same distinction, since two notations for one fact
     is worse than either.
+
+    Examples
+    --------
+    >>> _fmt_tps(42.4, "measured")
+    '42*'
+    >>> _fmt_tps(42.4)
+    '~42'
+    >>> _fmt_tps(None)
+    '-'
     """
-    if not v:
+    # `is None`, not falsiness: a measured 0.0 tok/s is a real and alarming
+    # answer, and reporting it as "-" would hide a stalled daemon behind the
+    # same dash that means "nobody asked". See scripts/measure_absent_vs_zero.py
+    # for why this package treats that confusion as a defect family rather
+    # than a style question.
+    if v is None:
         return "-"
     return f"{v:.0f}*" if basis == "measured" else f"~{v:.0f}"
 

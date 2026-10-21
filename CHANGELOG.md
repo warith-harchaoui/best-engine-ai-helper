@@ -70,6 +70,26 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Fixed
 
+- **`usages resolve` crashed on any machine whose memory bandwidth cannot be
+  read.** Both CLI twins built the tokens-per-second string before checking
+  there was a number to format, so `est_tokens_per_s: None` raised
+  `TypeError: unsupported format string passed to NoneType.__format__` and
+  took the whole command with it. None is the ordinary value there, not an
+  edge case: it means no measurement exists for this pair and no bandwidth
+  figure could be derived, which is the standing condition inside a container.
+  That is where it was found, in CI, where it had been failing every run for a
+  day while passing on the laptop that wrote it.
+
+  Both twins now borrow `recommend._fmt_tps`, which already handled the absent
+  figure correctly and was two lines away from the two that did not. One
+  formatter cannot disagree with itself.
+
+  `_fmt_tps` returned `-` for any falsy value, so a measured **0.0 tok/s**
+  (a stalled daemon, the single most alarming answer it can give) printed as
+  the same dash that means "nobody asked". It now tests `is None`. This is
+  the defect family `scripts/measure_absent_vs_zero.py` exists to count, and
+  reusing the function would have spread it rather than contained it.
+
 - **A brief saying it does not need schemas was ignored on the local path.**
   `structured_output` is documented as a brief key — `resolve`'s docstring
   lists it, the README's local example shows it — and `_resolve_cloud` reads
@@ -142,6 +162,13 @@ All notable changes to best-engine-ai-helper are documented here.
   reports.
 
 ### Added
+
+- **Tests for `storage`, `doctor` and (in the argparse twin) `providers`,
+  through both command-line surfaces.** Three handlers shipped with no test
+  reaching them through a CLI at all, so the twin could have been wired to
+  nothing and still looked green. With the throughput regression test, Linux
+  coverage moves clear of the 90% floor it was failing by three quarters of a
+  point, rather than meeting it by a rounding.
 
 - **`providers`, a CLI command for a feature only the GUI could reach.** This
   package claims to route on the keys you actually hold, and

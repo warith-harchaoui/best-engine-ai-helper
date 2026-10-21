@@ -489,3 +489,107 @@ def test_a_missing_cloud_key_is_not_an_error(
         res = runner.invoke(main, ["providers"])
     assert res.exit_code == 0
     assert not [r for r in caplog.records if "cloud API key" in r.message]
+
+
+def test_a_resolved_model_with_no_throughput_figure_still_prints(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A machine whose bandwidth cannot be read must not crash the printout.
+
+    `est_tokens_per_s` is None whenever no measurement exists and no memory
+    bandwidth figure could be derived -- the ordinary state inside a CI
+    container, and the reason this was found there rather than here. Both
+    CLI twins built the "~43 tok/s" string *before* checking there was a
+    number, so `usages resolve` died on `None.__format__` and took the rest
+    of the command with it. Both surfaces are asserted together because the
+    defect was in both: fixing one twin and not the other is how a parity
+    bug comes back.
+    """
+    from best_engine_ai_helper import cli as _click_twin
+    from best_engine_ai_helper import cli_argparse as _argparse_twin
+
+    descriptor = {
+        "usage": "text2sql",
+        "backend": "ollama",
+        "llm": {"model": "qwen3:8b", "ram_gb": 6.5, "est_tokens_per_s": None},
+    }
+    for twin in (_click_twin, _argparse_twin):
+        twin._echo_resolved(descriptor, None)
+        out = capsys.readouterr().out
+        # The model is still named, with its memory cost; only the speed
+        # clause is dropped, because there is no speed to report.
+        assert "llm=qwen3:8b (6.5 GB)" in out, twin.__name__
+        assert "tok/s" not in out, twin.__name__
+
+    # And when the figure does exist, both twins still print it, measured
+    # figures marked with the "*" the report documents.
+    measured = {
+        "family": "F1",
+        "backend": "ollama",
+        "llm": {
+            "model": "qwen3:8b",
+            "ram_gb": 6.5,
+            "est_tokens_per_s": 42.4,
+            "tps_basis": "measured",
+        },
+    }
+    for twin in (_click_twin, _argparse_twin):
+        twin._echo_resolved(measured, None)
+        assert "42* tok/s" in capsys.readouterr().out, twin.__name__
+
+
+def test_storage_and_doctor_commands(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The two capacity-planning commands print a report and gate correctly.
+
+    Both were reachable only by hand before: `storage` answers "what fits",
+    `doctor` answers "does what we resolved still run", and neither had a
+    test through the CLI, so the formatting around a correct library answer
+    was unverified. `installed_tags` is pinned rather than probed so the
+    already-here branch runs on a machine with no daemon, which is every CI
+    container and most laptops at rest.
+    """
+    from best_engine_ai_helper import pull as _pull
+
+    monkeypatch.setattr(_pull, "installed_tags", lambda *a, **k: {"qwen3:8b"})
+
+    res = runner.invoke(main, ["storage"])
+    assert res.exit_code == 0, res.output
+    assert "disk   :" in res.output and "memory :" in res.output
+    assert "already here: qwen3:8b" in res.output
+    assert "Could be pulled into the space left" in res.output
+    assert "Can be held in memory at the same time" in res.output
+
+    # vLLM sizes against the heavier FP16 footprint and never asks Ollama
+    # what it holds, so the already-here line has nothing to report.
+    res = runner.invoke(main, ["storage", "--backend", "vllm"])
+    assert res.exit_code == 0, res.output
+    assert "already here" not in res.output
+
+    # No engine file is a finding, not a crash, and it exits non-zero.
+    res = runner.invoke(main, ["doctor", "--directory", str(tmp_path)])
+    assert res.exit_code == 1
+    assert "No engine file at" in res.output
+
+    # The all-clear path, with the daemon's answer canned: `doctor` reports
+    # what `diagnose` found, it does not re-derive it.
+    from best_engine_ai_helper import engine as _engine
+
+    monkeypatch.setattr(
+        _engine,
+        "diagnose",
+        lambda directory, timeout=1.5: {
+            "engine_path": str(tmp_path / "llm.engine.yaml"),
+            "backend": "ollama",
+            "daemon_reachable": True,
+            "served": ["qwen3:8b"],
+            "findings": [],
+            "ok": True,
+        },
+    )
+    res = runner.invoke(main, ["doctor", "--directory", str(tmp_path)])
+    assert res.exit_code == 0, res.output
+    assert "daemon      : reachable" in res.output
+    assert "serves      : qwen3:8b" in res.output
+    assert "Everything the engine file names can be served right now." in res.output
