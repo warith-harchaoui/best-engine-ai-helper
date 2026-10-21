@@ -66,6 +66,12 @@ All notable changes to best-engine-ai-helper are documented here.
   holding a runner for six hours. `actions/checkout` and
   `actions/setup-python` move to v7, off the deprecated Node 20 runtime.
 
+  `.mypy_cache` is carried between runs, which was the second largest item in
+  the lane after installing: mypy spent 13 seconds of a 69 second job
+  re-reading stubs it had read the run before. The key is pinned to the
+  dependency set, since stubs are what is cached and a dependency edit must
+  not restore a cache describing the versions before it.
+
 - **`scripts/gate.sh package` builds into a temporary directory**, not `dist/`.
   The command it replaces began with `rm -rf dist`, which is defensible in a
   container and a trap on a laptop, where `dist/` may hold a release somebody

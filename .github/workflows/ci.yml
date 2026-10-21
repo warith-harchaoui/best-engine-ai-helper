@@ -65,6 +65,21 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e "." -r requirements-dev.txt
+      # mypy spends most of its time re-reading the dependency stubs it read
+      # last run: a cold cache cost 13s of a 69s job, which is the second
+      # largest item after installing. The key carries the commit so every run
+      # writes a fresh entry (GitHub will not overwrite an existing key), and
+      # the restore-keys prefix is what actually hands the previous run's
+      # cache over. Pinned to the dependency set, because stubs are what is
+      # cached: a dependency edit must not restore a cache describing the
+      # versions before it.
+      - name: Cache mypy
+        uses: actions/cache@v6
+        with:
+          path: .mypy_cache
+          key: mypy-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('pyproject.toml', 'requirements-dev.txt') }}-${{ github.sha }}
+          restore-keys: |
+            mypy-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('pyproject.toml', 'requirements-dev.txt') }}-
       # One stage per step so a failure is named by the step that failed,
       # rather than buried in one long log. The commands live in the script.
       - name: Dependencies
