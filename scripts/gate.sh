@@ -105,9 +105,15 @@ gate_tests() {
   fi
 
   say "pytest (unit + doctests), coverage floor ${COVERAGE_FLOOR}%"
+  # `${a[@]+"${a[@]}"}` rather than `"${a[@]}"`: bash 3.2 — which is the bash
+  # macOS ships, and therefore the one most contributors have — treats the
+  # expansion of an EMPTY array as an unbound variable under `set -u`. So the
+  # branch above, written so the gate works without pytest-timeout, was the
+  # one branch that could not run: `timeout_args[@]: unbound variable`, and no
+  # tests at all. CI never saw it, having pytest-timeout installed.
   python -m pytest -q \
     --cov="$PACKAGE" --cov-report=term-missing \
-    --cov-fail-under="$COVERAGE_FLOOR" "${timeout_args[@]}"
+    --cov-fail-under="$COVERAGE_FLOOR" ${timeout_args[@]+"${timeout_args[@]}"}
 }
 
 gate_version() {

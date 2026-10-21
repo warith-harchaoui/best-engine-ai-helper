@@ -2,7 +2,22 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
-## [Unreleased]
+## [1.7.0] - 2026-10-21
+
+### Fixed
+
+- **The gate could not run the tests on macOS.** `scripts/gate.sh`, added in
+  this same release, builds `timeout_args=()` and expands it as
+  `"${timeout_args[@]}"`. Under `set -u`, bash 3.2 — the bash macOS ships, and
+  therefore the one most contributors have — treats the expansion of an
+  *empty* array as an unbound variable. So the branch written precisely so the
+  gate works without `pytest-timeout` was the one branch that could not run:
+  `timeout_args[@]: unbound variable`, and no tests at all.
+
+  Found by running the gate before releasing, not by reading it. CI never saw
+  it, having `pytest-timeout` installed, so the array was never empty there —
+  a failure that only appears on the machine the fallback exists for. Fixed
+  with `${timeout_args[@]+"${timeout_args[@]}"}`, the portable spelling.
 
 ### Changed
 
