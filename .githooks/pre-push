@@ -5,14 +5,17 @@
 # Bypass (rare, deliberate only): git push --no-verify
 #
 # ---------------------------------------------------------------------------
-# What this gate judges, and why it changed
+# What this hook adds, and what it no longer decides
 # ---------------------------------------------------------------------------
-# It checks out the commit being pushed into a throwaway worktree and runs the
-# gate there, instead of running it against the working directory.
+# The checks themselves live in scripts/gate.sh, which CI also calls. They used
+# to be spelled out here as well, and the two spellings drifted: the hook ran a
+# sweep CI did not run and skipped a check CI did, so it could pass and then be
+# contradicted by the thing it exists to predict. This file now owns exactly
+# one idea -- WHERE the gate runs -- and the gate owns WHAT it checks.
 #
-# The earlier version ran `ruff check .` and pytest against the working tree,
-# which walks the filesystem rather than git. That was wrong in both
-# directions, and both were observed rather than theorised:
+# Where: a throwaway worktree holding the commit being pushed, not the working
+# directory. Both directions of that matter, and both were observed rather than
+# theorised:
 #
 #   False failures. Untracked files belonging to somebody else fail your push,
 #   for a commit that does not contain them. On 2026-10-19 three concurrent
@@ -30,17 +33,14 @@
 # A pre-push hook exists to answer one question: "is what I am about to
 # publish clean?". The working tree is not what is about to be published, so
 # narrowing to tracked files would fix only the first failure and leave the
-# second. Checking out the pushed commit answers the actual question, and
-# gets isolation from concurrent sessions for free: a fresh worktree contains
+# second. Checking out the pushed commit answers the actual question, and gets
+# isolation from concurrent sessions for free: a fresh worktree contains
 # nobody else's untracked files by construction rather than by filtering.
 #
 # Cost: one detached checkout per push, plus coverage instrumentation on the
-# sweep -- measured at roughly +45s here, against a second full sweep which
-# would have doubled it. Before this gate was adopted the suite was run inside
-# a throwaway worktree and compared against the working-tree run: identical,
-# so no gitignored artifact is needed to run the tests. (Deliberately not
-# quoting a test count -- a comment that names one is wrong the next time a
-# test is added, and a stale comment is worse than a vague one.)
+# sweep. Before this gate was adopted the suite was run inside a throwaway
+# worktree and compared against the working-tree run: identical, so no
+# gitignored artifact is needed to run the tests.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
@@ -88,45 +88,12 @@ for sha in $SHAS; do
     exit 1
   }
 
-  (
-    cd "$WORKTREE"
-
-    echo "[pre-push]   ruff check..."
-    ruff check . || { echo "[pre-push] ruff check failed - push aborted."; exit 1; }
-
-    echo "[pre-push]   ruff format --check..."
-    ruff format --check . || { echo "[pre-push] ruff format failed - push aborted."; exit 1; }
-
-    echo "[pre-push]   full pytest sweep (unit + integration)..."
-    # A gate must never hang. This sweep deliberately clears the marker filter
-    # with -m "", which wakes integration tests that reach the network; yt-dlp
-    # and friends inherit Python's default socket timeout, i.e. none at all. A
-    # vocal-helper run sat at 0 % CPU for nine minutes on half-closed sockets
-    # and had to be killed -- a push that never finishes is worse than one that
-    # fails, because the only way out is --no-verify, which skips the lint and
-    # the tests together.
-    #
-    # pytest-timeout turns that stall into a failure naming the test. It is in
-    # each project's dev requirements, but the gate must still work in an
-    # environment that lacks it, so the flag is only passed when the plugin is
-    # importable -- and the absence is announced, because a silent downgrade
-    # here is how a hung push becomes ten minutes of unexplained waiting.
-    TIMEOUT_ARGS=""
-    if python -c "import pytest_timeout" 2>/dev/null; then
-      TIMEOUT_ARGS="--timeout=600"
-    else
-      echo "[pre-push]   note: pytest-timeout not installed; a hung test will not be named."
-    fi
-    # Coverage is checked in the SAME run rather than a second sweep: CI
-    # enforces a 90% floor (see CONTRIBUTING), and a gate that promises "a red
-    # local state never reaches CI" has to check the thing CI actually fails
-    # on. It did not, and that is how six new modules were pushed at 89.54% --
-    # a breach nothing local could see, because the floor only existed in CI.
-    python -m pytest -q -m "" --cov=best_engine_ai_helper --cov-fail-under=90 \
-      $TIMEOUT_ARGS || {
-      echo "[pre-push] tests or coverage floor failed - push aborted."; exit 1;
-    }
-  ) || exit 1
+  # The pushed commit's own gate script, not this checkout's: a commit that
+  # weakens the gate cannot be waved through by the stricter copy on disk.
+  (cd "$WORKTREE" && ./scripts/gate.sh) || {
+    echo "[pre-push] gate failed on $short - push aborted."
+    exit 1
+  }
 
   cleanup
   WORKTREE=""

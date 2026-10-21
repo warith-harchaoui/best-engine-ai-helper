@@ -27,19 +27,40 @@ Every Python file follows the mandate in [CODING.md](CODING.md):
 6. One shared core behind every surface: library, CLI (`cli.py` / `cli_argparse.py`), GUI + HTTP API (`api.py`), and MCP (`mcp.py`) all delegate to the same application logic.
 7. Every GUI-visible string and human-language prompt resolves through [`locales/i18n.yaml`](locales/i18n.yaml).
 
-Run the same checks CI runs before opening a pull request:
+Run the gate before opening a pull request:
 
 ```sh
 pip install -e "." -r requirements-dev.txt
-python -m pip check                                  # dependency set is coherent
-ruff check .                                         # style + import order
-mypy best_engine_ai_helper                           # types
-python -m pytest -q --cov=best_engine_ai_helper --cov-fail-under=90
+./scripts/gate.sh
 ```
 
-CI runs this on Python 3.12 (a deliberately super-light single-version gate;
-run the full 3.10-3.12 sweep locally before pushing). A failing check or a
-coverage drop below the floor blocks the merge.
+That script *is* the gate. CI calls it one stage at a time (`deps`, `lint`,
+`types`, `tests`, `version`) so a failure is named by the step that failed, and
+the pre-push hook calls it whole. There is no second list of commands to keep
+in sync with it, which there used to be: this file, the hook and the workflow
+each described the gate in their own words until they disagreed, and a hook
+that promises "a red local state never reaches CI" is worth nothing once it
+runs something CI does not.
+
+Individual stages, when you want one:
+
+```sh
+./scripts/gate.sh lint       # ruff check + ruff format --check
+./scripts/gate.sh types      # mypy
+./scripts/gate.sh tests      # pytest + the 90% coverage floor
+./scripts/gate.sh package    # build a wheel + sdist and inspect them
+```
+
+CI runs the gate on Python 3.12 (a deliberately super-light single-version
+lane; run the full 3.10-3.12 sweep locally before pushing). A failing check or
+a coverage drop below the floor blocks the merge.
+
+`package` is not part of the default sweep and not part of the per-commit CI
+lane. Building a distribution catches packaging faults (missing package data,
+invalid metadata, a Git-LFS pointer stub shipped in place of the ONNX model)
+and none of those can be caused by editing a function body, so a separate
+`packaging` workflow runs it when a packaging input actually changes, and on
+demand. It builds and inspects; it publishes nothing.
 
 ## Writing standards
 
@@ -59,9 +80,10 @@ Releases live in [CHANGELOG.md](CHANGELOG.md), tagged `vX.Y.Z` in git, and publi
 
 ## Pre-push hook
 
-A git `pre-push` hook blocks the push outright if `ruff check`, `ruff
-format --check`, or the full `pytest -q -m ""` sweep fails: a red local
-state never reaches CI. One-time setup per clone:
+A git `pre-push` hook runs `scripts/gate.sh` and blocks the push outright if
+any stage fails: a red local state never reaches CI. It decides *where* the
+gate runs, not what it checks, so it cannot drift away from the workflow.
+One-time setup per clone:
 
 ```bash
 git config core.hooksPath .githooks

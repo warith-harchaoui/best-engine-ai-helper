@@ -1,15 +1,27 @@
 name: ci
 
-# Deterministic gate: install the package (fastapi/uvicorn/fastapi-mcp are core
-# dependencies, so the GUI/HTTP-API surface AND the MCP surface are both
-# importable under --doctest-modules with no extra) + dev deps, verify the
-# dependency set is coherent (pip check), then ruff lint, mypy types, and
-# pytest with a coverage floor on the supported Python versions. The [cloud]/
-# [filtered] extras are deliberately NOT installed here — the tests exercise
-# their "not installed" and "installed" branches by monkeypatching
-# sys.modules, not by pulling in the real (heavy) packages. The tests never
-# call a live model daemon (the pull / validate model loops are covered by
-# mocked / fall-through tests), so CI needs no Ollama.
+# The light lane: lint, types, tests, and the two consistency checks that cost
+# nothing. Every step shells out to scripts/gate.sh, the same script the
+# pre-push hook runs, so "it passed locally" and "it passed in CI" are claims
+# about one set of commands rather than two that happen to resemble each other.
+#
+# What is deliberately NOT here:
+#
+#   Git LFS. Only the wheel inspection reads the real ONNX bytes, and that
+#   moved to packaging.yml. A plain checkout leaves a pointer stub, which the
+#   test suite never opens (onnxruntime is mocked, not installed).
+#
+#   Building a distribution. Installing build + twine and producing a wheel on
+#   every commit spends minutes on an artifact that only the packaging inputs
+#   can invalidate -- so packaging.yml watches those inputs instead, and also
+#   runs on tags and on demand.
+#
+#   The [cloud] / [filtered] extras. The tests exercise their "installed" and
+#   "not installed" branches by monkeypatching sys.modules, not by pulling in
+#   the real (heavy) packages.
+#
+#   Ollama. No test calls a live model daemon; the pull / validate loops are
+#   covered by mocked and fall-through tests.
 
 "on":
   push:
@@ -23,77 +35,45 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
 jobs:
-  test:
+  gate:
     runs-on: ubuntu-latest
+    # The sweep takes about a minute. The cap is there so a hung job is
+    # cancelled by the clock instead of holding a runner for six hours.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        # Super-light gate: one Python; the full sweep runs locally before push.
+        # Super-light gate: one Python; the full 3.10-3.12 sweep runs locally
+        # before push.
         python-version: ["3.12"]
     steps:
-      - uses: actions/checkout@v4
-        with:
-          # best_engine_ai_helper/models/*.onnx is tracked via Git LFS; a
-          # plain checkout leaves an LFS pointer stub in its place. The test
-          # suite never actually opens that file (onnxruntime is mocked, not
-          # installed), so this isn't a CURRENT failure risk, but any future
-          # build/publish step reading the real bytes would silently ship
-          # the stub instead of the model without this.
-          lfs: true
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
+          # Without this the pip cache is keyed on requirements*.txt alone, so
+          # a dependency edit in pyproject.toml restores a stale wheel set.
+          cache-dependency-path: |
+            pyproject.toml
+            requirements-dev.txt
       - name: Install
         run: |
           python -m pip install --upgrade pip
           pip install -e "." -r requirements-dev.txt
-      - name: Pip check
-        # Catch incompatible pinned dependencies before they bite at runtime.
-        run: python -m pip check
-      - name: Ruff
-        run: |
-          ruff check .
-          ruff format --check .
-      - name: Mypy
-        run: mypy best_engine_ai_helper
-      - name: Pytest
-        # A failing test or a coverage regression below the floor blocks merge.
-        run: pytest -q --cov=best_engine_ai_helper --cov-report=term-missing --cov-fail-under=90
+      # One stage per step so a failure is named by the step that failed,
+      # rather than buried in one long log. The commands live in the script.
+      - name: Dependencies
+        run: ./scripts/gate.sh deps
+      - name: Lint
+        run: ./scripts/gate.sh lint
+      - name: Types
+        run: ./scripts/gate.sh types
+      - name: Tests
+        run: ./scripts/gate.sh tests
       - name: Version / CHANGELOG consistency
-        # Catch the easy-to-forget half of a version bump: pyproject.toml's
-        # version needs a matching "## [X.Y.Z]" heading in CHANGELOG.md.
-        run: |
-          version=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
-          if ! grep -qF "## [$version]" CHANGELOG.md; then
-            echo "::error::pyproject.toml is at $version but CHANGELOG.md has no '## [$version]' entry"
-            exit 1
-          fi
-      - name: Build package
-        # Build a real wheel and sdist -- catches packaging problems (missing
-        # package-data, a broken MANIFEST, invalid metadata) before an actual
-        # release, without publishing anything. Also verifies the
-        # Git-LFS-tracked ONNX model lands in the wheel as the real ~1.9 MB
-        # binary, not a small LFS pointer-stub text file (would silently ship
-        # a broken safety.py to anyone who installs [filtered]).
-        run: |
-          pip install --no-cache-dir build twine
-          python -m build
-          twine check dist/*
-          python - <<'PYEOF'
-          import pathlib
-          import zipfile
-
-          wheel = next(pathlib.Path("dist").glob("*.whl"))
-          with zipfile.ZipFile(wheel) as zf:
-              name = "best_engine_ai_helper/models/clip_nsfw_vit_l14.onnx"
-              info = zf.getinfo(name)
-              size_mb = info.file_size / 1_000_000
-              assert size_mb > 1.0, (
-                  f"{name} is {size_mb:.3f} MB in the wheel -- looks like an "
-                  "LFS pointer stub, not the real model (expected ~1.9 MB). "
-                  "Was this built from a checkout with `git lfs pull` run?"
-              )
-          print(f"OK: {name} is {size_mb:.2f} MB in the wheel")
-          PYEOF
+        run: ./scripts/gate.sh version

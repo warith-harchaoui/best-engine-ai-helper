@@ -1,0 +1,83 @@
+name: packaging
+
+# The heavy half of the old single-job CI, split out because it answers a
+# question the other half cannot invalidate.
+#
+# Building a wheel catches packaging faults -- missing package-data, invalid
+# metadata, an ONNX model that reached the wheel as a Git-LFS pointer stub
+# instead of bytes -- and none of those can be introduced by editing a
+# function body. Running it on every commit spent a Git-LFS checkout plus a
+# build plus a `pip install build twine` on proving, again, that a docstring
+# edit did not break the sdist.
+#
+# So it runs exactly when it can learn something: when a packaging input
+# changed, and on demand. The paths list below is the honest answer to "what
+# could make the wheel wrong"; a new kind of package data belongs in it.
+#
+# No tag trigger, deliberately. `on: push: tags:` would sit under the same
+# `paths:` filter as the branch trigger, and a tag that points at an already
+# pushed commit introduces no files, so the filter would skip the run without
+# saying so -- a trigger that looks like cover and is not. It needs none: a
+# release bumps the version in pyproject.toml, which is the first path in the
+# list, so the release commit itself fires this workflow before the tag exists.
+#
+# This workflow builds and inspects. It publishes nothing.
+
+"on":
+  push:
+    branches: [main]
+    paths:
+      - "pyproject.toml"
+      - "MANIFEST.in"
+      - "requirements.txt"
+      - "best_engine_ai_helper/data/**"
+      - "best_engine_ai_helper/locales/**"
+      - "best_engine_ai_helper/models/**"
+      - "best_engine_ai_helper/static/**"
+      - ".github/workflows/packaging.yml"
+      - "scripts/gate.sh"
+  pull_request:
+    branches: [main]
+    paths:
+      - "pyproject.toml"
+      - "MANIFEST.in"
+      - "requirements.txt"
+      - "best_engine_ai_helper/data/**"
+      - "best_engine_ai_helper/locales/**"
+      - "best_engine_ai_helper/models/**"
+      - "best_engine_ai_helper/static/**"
+      - ".github/workflows/packaging.yml"
+      - "scripts/gate.sh"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The one place in CI that needs the real bytes:
+          # best_engine_ai_helper/models/*.onnx is tracked via Git LFS, and a
+          # plain checkout leaves a pointer stub in its place. Shipping the
+          # stub would silently break safety.py for anyone installing
+          # [filtered], so the wheel inspection below weighs it.
+          lfs: true
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "."
+      - name: Build and inspect the distribution
+        run: ./scripts/gate.sh package

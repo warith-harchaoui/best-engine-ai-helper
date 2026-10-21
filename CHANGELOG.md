@@ -6,6 +6,71 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Changed
 
+- **The gate was written three times and the copies disagreed.** `CONTRIBUTING`
+  listed commands to copy-paste, `.githooks/pre-push` ran its own variant, and
+  `.github/workflows/ci.yml` ran a third. The hook's promise is that a red
+  local state never reaches CI, and it cannot keep that promise while running
+  something else: it enforced a coverage floor CI also enforced, skipped a
+  consistency check CI did not skip, and passed `-m ""` to wake integration
+  tests this project does not have (no test here carries a marker, so the flag
+  selected exactly what plain `pytest` selects; the comment explaining it
+  described another project's suite).
+
+  `scripts/gate.sh` now holds the commands, with one stage per question:
+  `lint`, `types`, `tests`, `version`. CI calls them one at a time so a
+  failure is named by the step that failed; the hook and the contributor call
+  the script with no argument and get all four. The hook keeps the one thing
+  that is genuinely its own, which is *where* the gate runs: a throwaway
+  worktree holding the commit being pushed, not the working directory.
+
+  Two stages sit outside the default sweep because their verdict depends on
+  the environment rather than on the commit. `deps` (`pip check`) is sharp in
+  CI's throwaway venv, which holds this project and nothing else, and useless
+  in the shared conda environment a developer works in, where it reports a
+  dozen unrelated projects disagreeing about numpy; a stage that is red for
+  reasons the commit cannot fix is one people learn to skip, and the only way
+  to skip it is `--no-verify`, which skips the lint and the tests with it.
+  `package` is the build, described below.
+
+  `types` is in the sweep but degrades rather than lying. mypy aborts the
+  whole run when a *dependency's* stubs will not parse, and that is ordinary
+  on a developer machine: `requirements-dev.txt` caps numpy below 2.5 because
+  its stubs use PEP 695 syntax mypy rejects under this project's
+  `python_version = "3.10"` target, so a shared environment holding another
+  project's numpy 2.5 cannot type-check this one. When every error mypy
+  reports lies outside the package, the stage says the environment could not
+  answer and leaves the verdict to CI; one error inside the package and it
+  fails, as it should. Verified both ways.
+
+- **CI built a wheel on every commit to prove a docstring had not broken the
+  sdist.** The build step pulled Git LFS, installed `build` and `twine`, made
+  a distribution and weighed the ONNX model inside it, on every push, when
+  none of that can be invalidated by editing a function body.
+
+  It now lives in its own `packaging` workflow that watches the inputs which
+  *can* make a wheel wrong: `pyproject.toml`, `MANIFEST.in`,
+  `requirements.txt`, and the four package-data directories. Plus
+  `workflow_dispatch`, for asking on purpose. There is deliberately no tag
+  trigger: `on: push: tags:` would fall under the same `paths:` filter as the
+  branch trigger, and a tag pointing at an already-pushed commit introduces no
+  files, so the run would be skipped silently. It needs none, because a
+  release bumps the version in `pyproject.toml` and that commit fires the
+  workflow before the tag exists.
+
+  The per-commit lane keeps lint, types, tests and the version/CHANGELOG
+  check, and drops `lfs: true` with the build (the suite never opens the
+  model; onnxruntime is mocked, not installed). The pip cache is now keyed on
+  `pyproject.toml` as well as `requirements-dev.txt`, so a dependency edit
+  stops restoring a stale wheel set, and both workflows carry a
+  `timeout-minutes` so a hung job is cancelled by the clock rather than
+  holding a runner for six hours. `actions/checkout` and
+  `actions/setup-python` move to v7, off the deprecated Node 20 runtime.
+
+- **`scripts/gate.sh package` builds into a temporary directory**, not `dist/`.
+  The command it replaces began with `rm -rf dist`, which is defensible in a
+  container and a trap on a laptop, where `dist/` may hold a release somebody
+  else is in the middle of.
+
 - **`storage` ranked resident sets by how much memory they used.** The comment
   argued the case — "among sets that fit, the one using the most memory is the
   most capable" — and it is a proxy, not the thing meant: a 20 GB model
@@ -162,6 +227,9 @@ All notable changes to best-engine-ai-helper are documented here.
   reports.
 
 ### Added
+
+- **`scripts/gate.sh`**, the single definition of the gate, called by the
+  pre-push hook, by CI one stage at a time, and by hand.
 
 - **Tests for `storage`, `doctor` and (in the argparse twin) `providers`,
   through both command-line surfaces.** Three handlers shipped with no test
