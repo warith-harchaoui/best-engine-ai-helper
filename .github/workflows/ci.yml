@@ -28,6 +28,8 @@ name: ci
     branches: [main]
   pull_request:
     branches: [main]
+  # Re-run the gate against main without having to invent a commit for it.
+  workflow_dispatch:
 
 # Cancel a still-running run for the same branch/PR when a new push lands, so
 # a quick string of fixup pushes doesn't queue up redundant runs.
