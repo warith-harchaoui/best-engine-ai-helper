@@ -72,6 +72,11 @@ All notable changes to best-engine-ai-helper are documented here.
   dependency set, since stubs are what is cached and a dependency edit must
   not restore a cache describing the versions before it.
 
+  Measured across the change, per commit: **70s to 43s**, with the build and
+  the Git-LFS fetch gone from the lane and the type check down from 13.0s to
+  0.4s. Coverage on Linux went from 89.26%, which was failing the 90% floor,
+  to 92.51%.
+
 - **`scripts/gate.sh package` builds into a temporary directory**, not `dist/`.
   The command it replaces began with `rm -rf dist`, which is defensible in a
   container and a trap on a laptop, where `dist/` may hold a release somebody
