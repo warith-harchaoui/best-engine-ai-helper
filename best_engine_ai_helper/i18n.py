@@ -96,6 +96,26 @@ def meta() -> dict[str, Any]:
     return result
 
 
+@functools.lru_cache(maxsize=1)
+def prompts() -> osh.Prompts:
+    """The shared prompt loader, bound to this package's locale file.
+
+    `os_helper.Prompts` serves the single-language shape this package uses
+    (``key -> role -> text``) as readily as the multi-language one, so the
+    deliberate choice to author one model-facing language — declared as
+    ``meta.model_prompt_locale`` and documented in CODING.md 21.3.3 — needs no
+    reshaping of the file to delegate. What goes away is this module's own
+    three-line accessor over ``Locales.raw``, and with it one more place where
+    the suite solved prompts privately.
+
+    Returns
+    -------
+    os_helper.Prompts
+        The loader, parsed once.
+    """
+    return osh.Prompts.from_path(_LOCALES_PATH, section=PROMPTS_SECTION)
+
+
 def prompt(key: str, field: str = "user") -> str:
     """
     Return one field of a model-facing prompt template.
@@ -126,7 +146,4 @@ def prompt(key: str, field: str = "user") -> str:
     >>> prompt("writing_charter_excerpt", "text").startswith("Rule 5")
     True
     """
-    # ``raw``, not ``text``: this section is declared unlocalized, so its
-    # sub-keys are roles and no locale could resolve them.
-    entry = locales().raw(PROMPTS_SECTION, key)
-    return str(entry[field])
+    return prompts().text(key, field=field)

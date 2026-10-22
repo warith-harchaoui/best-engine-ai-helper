@@ -2,6 +2,22 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
+## [1.8.1] - 2026-10-22
+
+### Changed
+
+- **`i18n.prompt()` delegates to `os_helper.Prompts`**, the prompt loader
+  added in os-helper 2.9.0, instead of this module's own accessor over
+  `Locales.raw`. Three members were each solving prompts privately; this was
+  one of them.
+
+  Nothing about the file changes. `Prompts` serves the single-language shape
+  this package uses (`key -> role -> text`) as readily as a multi-language
+  one, so the deliberate choice to author one model-facing language — declared
+  as `meta.model_prompt_locale`, documented in CODING.md 21.3.3 — is kept
+  intact rather than reshaped away. What the package gains is the section-wide
+  `problems()` check, now called by a test.
+
 ## [1.8.0] - 2026-10-21
 
 ### Changed

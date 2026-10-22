@@ -96,3 +96,23 @@ def test_the_page_formats_numbers_in_its_own_language() -> None:
     # An unknown locale formats in the language it actually fell back to.
     default = i18n.meta()["default_locale"]
     assert f'const LOCALE = "{default}"' in render_gui("tlh")
+
+
+def test_the_shared_loader_is_what_resolves_the_prompts() -> None:
+    """One prompt loader in the suite, not one per member.
+
+    This module kept a three-line accessor over `Locales.raw` until 1.8.1.
+    `os_helper.Prompts` serves this package's single-language shape
+    (`key -> role -> text`) as readily as a multi-language one, so delegating
+    cost no reshaping of the file and gave up none of the deliberate choice
+    to author one model-facing language.
+    """
+    import os_helper as osh
+
+    assert isinstance(i18n.prompts(), osh.Prompts)
+
+
+def test_the_prompt_section_is_sound() -> None:
+    """The whole-section check the shared loader makes a one-liner."""
+    faults = i18n.prompts().problems()
+    assert faults == [], "prompt faults:\n  " + "\n  ".join(faults)

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "best-engine-ai-helper"
-version = "1.8.0"
+version = "1.8.1"
 description = "Pick and pull the best local LLM/VLM for the current hardware."
 authors = [{name = "Warith Harchaoui", email = "warithmetics@deraison.ai"}]
 license = {text = "BSD-3-Clause"}
@@ -21,7 +21,7 @@ dependencies = [
     # gpu_utilization_percent() functions) that detect.server_load() reads —
     # the `--live` CLI/API flag. detect.py delegates ALL raw hardware probing
     # to os_helper instead of doing it directly.
-    "os-helper>=2.6.0,<3",
+    "os-helper>=2.9.0,<3",
     # detect.py imports this directly for the running-vLLM-process scan
     # (server_load()); already a transitive os-helper dep, declared directly
     # here too since the code imports it by name, not just by luck.
