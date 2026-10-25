@@ -139,11 +139,10 @@ best-engine-ai-helper --version
 best-engine-ai-helper detect     # prints this machine's hardware as JSON
 ```
 
-Every command is also available through an argparse twin,
-`best-engine-ai-helper-argparse` (same flags, same output): the suite's
-zero-extra-runtime-dependency CLI surface (click is a core dependency here,
-so `best-engine-ai-helper` stays the primary entry point; the argparse twin
-is the added surface, not a replacement).
+`best-engine-ai-helper` is the only command line this package ships: one
+surface, built with click, which is a core dependency and not an optional
+extra. Releases before 1.9.0 also installed a second, suffixed entry point
+mirroring it command for command; there is one name now, and it is this one.
 
 ## Quick start
 

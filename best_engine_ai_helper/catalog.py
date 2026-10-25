@@ -577,7 +577,7 @@ def merge_arena_axes(
     """
     Add LM Arena conversational axes to ``entries``, and report what happened.
 
-    Lives here rather than in either CLI because the click and argparse front
+    Lives here rather than in the CLI because the command line and the HTTP
     ends mirror each other 1:1; a copy in each would be two places to drift.
     The callers do the printing, this does the deciding.
 

@@ -4,14 +4,18 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "best-engine-ai-helper"
-version = "1.8.1"
+version = "1.9.0"
 description = "Pick and pull the best local LLM/VLM for the current hardware."
 authors = [{name = "Warith Harchaoui", email = "warithmetics@deraison.ai"}]
 license = {text = "BSD-3-Clause"}
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "click>=8.1",
+    # The command line, and no longer optional: this package ships exactly one
+    # CLI and it is built with click, so the dependency cannot be an extra.
+    # Capped below 9 like every other member of the suite -- a major click
+    # release is free to change group/option semantics under us.
+    "click>=8.1,<9",
     # Best-effort language ID for recommend.parse_task's task-description
     # quality check: offline, deterministic, no model call.
     "langdetect>=1.0.9",
@@ -21,7 +25,10 @@ dependencies = [
     # gpu_utilization_percent() functions) that detect.server_load() reads —
     # the `--live` CLI/API flag. detect.py delegates ALL raw hardware probing
     # to os_helper instead of doing it directly.
-    "os-helper>=2.9.0,<3",
+    # Cap at <4, not <3: os-helper 3.0.0 dropped its own command line and
+    # nothing here ever called it, so the major bump is not breaking for
+    # this package.
+    "os-helper>=2.9.0,<4",
     # detect.py imports this directly for the running-vLLM-process scan
     # (server_load()); already a transitive os-helper dep, declared directly
     # here too since the code imports it by name, not just by luck.
@@ -76,11 +83,10 @@ filtered = [
 ]
 
 [project.scripts]
-best-engine-ai-helper = "best_engine_ai_helper.cli:console_entry"
-# argparse twin (no extra runtime dep beyond click, already a core dependency
-# here) — mirrors every cli.py command 1:1, see cli_argparse.py's docstring
-# for why this is the suite's inverted naming (click is primary here).
-best-engine-ai-helper-argparse = "best_engine_ai_helper.cli_argparse:main"
+# One command line, built with click. The argparse twin that used to ship
+# beside it (`-argparse`) was removed in 1.9.0: a suffix naming the parsing
+# library describes the implementation, not the interface.
+best-engine-ai-helper = "best_engine_ai_helper.cli:main"
 # HTTP API + MCP server.
 best-engine-ai-helper-mcp = "best_engine_ai_helper.mcp:main"
 

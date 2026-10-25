@@ -27,7 +27,7 @@ def _isolate_ledger(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """
     Never let the test suite write to the real ``~/.best-engine-ai-helper/usage.db``.
 
-    `cli.py` / `cli_argparse.py` / `api.py` all call `observe.enable()` at
+    `cli.py` and `api.py` both call `observe.enable()` at
     startup by default, and a `CliRunner`/`TestClient` invocation in these
     tests genuinely runs that startup code. Without this, running the suite
     once would leave real rows in the developer's actual ledger. Tests that

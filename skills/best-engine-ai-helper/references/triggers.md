@@ -32,10 +32,10 @@ a model, fine-tune, or pick a vector index.
 | Refresh the catalogue (online) | `catalog update`, `update` | — | n/a |
 | Browser GUI (read-only half) | `gui` | — | `GET /gui` |
 
-Naming here is **inverted** relative to the rest of the suite: click is the
-primary CLI (`best-engine-ai-helper …`) because click is already a core
-dependency, and the argparse twin is `best-engine-ai-helper-argparse`. Both
-cover the same commands 1:1.
+There is exactly one command line, `best-engine-ai-helper …`, built with
+click — a core dependency here, not an optional extra, so nothing has to be
+installed to get it. `-h` and `-V` work everywhere `--help` and `--version`
+do.
 
 ## Natural-language phrasings that should fire
 
@@ -63,7 +63,7 @@ cover the same commands 1:1.
   running right now", "refresh the model catalogue", "what task families does
   it know".
 - **Explicit mentions**: `best-engine-ai-helper`,
-  `best-engine-ai-helper-argparse`, `best-engine-ai-helper-mcp`,
+  `best-engine-ai-helper-mcp`,
   `import best_engine_ai_helper as be`, `recommend_engines`, `compute_profile`,
   "install / run best-engine-ai-helper".
 

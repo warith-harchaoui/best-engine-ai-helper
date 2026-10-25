@@ -1,13 +1,9 @@
 # best-engine-ai-helper CLI reference
 
-**Naming is inverted here** relative to the rest of the suite: click is the
-primary CLI because click is already a core dependency, and the argparse twin
-mirrors it 1:1.
-
-| CLI | Command |
-|---|---|
-| click (primary) | `best-engine-ai-helper …` |
-| argparse (twin) | `best-engine-ai-helper-argparse …` |
+One command line, built with click — a core dependency here, not an optional
+extra, so nothing has to be installed to get it. Every command below is
+spelled `best-engine-ai-helper <command>`; `-h` and `-V` work everywhere
+`--help` and `--version` do.
 
 Ollama is required for `pull`, `validate` and `env`; **not** for `detect`,
 `recommend` or `report`.

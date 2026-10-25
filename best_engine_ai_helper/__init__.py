@@ -137,6 +137,6 @@ __all__ = [
     "resolve_family",
 ]
 
-__version__ = "1.8.1"
+__version__ = "1.9.0"
 __author__ = "Warith Harchaoui"
 __email__ = "warithmetics@deraison.ai"

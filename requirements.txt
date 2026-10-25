@@ -1,6 +1,6 @@
-click>=8.1
+click>=8.1,<9
 langdetect>=1.0.9
-os-helper>=2.4.0,<3
+os-helper>=2.9.0,<4
 psutil>=5.9
 pyyaml>=6.0
 requests>=2.31

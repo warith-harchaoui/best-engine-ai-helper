@@ -1,19 +1,28 @@
 """
-cli — Click command-line interface for best-engine-ai-helper.
+cli — the command line of best-engine-ai-helper, built with click.
 
-Entry point: `best-engine-ai-helper` (registered in pyproject.toml).
+One command line, one module: `best-engine-ai-helper` (registered in
+pyproject.toml) is the only CLI this package ships. An argparse twin used to
+mirror it command for command, which doubled every option and every test for
+no behaviour anybody could observe; it was removed in 1.9.0 and click became
+a core dependency rather than an opt-in extra.
 
 Commands:
   detect          Print detected hardware as JSON.
   recommend       Print ranked model candidates for this hardware.
+  resolve         Turn a usage brief into a machine-specific engine file.
+  report          Recommend engine(s) for a task, as Markdown or JSON.
+  usages          Browse and resolve the sev7n usage catalog.
   catalog show    Print the merged model catalog as a table.
   catalog update  Refresh the catalog cache; --arena adds Arena ratings.
   hardware show   Print the merged hardware chip table.
   hardware update Record this machine's chip and memory into the cache.
   pull            Pull the best model and run Ralph validation gates.
-  validate        Run Ralph gates on the already-configured model.
-  doctor          Compare what was resolved against what the daemon serves.
   storage         Plan capacity: disk, and what fits in memory together.
+  providers       Which cloud providers are usable right now, and why not.
+  doctor          Compare what was resolved against what the daemon serves.
+  validate        Run Ralph gates on the already-configured model.
+  gui             Launch the minimal browser GUI.
   env             Print the env block for ~/.zshrc or sourcing.
   activity        Summarize the local activity/cost ledger.
 
@@ -35,6 +44,7 @@ from typing import Any
 import click
 import os_helper as osh
 
+from . import __version__
 from . import catalog as _catalog
 from . import cloud_catalog as _cloud_catalog
 from . import detect as _detect
@@ -90,8 +100,22 @@ def _fmt_table(rows: list[dict[str, Any]], columns: list[str]) -> str:
 # ---------------------------------------------------------------------------
 
 
-@click.group()
-@click.version_option(package_name="best-engine-ai-helper")
+@click.group(
+    context_settings={"help_option_names": ["-h", "--help"], "max_content_width": 100},
+)
+# `__version__` is passed explicitly rather than read from the installed
+# distribution metadata: `package_name=` alone reports whatever was last
+# pip-installed, so an editable checkout answered `--version` with the previous
+# release. `prog_name` likewise, or `python -m best_engine_ai_helper.cli
+# --version` names the module instead of the command. `-V` is capital because
+# `-v` is already `--verbose` below.
+@click.version_option(
+    __version__,
+    "-V",
+    "--version",
+    package_name="best-engine-ai-helper",
+    prog_name="best-engine-ai-helper",
+)
 @click.option(
     "-v",
     "--verbose",
@@ -99,7 +123,7 @@ def _fmt_table(rows: list[dict[str, Any]], columns: list[str]) -> str:
     help="Increase log verbosity: -v shows info, -vv also shows debug. "
     "Warnings and errors are always shown.",
 )
-def main(verbose: int) -> None:
+def cli(verbose: int) -> None:
     """Pick and pull the best local LLM/VLM for the current hardware."""
     # Configure the os_helper logger so library osh.info/debug calls surface on
     # demand. Logs go to stderr so command stdout (JSON, tables) stays clean and
@@ -172,7 +196,7 @@ def _report_measurement(meter: _throughput.Meter, tag: str) -> None:
     )
 
 
-@main.command("detect")
+@cli.command("detect")
 @click.option("--json", "as_json", is_flag=True, default=True, hidden=True)
 def detect_cmd(as_json: bool) -> None:
     """Print detected hardware as JSON."""
@@ -197,7 +221,7 @@ def detect_cmd(as_json: bool) -> None:
 _VALID_APPLICATIONS = ["code", "math", "ocr", "vision", "chat", "generalist"]
 
 
-@main.command("recommend")
+@cli.command("recommend")
 @click.option(
     "--kind",
     type=click.Choice(["llm", "vlm", "both"]),
@@ -313,7 +337,7 @@ def recommend_cmd(
     click.echo()
 
 
-@main.command("resolve")
+@cli.command("resolve")
 @click.option(
     "--brief",
     type=str,
@@ -375,7 +399,7 @@ def resolve_cmd(brief: str, out: str | None, backend: str, endpoint: str | None)
         click.echo(f"  bring it up:  {cmd}")
 
 
-@main.command("report")
+@cli.command("report")
 @click.option(
     "--task",
     type=str,
@@ -522,7 +546,7 @@ def report_cmd(
 # ---------------------------------------------------------------------------
 
 
-@main.group("usages")
+@cli.group("usages")
 def usages_group() -> None:
     """Browse and resolve the sev7n usage catalog (task profiles + families)."""
 
@@ -681,7 +705,7 @@ def usages_resolve(
 # ---------------------------------------------------------------------------
 
 
-@main.group("catalog")
+@cli.group("catalog")
 def catalog_group() -> None:
     """Manage the model catalog."""
 
@@ -798,7 +822,7 @@ def catalog_update(limit: int | None, timeout: float, arena: bool, from_ollama: 
 # ---------------------------------------------------------------------------
 
 
-@main.group("hardware")
+@cli.group("hardware")
 def hardware_group() -> None:
     """Manage the hardware chip table."""
 
@@ -849,7 +873,7 @@ def hardware_update() -> None:
 # ---------------------------------------------------------------------------
 
 
-@main.command("pull")
+@cli.command("pull")
 @click.option(
     "--keep-failed",
     is_flag=True,
@@ -985,7 +1009,7 @@ def pull_cmd(keep_failed: bool, vllm: bool, application: str | None, min_tps: fl
     sys.exit(1)
 
 
-@main.command("storage")
+@cli.command("storage")
 @click.option(
     "--backend",
     type=click.Choice(["ollama", "vllm"]),
@@ -1046,7 +1070,7 @@ def storage_cmd(backend: str) -> None:
         click.echo(f"\n! {warning}", err=True)
 
 
-@main.command("providers")
+@cli.command("providers")
 @click.option("--json", "as_json", is_flag=True, default=False, help="Emit the rows as JSON.")
 def providers_cmd(as_json: bool) -> None:
     """Which cloud providers are usable right now, and for the others, why not.
@@ -1087,7 +1111,7 @@ def providers_cmd(as_json: bool) -> None:
         click.echo("Set a key in settings.yaml, a .env file, the environment, or the keychain.")
 
 
-@main.command("doctor")
+@cli.command("doctor")
 @click.option(
     "--directory",
     default=".",
@@ -1133,7 +1157,7 @@ def doctor_cmd(directory: str, timeout: float) -> None:
     sys.exit(1)
 
 
-@main.command("validate")
+@cli.command("validate")
 def validate_cmd() -> None:
     """Run Ralph gates on the already-configured model.
 
@@ -1170,7 +1194,7 @@ def validate_cmd() -> None:
         sys.exit(1)
 
 
-@main.command("gui")
+@cli.command("gui")
 @click.option("--host", default="127.0.0.1", show_default=True, help="Bind address.")
 @click.option("--port", default=8000, show_default=True, help="Bind port.")
 def gui_cmd(host: str, port: int) -> None:
@@ -1181,7 +1205,7 @@ def gui_cmd(host: str, port: int) -> None:
     uvicorn.run("best_engine_ai_helper.api:app", host=host, port=port)
 
 
-@main.command("env")
+@cli.command("env")
 def env_cmd() -> None:
     """Print the env block ready for ~/.zshrc or sourcing.
 
@@ -1210,7 +1234,7 @@ def env_cmd() -> None:
 # one-letter, easily-mistyped collision with a completely different concept.
 
 
-@main.command("activity")
+@cli.command("activity")
 @click.option(
     "--format",
     "fmt",
@@ -1256,10 +1280,10 @@ def activity_cmd(fmt: str) -> None:
         click.echo(_fmt_table(summary["recent_errors"], ["ts", "user", "model", "error"]))
 
 
-def console_entry() -> None:
+def main() -> None:
     """Console entry point (`best-engine-ai-helper`, registered in pyproject.toml).
 
-    Click's own `main()` only special-cases `ClickException`/`Abort` (and a
+    Click's own invocation only special-cases `ClickException`/`Abort` (and a
     broken pipe); a plain library exception (a connection failure, a missing
     `ollama` binary, ...) would otherwise propagate as a raw Python traceback
     instead of a clean CLI error. This wraps the whole invocation and
@@ -1269,11 +1293,11 @@ def console_entry() -> None:
     `BaseException` this does not catch, so it passes through untouched.
     """
     try:
-        main()
+        cli()
     except Exception as err:  # noqa: BLE001 — last resort: see docstring
         click.echo(f"Error: {err}", err=True)
         sys.exit(1)
 
 
 if __name__ == "__main__":  # pragma: no cover
-    console_entry()
+    main()

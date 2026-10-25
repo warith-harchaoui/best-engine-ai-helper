@@ -40,10 +40,10 @@ hardcodes a model name, and nothing downstream re-runs detection.
 Logging and file management route through `os_helper` — the suite convention,
 and the only hardware probing path this package uses.
 
-## 2. CLIs — click (primary) and argparse (twin)
+## 2. CLI — click
 
-`best-engine-ai-helper` and `best-engine-ai-helper-argparse`. See
-`cli-reference.md` for why the naming is inverted here.
+`best-engine-ai-helper`, the one command line this package ships. See
+`cli-reference.md` for every command.
 
 ## 3. HTTP API — FastAPI (default install)
 

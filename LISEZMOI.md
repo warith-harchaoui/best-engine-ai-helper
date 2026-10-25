@@ -155,11 +155,11 @@ best-engine-ai-helper --version
 best-engine-ai-helper detect     # affiche le matériel de la machine en JSON
 ```
 
-Chaque commande existe aussi via un jumeau argparse,
-`best-engine-ai-helper-argparse` (mêmes options, même sortie) : la surface
-CLI sans dépendance supplémentaire de la suite (click est ici une dépendance
-de base, donc `best-engine-ai-helper` reste le point d'entrée principal ; le
-jumeau argparse est une surface ajoutée, pas un remplacement).
+`best-engine-ai-helper` est la seule ligne de commande livrée par ce
+paquet : une surface, construite avec click, qui est une dépendance de base
+et non un extra optionnel. Les versions antérieures à la 1.9.0
+installaient aussi un second point d'entrée suffixé qui la doublait commande
+par commande ; il n'y a plus qu'un seul nom, et c'est celui-ci.
 
 ## Démarrage rapide
 

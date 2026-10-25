@@ -2,6 +2,80 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
+## [1.9.0] - 2026-10-25
+
+### Removed
+
+- **The argparse CLI twin (`cli_argparse.py`) and its entry point
+  `best-engine-ai-helper-argparse`.** This package now ships exactly one
+  command line, `best-engine-ai-helper`, built with click. A suffix naming
+  the parsing library describes the implementation, not the interface, and
+  the twin cost two of everything — two parsers, two option declarations, two
+  test modules, and a 1:1 parity contract that only existed to keep the
+  duplication honest — for no behaviour a user could observe. `click` was
+  already a core dependency here, so nothing moved between dependency
+  sections and no extra was deleted.
+
+  Parity was verified before deleting, not assumed: the two surfaces agreed
+  on all 23 command/option nodes (15 top-level commands, 19 leaf command
+  paths), and the only declared differences were already allow-listed as
+  deliberate (`detect --json`, hidden and always true; `report --cloud`, the
+  positive half of click's `--cloud/--no-cloud` pair). `cli_argparse.py`
+  imported `_VALID_APPLICATIONS` and `_fmt_table` *from* `cli.py`, never the
+  other way round, so the surviving module lost nothing.
+
+  Coverage that existed only on the argparse side was ported rather than
+  dropped: the command inventory (the parity tests were the only place the
+  command set was written down, now `EXPECTED_COMMANDS` in
+  `tests/test_cli.py`), the `--help` smoke over every command and subgroup,
+  the `"hardware"` key in `detect`'s JSON, and the `providers` tally line.
+
+### Added
+
+- **`-h` and `-V`.** `--help` worked and `-h` answered "No such option";
+  `--version` worked and `-V` did not exist. Both are now registered on the
+  group, `-V` capitalised because `-v` is already `--verbose`. Found by
+  running the command, not by reading it.
+
+### Fixed
+
+- **`--version` reported the installed distribution, not the checked-out
+  tree.** `@click.version_option(package_name=…)` with no version argument
+  reads the metadata pip last wrote, so an editable checkout at 1.9.0
+  answered `1.8.1` — which is precisely the question somebody debugging a
+  local change asks it. `__version__` is now passed explicitly, and
+  `prog_name` with it: `python -m best_engine_ai_helper.cli --version` used
+  to name the module instead of the command.
+
+- **The module docstring of `cli.py` listed 12 of the 15 commands.**
+  `resolve`, `report`, `usages`, `providers` and `gui` had been added without
+  it, so the one place a reader looks for the command set was wrong by a
+  third.
+
+### Changed
+
+- **The `os-helper` cap widened from `<3` to `<4`.** os-helper 3.0.0 drops
+  its own command line, which nothing here ever called, so the major bump is
+  not breaking for this package.
+
+- **The click group is named `cli` and the console wrapper is named `main`**
+  (they were `main` and `console_entry`), matching every other member of the
+  suite: `[project.scripts]` now reads
+  `best-engine-ai-helper = "best_engine_ai_helper.cli:main"`. The wrapper
+  itself is unchanged — it still turns a stray library exception into one
+  `Error: …` line and exit 1 instead of a traceback.
+
+### Migration
+
+- `best-engine-ai-helper-argparse <command>` → `best-engine-ai-helper
+  <command>`. Same commands, same options, same output; only the suffix is
+  gone. Reinstall (`pip install -U best-engine-ai-helper`) to drop the stale
+  console script, which otherwise lingers in the environment pointing at a
+  module that no longer exists.
+- Code importing `best_engine_ai_helper.cli_argparse` must import
+  `best_engine_ai_helper.cli`; code importing `cli.main` as the click group
+  must import `cli.cli` (`cli.main` is now the console wrapper).
+
 ## [1.8.1] - 2026-10-22
 
 ### Changed
