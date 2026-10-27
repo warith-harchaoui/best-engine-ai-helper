@@ -74,7 +74,9 @@ Warith Harchaoui <warithmetics@deraison.ai>
 
 from __future__ import annotations
 
+import contextlib
 import importlib
+import io
 import math
 import os
 from typing import Any, Literal
@@ -1101,6 +1103,16 @@ def available() -> bool:
     exists to prevent. Cached, because importing airllm pulls in torch and that
     is seconds, not milliseconds.
 
+    The import is performed with stdout and stderr captured. Importing airllm
+    pulls in bitsandbytes, which greets the world on **stdout** (``>>>>
+    bitsandbytes installed``) as a side effect of being imported. A capability
+    probe has no business writing to the caller's stdout: this package has a
+    CLI whose output is parsed (``--json``) and an OpenAI-compatible server,
+    and :func:`decide` calls this during ordinary resolution — so a third-party
+    banner lands in the middle of a JSON document that something downstream is
+    reading. Whatever the import printed is kept, at debug level, where a
+    diagnostic belongs.
+
     Returns
     -------
     bool
@@ -1115,12 +1127,16 @@ def available() -> bool:
     """
     global _AVAILABLE
     if _AVAILABLE is None:
+        noise = io.StringIO()
         try:
-            importlib.import_module(PACKAGE)
+            with contextlib.redirect_stdout(noise), contextlib.redirect_stderr(noise):
+                importlib.import_module(PACKAGE)
             _AVAILABLE = True
         except Exception as exc:  # noqa: BLE001 — any import failure means unusable
             osh.debug(f"The {PACKAGE} runtime cannot be imported here: {exc!r}")
             _AVAILABLE = False
+        if noise.getvalue().strip():
+            osh.debug(f"Importing {PACKAGE} printed: {noise.getvalue().strip()!r}")
     return _AVAILABLE
 
 

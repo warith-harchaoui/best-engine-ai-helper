@@ -167,9 +167,13 @@ def test_resolve_local_mode_backend_and_headroom(monkeypatch: pytest.MonkeyPatch
     assert set(unknown_kind_eng) >= {"llm", "vlm"}
 
     # An empty catalog leaves every kind unresolved (a warning, not a crash)
-    # rather than raising deep inside the picker.
+    # rather than raising deep inside the picker. `airllm: never` keeps that
+    # the subject: an empty catalog is exactly the case the streaming rescue
+    # exists to answer, so without it this asserted the absence of a feature
+    # that fires whenever airllm imports -- which is host-dependent, and this
+    # module's whole promise is that nothing here depends on the real machine.
     empty_catalog_eng = engine.resolve(
-        _BRIEF, backend="ollama", catalog=[], hw=_HW, compute=_COMPUTE
+        dict(_BRIEF, airllm="never"), backend="ollama", catalog=[], hw=_HW, compute=_COMPUTE
     )
     assert empty_catalog_eng["llm"] is None and empty_catalog_eng["vlm"] is None
 
