@@ -1,20 +1,90 @@
-# EXAMPLES.md
+# Examples
 
-One runnable recipe per public CLI command. All examples assume
-`best-engine-ai-helper` is installed and Ollama is running locally on port
-11434 (only required for the `pull`, `validate`, and `env` commands).
+[🇫🇷 EXEMPLES.md](EXEMPLES.md) · 🇬🇧 English
 
----
+Ten scenarios, each one a job somebody actually arrives with, then one section
+listing every command. Every snippet below was checked against the code, and
+the outputs pasted here were produced by running it — see
+[Setup](#setup) for the machine they came from and for the handful of commands
+that could not be run.
 
-## detect
+The one idea worth carrying through all of it: **you never name a model.** You
+describe the job, and this package names the model, differently on every
+machine.
 
-Print the detected hardware as JSON.
+## Table of Contents
+
+- [Setup](#setup)
+- [1. What this machine can run](#1-what-this-machine-can-run)
+- [2. The best engine for a job, as a report](#2-the-best-engine-for-a-job-as-a-report)
+- [3. One brief per repo, one engine per machine](#3-one-brief-per-repo-one-engine-per-machine)
+- [4. A paid model, only when you hand it a key](#4-a-paid-model-only-when-you-hand-it-a-key)
+- [5. Usage profiles instead of model names](#5-usage-profiles-instead-of-model-names)
+- [6. Capacity planning: what fits together](#6-capacity-planning-what-fits-together)
+- [7. Too large to fit, still runnable: layer streaming](#7-too-large-to-fit-still-runnable-layer-streaming)
+- [8. Who called what, at what cost](#8-who-called-what-at-what-cost)
+- [9. The GUI, the HTTP API and the MCP tools](#9-the-gui-the-http-api-and-the-mcp-tools)
+- [10. Call it from your own package](#10-call-it-from-your-own-package)
+- [Command line](#command-line)
+- [Troubleshooting](#troubleshooting)
+
+## Setup
+
+```sh
+pip install best-engine-ai-helper
+```
+
+Expect about 2 GB and a few minutes: this package is pure Python and tiny, but
+the layer-streaming runtime brings torch with it. One command line is
+installed, plus a server:
+
+```sh
+best-engine-ai-helper --version     # best-engine-ai-helper, version 1.9.0
+best-engine-ai-helper-mcp           # HTTP API + MCP, http://127.0.0.1:8000
+```
+
+Every Python snippet below assumes these imports, and nothing else:
+
+```python
+import best_engine_ai_helper as beah  # the flat public surface
+from best_engine_ai_helper import llm  # the one call that runs a model
+```
+
+[Ollama](https://ollama.com) is needed only to **run** a model — so for `pull`,
+`validate`, `env` and for the `llm.chat` snippet in
+[§10](#10-call-it-from-your-own-package). Everything that only *decides*
+(`detect`, `recommend`, `report`, `resolve`, `usages`, `storage`, `providers`,
+`catalog show`, `hardware show`, every `airllm` sizing subcommand, the GUI, the
+HTTP API) works with no daemon and no network at all.
+
+**Where the outputs came from.** Every table and panel below was produced on an
+Apple M2 Max with 96 GB of unified memory, under macOS, with a pristine
+`~/.best-engine-ai-helper/` so that the **bundled** catalogue is what answers
+rather than a refreshed cache. Two properties of that machine shape several
+numbers and are worth knowing before you compare: its memory bandwidth is
+400 GB/s, which sets every `tok/s` figure, and its disk was **98% full**, which
+is why so many rows in
+[§7](#7-too-large-to-fit-still-runnable-layer-streaming) are refused on disk
+rather than on memory. A `~` marks an estimate derived from bandwidth; a `*` in
+real output marks a figure measured on the machine. The free-disk figures differ
+slightly between panels because each panel is a separate run and the drive was
+filling between them — that is a live reading, not an inconsistency.
+
+Five commands are **not** executed anywhere below, and their effect is described
+rather than pasted: `pull` and `validate` (they download model weights and run
+two generation gates), `catalog update` and `hardware update` (the first reaches
+the network), `airllm prepare` (it downloads a checkpoint and splits it) and
+`imagine generate` (it downloads a diffusers pipeline). Nothing in this file is
+invented output.
+
+## 1. What this machine can run
+
+Start here. `detect` says what the hardware is; `recommend` says what that
+hardware should run, without downloading anything.
 
 ```sh
 best-engine-ai-helper detect
 ```
-
-Expected output on an Apple M2 Max 96 GB machine:
 
 ```json
 {
@@ -24,119 +94,220 @@ Expected output on an Apple M2 Max 96 GB machine:
     "unified_gb": 96.0,
     "vram_gb": null,
     "ram_gb": 96.0
+  },
+  "hardware": {
+    "platform": "darwin",
+    "cpu": {
+      "physical_cores": 12,
+      "logical_cores": 12,
+      "model": "Apple M2 Max",
+      "percent": 66.9
+    },
+    "ram_gb": 96.0,
+    "available_ram_gb": 52.0,
+    "disk": {
+      "free_gb": 22.1,
+      "used_gb": 972.6,
+      "total_gb": 994.7,
+      "percent_used": 97.8
+    },
+    "gpu_vendor": "apple",
+    "gpus": [],
+    "gpu_utilization_percent": 58.0,
+    "apple_chip": "Apple M2 Max",
+    "apple_unified_gb": 96.0
   }
 }
 ```
 
-The `unified_gb` field is null on non-Apple machines; `vram_gb` is populated
-on Linux/Windows machines with a discrete NVIDIA or AMD GPU.
-
----
-
-## recommend
-
-Print ranked model candidates for the current hardware without downloading anything.
+The top-level `memory` block is the stable part: `unified_gb` is populated only
+on Apple Silicon, `vram_gb` only on a machine with a discrete NVIDIA or AMD
+GPU, and `ram_gb` always. The `hardware` block underneath is a live reading
+delegated to `os-helper`, so `percent`, `available_ram_gb` and
+`gpu_utilization_percent` differ on every run — they are the fields that
+`report --live` consumes.
 
 ```sh
-best-engine-ai-helper recommend
+best-engine-ai-helper recommend --kind llm
 ```
 
-On an M2 Max 96 GB machine the output looks like:
+```
+=== LLM candidates (ollama) ===
+id                 ram_gb  score  fits  tok/s  comfy  notes
+-----------------  ------  -----  ----  -----  -----  ----------------------------------------
+qwen3:72b-q8_0     78      89     NO    3      NO     72B at Q8; needs 96 GB unified. Reliable
+qwen3:72b-q4_k_m   48      87     NO    5      NO     Top text-only; needs 64 GB unified or VR
+qwen3:32b-q8_0     36      85     yes   7      NO     32B at full Q8 precision. Reliable struc
+qwen3:32b-q4_k_m   22      83     yes   12     NO     Large text model; fits 24 GB VRAM with h
+qwen3:14b          10.5    78     yes   25     yes    Good mid-size text model. Reliable struc
+gemma3:12b         9.2     77     yes   28     yes    Google Gemma 3 12B multimodal. Reliable
+qwen2.5-coder:32b  22      75     yes   12     NO     Qwen2.5-Coder 32B: top open code/SQL mod
+qwen3:8b           5.6     74     yes   46     yes    Solid text-only 8B. Reliable structured
+qwen2.5-coder:14b  9.9     72     yes   26     yes    Qwen2.5-Coder 14B: stronger code/SQL at
+qwen2.5-coder:7b   5.2     66     yes   50     yes    Qwen2.5-Coder 7B: SQL/code specialist. R
+qwen2.5:3b         2.2     62     yes   118    yes    Text-only; very small footprint. Reliabl
+qwen3-vl:72b       52      88     NO    5      NO     Highest raw vision benchmarks, but Qwen3
+qwen3-vl:32b       24      84     yes   11     NO     Large VLM; needs 32 GB VRAM. Qwen3-VL: u
+qwen3-vl:14b       11.2    79     yes   23     yes    Strong mid-size VLM. Qwen3-VL: unreliabl
+qwen3-vl:8b        6.8     73     yes   38     yes    Qwen3-VL 8B: strong raw vision/OCR but r
+qwen3-vl:4b        3.5     66     yes   74     yes    Small VLM; fits on 4 GB VRAM machines. Q
+```
+
+Three columns decide, and none of them is the score alone.
+
+`fits` compares a model's **peak inference** RAM against the budget, which on
+this machine is **36.0 GB**: 96 GB of unified memory, of which 72.0 GB is
+usable once macOS has taken its share, halved again by the 0.5 safety headroom.
+That is why `qwen3:32b-q8_0` at exactly 36 GB still reads `yes` while
+`qwen3:72b-q4_k_m` at 48 GB reads `NO` on a 96 GB machine. Check the number
+rather than trusting the arithmetic:
+
+```python
+hw = beah.available_memory()
+print(beah.usable_pool_gb(hw))  # 72.0
+print(beah.effective_budget(hw))  # 36.0
+print(beah.MAX_HEADROOM)  # 0.5
+```
+
+`comfy` is the second refusal. `qwen3:32b-q8_0` fits memory and is still not
+chosen, because at an estimated 7 tok/s it sits below the 15 tok/s comfort
+floor: a model that fits and crawls is not a recommendation.
+
+Tighten the margin and `fits` moves with it. `--headroom` is clamped at 0.5, so
+the only direction available is stricter:
+
+```sh
+best-engine-ai-helper recommend --kind llm --headroom 0.3
+```
 
 ```
-=== VLM candidates ===
-id            ram_gb  score  fits  notes
-------------  ------  -----  ----  ----------------------------------------
-gemma3:12b    9.2     78     yes   Google Gemma 3 12B multimodal. Reliable
-qwen3-vl:72b  52      91     yes   Highest raw vision benchmarks, but Qwen3
-qwen3-vl:32b  24      87     yes   Large VLM; needs 32 GB VRAM. Qwen3-VL: u
-...
+qwen3:32b-q8_0     36      85     NO    7      NO     32B at full Q8 precision. Reliable struc
+qwen3:32b-q4_k_m   22      83     NO    12     NO     Large text model; fits 24 GB VRAM with h
+qwen3:14b          10.5    78     yes   25     yes    Good mid-size text model. Reliable struc
 ```
 
-Note the ordering: `gemma3:12b` (score 78) sits above `qwen3-vl:72b` (score 91)
-because the Qwen3-VL family cannot honour Ollama structured output, so it is
-never chosen for the suite's schema-driven tasks however high its raw score.
-The `fits` column marks whether a model's peak-inference RAM sits inside the
-budget: on this machine `qwen3:72b-q8_0` (78 GB) shows `NO` against the 61.2 GB
-budget, while everything smaller shows `yes`.
-
-To see only VLM candidates:
+`--kind vlm` restricts to vision-language models and ranks them on the vision
+axis rather than the general one, which reorders the table. `gemma3:12b` leads
+at score 78 even though `qwen3-vl:32b` scores 87, because the Qwen3-VL family
+cannot honour Ollama's schema-constrained output and this suite routes every
+task through a schema:
 
 ```sh
 best-engine-ai-helper recommend --kind vlm
 ```
 
-To use a tighter safety margin than the default (`--headroom` maxes out at
-`0.5`; anything larger is silently clamped down to it):
-
-```sh
-best-engine-ai-helper recommend --headroom 0.3
+```
+=== VLM candidates (ollama) ===
+id            ram_gb  score  fits  tok/s  comfy  notes
+------------  ------  -----  ----  -----  -----  ----------------------------------------
+gemma3:12b    9.2     78     yes   28     yes    Google Gemma 3 12B multimodal. Reliable
+qwen3-vl:72b  52      91     NO    5      NO     Highest raw vision benchmarks, but Qwen3
+qwen3-vl:32b  24      87     yes   11     NO     Large VLM; needs 32 GB VRAM. Qwen3-VL: u
+qwen3-vl:14b  11.2    83     yes   23     yes    Strong mid-size VLM. Qwen3-VL: unreliabl
+qwen3-vl:8b   6.8     80     yes   38     yes    Qwen3-VL 8B: strong raw vision/OCR but r
+qwen3-vl:4b   3.5     72     yes   74     yes    Small VLM; fits on 4 GB VRAM machines. Q
 ```
 
----
+## 2. The best engine for a job, as a report
 
-## report
-
-Recommend the best engine(s) for a task and write both a Markdown report and a
-JSON file. The task can be a vague phrase; vision words add a VLM.
+`recommend` ranks the catalogue. `report` answers a *question*: given this
+sentence describing the work, which kinds of model are needed, and which one
+should serve each. The task can be vague — vision vocabulary in it adds a VLM.
 
 ```sh
 best-engine-ai-helper report \
     --task "retail product descriptions and image-quality checks" \
     --out engine
-# wrote engine.md and engine.json
 ```
 
-The report states, for each needed kind, the chosen model with its memory fit
-and estimated tokens/s, a lighter/faster alternative when one is close, the full
-ranked candidate table, and the sourced rationale. Print JSON instead of
-Markdown with `--format json` (omit `--out` to only print).
+```
+wrote engine.md and engine.json
+# Best local engine — recommendation
 
-Add `--live` to also weigh the machine's CURRENT load (free RAM, CPU/GPU/disk
-usage, already-running engines), not just its theoretical capacity:
+**Task:** retail product descriptions and image-quality checks
+**Language:** en
+**Matched keywords:** image
+**Needs:** LLM, VLM
+
+## Hardware
+
+- Chip / accelerator: Apple M2 Max (gpu-metal)
+- Memory pool: 96.0 GB
+- Memory bandwidth: 400 GB/s (sets the decode-speed ceiling)
+- Usable model budget: **36.0 GB** (headroom 0.5)
+- Comfort throughput floor: **15 tok/s** (a model below this fits memory but decodes too slowly to recommend)
+
+## Best LLM (axis: generalist)
+
+**→ `gemma3:12b`** — 9.2 GB, score 77, ~28 tok/s
+
+Lighter alternative: `qwen3:8b` — 5.6 GB, score 74, ~46 tok/s.
+```
+
+Note what the words did. "Product descriptions" matched no specialist axis, so
+the LLM is ranked on the **generalist** benchmark, while "image" raised a VLM
+need which is ranked on the **vision** axis. Ask for code and the axis changes
+again:
 
 ```sh
 best-engine-ai-helper report --task "write python code" --live
-# ...
-# ## Server load (live, at recommendation time)
-#
-# - Available RAM: 50.3 GB
-# - CPU: 43%, GPU: 3%
-# - Disk free: 41.5 GB (96% used)
-# - Already-running engines: 0
-# ...
 ```
 
-Off by default: it adds a short live probe (~0.1-0.5s) and makes the result
-depend on this exact moment rather than being a deterministic function of the
-hardware alone.
+```
+## Server load (live, at recommendation time)
 
-`report` also shows the best PAID model for the task, on by default, needing
-no API key and reaching no network: it ranks the bundled `pricing.yaml`
-catalog (see the `resolve` section below).
+- Available RAM: 54.3 GB
+- CPU: 53%, GPU: 10%
+- Disk free: 20.7 GB (98% used)
+- Already-running engines: 1
+
+## Best LLM (axis: code)
+```
+
+`--live` is off by default and worth understanding before switching it on. It
+adds a short probe, roughly 0.1-0.5 s, and makes the answer a function of
+*this moment* rather than of the hardware alone: the same command run twice can
+disagree, which is correct behaviour and surprising behaviour at once. The
+`Already-running engines: 1` line above is the probe noticing a model server
+that was already holding memory.
+
+`--out engine` writes `engine.md` and `engine.json` side by side; omit it to
+print only, and `--format json` swaps the Markdown for the machine-readable
+twin.
+
+The same command also previews the best **paid** model for the task. It is on
+by default, and it needs no API key and reaches no network, because it ranks
+the bundled `pricing.yaml` instead of calling anybody:
 
 ```sh
 best-engine-ai-helper report --task "extract line items from an invoice"
-# ... local section ...
-# ## Best cloud VLM (axis: ocr)
-# **→ `gpt-4o`** (openai) — score 69, ~$6.25/1M tokens (blended)
 ```
 
-Skip it with `--no-cloud`, or steer it with `--quality-vs-cost 0..1` (1.0 =
-best benchmark regardless of price, 0.0 = cheapest regardless of quality;
-default 0.7) and `--cloud-provider openai|mistral|...` (restrict to one
-provider).
+```
+## Best cloud LLM (axis: generalist)
 
----
+**→ `gemini-1.5-pro`** (gemini) — score 86, ~$3.12/1M tokens (blended)
 
-## resolve
+## Best cloud VLM (axis: ocr)
 
-Turn a project's committed **brief** (what the repo needs from an LLM/VLM) into a
-gitignored, machine-specific **engine file** (the backend and model to use here).
-Unlike `report`, which prints a recommendation, `resolve` writes the descriptor
-that `ensure` / `llm.chat` read at call time.
+**→ `gpt-4o`** (openai) — score 69, ~$6.25/1M tokens (blended)
+```
 
-Commit a hardware-independent `llm.brief.yaml` in the repo:
+"Invoice" mapped the vision slot to the **ocr** axis, which is why `gpt-4o`
+wins there while `gemini-1.5-pro` takes the text slot at half the price. Skip
+the whole section with `--no-cloud`; steer it with `--quality-vs-cost 0..1`
+(1.0 = best benchmark whatever the price, 0.0 = cheapest whatever the quality,
+default 0.7) and `--cloud-provider openai|mistral|...` to restrict it to one
+provider.
+
+## 3. One brief per repo, one engine per machine
+
+`report` prints advice. `resolve` writes the descriptor your code reads at call
+time, and that is the pattern to adopt: a **brief** committed to the repository
+saying what the job needs, resolved per machine into a gitignored **engine
+file** naming the model chosen here.
+
+Commit this, hardware-independent, as `llm.brief.yaml`:
 
 ```yaml
 mode: local             # local (default) or cloud
@@ -149,8 +320,131 @@ task: >-
   the table's own language, and sanity-check the rendered chart image.
 ```
 
-`mode: local` is the default. `mode: cloud` resolves a paid provider PLUS a
-local fallback from the same brief (paid -> local on failure):
+Resolve it, once per machine. The backend is chosen for the hardware — **vLLM
+on a discrete GPU, Ollama otherwise**:
+
+```sh
+best-engine-ai-helper resolve --brief llm.brief.yaml --out llm.engine.yaml
+```
+
+```
+WARNING | llm model gemma3:12b is not on this Ollama daemon yet: run `ollama pull gemma3:12b` before the first call.
+WARNING | vlm model gemma3:12b is not on this Ollama daemon yet: run `ollama pull gemma3:12b` before the first call.
+Wrote llm.engine.yaml
+  backend: ollama  (llm=gemma3:12b, vlm=gemma3:12b)
+  NOTE: hardware-specific — add 'llm.engine.yaml' to .gitignore, do not commit.
+  bring it up:  ollama pull gemma3:12b
+```
+
+Those two warnings are the useful half of the output: the pick is made against
+the catalogue, not against whatever happens to be downloaded, so it tells you
+what to fetch rather than silently settling for something already present.
+
+The file it wrote, which belongs in `.gitignore`:
+
+```yaml
+# GENERATED by best-engine-ai-helper — do NOT commit.
+# Hardware-specific: the backend and models chosen for THIS machine.
+# Regenerate with:  best-engine-ai-helper resolve --brief llm.brief.yaml --out llm.engine.yaml
+
+generated_by: best-engine-ai-helper — machine-specific, do not commit
+mode: local
+resolved_for:
+  chip: Apple M2 Max
+  accelerator: gpu-metal
+  memory_gb: 96.0
+backend: ollama
+base_url: http://localhost:11434
+headroom: 0.5
+min_tps: 15.0
+llm:
+  model: gemma3:12b
+  ram_gb: 9.2
+  est_tokens_per_s: 28.3
+  tps_basis: estimated
+  structured_output: true
+  score: 77.0
+  fits: true
+  comfortable: true
+  available: false
+  pull: ollama pull gemma3:12b
+vlm:
+  model: gemma3:12b
+  ram_gb: 9.2
+  est_tokens_per_s: 28.3
+  tps_basis: estimated
+  structured_output: true
+  score: 78.0
+  fits: true
+  comfortable: true
+  available: false
+  pull: ollama pull gemma3:12b
+serve:
+- ollama pull gemma3:12b
+```
+
+The pick is deliberately conservative: headroom capped at 0.5, and among models
+within a few benchmark points of the best it takes the leanest and fastest, not
+the largest that merely fits. `tps_basis: estimated` says the throughput came
+from memory bandwidth rather than from a measurement; `available: false` says
+the daemon does not have the model yet.
+
+Force a backend with `--backend ollama|vllm` (default `auto`), or point the
+same resolved engine at a server you run with `--endpoint URL`. That second
+option is the one people forget: local mode does not mean *this* box, and a
+vLLM machine of your own costs nothing per token either.
+
+Afterwards, check that the machine agrees with the file:
+
+```sh
+best-engine-ai-helper doctor
+```
+
+```
+engine file : llm.engine.yaml
+backend     : ollama
+daemon      : reachable
+serves      : qwen2.5:3b, qwen3-vl:4b, qwen3-vl:4b-ctx8k, qwen3-vl:8b, qwen3:8b
+
+  - llm: the engine file names 'gemma3:12b', which this daemon does not serve. Run `ollama pull gemma3:12b`, or re-resolve.
+  - vlm: the engine file names 'gemma3:12b', which this daemon does not serve. Run `ollama pull gemma3:12b`, or re-resolve.
+```
+
+`doctor` exits non-zero when the resolved engine and the live daemon disagree,
+which makes it the right thing to put in a deployment check. Consuming the file
+from Python is [§10](#10-call-it-from-your-own-package).
+
+## 4. A paid model, only when you hand it a key
+
+This is the only member of the AI Helpers suite that can reach a paid
+third-party service, and it never does so by accident. A paid call needs **two**
+things: a brief that says `mode: cloud`, and an `api_key_env` naming an
+environment variable that is actually set. `api_key_env` holds the variable's
+**name**, never the key, and the key is never written into the engine file.
+
+Ask first which providers are even usable:
+
+```sh
+best-engine-ai-helper providers
+```
+
+```
+provider   key_env            usable  models  why not
+---------  -----------------  ------  ------  ------------------------------------------------------------
+anthropic  ANTHROPIC_API_KEY  NO      2       no API key found. Set ANTHROPIC_API_KEY in settings.yaml, a
+gemini     GEMINI_API_KEY     NO      2       no API key found. Set GEMINI_API_KEY in settings.yaml, a .en
+mistral    MISTRAL_API_KEY    NO      4       no API key found. Set MISTRAL_API_KEY in settings.yaml, a .e
+openai     OPENAI_API_KEY     NO      2       no API key found. Set OPENAI_API_KEY in settings.yaml, a .en
+
+0 of 4 provider(s) usable.
+Set a key in settings.yaml, a .env file, the environment, or the keychain.
+```
+
+That is the real output on a machine holding no keys, and it is the behaviour
+to rely on: a provider whose key cannot be found is not a candidate at all. A
+recommendation you cannot act on is not a recommendation.
+
+Pin a provider and a model explicitly:
 
 ```yaml
 mode: cloud
@@ -158,8 +452,8 @@ provider: mistral        # openai | mistral | openrouter | together | azure |
                          # anthropic | gemini (anthropic/gemini use their own
                          # wire formats; the rest speak OpenAI-compatible)
 model: mistral-large-latest
-api_key_env: MISTRAL_API_KEY   # name of the env var holding the key, never
-                                # the key value itself, never persisted
+api_key_env: MISTRAL_API_KEY   # the NAME of the variable holding the key,
+                               # never the key value, never persisted
 structured_output: true
 task: extract structured line items from an invoice PDF's OCR text
 ```
@@ -169,193 +463,241 @@ export MISTRAL_API_KEY=...     # your key, in the shell, never committed
 best-engine-ai-helper resolve --brief llm.brief.yaml --out llm.engine.yaml
 ```
 
-The resulting engine's `fallback` is resolved from the SAME brief, so
-`llm.chat(engine=...)` degrades to the always-available local model if the
-paid call fails. See `llm.chat`'s `pseudonymize=` (scrub personal data before
-it reaches the cloud, via the local fallback engine) and `safety=` (NSFW/
-policy scanning, on by default for every engine, local or cloud) keywords for
-the rest of the cloud-call safety net. Retry/caching/pseudonymization need the
-`[cloud]` extra (`pip install 'best-engine-ai-helper[cloud]'`); real NSFW
-classifiers for `safety=` need `[filtered]`; both degrade gracefully
-(a light retry, no caching, a keyword heuristic) rather than erroring when
-absent.
-
-### Auto-pick the best paid model (no `model` in the brief)
-
-`model` is optional. Omit it (and `provider`, to search every provider) and
-`resolve` picks the best paid model itself, from the same bundled
-`pricing.yaml` catalog `report --cloud` previews (the cloud counterpart of
-local mode's `models.yaml` auto-pick, except the resource being budgeted is
-**price**, not memory, since every paid model runs on any machine):
+Or let it choose. Omit `model` — and `provider` too, to search every provider —
+and the pick comes from the same bundled `pricing.yaml` that
+[§2](#2-the-best-engine-for-a-job-as-a-report) previewed. It is the cloud
+counterpart of local auto-selection, except that the budgeted resource is
+**price** rather than memory, since every paid model runs on any machine:
 
 ```yaml
 mode: cloud
 kind: both
-quality_vs_cost: 0.7   # optional, 0..1, default 0.7: 1.0 = best score
-                        # regardless of price, 0.0 = cheapest regardless of
-                        # quality, in between leans quality with price as a
-                        # tiebreaker
+quality_vs_cost: 0.7   # optional, 0..1, default 0.7: 1.0 = best score whatever
+                       # the price, 0.0 = cheapest whatever the quality, in
+                       # between leans quality with price as a tiebreaker
 task: extract structured line items from an invoice PDF's OCR text
 ```
 
-```sh
-best-engine-ai-helper resolve --brief llm.brief.yaml --out llm.engine.yaml
-# Wrote llm.engine.yaml
-#   backend: openai  (llm=gpt-4o, vlm=gpt-4o)
-```
+Pin `provider` alone, with no `model`, to auto-pick within one provider — the
+case where you already hold exactly one key. Structured-output capability is
+checked first here, exactly as it is locally: a model that cannot honour a JSON
+schema never wins the auto-pick over one that can, however attractively priced.
 
-Pin `provider` alone (no `model`) to auto-pick within one provider only:
-useful when you already have a key for that provider and just want its best
-model for the job. Structured-output capability is checked first, exactly
-like local mode: a model that cannot honour a JSON schema never wins the
-auto-pick over one that can, however attractively priced.
+Three further keys exist for the pinned case, and the brief is the only place
+they can be set. `vlm_model` pins the vision slot separately (with `kind: both`
+and only `model` given, one model serves both). `base_url` overrides the
+provider's endpoint, for a proxy or a regional deployment. `api_key_env`
+overrides which variable the key is read from, defaulting to the provider's
+conventional name. None of them ever holds the key itself.
 
-Resolve it, per machine (the backend is chosen for the hardware: **vLLM on a
-discrete GPU, Ollama otherwise**):
+Every cloud engine also carries a **local fallback**, resolved from the same
+brief, so a failed paid call degrades to the always-available local model.
+Paid → local is the only automatic direction; a local engine never silently
+escalates into a paid call. Four more things then happen at the `llm.chat()`
+call site:
 
-```sh
-best-engine-ai-helper resolve --brief llm.brief.yaml --out llm.engine.yaml
-```
+| Concern | Default | Configure |
+|---|---|---|
+| **API key** | the name in `api_key_env` is looked up in `settings.yaml`, then any `.env`, then the process environment, then the OS keychain | the keychain step needs `pip install 'best-engine-ai-helper[cloud]'` |
+| **Safety scan** | on, for local **and** cloud: prompts and images outbound, responses inbound | `llm.chat(..., safety=False)`; real NSFW classifiers need `[filtered]` |
+| **Pseudonymization** | off; when on, scrubs personal data with the **local** fallback model before the prompt leaves the machine, then restores it | `llm.chat(..., pseudonymize=True)`, needs `[cloud]` |
+| **Retry + cache** | off; retry replays a transient transport failure before failing over, cache means a repeat never pays twice | `llm.chat(..., retries=3, cache=True)`, cache needs `[cloud]` |
+| **Cost tracking** | on, every call, local or paid, into the local ledger | [§8](#8-who-called-what-at-what-cost), opt out with `BEST_ENGINE_NO_LEDGER=1` |
 
-On an Apple M2 Max 96 GB machine that prints:
+Both extras degrade rather than fail when absent: a light retry instead of
+backoff, no caching, a keyword heuristic instead of a classifier.
 
-```
-Wrote llm.engine.yaml
-  backend: ollama  (llm=gemma3:12b, vlm=gemma3:12b)
-  NOTE: hardware-specific — add 'llm.engine.yaml' to .gitignore, do not commit.
-  bring it up:  ollama pull gemma3:12b
-```
+## 5. Usage profiles instead of model names
 
-The pick is deliberately conservative: headroom is capped at 0.5, and among
-models within a few benchmark points of the best it takes the leanest and
-fastest, not the largest that merely fits. The resulting `llm.engine.yaml` is
-hardware-specific; add it to `.gitignore`:
-
-```yaml
-# GENERATED by best-engine-ai-helper — do NOT commit.
-# Hardware-specific: the backend and models chosen for THIS machine.
-# Regenerate with:  best-engine-ai-helper resolve --brief llm.brief.yaml --out llm.engine.yaml
-
-mode: local
-resolved_for: {chip: Apple M2 Max, accelerator: apple, memory_gb: 96.0}
-backend: ollama
-base_url: http://localhost:11434
-headroom: 0.5
-min_tps: 15.0
-llm: {model: gemma3:12b, ram_gb: 9.2, est_tokens_per_s: 28.3, structured_output: true}
-vlm: {model: gemma3:12b, ram_gb: 9.2, est_tokens_per_s: 28.3, structured_output: true}
-serve: [ollama pull gemma3:12b]
-```
-
-Force a backend with `--backend ollama|vllm` (default `auto`), or point at a
-remote server with `--endpoint URL`.
-
-Consume it from Python: no `DEFAULT_MODEL` constant, the model is always read
-from the resolved engine file:
-
-```python
-from best_engine_ai_helper import ensure, llm
-
-# loads llm.engine.yaml, or resolves it from llm.brief.yaml on first use
-engine = ensure(".")
-summary = llm.chat(prompt, engine=engine, kind="llm")
-critique = llm.chat(prompt, engine=engine, kind="vlm", images=[png], json_schema=SCHEMA)
-```
-
-`chat` reads the backend and model from the engine and dispatches to Ollama
-(`/api/generate`) or vLLM (OpenAI `/v1/chat/completions`) transparently; with a
-`json_schema` it returns a parsed dict. See the README's
-[Downstream integration → Pattern B](README.md#pattern-b-a-per-project-engine-resolved-from-a-tuned-brief)
-for the full flow and the missing-file policy.
-
----
-
-## usages
-
-Browse and resolve the bundled **usage catalog**: eight named task profiles
-grouped into families. A profile states only its *needs*; best-engine chooses
-the model.
+A brief is written per repository. The suite's eight recurring workloads are
+named once instead, in a bundled usage catalogue, each stating only its
+*needs*. A profile is a named brief, resolved by the same picker.
 
 ```sh
 best-engine-ai-helper usages list
 ```
 
-Lists the families (`F1` constrained generation, `F2` prose generation, `F3`
-embeddings) and every profile (`text2sql`, `rag-answer`, `embeddings`,
-`text2sql-figures`, `report-bluf`, `classification`, `pii-rgpd`, `persona`) with
-its family and status; no model names, only needs.
+```
+Families (usages that can share one model):
+id  name                    members                                               summary
+--  ----------------------  ----------------------------------------------------  ------------------------------------------------
+F1  constrained-generation  text2sql, text2sql-figures, classification, pii-rgpd  Code + reliable structured output (SQL / JSON):
+F2  prose-generation        rag-answer, report-bluf, persona                      Faithful FR/EN prose over long context: one gene
+F3  embeddings              embeddings                                            Multilingual multi-granular embeddings: an embed
+
+Profiles:
+name              family  status    summary
+----------------  ------  --------  ----------------------------------------------------
+text2sql          F1      stable    Natural-language question -> read-only SQL (Vanna /
+rag-answer        F2      stable    Sourced RAG answer with page-precise citations, FR/E
+embeddings        F3      stable    Local multi-granular embeddings for the ann-router i
+text2sql-figures  F1      scaffold  Question + table -> structured figure spec that spre
+report-bluf       F2      stable    Multi-persona report / BLUF generation, FR/EN, quali
+classification    F1      stable    Confidentiality classification C1/C2/C3, fast and de
+pii-rgpd          F1      stable    PII / GDPR detection + pseudonymisation surrogates,
+persona           F2      stable    Persona / register adaptation of a passage, FR/EN, m
+```
+
+No model name appears anywhere in that listing — that is the point. One
+profile's needs in full:
 
 ```sh
 best-engine-ai-helper usages show text2sql
 ```
 
-Prints one profile's needs: task text (mapped to a benchmark axis), whether it
-needs structured output, its throughput floor, memory headroom, advisory quality
-bar, and context-length hint.
+```
+text2sql  [stable, family F1]
+  Natural-language question -> read-only SQL (Vanna / qwencoder).
+
+Needs (selection criteria):
+  kind             : llm
+  structured_output: True
+  min_tps          : 20
+  headroom         : 0.5
+  min_quality      : 80
+  context_length   : 32768
+  local_strict     : True
+  task             : Translate a natural-language question into a single read-only SQL query against a fixed schema; deterministic, schema-constrained SQL and code reasoning.
+```
+
+Resolve it, and watch the needs do their work:
 
 ```sh
-# Resolve one profile to the model best-engine picks for THIS machine
 best-engine-ai-helper usages resolve text2sql
+```
 
-# Resolve a whole family to a single shared model, written to a gitignored file
+```
+WARNING | llm model qwen2.5-coder:14b is not on this Ollama daemon yet: run `ollama pull qwen2.5-coder:14b` before the first call.
+text2sql: backend ollama  llm=qwen2.5-coder:14b (9.9 GB, ~26 tok/s)
+  NOTE: machine-specific — the chosen model lives only in the generated file; keep it gitignored, never commit.
+```
+
+The general-purpose answer on this machine was `gemma3:12b`
+([§2](#2-the-best-engine-for-a-job-as-a-report)). Here it is
+`qwen2.5-coder:14b`, which carries a *lower* general score, because the
+profile's task text is code-shaped and its `min_tps: 20` floor is stricter than
+the default 15. Nobody chose a coder model; the needs did.
+
+A whole family resolves to **one** shared model, so a machine need not hold
+eight:
+
+```sh
 best-engine-ai-helper usages resolve --family F1 --out llm.engine.F1.yaml
 ```
 
-The chosen model lives only in the generated `llm.engine*.yaml` (gitignored,
-machine-specific), the same rule as `resolve`. From Python:
-
-```python
-from best_engine_ai_helper import resolve_usage, resolve_family, list_usages
-
-for u in list_usages():
-    print(u["name"], u["family"], u["status"])
-
-engine = resolve_usage("text2sql")  # best-engine chooses the model here
-family = resolve_family("F1")  # one model for the whole F1 group
+```
+F1: backend ollama  llm=qwen2.5-coder:14b (9.9 GB, ~26 tok/s)
+  NOTE: machine-specific — the chosen model lives only in the generated file; keep it gitignored, never commit.
+  wrote llm.engine.F1.yaml
+  bring it up:  ollama pull qwen2.5-coder:14b
 ```
 
----
+On a roomy machine, resolving a single profile may specialise beyond what its
+family gets; on a tight one the family collapses onto one model. From Python:
 
-## catalog show
+```python
+for u in beah.list_usages():
+    print(u["name"], u["family"], u["status"])
 
-Print the full merged model catalog (bundled seed plus any local cache updates).
+engine = beah.resolve_usage("text2sql")  # best-engine chooses the model here
+family = beah.resolve_family("F1")  # one model for the whole F1 group
+```
+
+## 6. Capacity planning: what fits together
+
+The questions above are each about one model. `storage` asks the one that
+matters once a machine has to serve a product: what can this disk hold, and
+which *combination* can be resident at the same time.
+
+```sh
+best-engine-ai-helper storage
+```
+
+```
+disk   : 22.1 GB free of 994.7 (97.8% used); 17.1 GB spendable
+memory : 36.0 GB available to models together
+
+already here: qwen2.5:3b (2.0 GB), qwen3-vl:4b (3.2 GB), qwen3:8b (5.2 GB), qwen3-vl:8b (6.1 GB)
+
+Could be pulled into the space left (6):
+     0.3 GB  nomic-embed-text  [embed]
+     0.7 GB  mxbai-embed-large  [embed]
+     1.1 GB  snowflake-arctic-embed2  [embed]
+     1.1 GB  bge-m3  [embed]
+     4.7 GB  qwen2.5-coder:7b  [llm]
+     8.4 GB  gemma3:12b  [vlm]
+
+Can be held in memory at the same time, best first:
+  score  232.0    34.4 GB  llm:qwen3:32b-q4_k_m + vlm:qwen3-vl:14b + embed:bge-m3   (headroom 1.6 GB)
+  score  231.0    35.7 GB  llm:qwen3:14b + vlm:qwen3-vl:32b + embed:bge-m3   (headroom 0.3 GB)
+  score  231.0    34.4 GB  llm:qwen3:32b-q4_k_m + vlm:qwen3-vl:14b + embed:snowflake-arctic-embed2   (headroom 1.6 GB)
+  score  230.7    33.9 GB  llm:qwen3:32b-q4_k_m + vlm:qwen3-vl:14b + embed:mxbai-embed-large   (headroom 2.1 GB)
+  score  230.0    35.7 GB  llm:qwen3:14b + vlm:qwen3-vl:32b + embed:snowflake-arctic-embed2   (headroom 0.3 GB)
+```
+
+Two different constraints, reported separately because they fail differently.
+`17.1 GB spendable` is less than the 22.1 GB free: the command keeps a reserve
+rather than letting you fill the volume. The memory section is a bundle search
+rather than a ranking — the best LLM plus the best VLM plus the best embedder
+usually does **not** fit together, and the winning combination here trades a
+smaller VLM for a bigger LLM. `--backend vllm` re-prices the whole thing for
+vLLM's footprint instead of Ollama's.
+
+The two reference tables behind every answer in this file are printable:
 
 ```sh
 best-engine-ai-helper catalog show
 ```
 
-Each row shows the Ollama tag, kind, parameter count, quantization, on-disk
-size, estimated peak RAM, and benchmark scores.
-
----
-
-## hardware show
-
-Print the full merged hardware chip table.
+```
+id                       kind   size_b  quant   disk_gb  ram_gb  general  vision
+-----------------------  -----  ------  ------  -------  ------  -------  ------
+qwen2.5:3b               llm    3       Q4_K_M  2.0      2.2     62       -
+qwen2.5-coder:7b         llm    7       Q4_K_M  4.7      5.2     66       -
+qwen2.5-coder:14b        llm    14      Q4_K_M  9.0      9.9     72       -
+qwen2.5-coder:32b        llm    32      Q4_K_M  20       22      75       -
+qwen3-vl:4b              vlm    4       Q4_K_M  3.2      3.5     66       72
+qwen3:8b                 llm    8       Q4_K_M  5.2      5.6     74       -
+```
 
 ```sh
 best-engine-ai-helper hardware show
 ```
 
-Each row shows the chip name, vendor, total memory, usable memory (after OS
-overhead), and the data source.
+```
+chip                     vendor  memory_gb  ollama_usable_gb  source
+-----------------------  ------  ---------  ----------------  -----------
+Apple M1                 apple   8          7                 apple-specs
+Apple M1                 apple   16         14                apple-specs
+Apple M1 Pro             apple   16         14                apple-specs
+Apple M1 Pro             apple   32         29                apple-specs
+Apple M1 Max             apple   32         29                apple-specs
+```
 
----
+Both are the merge of a bundled seed with anything cached under
+`~/.best-engine-ai-helper/`; the seed itself is never modified. Refreshing them
+was not run for this file: `catalog update` pulls open-weight specs from ApXML,
+`catalog update --ollama` widens to real pull tags from the official Ollama
+library, `catalog update --arena` merges LM Arena ratings when a fresh enough
+mirror exists and says so plainly when none does, and `hardware update` records
+this machine's own chip and memory.
 
-## airllm
+## 7. Too large to fit, still runnable: layer streaming
 
-Four commands for the one backend that runs a model which does **not** fit in
-memory, by streaming its layers off disk. Nothing to install: the airllm
-runtime is a core dependency, which is most of why the package's install is
-~2 GB.
+A decoder reads its layers in order, so only the layer being computed has to be
+resident. Stream the rest off disk and a model's memory requirement collapses
+from its parameter count to its widest single layer — a 70B model in a couple
+of gigabytes instead of 140. The bill arrives in time: every token re-reads the
+whole checkpoint, which puts this at **seconds per token** rather than tokens
+per second.
 
-`status`, `plan` and `compare` are pure arithmetic over this machine's hardware
-and the catalog — they never import the runtime, so they answer correctly (and
-instantly) even in an environment where it would fail to load.
+The runtime is [airllm](https://github.com/lyogavin/airllm), a core dependency,
+which is most of why this package's install is around 2 GB. Three of the four
+subcommands are pure arithmetic over the hardware and the catalogue and never
+import it, so they answer correctly, and instantly, even in an environment
+where it would fail to load.
 
-### airllm status
-
-Can this machine stream layers, would it be asked to, and what is in the way?
+### Can this machine stream, and would it be asked to?
 
 ```sh
 best-engine-ai-helper airllm status
@@ -363,32 +705,39 @@ best-engine-ai-helper airllm status
 
 ```
 === Layer streaming (airllm) ===
-  runtime import  : ok
+  runtime here    : mlx
+  runtime import  : FAILS (install incomplete)
   storage         : apple-internal (declared)
   read bandwidth  : 4.0 GB/s
-  free disk       : 22.3 GB
+  free disk       : 22.1 GB
   shard budget    : 72.0 GB of resident memory
   request         : auto
   would activate  : no
   trigger         : not-needed
 
-  A model already fits this machine's memory, so streaming its layers off disk
-  would trade two to three orders of magnitude of speed for nothing. Ask for it
-  explicitly (--backend airllm) to override.
+  A model already fits this machine's memory, so streaming its layers off disk would trade two to three orders of magnitude of speed for nothing. Ask for it explicitly (--backend airllm) to override.
+  - the airllm runtime cannot be imported, though it is a dependency of this package — the install looks incomplete: pip install --upgrade --force-reinstall best-engine-ai-helper
+
+  Repair the install:  pip install --upgrade --force-reinstall best-engine-ai-helper
 ```
 
-`runtime import` is the honest version of a question that used to be "is the
-extra installed": airllm ships with the package, so the only way this reads
-anything but `ok` is an incomplete install (a stripped container, a wheel that
-failed to build) — in which case the line says so and the panel prints the
-reinstall command.
+That output is real, and it is showing a **broken install**: the environment
+these examples ran in had the package without its airllm dependency. It is the
+more instructive panel for it. `runtime import` is the honest version of a
+question that used to read "is the extra installed" — airllm ships with the
+package, so anything other than `ok` means an incomplete install, and the line
+says so and prints the repair command instead of a vaguer failure later.
+`runtime here : mlx` is a separate fact and still true: this hardware *would*
+stream, on MLX. Note also `would activate : no` with `trigger: not-needed` —
+the import failure is not the reason it declined. A model already fits, so
+streaming was never wanted.
 
-`--measure` replaces the storage-class assumption with a real measurement of
-this drive (~256 MB written and read back with the page cache bypassed, one or
-two seconds). Worth it: the drive sets the entire speed of this backend, and the
-`basis` field flips from `declared` to `measured` so you can tell the two apart.
+`--measure` replaces the declared storage class with a real measurement of this
+drive (about 256 MB written and read back with the page cache bypassed, one or
+two seconds) and flips `basis` from `declared` to `measured`. Worth the two
+seconds, because the drive sets this backend's entire speed.
 
-`--json` gives the same thing machine-readably, which is what the HTTP endpoint
+`--json` gives the machine-readable twin, which is what the HTTP endpoint
 returns:
 
 ```sh
@@ -398,66 +747,77 @@ best-engine-ai-helper airllm status --json --request always
 ```json
 {
   "decision": {
-    "activate": true,
+    "activate": false,
     "request": "always",
     "trigger": "manual",
-    "reason": "Layer streaming was requested explicitly and runs here on mlx.",
-    "installed": true,
+    "reason": "Layer streaming cannot run here: the airllm runtime cannot be imported, though it is a dependency of this package — the install looks incomplete: pip install --upgrade --force-reinstall best-engine-ai-helper",
+    "installed": false,
     "runtime": "mlx",
-    "blockers": []
+    "blockers": [
+      "the airllm runtime cannot be imported, though it is a dependency of this package — the install looks incomplete: pip install --upgrade --force-reinstall best-engine-ai-helper"
+    ]
   },
   "compute": {"accelerator": "gpu-metal", "chip": "Apple M2 Max", "bandwidth_gbs": 400.0},
-  "disk": {"storage": "apple-internal", "read_gbs": 4.0, "basis": "declared", "free_gb": 22.3},
+  "disk": {"storage": "apple-internal", "read_gbs": 4.0, "basis": "declared", "free_gb": 22.1},
   "memory_budget_gb": 72.0,
   "install": "pip install --upgrade --force-reinstall best-engine-ai-helper"
 }
 ```
 
-`install` is a repair command, not an opt-in one — it is what to run if
-`installed` ever comes back false.
+`--request always` forced the question and still got `activate: false`, with
+the blocker named. `install` is a **repair** command, not an opt-in one: it is
+what to run when `installed` comes back false.
 
-### airllm plan
-
-What could this machine stream, and at what price?
+### What could it stream, and at what price?
 
 ```sh
 best-engine-ai-helper airllm plan --kind llm --compression 4bit
 ```
 
 ```
-=== LLM: streamable off nvme at 4.0 GB/s, 22.08 GB shard budget ===
-id                params  shard_gb  ckpt_gb  s/token  disk_gb  runs  notes
-----------------  ------  --------  -------  -------  -------  ----  ------------------------------
-qwen3:235b-a22b   235B    5.1       117.5    45.5     599.2    yes   94 layers
-llama3.1:405b     405B    6.5       202.5    76.9     1032.8   yes   126 layers
-qwen2.5-vl:72b    73B     2.9       36.5     14.3     186.2    yes   80 layers
-llama3.3:70b      70B     2.8       35.0     13.7     178.5    yes   80 layers
-mixtral:8x22b     141B    4.5       70.5     27.8     359.6    yes   56 layers
-deepseek-v3:671b  671B    15.2      335.5    125.0    1040.0   NO    estimated 0.008 tok/s (125.0 s
+=== LLM: streamable off apple-internal at 4.0 GB/s, 72.0 GB shard budget ===
+id                 params  shard_gb  ckpt_gb  s/token  disk_gb  runs  notes
+-----------------  ------  --------  -------  -------  -------  ----  ----------------------------------------------------
+qwen3:8b           8B      1.3       4.0      1.6      20.4     yes   32 layers
+qwen3-vl:8b        8B      1.3       4.0      1.6      20.4     yes   32 layers
+qwen2.5-coder:7b   7B      1.3       3.5      1.4      17.9     yes   32 layers
+qwen3-vl:4b        4B      1.1       2.0      0.8      10.2     yes   29 layers
+qwen2.5:3b         3B      1.1       1.5      0.6      7.7      yes   28 layers
+deepseek-v3:671b   671B    15.2      335.5    125.0    1040.0   NO    the split needs 1040 GB free during the layer split
+qwen3:235b-a22b    235B    5.1       117.5    45.5     599.2    NO    the split needs 599 GB free during the layer split (
+llama3.1:405b      405B    6.5       202.5    76.9     1032.8   NO    the split needs 1033 GB free during the layer split
+qwen2.5-vl:72b     73B     2.9       36.5     14.3     186.2    NO    the split needs 186 GB free during the layer split (
+llama3.3:70b       70B     2.8       35.0     13.7     178.5    NO    the split needs 178 GB free during the layer split (
+mixtral:8x22b      141B    4.5       70.5     27.8     359.6    NO    the split needs 360 GB free during the layer split (
+qwen3:32b-q8_0     32B     2.1       16.0     6.3      81.6     NO    the split needs 82 GB free during the layer split (1
+gemma3:12b         12B     1.5       6.0      2.4      30.6     NO    the split needs 31 GB free during the layer split (7
 
-  Pick: Qwen/Qwen3-235B-A22B-Instruct-2507 — 235B in 5.1 GB resident, 45.5 s/token,
-  599 GB free disk to split (129 GB after).
+  Pick: Qwen/Qwen3-8B-Instruct — 8B in 1.3 GB resident, 1.6 s/token, 20 GB free disk to split (4 GB after).
+  A 300-token answer: 8 min.
 ```
 
-Two things that row order teaches. The 405B model streams in a *leaner shard*
-than the 141B one — 126 layers against 56 — so depth, not size, decides what
-fits. And DeepSeek-V3 is refused on speed rather than on memory: 125 s/token is
-past the batch floor, and the blocker says so instead of offering a
-technically-correct eternity.
+Read three columns, in that order, and the order is the lesson. `shard_gb` is
+what has to fit in **memory** — one layer shard, not the model — and it is tiny
+everywhere, even for 671B. `disk_gb` is what has to be free **during the
+split**, and on this 98%-full drive it is what refuses almost everything: a 12B
+model is turned away for want of 31 GB while its resident cost would have been
+1.5 GB. `s/token` is what you then wait.
 
-Three columns to read in order: `shard_gb` is what has to fit in memory (one
-layer shard, not the model), `disk_gb` is what has to be free *during the split*
-— the constraint that usually refuses a model — and `s/token` is what you will
-wait. `--context 32` re-prices the shard for a 32k context, which is not free: the KV
-cache is the one thing streaming does not shrink. `--batch 8` prices the big
+Depth, not size, decides the shard: `llama3.1:405b` streams in a 6.5 GB shard
+across 126 layers, where `mixtral:8x22b` at 141B needs 4.5 GB across 56 — the
+parameter counts alone would have predicted the opposite ordering.
+
+`--context 32` re-prices the shard for a 32k context, which is not free: the KV
+cache is the one thing streaming does not shrink. `--batch 8` pulls the big
 lever on both sides at once — the wall clock for a 300-token answer does not
-move, but it now buys eight answers instead of one, and the shard figure grows
-by the seven extra KV caches that bought it.
+move, but it buys eight answers instead of one, and the shard grows by the
+seven extra KV caches that bought them. `--compression 4bit`, used above,
+divides the bytes read per token and is worth roughly 3x.
 
-### airllm compare
+### Native model or streamed model? One screen.
 
-Native model or streamed model, same answer, both prices. This is the decision
-the backend actually forces.
+This is the decision the backend actually forces, and the command prices both
+sides in the same unit.
 
 ```sh
 best-engine-ai-helper airllm compare --tokens 300
@@ -465,105 +825,113 @@ best-engine-ai-helper airllm compare --tokens 300
 
 ```
 === LLM: ollama vs airllm, for a 300-token answer ===
-  budgets: 11.04 GB resident (ollama) · 22.08 GB per shard (airllm) · disk 4.0 GB/s (declared)
-model                       backend  score  resident  tok/s  answer  runs
---------------------------  -------  -----  --------  -----  ------  ----
-qwen3:72b-q8_0              ollama   89     78.0      8.4    36 s    NO
-qwen3:72b-q4_k_m            ollama   87     48.0      13.7   22 s    NO
-qwen3:14b                   ollama   78     10.5      62.4   5 s     yes
-gemma3:12b                  ollama   77     9.2       71.2   4 s     yes
-Qwen/Qwen3-72B-Instruct     airllm   89     6.2       0.024  3.5 h   yes
-Qwen/Qwen3-VL-72B-Instruct  airllm   88     6.2       0.024  3.5 h   yes
+  budgets: 36.0 GB resident (ollama) · 72.0 GB per shard (airllm) · disk 4.0 GB/s (declared)
+model                               backend  score  resident  tok/s  answer  runs
+----------------------------------  -------  -----  --------  -----  ------  ----
+qwen3:72b-q8_0                      ollama   89     78.0      3.3    2 min   NO
+qwen3:72b-q4_k_m                    ollama   87     48.0      5.4    56 s    NO
+qwen3:32b-q8_0                      ollama   85     36.0      7.2    42 s    NO
+qwen3:32b-q4_k_m                    ollama   83     22.0      11.8   25 s    NO
+qwen3:14b                           ollama   78     10.5      24.8   12 s    yes
+gemma3:12b                          ollama   77     9.2       28.3   11 s    yes
+Qwen/Qwen3-VL-4B-Instruct           airllm   66     1.6       0.425  12 min  yes
+Qwen/Qwen2.5-3B-Instruct            airllm   62     1.5       0.567  9 min   yes
+deepseek-ai/DeepSeek-V3             airllm   91     29.0      0.005  16.4 h  NO
+Qwen/Qwen3-235B-A22B-Instruct-2507  airllm   90     14.5      0.007  11.5 h  NO
+Qwen/Qwen3-72B-Instruct             airllm   89     6.2       0.024  3.5 h   NO
+meta-llama/Llama-3.1-405B-Instruct  airllm   88     18.5      0.004  19.9 h  NO
 
-  Streaming buys 11 benchmark points (89 vs 78) for 2647x the wait: 3.5 h
-  instead of 5 s for a 300-token answer.
+  Streaming buys nothing here: Qwen/Qwen3-VL-4B-Instruct scores no higher than qwen3-vl:14b, which already fits and answers in 13 s. Stay native.
 ```
 
-`--batch 8` is the lever worth trying before concluding it is too slow: eight
-prompts ride through each layer pass together, so eight answers arrive in the
-time of one. `--compression 4bit` is the other (~3x). They compose.
+The verdict is the whole output. On this machine the streamable models that
+*fit the disk* are small ones scoring no better than what already runs
+natively, and the big ones that would score higher cannot be split on a
+98%-full drive — so the honest recommendation is to stay native, and it is
+given. That is the behaviour to want here: a tool that always found streaming
+attractive would be useless.
 
-### airllm prepare
+`--batch 8` is the lever to try before concluding something is too slow (eight
+prompts ride through each layer pass together), and `--compression 4bit` is the
+other. They compose.
 
-Pay the download and the layer split deliberately, rather than inside your first
-inference call — which for a large model is tens of minutes of disk, and reads
-exactly like a hang.
+### Paying the download deliberately
+
+The first streaming call downloads the checkpoint and splits it into per-layer
+shards, which for a large model is tens of minutes of disk and reads exactly
+like a hang. Pay it on purpose instead:
 
 ```sh
-best-engine-ai-helper airllm prepare --model meta-llama/Llama-3.3-70B-Instruct \
-  --compression 4bit --shards-path /Volumes/fast/airllm-shards
+best-engine-ai-helper airllm prepare \
+  --model meta-llama/Llama-3.3-70B-Instruct \
+  --compression 4bit \
+  --shards-path /Volumes/fast/airllm-shards
 ```
 
-```
-Prepared meta-llama/Llama-3.3-70B-Instruct: layer shards are on disk and the
-first call will not have to split them.
-```
+Not run for this file: it downloads a 70B checkpoint. `--shards-path` is worth
+pointing at your fastest volume, because the shard read *is* the decode speed.
+`--delete-original` drops the downloaded checkpoint once the shards exist,
+halving the disk requirement — at the cost of re-downloading if the shards are
+ever lost. `--compression` takes `4bit` or `8bit`.
 
-`--shards-path` is worth pointing at your fastest volume: the shard read *is*
-the decode speed. `--delete-original` drops the downloaded checkpoint once the
-shards exist, halving the disk requirement — at the cost of re-downloading if the
-shards are ever lost.
-
-### resolve --backend airllm
-
-The same brief, resolved for streaming instead of for Ollama:
+### The same brief, resolved for streaming
 
 ```sh
 best-engine-ai-helper resolve --brief llm.brief.yaml --backend airllm
 ```
 
 ```
+WARNING | The brief wants schema-constrained output and llm resolved to a streamed model, which cannot honour one. Schema-driven calls must stay on an Ollama model.
 Wrote llm.engine.yaml
-  backend: airllm  (llm=meta-llama/Llama-3.3-70B-Instruct)
+  backend: airllm  (llm=Qwen/Qwen3-VL-4B-Instruct, vlm=Qwen/Qwen3-VL-4B-Instruct)
   NOTE: hardware-specific — add 'llm.engine.yaml' to .gitignore, do not commit.
-  bring it up:  best-engine-ai-helper airllm prepare --model meta-llama/Llama-3.3-70B-Instruct
+  bring it up:  best-engine-ai-helper airllm prepare --model Qwen/Qwen3-VL-4B-Instruct
 ```
+
+The warning is the point. The brief in
+[§3](#3-one-brief-per-repo-one-engine-per-machine) asks for
+`structured_output: true`, and airllm has no schema-constrained generation, so
+forcing this backend contradicts the brief and the command says so rather than
+quietly producing something that would fail at the first `json_schema=` call.
+The engine file records it honestly:
 
 ```yaml
-# llm.engine.yaml (gitignored, machine-specific)
 backend: airllm
 base_url: ''              # a library, not a server: it runs in your process
-min_tps: 0.01             # the batch floor, not the 15 tok/s interactive one
 airllm:
-  activate: true
+  activate: false
   trigger: manual
-  reason: Layer streaming was requested explicitly and runs here on cuda.
-  runtime: cuda
-  installed: true
+  runtime: mlx
+  installed: false
   compression: null
-  blockers: []
 llm:
-  model: meta-llama/Llama-3.3-70B-Instruct
-  catalog_id: llama3.3:70b
-  backend: airllm         # per-kind, so a mixed descriptor is readable
+  model: Qwen/Qwen3-VL-4B-Instruct
+  catalog_id: qwen3-vl:4b
+  backend: airllm         # per-kind, so a mixed descriptor stays readable
   streaming: true
-  ram_gb: 6.1             # one resident shard
-  checkpoint_gb: 140.0    # what every token re-reads
-  layers: 80
-  layers_estimated: false
-  disk_peak_gb: 294.0
-  disk_steady_gb: 154.0
+  ram_gb: 1.6             # one resident shard
+  checkpoint_gb: 8.0      # what every token re-reads
+  layers: 29
+  layers_estimated: true
+  disk_peak_gb: 16.8
+  disk_steady_gb: 8.8
   disk_fits: true
-  est_tokens_per_s: 0.024
-  seconds_per_token: 41.7
+  est_tokens_per_s: 0.425
+  seconds_per_token: 2.4
   structured_output: false  # airllm has no schema-constrained generation
-  fits: true
-  comfortable: true
 serve:
-- best-engine-ai-helper airllm prepare --model meta-llama/Llama-3.3-70B-Instruct
+- best-engine-ai-helper airllm prepare --model Qwen/Qwen3-VL-4B-Instruct
 ```
 
-Or let it happen by itself: with no `--backend`, a kind for which nothing fits
-this machine falls back to streaming on its own, and only that kind does. Set
-`airllm: never` in the brief (or `BEST_ENGINE_AIRLLM=never`) to switch the
-escalation off entirely.
+With no `--backend`, a kind for which nothing fits escalates to streaming on
+its own, and only that kind does. Set `airllm: never` in the brief, or
+`BEST_ENGINE_AIRLLM=never`, to switch the escalation off entirely.
 
 ### From Python
 
 ```python
-import best_engine_ai_helper as beah
+hw, disk = beah.available_memory(), beah.disk_profile()
 
-hw, disk = beah.available_memory(), beah.disk_profile(measure=True)
 entry = {
     "id": "llama3.3:70b",
     "size_b": 70,
@@ -574,7 +942,7 @@ entry = {
 # Three different answers to "how fast is it", all of them true
 timing = beah.airllm_generation_time(entry, disk["read_gbs"], new_tokens=300, batch=8)
 print(timing["decode_tps"])  # 0.024  — steady state, one sequence
-print(timing["time_to_first_token_s"])  # 41.2   — one pass, prompt included
+print(timing["time_to_first_token_s"])  # 41.176 — one pass, prompt included
 print(timing["effective_tps"])  # 0.194  — eight answers share each pass
 
 # Should this machine stream at all?
@@ -590,148 +958,389 @@ print(
         new_tokens=300,
     )["verdict"]
 )
-
-# Run it, in this process, with no server involved
-print(
-    beah.airllm_generate(
-        "Rate this product description 1-5 and say why:…",
-        model="meta-llama/Llama-3.3-70B-Instruct",
-        max_new_tokens=64,
-    )
-)
 ```
 
-### HTTP / MCP
+Those three timing numbers are the executed output, and the gap between them is
+the argument for having all three: 0.024 tok/s is the steady state for one
+sequence, 41.176 s is a single forward pass, and 0.194 tok/s is what batching
+eight prompts turns the same hardware into. `disk_profile(measure=True)` takes
+a second or two and replaces the declared read bandwidth with a measured one.
+
+`beah.airllm_generate(prompt, model=..., max_new_tokens=64)` runs a streamed
+model in this process, with no server involved. It is the one function here
+that needs the runtime importable, so it is not executed in this file.
+
+## 8. Who called what, at what cost
+
+Every `llm.chat()` call — from this package's own gates or from any downstream
+project — can be appended to a local, append-only SQLite ledger at
+`~/.best-engine-ai-helper/usage.db`: who called it, which model and backend,
+latency, success or failure, and a cost that is always `0.0` for local Ollama
+or vLLM. It exists for the "one company, several people on a shared machine"
+case, without standing up a telemetry stack.
 
 ```sh
-curl -s 'http://127.0.0.1:8000/api/airllm?answer_tokens=300&batch=8' | jq '.comparison.verdict'
+best-engine-ai-helper activity
 ```
 
-```json
-"Streaming buys 11 benchmark points (89 vs 78) for 2647x the wait: 3.5 h instead of 5 s for a 300-token answer."
+```
+No calls recorded yet.
 ```
 
-The endpoint returns the decision, the storage profile, the ranked plans and the
-comparison in one call, and is exposed as an MCP tool like every other route.
+That is the real output against a fresh ledger, and it is what a reader should
+expect: nothing is recorded until something calls a model. Once calls exist the
+same command reports the totals, then a breakdown by user and by model;
+`--format json` gives the machine-readable twin.
 
----
+Local only, no network call. `BEST_ENGINE_NO_LEDGER=1` disables recording
+entirely, and `BEST_ENGINE_USER=alice` attributes calls to a named person on a
+shared machine. The library API behind it is `best_engine_ai_helper.observe`
+(`enable()`, `as_user(name)`, `Ledger.summary()`).
 
-## Python library usage
+## 9. The GUI, the HTTP API and the MCP tools
 
-All public functions are importable without invoking Click:
-
-```python
-from best_engine_ai_helper.detect import available_memory, chip_vendor
-from best_engine_ai_helper.catalog import load_catalog
-from best_engine_ai_helper.score import select
-
-hw = available_memory()
-catalog = load_catalog()
-
-best_vlm = select(hw, catalog, kind="vlm")
-print(best_vlm["id"])  # e.g. 'gemma3:12b' on a 96 GB machine
-print(best_vlm["ram_gb"])  # e.g. 9.2
-
-best_llm = select(hw, catalog, kind="llm")
-print(best_llm["id"])  # e.g. 'qwen3:72b-q4_k_m' on a 96 GB machine
-```
-
-`select` and the `recommend` / `report` output agree on the winner: both put
-structured-output-capable models first, then rank by benchmark score within the
-memory budget.
-
-The full recommendation algorithm (memory + compute + task) is one call:
-
-```python
-from best_engine_ai_helper import recommend_engines, to_markdown
-from best_engine_ai_helper.detect import available_memory, compute_profile
-from best_engine_ai_helper.catalog import load_catalog
-
-report = recommend_engines(
-    available_memory(),
-    load_catalog(),
-    task="product descriptions and image-quality checks",
-    compute=compute_profile(),
-)
-print(report["recommendations"]["vlm"]["chosen"]["id"])  # best VLM
-print(to_markdown(report))  # human-readable report
-```
-
----
-
-## gui
-
-Launch the browser GUI (hardware snapshot + task → best engine):
+One process serves all three surfaces.
 
 ```sh
-best-engine-ai-helper gui
-# Serving GUI at http://127.0.0.1:8000/gui
+best-engine-ai-helper gui          # browser GUI + /api routes, port 8000
+best-engine-ai-helper-mcp          # the same, plus the MCP endpoint at /mcp
 ```
 
-Open `http://127.0.0.1:8000/gui`: the hardware panel loads on page load, and
-typing a task and clicking "Recommander" calls the same `recommend()` used by
-`report`. The two JSON endpoints it's built on are usable directly too:
+Open `http://127.0.0.1:8000/gui`: the hardware panel loads immediately, and
+typing a task calls the same `recommend()` that backs `report`. The page is
+bilingual — French by default, English at `/gui?lang=en`. `--host` and `--port`
+override the defaults. See [GUI.md](GUI.md) for screenshots and the full
+write-up.
+
+The JSON endpoints are usable directly, and the output below is real:
 
 ```sh
 curl -s http://127.0.0.1:8000/api/system | python3 -m json.tool
+```
 
+```json
+{
+    "platform": "darwin",
+    "chip_vendor": "apple",
+    "memory": {"unified_gb": 96.0, "vram_gb": null, "ram_gb": 96.0},
+    "compute": {"accelerator": "gpu-metal", "chip": "Apple M2 Max", "bandwidth_gbs": 400.0},
+    "memory_budget_gb": 36.0,
+    "hardware": {"...": "the live os-helper reading, exactly as in detect"}
+}
+```
+
+```sh
 curl -s -X POST http://127.0.0.1:8000/api/recommend \
      -H 'Content-Type: application/json' \
      -d '{"task": "product descriptions and image-quality checks"}' \
   | python3 -m json.tool
 ```
 
-See [GUI.md](GUI.md) for screenshots and the full write-up.
-
----
-
-## activity
-
-Summarize the local activity/cost ledger: who called what, how often, at
-what cost. Populated by any command (or downstream project) that calls
-`llm.chat()`; nothing to show until then.
-
-```sh
-best-engine-ai-helper activity
-# No calls recorded yet.
-
-best-engine-ai-helper pull   # calls the model via the Ralph validation gates
-
-best-engine-ai-helper activity
-# Total calls: 4   Total cost: $0.0000   Error rate: 0.0%
-#
-# By user:
-# user              calls  cost_usd
-# ----              -----  --------
-# warithharchaoui   4      0.0
-#
-# By model:
-# model      calls  cost_usd
-# -----      -----  --------
-# qwen3:8b   4      0.0
-
-best-engine-ai-helper activity --format json
+```json
+{
+    "task": {
+        "input": "product descriptions and image-quality checks",
+        "kinds": ["llm", "vlm"],
+        "application": "generalist",
+        "vlm_application": "vision",
+        "matched": ["image"],
+        "language": "en"
+    },
+    "backend": "ollama",
+    "memory_budget_gb": 36.0,
+    "headroom": 0.5,
+    "comfort_tps": 15.0,
+    "recommendations": {
+        "llm": {
+            "axis": "generalist",
+            "chosen": {
+                "id": "gemma3:12b",
+                "vllm_id": "google/gemma-3-12b-it",
+                "ram_gb": 9.2,
+                "score": 77.0,
+                "fits": true,
+                "structured_output": true,
+                "est_tokens_per_s": 28.3,
+                "tps_basis": "estimated",
+                "comfortable": true,
+                "installed": false
+            }
+        }
+    }
+}
 ```
 
-Local only (`~/.best-engine-ai-helper/usage.db`), no network call. Disable
-recording entirely with `BEST_ENGINE_NO_LEDGER=1`, or attribute calls to a
-specific person on a shared machine with `BEST_ENGINE_USER=alice`.
-
----
-
-## pull, validate, env
-
 ```sh
-best-engine-ai-helper pull            # pull the best model; run Ralph gates
-best-engine-ai-helper validate        # re-run Ralph gates on the current model
-best-engine-ai-helper env             # print env block for ~/.zshrc
+curl -s 'http://127.0.0.1:8000/api/airllm?answer_tokens=300&batch=8' \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["comparison"]["verdict"])'
 ```
 
-Refresh the caches (both merge into `~/.best-engine-ai-helper/`, leaving the
-bundled seed untouched):
+```
+Streaming buys nothing here: Qwen/Qwen3-VL-4B-Instruct scores no higher than qwen3-vl:14b, which already fits and answers in 13 s. Stay native.
+```
+
+That one call returns the decision, the storage profile, the ranked plans and
+the comparison together; its top-level keys are `decision`, `disk`,
+`memory_budget_gb`, `comfort_tps_streaming`, `install`, `chosen`, `plans` and
+`comparison`. `GET /api/providers` returns the same rows as the `providers`
+command, and `GET /api/activity` reads the ledger from
+[§8](#8-who-called-what-at-what-cost).
+
+Every one of those routes is published as an **MCP tool** by
+`best-engine-ai-helper-mcp`, so an agent host can call them directly. The
+wrapper publishes only the deciding routes on purpose: no MCP tool here runs a
+model. `BEST_ENGINE_HOST` and `BEST_ENGINE_PORT` override the bind address.
+
+A fourth surface on the same port runs a model rather than deciding about one:
+`best-engine-ai-helper serve` adds an OpenAI-compatible `/v1`, so an existing
+OpenAI client asks for the model named `best` and gets whatever this hardware
+should actually run. See [Command line](#command-line) for its banner and model
+aliases.
+
+## 10. Call it from your own package
+
+This is the integration every other member of the AI Helpers suite uses: no
+`DEFAULT_MODEL` constant anywhere, the model always read from a resolved
+engine.
+
+The cheapest entry point, for a package that only needs to know *which tag*:
+
+```python
+print(beah.text_model())  # 'qwen3:8b'
+print(beah.vision_model())  # 'gemma3:12b'
+print(beah.resolved_models())  # {'text': 'qwen3:8b', 'vision': 'gemma3:12b'}
+```
+
+Those resolve an environment override, then the selection persisted by `pull`,
+then a safe default — no hardware probe, no network, deterministic, so they are
+safe in CI. The values above are the real output on a machine where nothing has
+been pulled yet, which is exactly why they are the defaults.
+
+The full pattern, for a repository that has a brief:
+
+```python
+engine = beah.ensure(".")  # loads llm.engine.yaml, resolving it on first use
+print(beah.model_for(engine, "llm"))  # ('ollama', 'http://localhost:11434', 'gemma3:12b')
+
+summary = llm.chat(prompt, engine=engine, kind="llm")
+critique = llm.chat(prompt, engine=engine, kind="vlm", images=[png], json_schema=SCHEMA)
+```
+
+`chat` reads the backend and model from the engine and dispatches to Ollama
+(`/api/generate`) or vLLM (OpenAI `/v1/chat/completions`) transparently; given
+a `json_schema` it returns a parsed dict rather than a string. See the README's
+[Downstream integration → Pattern B](README.md#pattern-b-a-per-project-engine-resolved-from-a-tuned-brief)
+for the whole flow and the missing-file policy.
+
+A schema-constrained call, executed against a local daemon:
+
+```python
+out = llm.chat(
+    "In one short sentence: what is unified memory?",
+    model="qwen2.5:3b",
+    json_schema={
+        "type": "object",
+        "properties": {"answer": {"type": "string"}},
+        "required": ["answer"],
+    },
+)
+print(out)
+```
+
+```
+{'answer': 'Unified memory is a memory management system that allows CPU and GPU to share memory efficiently.'}
+```
+
+That is the one snippet in this file that needed Ollama running, and the one
+whose output is **not** reproducible: a model is not a function, and a second
+run of exactly that call returned "…share memory in a unified way" instead. The
+*shape* is the guarantee — `json_schema=` makes it a parsed dict with an
+`answer` key rather than a string to regex — and the sentence inside is not.
+`model=` is spelled out only because the example has no brief to resolve; in
+real code it is `engine=`, and the tag is never written down.
+
+The decision machinery is importable on its own, with no CLI and no engine
+file:
+
+```python
+hw, catalog = beah.available_memory(), beah.load_catalog()
+
+print(beah.select(hw, catalog, kind="vlm")["id"])  # 'gemma3:12b'
+print(beah.select(hw, catalog, kind="llm")["id"])  # 'qwen3:32b-q8_0'
+```
+
+Note that `select` and `report` disagree here, and the disagreement is correct:
+`select` returns the best model that **fits memory** (`qwen3:32b-q8_0`, 36 GB,
+score 85), while `report` and `resolve` also apply the comfort-throughput floor
+and so return `gemma3:12b`. Reach for `rank()` when you want the ordered list
+with the `comfortable` flag on every row.
+
+The whole recommendation — memory, compute and task together — is one call:
+
+```python
+report = beah.recommend_engines(
+    beah.available_memory(),
+    beah.load_catalog(),
+    task="product descriptions and image-quality checks",
+    compute=beah.compute_profile(),
+)
+print(report["recommendations"]["vlm"]["chosen"]["id"])  # 'gemma3:12b'
+print(beah.to_markdown(report))  # the report from section 2
+```
+
+`beah.write_report(report, "engine")` writes the `engine.md` / `engine.json`
+pair that `report --out engine` produces.
+
+## Command line
+
+One command line, built with click. `best-engine-ai-helper -h` lists it, and
+`best-engine-ai-helper <command> -h` documents any one of them. Releases before
+1.9.0 also installed a second, suffixed entry point mirroring it command for
+command; there is one name now, and this is it.
+
+| Command | What it does | Needs |
+|---|---|---|
+| `detect` | this machine's hardware, as JSON | — |
+| `recommend` | ranked candidates for this hardware; `--kind`, `--headroom` | — |
+| `report` | best engine(s) for a free-text task, Markdown + JSON; `--task`, `--out`, `--live`, `--format`, `--no-cloud`, `--quality-vs-cost`, `--cloud-provider` | — |
+| `resolve` | a brief into a machine-specific engine file; `--brief`, `--out`, `--backend`, `--endpoint` | — |
+| `usages list` / `show` / `resolve` | the bundled task profiles and families | — |
+| `storage` | what fits on disk, and which models fit in memory together; `--backend` | — |
+| `providers` | which cloud providers are usable right now, and why not; `--json` | — |
+| `doctor` | resolved engine against live daemon; non-zero when they disagree; `--directory`, `--timeout` | Ollama |
+| `catalog show` | the merged model catalogue | — |
+| `catalog update` | refresh the catalogue cache; `--limit`, `--timeout`, `--ollama`, `--arena` | network |
+| `hardware show` | the merged chip table | — |
+| `hardware update` | record this machine's chip and memory | — |
+| `airllm status` | can this machine stream layers, and would it; `--measure`, `--json`, `--request` | — |
+| `airllm plan` | what it could stream, and at what price; `--kind`, `--compression`, `--context`, `--batch`, `--json` | — |
+| `airllm compare` | native against streamed, same answer, both prices; `--tokens`, `--batch`, `--compression`, `--measure`, `--json` | — |
+| `airllm prepare` | download and split a checkpoint now; `--model`, `--compression`, `--shards-path`, `--delete-original` | network, runtime |
+| `pull` | pull the best model, then run both Ralph gates; `--keep-failed`, `--vllm`, `--application`, `--min-tps` | Ollama, network |
+| `validate` | re-run the Ralph gates on the configured model | Ollama |
+| `env` | print the env block for `~/.zshrc` | `pull` first |
+| `activity` | the local cost ledger; `--format` | — |
+| `gui` | serve the browser GUI and the `/api` routes; `--host`, `--port` | — |
+| `serve` | the same port, plus an OpenAI-compatible `/v1`; `--host`, `--port` | Ollama, to answer |
+| `imagine plan` | rank the text-to-image models this machine can run; `--size`, `--json` | — |
+| `imagine generate` | generate one image locally; `--prompt`, `--out`, `--model`, `--size`, `--steps`, `--seed`, `--negative` | network |
+
+Two of those deserve a line of their own. `serve` puts an **OpenAI-compatible**
+surface on the same port as the GUI, the `/api` routes and `/mcp`, so an
+existing OpenAI client reaches the model this machine should run without knowing
+its name:
+
+```
+  OpenAI-compatible API : http://127.0.0.1:8000/v1
+  Browser GUI           : http://127.0.0.1:8000/gui
+  OpenAPI schema        : http://127.0.0.1:8000/docs
+  MCP endpoint          : http://127.0.0.1:8000/mcp
+
+  from openai import OpenAI
+  client = OpenAI(base_url="http://127.0.0.1:8000/v1", api_key="not-needed")
+  client.chat.completions.create(model="best", messages=[...])
+
+  Model names: best · best-llm · best-vlm · best-embed · best-image
+               best:<task>  (e.g. best:write SQL)
+```
+
+`GET /v1/models` lists those aliases alongside every concrete catalogue entry —
+`best` resolves to a VLM when the request carries images, and `best:write SQL`
+runs the same task parsing `report` does. `api_key="not-needed"` is literal: the
+server is local and asks for nothing.
+
+`imagine` is the third kind of model this package chooses, and the arithmetic is
+not the LLM arithmetic: a diffusion model is three or four networks taking turns,
+so its footprint depends on whether they are all resident or handed to
+`diffusers`' component offload, and its cost is steps times denoiser passes
+rather than tokens per second.
 
 ```sh
-best-engine-ai-helper catalog update            # fetch open-weight models from ApXML
-best-engine-ai-helper catalog update --limit 20 # quick partial refresh / smoke test
-best-engine-ai-helper hardware update           # record this machine's chip + memory
+best-engine-ai-helper imagine plan
 ```
+
+```
+=== Image models: 36.0 GB budget, 400.0 GB/s memory bandwidth ===
+id             params  size       steps  gb    offload  s/image  runs  notes
+-------------  ------  ---------  -----  ----  -------  -------  ----  -----
+flux1-schnell  16.9B   1024x1024  4      30.8  yes      16.9     yes
+sd35-medium    10.9B   1024x1024  28     28.3  no       24.8     yes
+sdxl           3.5B    1024x1024  28     9.8   no       25.8     yes
+sdxl-turbo     3.5B    512x512    4      9.0   no       0.9      yes
+sd15           1.1B    512x512    28     2.9   no       2.1      yes
+
+  Pick: black-forest-labs/FLUX.1-schnell — 1024x1024 in 30.8 GB resident, 4 steps, about 16.9 s an image (components taking turns).
+```
+
+Read the `steps` column against `s/image`: `sdxl-turbo` is the same 3.5B network
+as `sdxl`, distilled to 4 steps instead of 28, and that one column is the whole
+28x difference in wait. `offload: yes` on FLUX means it only fits by handing the
+components to `diffusers` in turn. `--size auto` is the default and the fair
+comparison, because asking a 512px model for 1024x1024 duplicates subjects
+rather than adding detail. `imagine generate` is not run here: it downloads a
+diffusers pipeline.
+
+The three not demonstrated above, because running them here would mean a model
+download:
+
+```sh
+best-engine-ai-helper pull        # pull the best model; run both Ralph gates
+best-engine-ai-helper validate    # re-run the gates on the current model
+best-engine-ai-helper env         # print the env block for ~/.zshrc
+```
+
+`pull` selects as `recommend` does, downloads through Ollama, then refuses to
+write anything until the model passes two gates: it must catch and fix a flaw
+seeded into a short text (the Ralph Loop), and spot an obvious defect seeded
+into a small test image (the Ralph Eyeball Loop). Only then is `env.sh`
+written, which is what `env` prints. Run before `pull`, it says so:
+
+```
+env.sh not found. Run `best-engine-ai-helper pull` first.
+```
+
+## Troubleshooting
+
+**`env.sh not found. Run best-engine-ai-helper pull first.`** — `env` prints a
+file that `pull` writes. Nothing has been pulled and validated yet.
+
+**`doctor` says the engine file names a model the daemon does not serve.** The
+pick is made against the catalogue, not against what is downloaded. Run the
+`ollama pull …` line that `resolve` printed, or re-resolve.
+
+**Everything reads `NO` in the `fits` column.** The budget is half of the
+*usable* pool, not half of installed memory: 96 GB becomes 72.0 GB usable, then
+36.0 GB after headroom. `beah.effective_budget(beah.available_memory())` prints
+the number. `--headroom` only ever tightens it; values above 0.5 are clamped.
+
+**A model fits and is still not chosen.** It failed the comfort-throughput
+floor, not the memory test. Look at the `comfy` column, and at `min_tps` in the
+brief.
+
+**`airllm status` says `runtime import : FAILS (install incomplete)`.** airllm
+is a core dependency, so this is a broken install rather than a missing extra —
+a stripped container, or a wheel that failed to build. The panel prints the
+repair command. `status`, `plan` and `compare` keep working regardless; only
+actually generating needs the runtime.
+
+**`airllm plan` refuses almost everything on `disk_gb`.** That column is the
+space needed *during the layer split*, which is roughly twice the checkpoint,
+and it is the usual blocker — far more often than memory. Free space, or point
+`--shards-path` at another volume.
+
+**A structured-output call comes back empty.** Either the model cannot honour a
+JSON schema — `catalog show` and the `notes` column say which ones cannot, and
+the Qwen3-VL family is the common surprise — or the backend is airllm, which
+has no schema-constrained generation at all. `resolve --backend airllm` warns
+about exactly this.
+
+**`providers` says `0 of 4 usable` when a key is exported.** The lookup order is
+`settings.yaml`, then any `.env`, then the process environment, then the OS
+keychain, and the brief's `api_key_env` decides *which variable name* is read. A
+key held under some other name than the provider's conventional one needs that
+field set. The keychain step itself needs
+`pip install 'best-engine-ai-helper[cloud]'`.
+
+**A cloud call fails and nothing seems to happen.** It fell back. Every cloud
+engine carries a local fallback resolved from the same brief, and `activity` is
+where the failed paid call and the local retry both show up.

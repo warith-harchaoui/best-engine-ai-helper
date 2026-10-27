@@ -178,6 +178,53 @@ All notable changes to best-engine-ai-helper are documented here.
   Bigger, slower **and** weaker is dominated on every axis a caller cares about,
   so capability leads and size decides only where no benchmark does.
 
+### Documentation
+
+- **The six spine documents brought onto the suite's shared shape (CODING.md
+  rules 16-18).** A reader arriving at any of the seventeen members should meet
+  the same load-bearing sections in the same order, in both languages, while the
+  middle of each document stays the package's own. Nothing was reordered here;
+  sections were renamed where the suite has one spelling, and added where they
+  were missing.
+
+  `LISEZMOI.md`: `## Démarrage rapide` is now `## Prise en main rapide` (no link
+  pointed at the old anchor). `PAYSAGE.md`: `## Vue d'ensemble` is now
+  `## En un coup d'œil`, the heading `gen_landscape.py` reads the star table
+  under. Both comparison documents gained `## When to pick what` /
+  `## Quand choisir quoi` — which recommends a competitor wherever one is the
+  better answer, since a comparison that never does is advertising — and
+  `## Sources and as-of date` / `## Sources et date de relevé`, which dates
+  every claim about somebody else's software to the 2026-10-19 survey, separates
+  the vendor-published routing-savings band from an independent measurement, and
+  declines to invent a URL for the one entry whose home was not recorded.
+
+- **`EXAMPLES.md` / `EXEMPLES.md` rewritten as ten scenarios rather than one
+  recipe per command**, with `## Table of Contents`, `## Setup`,
+  `## Command line` and `## Troubleshooting` where the rule puts them. Every
+  output pasted in them was produced by running the command on an M2 Max /
+  96 GB: the previous text carried a 61.2 GB memory budget where this machine
+  reports 36.0 GB, a `recommend` table missing its `tok/s` and `comfy` columns,
+  an engine file missing `tps_basis` / `score` / `available` / `pull`, and an
+  `airllm` panel claiming `runtime import : ok` from an environment nobody could
+  point at. `storage`, `providers` and `doctor` were undocumented and now have
+  worked examples, as do `serve` (its real banner and the `best` / `best-llm` /
+  `best-vlm` / `best-embed` / `best-image` / `best:<task>` aliases that
+  `GET /v1/models` lists) and `imagine plan`. The five commands that need a
+  model download or a network call are described rather than faked, and say so.
+
+- **Three places a model can run, stated as three rather than two.** `## Two
+  modes: local (free) and cloud (paid)` is now `## Where the model runs` /
+  `## Où tourne le modèle`, because the brief's two `mode:` values hid a third
+  option people kept missing: `mode: local` plus `--endpoint` runs the pick on a
+  server you own, at no per-token cost and without leaving your network. The
+  paid tier now states its precondition exactly — `mode: cloud` **and** an
+  `api_key_env` whose variable is actually set — alongside the rule that the
+  only automatic direction is paid → local.
+
+- **The suite's routing rule written down where a reader of this package will
+  meet it**: any member needing an LLM or VLM resolves it here rather than
+  hardcoding a model name, with `md2star` as the reference to copy.
+
 ## [1.9.0] - 2026-10-25
 
 ### Removed

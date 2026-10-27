@@ -32,7 +32,7 @@ English via `/gui?lang=en`, with a header link to switch. See
 
 ## In production
 
-This package sits at the base of the AI Helpers suite's model-selection layer: three other published packages (`md2star`, `standpoint`, `vocal-helper`) route every LLM and VLM call through it instead of hardcoding a model name. It ships on PyPI with a green CI gate on every push (ruff, mypy, and a pytest suite held above 90% coverage), and every release is a semantic-version tag on GitHub.
+This package sits at the base of the AI Helpers suite's model-selection layer, and the suite's rule is that **any member needing an LLM or VLM resolves it through this package rather than hardcoding a model name** — three published members (`md2star`, `standpoint`, `vocal-helper`) already do, and `md2star` is the reference implementation to copy. A model name written as a literal in another package is a bug there, not a shortcut: it survives the machine it was chosen on and nothing re-decides when the hardware changes. It ships on PyPI with a green CI gate on every push (ruff, mypy, and a pytest suite held above 90% coverage), and every release is a semantic-version tag on GitHub.
 
 ## Documentation
 
@@ -63,10 +63,10 @@ This package sits at the base of the AI Helpers suite's model-selection layer: t
   pseudonymization, an OS-keychain fallback for API keys) and `[filtered]` for
   real NSFW classifiers (a DistilBERT text model; LAION's CLIP-based
   image detector, via `transformers` for the CLIP encoder and a bundled
-  `onnxruntime` model for the classifier head). See [Two modes: local (free)
-  and cloud (paid)](#two-modes-local-free-and-cloud-paid) below and
-  [EXAMPLES.md's `resolve`
-  section](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXAMPLES.md#resolve)
+  `onnxruntime` model for the classifier head). See [Where the model
+  runs](#where-the-model-runs) below and
+  [EXAMPLES.md's paid-model
+  section](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXAMPLES.md#4-a-paid-model-only-when-you-hand-it-a-key)
   for the full story; both degrade gracefully (a keyword heuristic, or an
   "unavailable" verdict) when absent, never a hard failure.
 
@@ -853,15 +853,29 @@ A project usually knows its job more precisely than a machine-wide default can, 
 
 The suite's consumers, [Standpoint](https://github.com/warith-harchaoui/standpoint), vocal-helper, and md2star, follow this pattern; each ships an `llm.brief.yaml` describing its own job (Standpoint's, for instance, names schema-constrained JSON, so the structured-output gate rules out higher-scoring vision models that cannot honour a schema and picks the strongest one that can) and reads the model only from the resolved engine file.
 
-## Two modes: local (free) and cloud (paid)
+## Where the model runs
+
+This is the one package in the AI Helpers suite that can reach a paid third-party cloud service, so it is worth being exact about when it does. There are three places a resolved model can live, and only the third one costs money or leaves your network:
+
+| Where | Brief | Costs | Reaches a third party |
+|---|---|---|---|
+| **This machine** | `mode: local` (the default, or no `mode` field) | nothing | no |
+| **Your own server** | `mode: local` + `--endpoint` / `base_url` | your own hardware | no |
+| **A paid provider** | `mode: cloud` + an `api_key_env` whose variable is actually set | per token | yes |
 
 Every brief picks one of two modes with `mode: local` (the default) or `mode: cloud`. Both resolve to the same shape of engine file and the same `llm.chat(engine=..., kind=...)` call site downstream: only the transport and the cost change.
 
-### Local (free, default)
+### On this machine (free, and the default)
 
 `mode: local`, or no `mode` field at all, is [the promise](#the-promise): hardware detection, model selection, and every quality gate run on this machine against a model already pulled via Ollama or served via vLLM. Every call costs **$0.0**, always, with no paid API call to price (see [Activity ledger](#activity-ledger)).
 
-### Cloud (paid)
+### On your own server (still free of any third-party charge)
+
+Local mode does not mean *this* box. `--endpoint URL` (or `base_url` in the brief) points the same resolved engine at a server you run — typically vLLM on a GPU machine down the hall, with `--backend vllm` to force it. The selection is still made for the hardware that will serve the model, the ledger still prices every call at `$0.0`, and nothing leaves infrastructure you control. This is the middle option, and it is the one people forget exists: "not on my laptop" does not have to mean "on someone else's account".
+
+### On a paid provider (opt-in, and only once you supply a key)
+
+A paid call never happens by accident. It takes a brief that says `mode: cloud`, **and** an `api_key_env` naming an environment variable that is actually set — `api_key_env` holds the variable's NAME, never the key itself, and the key is never persisted into the engine file. A provider whose key cannot be found is not even a candidate: `best-engine-ai-helper providers` lists exactly which ones are usable right now and why the others are not. Nothing in this package escalates from local to paid on its own; the only automatic direction is the safe one, paid → local, when a paid call fails.
 
 `mode: cloud` routes through a paid provider instead: OpenAI, Mistral, OpenRouter, Together, or Azure OpenAI (all OpenAI-compatible), plus Anthropic and Gemini (their own wire formats), while keeping the exact same `llm.chat(engine=..., kind=...)` call site downstream. Two ways to pick the model:
 
@@ -904,7 +918,7 @@ Every cloud engine also carries an embedded local **fallback**, resolved from th
 | **Retry + cache** | off; retry replays a transient transport failure before failing over, cache memoizes identical calls so a repeat never pays twice | `chat(..., retries=3, cache=True)`, cache needs `[cloud]` |
 | **Cost tracking** | every call, local or paid, appended to the local activity ledger, priced from real provider token counts when reported, else a character estimate | `best-engine-ai-helper activity`, opt out with `BEST_ENGINE_NO_LEDGER=1` |
 
-See [EXAMPLES.md's `resolve` section](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXAMPLES.md#resolve) for the full worked recipe (settings.yaml, keyring, structured output, the failover chain) and [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) for the activity dashboard.
+See [EXAMPLES.md's paid-model section](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXAMPLES.md#4-a-paid-model-only-when-you-hand-it-a-key) for the full worked recipe (settings.yaml, keyring, structured output, the failover chain) and [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) for the activity dashboard.
 
 ## Usages / task profiles
 

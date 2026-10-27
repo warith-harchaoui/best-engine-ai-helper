@@ -16,7 +16,7 @@ Relevé le 2026-10-19. Neuf critères, dont deux ajoutés après que ce projet a
 mesurer la vitesse de décodage au lieu de l'estimer. Une case a été remesurée le
 2026-10-20 — voir [la colonne que ce projet perd](#la-colonne-que-ce-projet-perd).
 
-## Vue d'ensemble
+## En un coup d'œil
 
 <!-- TABLE:START -->
 | Sélection de modèle | Détection du matériel | Tenue en mémoire locale | Mesure la vitesse sur cette machine | Modèles payants dans la même décision | Route selon les clés présentes | Provenance des scores | Largeur du catalogue | Éprouve la qualité avant qu'on en dépende | API programmatique |
@@ -224,7 +224,8 @@ projet commence — airllm diffusera volontiers un modèle de 671 milliards de p
 vers un disque qui n'a pas la place pour la découpe, à deux minutes par jeton, puis il n'a
 aucun avis sur l'opportunité de le faire. Ces jugements (empreinte résidente, disque exigé
 par la découpe, secondes par jeton, puis natif contre flux tarifés dans la même unité)
-sont natifs ici, puis le moteur est un extra optionnel. Apache-2.0.
+sont natifs ici ; le moteur est importé comme dépendance de plein droit plutôt que
+caché derrière un extra. Apache-2.0.
 
 ### Ollama
 
@@ -245,3 +246,98 @@ scriptable.
 `modelfit.io`, `llmconfigurator.com`, `willitrunai.com` puis d'autres. On saisit sa VRAM,
 on lit quelles tailles tiennent. Réellement utiles pour une vérification de cinq secondes
 avant un achat et structurellement incapables de faire partie d'un pipeline.
+
+## Quand choisir quoi
+
+La réponse honnête est souvent un autre outil de cette carte.
+
+**Choisissez `llmfit`** quand la question est purement locale puis que vous voulez le
+catalogue le plus large livré dans la boîte, sans appel réseau ni rien à configurer. Il est
+à égalité avec ce projet sur la détection du matériel puis sur la vitesse de décodage
+mesurée, puis il livre des centaines de modèles notés là où celui-ci en livre vingt curés
+plus ce qu'y ajoute `catalog update --ollama`. Si aucune API payante n'entrera jamais dans
+la décision, la machinerie supplémentaire d'ici n'apporte rien.
+
+**Choisissez LiteLLM ou OpenRouter** quand chaque appel part déjà chez un fournisseur puis
+que le problème est de la plomberie : une surface par-dessus plusieurs fournisseurs, avec
+les clés, les budgets, les réessais puis les replis. Ni l'un ni l'autre ne proposera jamais
+d'exécuter la tâche en local pour rien, ce qui est le bon comportement quand cela n'a
+jamais été envisagé. LiteLLM si vous voulez opérer la passerelle vous-même ; OpenRouter si
+vous préférez éviter.
+
+**Choisissez RouteLLM ou Not Diamond** quand la décision de routage doit se prendre par
+requête plutôt que par dépôt. Un routeur appris voit le prompt ; un brief ne voit que la
+description du travail. En échange, un brief est un fichier relisible sous gestion de
+versions là où un classifieur est un modèle.
+
+**Choisissez Ollama ou LM Studio** quand vous avez déjà décidé quel modèle exécuter puis
+que vous voulez simplement le servir. C'est le cas la plupart du temps, puis c'est la
+raison pour laquelle ce projet résout *vers* Ollama au lieu de le remplacer.
+
+**Choisissez airllm directement** quand vous savez déjà que vous voulez la lecture des
+couches en flux puis que vous n'avez besoin de rien pour la dimensionner, la refuser ou la
+tarifer face au modèle qui tient.
+
+**Choisissez un calculateur VRAM en ligne** quand vous voulez une réponse en cinq secondes
+avant un achat de matériel puis que rien n'a besoin de finir dans un pipeline.
+
+**Choisissez celui-ci** quand la décision couvre les deux mondes : quand *« l'exécuter en
+local gratuitement »* puis *« payer un fournisseur au jeton »* sont deux options vivantes,
+quand la réponse doit différer d'une machine à l'autre sans que le dépôt change, puis quand
+vous voulez qu'un choix soit **refusé** au lieu d'être simplement rapporté s'il est trop
+lent, trop gros pour le disque ou adossé à une clé que vous ne détenez pas.
+
+## Sources et date de relevé
+
+**Relevé le 2026-10-19.** Chaque affirmation sur un autre projet dans cette page a été lue
+ce jour-là dans sa propre documentation publique, son dépôt ou l'aide de sa ligne de
+commande — rien ici n'est un benchmark que ce projet aurait fait tourner contre un
+concurrent. Une seule case, la largeur du catalogue, a été remesurée le 2026-10-20 puis sa
+notice réécrite ; voir [la colonne que ce projet perd](#la-colonne-que-ce-projet-perd).
+Aucune affirmation concernant un concurrent n'a été revérifiée depuis le 2026-10-19 : c'est
+la date à laquelle un lecteur doit les rapporter.
+
+Où les entrées ont été lues. Les liens ci-dessous visent le domicile canonique
+de chaque projet, pas une page datée : aucun numéro de version n'est cité dans
+cette page, délibérément, parce que la version est la part d'une affirmation qui
+se périme le plus vite puis qu'aucune lecture faite ici n'en dépendait.
+
+- **airllm** — [github.com/lyogavin/airllm](https://github.com/lyogavin/airllm),
+  Apache-2.0. Le chiffre « 70 milliards de paramètres dans environ 4 Go résidents » est
+  l'annonce du projet lui-même, pas une mesure indépendante.
+- **LiteLLM** — [github.com/BerriAI/litellm](https://github.com/BerriAI/litellm).
+- **RouteLLM** — [github.com/lm-sys/RouteLLM](https://github.com/lm-sys/RouteLLM), LMSYS
+  puis UC Berkeley. Le chiffre « jusqu'à 85 % d'économies à environ 95 % de la qualité de
+  GPT-4 » vient des résultats publiés par le projet.
+- **OpenRouter** — [openrouter.ai](https://openrouter.ai).
+- **Not Diamond** — [notdiamond.ai](https://www.notdiamond.ai).
+- **Ollama** — [ollama.com](https://ollama.com).
+- **LM Studio** — [lmstudio.ai](https://lmstudio.ai).
+- **llmfit** — son propre README puis la sortie de `llmfit info` et `llmfit bench`. Aucune
+  URL n'est consignée ici, délibérément : l'entrée décrit un comportement qui a été lu,
+  puis un lien inventé après coup aurait l'air d'une citation sans en être une.
+- **Calculateurs VRAM en ligne** — `modelfit.io`, `llmconfigurator.com`,
+  `willitrunai.com`, lus comme pages publiées.
+
+La fourchette de **60 à 85 %** d'économies de routage citée sous [Idées reprises du
+terrain](#idées-reprises-du-terrain) est un intervalle de chiffres publiés par les
+fournisseurs de routeurs cloud, pas une mesure indépendante, puis les économies sur une
+charge mixte dépendent entièrement du mélange. À prendre comme la raison d'être d'un axe de
+coût ici, pas comme un chiffre sur lequel bâtir un budget.
+
+D'où viennent les chiffres propres à ce projet :
+
+- **Les notes en étoiles sont un jugement, pas une mesure.** Elles notent les capacités
+  documentées de chaque outil face au travail énoncé en tête de page. Un outil bâti pour un
+  autre travail obtient une note basse ici sans être critiqué pour autant.
+- **Les deux axes puis leurs contributions** sont une ACP sur `assets/paysage.csv`, calculée
+  par [`standpoint`](https://github.com/warith-harchaoui/standpoint) : la figure se redérive
+  donc du tableau ci-dessus au lieu d'être dessinée à la main. Les *noms* de pôles, eux,
+  sont écrits par un modèle puis bougent d'une exécution à l'autre ; les contributions non.
+- **Les chiffres du catalogue** — 420 tags tirables, 257 familles, dont 221 annonçant leurs
+  tailles — sont une mesure propre à ce projet, issue de l'exécution de
+  `catalog update --ollama` du 2026-10-20 contre la bibliothèque officielle d'Ollama.
+- **Les scores de benchmark puis les tarifs** des catalogues embarqués
+  (`best_engine_ai_helper/data/models.yaml`, `pricing.yaml`) portent chacun leur propre
+  champ `source:` puis `fetched_at` : c'est là qu'il faut chercher la provenance d'un
+  chiffre précis, pas ici.

@@ -44,7 +44,7 @@ défaut, anglais via `/gui?lang=en`, avec un lien d'en-tête pour basculer. Voir
 
 ## En production
 
-Ce paquet est à la base de la couche de sélection de modèles de la suite AI Helpers : trois autres paquets publiés (`md2star`, `standpoint`, `vocal-helper`) font transiter chaque appel LLM et VLM par lui plutôt que de coder en dur un nom de modèle. Il est publié sur PyPI avec une intégration continue verte à chaque envoi (ruff, mypy et une suite de tests maintenue au-dessus de 90 % de couverture). Chaque version est un tag sémantique sur GitHub.
+Ce paquet est à la base de la couche de sélection de modèles de la suite AI Helpers, puis la règle de la suite est que **tout membre ayant besoin d'un LLM ou d'un VLM le résout par ce paquet plutôt que de coder en dur un nom de modèle** — trois membres publiés (`md2star`, `standpoint`, `vocal-helper`) le font déjà, `md2star` servant d'implémentation de référence à recopier. Un nom de modèle écrit en littéral dans un autre paquet est un défaut là-bas, pas un raccourci : il survit à la machine sur laquelle il a été choisi puis rien ne redécide quand le matériel change. Il est publié sur PyPI avec une intégration continue verte à chaque envoi (ruff, mypy et une suite de tests maintenue au-dessus de 90 % de couverture). Chaque version est un tag sémantique sur GitHub.
 
 ## Documentation
 
@@ -69,8 +69,9 @@ Ce paquet est à la base de la couche de sélection de modèles de la suite AI H
   pas ce paquet — il est en Python pur puis minuscule — c'est la pile d'airllm :
   torch, transformers, accelerate. L'arbitrage est délibéré : « quel modèle
   cette machine peut-elle exécuter » puis « quel modèle peut-elle exécuter en
-  lisant les couches en flux » sont la même question, et une capacité derrière
-  un extra optionnel est une capacité que presque personne ne découvre.
+  lisant les couches en flux » sont la même question ; une capacité cachée
+  derrière un extra optionnel est une capacité que presque personne ne
+  découvre.
   L'import reste paresseux, donc rien de ce poids n'est payé au démarrage :
   `detect`, `recommend` puis `report` sont aussi rapides qu'avant.
 - Optionnel : `[cloud]` pour le mode fournisseur cloud (retry, cache,
@@ -78,10 +79,10 @@ Ce paquet est à la base de la couche de sélection de modèles de la suite AI H
   `[filtered]` pour de vrais classifieurs NSFW (un modèle DistilBERT pour le
   texte ; le détecteur d'image basé sur CLIP de LAION, via `transformers`
   pour l'encodeur CLIP et un modèle `onnxruntime` embarqué pour la tête de
-  classification). Voir [Deux modes : local (gratuit) et cloud
-  (payant)](#deux-modes--local-gratuit-et-cloud-payant) plus bas et [la
-  section `resolve`
-  d'EXEMPLES.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXEMPLES.md#resolve)
+  classification). Voir [Où tourne le
+  modèle](#où-tourne-le-modèle) plus bas et [la
+  section « modèle
+  payant » d'EXEMPLES.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXEMPLES.md#4-un-modèle-payant-seulement-si-vous-donnez-une-clé)
   pour le déroulé complet ; les deux se dégradent proprement (une
   heuristique par mots-clés ou un verdict « indisponible ») en leur
   absence, jamais un échec brutal.
@@ -173,9 +174,9 @@ best-engine-ai-helper detect     # affiche le matériel de la machine en JSON
 paquet : une surface, construite avec click, qui est une dépendance de base
 et non un extra optionnel. Les versions antérieures à la 1.9.0
 installaient aussi un second point d'entrée suffixé qui la doublait commande
-par commande ; il n'y a plus qu'un seul nom, et c'est celui-ci.
+par commande. Il n'y a plus qu'un seul nom : celui-ci.
 
-## Démarrage rapide
+## Prise en main rapide
 
 ```sh
 # Afficher le matériel détecté
@@ -869,7 +870,7 @@ moteur résolu.
 
    `mode: local` est le défaut. `mode: cloud` résout un fournisseur payant plus
    un repli local depuis le même brief (payant vers local en cas d'échec) ;
-   voir [EXEMPLES.md → resolve](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXEMPLES.md#resolve)
+   voir [EXEMPLES.md → modèle payant](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXEMPLES.md#4-un-modèle-payant-seulement-si-vous-donnez-une-clé)
    pour un brief `mode: cloud` complet. Le retry/cache/pseudonymisation
    nécessitent l'extra `[cloud]` ; les vrais classifieurs NSFW de
    `llm.chat(safety=...)` nécessitent `[filtered]` : les deux se dégradent
@@ -928,19 +929,50 @@ et spécifique à la machine : son absence est normale, `ensure` le résout depu
 premier usage. Le modèle reste ainsi hors de toute variable : le fichier moteur résolu est
 l'unique source de vérité.
 
-## Deux modes : local (gratuit) et cloud (payant)
+## Où tourne le modèle
+
+C'est le seul paquet de la suite AI Helpers qui sache joindre un service cloud payant de
+tiers : autant être exact sur le moment où il le fait. Un modèle résolu peut vivre à trois
+endroits, dont seul le troisième coûte de l'argent puis quitte votre réseau :
+
+| Où | Brief | Coût | Joint un tiers |
+|---|---|---|---|
+| **Cette machine** | `mode: local` — le défaut ; sinon aucun champ `mode` | rien | non |
+| **Votre propre serveur** | `mode: local` plus `--endpoint` / `base_url` | votre matériel | non |
+| **Un fournisseur payant** | `mode: cloud` plus un `api_key_env` dont la variable est réellement renseignée | au jeton | oui |
 
 Chaque brief choisit un des deux modes avec `mode: local` (le défaut) ou `mode: cloud`. Les
 deux se résolvent vers le même type de fichier moteur et le même point d'appel
 `llm.chat(engine=..., kind=...)` en aval : seuls le transport et le coût changent.
 
-### Local (gratuit, par défaut)
+### Sur cette machine (gratuit, par défaut)
 
 `mode: local` — ou l'absence de champ `mode` — correspond à [la promesse](#la-promesse) : la
 détection matérielle, la sélection du modèle et chaque garde qualité tournent sur cette
 machine, contre un modèle déjà tiré via Ollama ou servi via vLLM. Chaque appel coûte **0,0 $**,
 toujours (voir [Journal d'activité](#journal-dactivité)) : il n'y a aucun appel API payant à
 chiffrer.
+
+### Sur votre propre serveur (toujours sans qu'aucun tiers facture)
+
+Le mode local ne veut pas dire *cette* machine-ci. `--endpoint URL` — ou `base_url` dans le
+brief — pointe le même moteur résolu vers un serveur que vous opérez : typiquement vLLM sur
+une machine à GPU au bout du couloir, avec `--backend vllm` pour le forcer. La sélection
+reste faite pour le matériel qui servira le modèle, le journal chiffre toujours chaque appel
+à `0,0 $`, puis rien ne quitte une infrastructure que vous contrôlez. C'est l'option
+intermédiaire, celle qu'on oublie : « pas sur mon portable » n'oblige pas à « sur le compte
+de quelqu'un d'autre ».
+
+### Chez un fournisseur payant (sur demande, puis seulement si vous fournissez une clé)
+
+Un appel payant n'arrive jamais par accident. Il exige un brief qui dit `mode: cloud`
+**puis** un `api_key_env` nommant une variable d'environnement réellement renseignée :
+`api_key_env` porte le NOM de la variable, jamais la clé elle-même, puis la clé n'est jamais
+écrite dans le fichier moteur. Un fournisseur dont la clé est introuvable n'est même pas
+candidat : `best-engine-ai-helper providers` liste exactement lesquels sont utilisables à
+l'instant puis pourquoi les autres ne le sont pas. Rien dans ce paquet ne passe du local au
+payant de lui-même ; la seule direction automatique est la direction sûre, payant → local,
+quand un appel payant échoue.
 
 ### Cloud (payant)
 
@@ -1001,7 +1033,7 @@ que `engine=` est un descripteur cloud :
 | **Retry + cache** | désactivés ; le retry rejoue un échec transport transitoire avant de basculer, le cache mémoïse les appels identiques pour qu'une répétition ne soit jamais payée deux fois | `chat(..., retries=3, cache=True)`, le cache nécessite `[cloud]` |
 | **Suivi du coût** | chaque appel, local ou payant, ajouté au journal d'activité local, chiffré depuis les comptages de jetons réels du fournisseur quand ils sont rapportés, sinon une estimation par caractères | `best-engine-ai-helper activity`, désactiver avec `BEST_ENGINE_NO_LEDGER=1` |
 
-Voir [la section `resolve` d'EXEMPLES.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXEMPLES.md#resolve) pour la recette complète
+Voir [la section « modèle payant » d'EXEMPLES.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXEMPLES.md#4-un-modèle-payant-seulement-si-vous-donnez-une-clé) pour la recette complète
 (settings.yaml, trousseau, sortie structurée, chaîne de repli) et [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) pour le
 tableau de bord d'activité.
 

@@ -205,8 +205,8 @@ it: it changes what the word "fits" means. Where it stops is exactly where this 
 starts — airllm will happily stream a 671B model onto a drive with no room for the split,
 at two minutes a token, and has no opinion about whether you should. Those judgements
 (resident footprint, disk required for the split, seconds per token, and native-versus-
-streamed priced in the same unit) are native here, and the runtime is an optional extra.
-Apache-2.0.
+streamed priced in the same unit) are native here, and the runtime is imported as a core
+dependency rather than hidden behind an extra. Apache-2.0.
 
 ### Ollama
 
@@ -225,3 +225,93 @@ no scriptable surface.
 `modelfit.io`, `llmconfigurator.com`, `willitrunai.com` and others. Type your VRAM, read
 which sizes fit. Genuinely useful for a five-second sanity check before a purchase, and
 structurally incapable of being part of a pipeline.
+
+## When to pick what
+
+The honest answer is often another entry on this map.
+
+**Pick `llmfit`** when the question is purely local and you want the widest catalogue in the
+box, with no network call and nothing to configure. It ties this project on hardware
+detection and on measured decode speed, and it ships hundreds of scored models where this
+one ships twenty curated ones plus whatever `catalog update --ollama` adds. If no paid API
+is ever going into the decision, the extra machinery here buys nothing.
+
+**Pick LiteLLM or OpenRouter** when every call is already going to a provider and the
+problem is plumbing: one surface over many providers, with keys, budgets, retries and
+fallbacks. Neither will ever suggest running the job locally for nothing, which is the
+right behaviour when that was never on the table. LiteLLM if you want to run the gateway
+yourself; OpenRouter if you would rather not.
+
+**Pick RouteLLM or Not Diamond** when the routing decision has to be made per request
+rather than per repository. A learned router sees the prompt; a brief only sees the job
+description. The trade is that a brief is a reviewable file under version control and a
+classifier is a model.
+
+**Pick Ollama or LM Studio** when you have already decided which model to run and simply
+want it served. That is most days, and it is why this project resolves *to* Ollama instead
+of replacing it.
+
+**Pick airllm directly** when you already know you want layer streaming and need nothing
+to size it, refuse it or price it against the model that fits.
+
+**Pick a browser VRAM calculator** when you want a five-second answer before a hardware
+purchase and nothing has to end up in a pipeline.
+
+**Pick this one** when the decision spans both worlds: when *"run it locally for free"* and
+*"pay a provider per token"* are both live options, when the answer has to differ per
+machine without the repository changing, and when you want a pick **refused** rather than
+merely reported if it is too slow, too large for the disk, or backed by a key you do not
+hold.
+
+## Sources and as-of date
+
+**Surveyed 2026-10-19.** Every claim about another project in this document was read that
+day from that project's own public documentation, repository or command-line help — nothing
+here is a benchmark this project ran against a competitor. One cell, catalog breadth, was
+re-measured on 2026-10-20 and the write-up explaining it was rewritten; see [the column
+this project loses](#the-column-this-project-loses). No competitor claim has been
+re-checked since 2026-10-19, which is the date a reader should hold them to.
+
+Where the entries were read. The links below point at each project's canonical
+home, not at a dated page: no version number is cited anywhere in this document,
+deliberately, because a version is the part of a claim that goes stale fastest
+and none of the readings here depended on one.
+
+- **airllm** — [github.com/lyogavin/airllm](https://github.com/lyogavin/airllm), Apache-2.0.
+  The "70B in about 4 GB of resident memory" figure is the project's own headline claim,
+  not an independent measurement.
+- **LiteLLM** — [github.com/BerriAI/litellm](https://github.com/BerriAI/litellm).
+- **RouteLLM** — [github.com/lm-sys/RouteLLM](https://github.com/lm-sys/RouteLLM), LMSYS
+  and UC Berkeley. The "up to 85% savings at ~95% of GPT-4 quality" figure comes from the
+  project's own published results.
+- **OpenRouter** — [openrouter.ai](https://openrouter.ai).
+- **Not Diamond** — [notdiamond.ai](https://www.notdiamond.ai).
+- **Ollama** — [ollama.com](https://ollama.com).
+- **LM Studio** — [lmstudio.ai](https://lmstudio.ai).
+- **llmfit** — its own README and the output of `llmfit info` / `llmfit bench`. No URL is
+  recorded here, deliberately: the entry describes behaviour that was read, and a link
+  invented after the fact would look like a citation without being one.
+- **Browser VRAM calculators** — `modelfit.io`, `llmconfigurator.com`,
+  `willitrunai.com`, read as published pages.
+
+The **60-85%** routing-savings band quoted under [Ideas taken from the
+field](#ideas-taken-from-the-field) is a range of vendor-published figures across the
+cloud routers, not an independent measurement, and mixed-workload savings depend entirely
+on the mix. Treat it as the reason a cost axis exists here, not as a number to plan with.
+
+Where this project's own numbers come from:
+
+- **The star ratings are a judgement, not a measurement.** They score each tool's
+  documented capabilities against the job stated at the top of this page. A tool built for
+  a different job scores low here and is not being criticised.
+- **The two axes and their loadings** are a PCA over `assets/landscape.csv`, computed by
+  [`standpoint`](https://github.com/warith-harchaoui/standpoint), so the figure is
+  re-derivable from the table above rather than drawn by hand. The pole *names* are written
+  by a model and do move between runs; the loadings do not.
+- **Catalog figures** — 420 pullable tags, 257 families, 221 declaring their sizes — are
+  this project's own measurement from the `catalog update --ollama` run of 2026-10-20
+  against the official Ollama library.
+- **Benchmark scores and prices** in the bundled catalogues
+  (`best_engine_ai_helper/data/models.yaml`, `pricing.yaml`) each carry their own `source:`
+  and `fetched_at` field, which is where to look for the provenance of any single figure
+  rather than here.
