@@ -59,7 +59,7 @@ A model that fits exactly is the wrong choice; that is the point of the gap.
 
 ```bash
 best-engine-ai-helper airllm status [--measure] [--json] [--request auto|always|never]
-best-engine-ai-helper airllm plan [--kind llm|vlm|both] [--compression 4bit|8bit] [--context K]
+best-engine-ai-helper airllm plan [--kind llm|vlm|both] [--compression 4bit|8bit] [--context K] [--batch B] [--tokens N]
 best-engine-ai-helper airllm compare [--tokens N] [--batch B] [--prompt-tokens P] [--application AXIS]
 best-engine-ai-helper airllm prepare --model REPO [--compression 4bit] [--shards-path DIR] [--delete-original]
 best-engine-ai-helper recommend --backend airllm

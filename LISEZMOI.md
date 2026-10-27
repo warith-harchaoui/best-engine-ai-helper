@@ -627,7 +627,7 @@ best-engine-ai-helper airllm status
 best-engine-ai-helper airllm status --measure      # mesurer le disque au lieu de le supposer
 
 # Que pourrait-elle diffuser, le plus capable d'abord ?
-best-engine-ai-helper airllm plan --kind llm --compression 4bit
+best-engine-ai-helper airllm plan --kind llm --compression 4bit --batch 8
 
 # Natif ou en flux, même longueur de réponse, les deux prix
 best-engine-ai-helper airllm compare --tokens 300 --batch 8

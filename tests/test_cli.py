@@ -797,3 +797,22 @@ def test_airllm_compare_json_carries_the_timings_behind_the_verdict(runner: CliR
         # travel, so the arithmetic is checkable from the outside.
         assert "seconds_per_pass" in plan
         assert "answer_seconds" in plan
+
+
+def test_airllm_plan_shows_the_batch_trade_on_both_sides(runner: CliRunner) -> None:
+    """Eight answers in the time of one, for eight KV caches. Both halves visible.
+
+    The batch is the biggest speed lever this backend has, so a plan that only
+    priced single sequences hid it. And it is not free: the shard figure has to
+    grow with the batch, or a user would plan a batch job into an OOM.
+    """
+    single = runner.invoke(cli, ["airllm", "plan", "--kind", "llm", "--tokens", "300"])
+    batched = runner.invoke(
+        cli, ["airllm", "plan", "--kind", "llm", "--tokens", "300", "--batch", "8"]
+    )
+
+    assert single.exit_code == 0 and batched.exit_code == 0, batched.output
+    assert "A 300-token answer:" in single.output
+    # The wall clock is the same; what changes is how many answers come out of
+    # it, and the line says so rather than leaving the reader to infer it.
+    assert "for all 8 prompts, since they share each layer pass" in batched.output

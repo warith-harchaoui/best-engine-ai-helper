@@ -207,48 +207,38 @@ def _report_measurement(meter: _throughput.Meter, tag: str) -> None:
 _STREAM_COLUMNS = ["id", "params", "shard_gb", "ckpt_gb", "s/token", "disk_gb", "runs", "notes"]
 
 
-def _streaming_rows(
-    entries: list[dict[str, Any]],
-    hw: dict[str, float | None],
-    disk: dict[str, Any],
-    kind: str,
-) -> list[dict[str, Any]]:
+def _streaming_rows(plans: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
-    Build the streaming candidate table for one kind.
+    Format already-ranked streaming plans as a display table.
+
+    Takes the plans rather than the catalog entries on purpose: the caller has
+    already ranked them with the batch size, answer length and compression the
+    user asked for, and ranking a second time here would print a table computed
+    under different assumptions from the pick below it.
 
     Parameters
     ----------
-    entries : list[dict]
-        Catalog entries, already filtered to what the streaming backend serves.
-    hw : dict[str, float | None]
-        Detected memory pools.
-    disk : dict[str, Any]
-        Storage profile from :func:`detect.disk_profile`.
-    kind : str
-        ``llm`` or ``vlm``.
+    plans : list[dict]
+        :func:`offload.plan` dicts, typically from :func:`offload.rank`.
 
     Returns
     -------
     list[dict[str, Any]]
-        Display rows in :data:`_STREAM_COLUMNS` order, biggest runnable first.
+        Display rows in :data:`_STREAM_COLUMNS` order, in the order given.
 
     Examples
     --------
     >>> rows = _streaming_rows(
-    ...     [{"id": "a", "kind": "llm", "size_b": 70, "layers": 80, "hf_id": "x/a"}],
-    ...     {"ram_gb": 64.0, "unified_gb": None, "vram_gb": None},
-    ...     {"read_gbs": 4.0, "free_gb": 900.0},
-    ...     "llm",
+    ...     _offload.rank(
+    ...         [{"id": "a", "kind": "llm", "size_b": 70, "layers": 80, "hf_id": "x/a"}],
+    ...         budget_gb=32.0,
+    ...         disk={"read_gbs": 4.0, "free_gb": 900.0},
+    ...         kind="llm",
+    ...     )
     ... )
     >>> rows[0]["id"], rows[0]["runs"]
     ('a', 'yes')
     """
-    plans = _offload.rank(
-        entries,
-        budget_gb=_offload.budget_gb(hw),
-        disk=disk,
-        kind=kind,  # type: ignore[arg-type]
-    )
     rows: list[dict[str, Any]] = []
     for plan in plans:
         # A blocker is the reason a candidate is not offered, and it is more
@@ -414,7 +404,13 @@ def recommend_cmd(
         click.echo(header)
         if streaming:
             click.echo(header)
-            click.echo(_fmt_table(_streaming_rows(ranked, hw, disk, k), _STREAM_COLUMNS))
+            plans = _offload.rank(
+                entries,
+                budget_gb=_offload.budget_gb(hw, load),
+                disk=disk,
+                kind=k,  # type: ignore[arg-type]
+            )
+            click.echo(_fmt_table(_streaming_rows(plans), _STREAM_COLUMNS))
             continue
         rows = []
         for e in ranked:
@@ -1432,6 +1428,26 @@ def airllm_status(measure: bool, as_json: bool, request: str | None) -> None:
     ),
 )
 @click.option(
+    "--batch",
+    type=int,
+    default=1,
+    show_default=True,
+    help=(
+        "Independent prompts answered together. One layer pass is shared by the "
+        "whole batch, so B answers arrive in the time of one — the biggest speed "
+        "lever here, bigger than compression. Costs one KV cache per sequence, "
+        "which the shard figure charges for."
+    ),
+)
+@click.option(
+    "--tokens",
+    "new_tokens",
+    type=int,
+    default=300,
+    show_default=True,
+    help="Answer length the wait is computed for.",
+)
+@click.option(
     "--measure",
     is_flag=True,
     default=False,
@@ -1439,7 +1455,13 @@ def airllm_status(measure: bool, as_json: bool, request: str | None) -> None:
 )
 @click.option("--json", "as_json", is_flag=True, default=False, help="Emit JSON.")
 def airllm_plan(
-    kind: str, compression: str | None, context_k: float, measure: bool, as_json: bool
+    kind: str,
+    compression: str | None,
+    context_k: float,
+    batch: int,
+    new_tokens: int,
+    measure: bool,
+    as_json: bool,
 ) -> None:
     """Rank what this machine could stream, biggest runnable model first."""
     hw = _detect.available_memory()
@@ -1456,6 +1478,8 @@ def airllm_plan(
             disk=disk,
             compression=compression,
             kind=k,  # type: ignore[arg-type]
+            batch=batch,
+            new_tokens=new_tokens,
         )
         chosen = _offload.pick(plans)
         payload["kinds"][k] = {"plans": plans, "chosen": chosen}
@@ -1465,13 +1489,21 @@ def airllm_plan(
             f"\n=== {k.upper()}: streamable off {disk['storage']} at "
             f"{disk['read_gbs']} GB/s, {budget} GB shard budget ==="
         )
-        click.echo(_fmt_table(_streaming_rows(entries, hw, disk, k), _STREAM_COLUMNS))
+        click.echo(_fmt_table(_streaming_rows(plans), _STREAM_COLUMNS))
         if chosen:
             click.echo(
                 f"\n  Pick: {chosen['model']} — {chosen['size_b']:.0f}B in "
                 f"{chosen['resident_gb']} GB resident, {chosen['seconds_per_token']} s/token, "
                 f"{chosen['disk']['peak_gb']:.0f} GB free disk to split "
                 f"({chosen['disk']['steady_gb']:.0f} GB after)."
+            )
+            click.echo(
+                f"  A {new_tokens}-token answer: {chosen['answer_human']}"
+                + (
+                    f" for all {batch} prompts, since they share each layer pass."
+                    if batch > 1
+                    else "."
+                )
             )
             if not chosen["prefetching"]:
                 click.echo(

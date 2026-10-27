@@ -463,7 +463,10 @@ mémoire (une tranche de couche, pas le modèle), `disk_gb` est ce qui doit êtr
 libre *pendant la découpe* — la contrainte qui refuse d'ordinaire un modèle —
 puis `s/token` est ce que vous attendrez. `--context 32` retarife la tranche
 pour un contexte de 32k, qui n'est pas gratuit : le cache KV est la seule chose
-que le flux de couches ne réduit pas.
+que le flux de couches ne réduit pas. `--batch 8` tarife le grand levier des
+deux côtés à la fois — le temps d'horloge pour une réponse de 300 jetons ne
+bouge pas, mais il achète désormais huit réponses au lieu d'une, puis la
+tranche grossit des sept caches KV supplémentaires qui l'ont permis.
 
 Deux leçons dans l'ordre des lignes. Le modèle de 405 milliards de paramètres se
 diffuse dans une tranche *plus légère* que celui de 141 milliards — 126 couches

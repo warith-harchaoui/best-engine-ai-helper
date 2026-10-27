@@ -594,7 +594,7 @@ best-engine-ai-helper airllm status
 best-engine-ai-helper airllm status --measure      # measure the disk, don't assume it
 
 # What could it stream, biggest runnable first?
-best-engine-ai-helper airllm plan --kind llm --compression 4bit
+best-engine-ai-helper airllm plan --kind llm --compression 4bit --batch 8
 
 # Native or streamed, same answer length, both prices
 best-engine-ai-helper airllm compare --tokens 300 --batch 8

@@ -445,8 +445,11 @@ technically-correct eternity.
 Three columns to read in order: `shard_gb` is what has to fit in memory (one
 layer shard, not the model), `disk_gb` is what has to be free *during the split*
 — the constraint that usually refuses a model — and `s/token` is what you will
-wait. `--context 32` re-prices the shard for a 32k context, which is not free:
-the KV cache is the one thing streaming does not shrink.
+wait. `--context 32` re-prices the shard for a 32k context, which is not free: the KV
+cache is the one thing streaming does not shrink. `--batch 8` prices the big
+lever on both sides at once — the wall clock for a 300-token answer does not
+move, but it now buys eight answers instead of one, and the shard figure grows
+by the seven extra KV caches that bought it.
 
 ### airllm compare
 
