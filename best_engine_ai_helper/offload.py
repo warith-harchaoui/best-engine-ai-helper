@@ -753,6 +753,24 @@ def seconds_per_pass(
     freeing it. So a pass costs what reading the checkpoint once costs —
     independent of how many tokens rode through it.
 
+    Every byte is charged to the drive, and that is correct rather than
+    conservative. The tempting correction is to credit the operating system's
+    page cache with the shards it still holds, so a machine with free memory
+    pays memory speed for part of the pass. It does not work, and the reason is
+    the access pattern: a pass reads layers 1..N in order and the next pass
+    starts again at layer 1, which the tail of the previous pass evicted. A
+    cyclic scan over a working set larger than the cache is the textbook
+    pathology for least-recently-used eviction, and Linux's active/inactive
+    approximation does not rescue it either -- nothing is touched twice within
+    a pass, so nothing is ever promoted to the active list. The expected hit
+    rate is near zero, not ``free_memory / checkpoint``.
+
+    And the regime where it *would* help is the regime where this backend is
+    the wrong choice: memory that can cache the whole checkpoint is memory that
+    can hold it, where a memory-mapped resident engine wins outright. So there
+    is no mixing term here on purpose, and :func:`decide` is what steers a
+    caller with that much memory back to a native backend.
+
     Two consequences worth knowing before choosing this backend:
 
     - **One generated token costs one pass.** Decoding is autoregressive, so

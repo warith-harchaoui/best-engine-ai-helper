@@ -1140,3 +1140,28 @@ def test_size_still_decides_when_no_benchmark_does() -> None:
     # A measured 74 outranks an unmeasured giant, the same way it does
     # everywhere else in this package.
     assert one_scored is not None and one_scored["catalog_id"] == "s"
+
+
+def test_the_page_cache_is_not_credited_for_a_cyclic_layer_scan():
+    """Charging every byte to the drive is correct, not conservative.
+
+    The tempting "optimisation" is to credit the page cache with the shards it
+    still holds, so a machine with free memory pays memory speed for part of a
+    pass. It does not work: a pass reads layers 1..N in order and the next pass
+    restarts at layer 1, which the tail of the previous pass evicted. A cyclic
+    scan over a working set larger than the cache is the textbook
+    least-recently-used pathology, and the expected hit rate is near zero
+    rather than ``free_memory / checkpoint``.
+
+    Pinned as a test because this was attempted in a sibling project and the
+    mixing term shipped there before the access pattern was thought through.
+    Anybody adding one here should have to delete this first.
+    """
+    entry = {"size_b": 70}
+    # Same drive, same model, whatever the machine's memory: the figure is a
+    # function of the checkpoint and the disk, and of nothing else.
+    baseline = offload.seconds_per_pass(entry, 4.0)
+    assert baseline == round(offload.checkpoint_gb(entry) / 4.0 / offload.stream_efficiency(), 3)
+    # No keyword exists to pass free memory in, and that absence is the point.
+    with pytest.raises(TypeError):
+        offload.seconds_per_pass(entry, 4.0, free_ram_gb=512.0)  # type: ignore[call-arg]
