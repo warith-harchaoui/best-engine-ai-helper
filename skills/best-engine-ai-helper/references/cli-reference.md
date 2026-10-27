@@ -98,6 +98,52 @@ Relevant library calls: `airllm_decide`, `airllm_plan`, `airllm_rank`,
 `airllm_seconds_per_pass`, `airllm_compare`, `streaming_budget_gb`,
 `disk_profile`, `airllm_load`, `airllm_generate`.
 
+## Text-to-image — the third kind
+
+```bash
+best-engine-ai-helper imagine plan [--size auto|512x512|1024x1024|…] [--json]
+best-engine-ai-helper imagine generate --prompt TEXT [--out FILE] [--model REPO] \
+    [--size WxH] [--steps N] [--seed N] [--negative TEXT]
+```
+
+Sized per component, not per model: a diffusion pipeline is text encoders plus a
+denoiser plus a VAE taking turns, so all-resident costs their sum while
+`diffusers`' component offload costs the largest one. `imagine plan` tries the
+first and falls back to the second before rejecting anything, and reports which
+it used.
+
+Timed in **seconds per image** = steps x denoiser passes. The step count is a
+property of the weights (1-4 distilled, 28 otherwise) and comes from the
+catalogue, because running a distilled checkpoint at 28 steps is slower AND
+worse. `size: auto` uses the model's native resolution, the one size it is
+actually good at.
+
+Library: `imagine_plan`, `imagine_rank`, `imagine_pick`, `image_footprint_gb`,
+`seconds_per_image`, `imagine_load`, `imagine_generate`.
+
+## OpenAI-compatible server
+
+```bash
+best-engine-ai-helper serve [--host 127.0.0.1] [--port 8000]
+```
+
+Serves `/v1/models`, `/v1/chat/completions` (text, vision, streaming,
+`response_format`), `/v1/completions`, `/v1/embeddings` and
+`/v1/images/generations` on the same app as the GUI, the `/api/*` routes and
+`/mcp`. Point any OpenAI SDK at the printed base URL; the only call-site change
+from a hosted OpenAI setup is `base_url` plus `model="best"`.
+
+Model names: `best` (a VLM on its own when the request carries images),
+`best-llm`, `best-vlm`, `best-embed`, `best-image`, `best:<free-text task>`, or
+any literal tag, which passes through untouched. The response reports the model
+that actually ran.
+
+Refuses rather than pretends: `n > 1`, `logprobs` and `tools` are 400s;
+`http(s)` image URLs need `BEST_OPENAI_FETCH_IMAGE_URLS=1` (fetching a
+caller-chosen address is an SSRF primitive); token counts are real where the
+backend reports them and flagged as estimates in `system_fingerprint` where it
+does not.
+
 ## Pull, validate, write
 
 ```bash

@@ -1,20 +1,20 @@
 ---
 name: best-engine-ai-helper
 description: >-
-  Pick, pull and validate the best local LLM or VLM for the machine at hand.
-  Detects available memory (Apple Silicon unified pool, NVIDIA VRAM, or system
-  RAM), ranks a bundled catalogue inside a safety headroom, pulls the winner
-  through Ollama, puts it through two quality gates (a seeded text flaw and a
-  seeded visual defect), and writes the environment file downstream projects
-  read. Also sizes and times models that do NOT fit, runnable by streaming
-  their layers off disk (airllm). Use when the user asks "which model should I
-  run on this machine", "what LLM fits in my RAM / VRAM", "can this Mac run a
-  14B", "can I run a 70B on 8 GB", "pull a local model", "which vision model",
-  "is this model good enough", "how many tokens per second", or names
-  `best-engine-ai-helper`, `model_for`, `airllm`, `recommend_engines`. **Any
-  suite package that needs an LLM or VLM must route through this one rather
-  than hardcode a model name.** Do NOT use to run inference, serve a model, or
-  pick a vector index (ann-router).
+  Pick, pull and validate the best local LLM, VLM or text-to-image model for
+  the machine at hand. Detects available memory (Apple Silicon unified pool,
+  NVIDIA VRAM, or RAM), ranks a bundled catalogue inside a safety headroom,
+  pulls the winner through Ollama, gates it on quality, and writes the
+  environment file downstream projects read. Also sizes models that do NOT
+  fit (layer streaming, airllm) and serves an OpenAI-compatible /v1 endpoint
+  where model="best" resolves per request. Use when the user asks "which model
+  should I run on this machine", "what LLM fits in my RAM / VRAM", "can I run a
+  70B on 8 GB", "pull a local model", "which vision model", "generate an image
+  locally", "OpenAI-compatible local server", "how many tokens per second", or
+  names `best-engine-ai-helper`, `model_for`, `airllm`, `recommend_engines`.
+  **Any suite package that needs an LLM or VLM must route through this one
+  rather than hardcode a model name.** Do NOT use to fine-tune or quantise
+  weights, or to pick a vector index (ann-router).
 license: BSD-3-Clause
 metadata:
   author: Warith Harchaoui
@@ -89,6 +89,9 @@ for `detect`, `recommend` or `report`.
 | What it could stream, and at what price | `airllm plan` | `airllm_rank`, `airllm_pick` |
 | Native model or streamed model | `airllm compare` | `airllm_compare`, `airllm_generation_time` |
 | Split a checkpoint before the first call | `airllm prepare` | `airllm_load` |
+| Which image model runs here, how fast | `imagine plan` | `imagine_rank`, `imagine_pick` |
+| Generate an image locally | `imagine generate` | `imagine_generate` |
+| Serve an OpenAI-compatible endpoint | `serve` | — |
 
 Quick examples:
 
@@ -142,6 +145,18 @@ read `references/triggers.md`.
 - **No streamed model honours a JSON schema.** airllm exposes raw generation,
   so schema-driven tasks stay on an Ollama model. The engine file says
   `structured_output: false` and `llm.chat` raises rather than pretending.
+- **If the user already has OpenAI client code, point it here rather than
+  rewriting it.** `best-engine-ai-helper serve` exposes `/v1/chat/completions`,
+  `/v1/embeddings` and `/v1/images/generations`; the only change at the call
+  site is `base_url` and `model="best"`, which resolves per request to whatever
+  this machine should run (and to a VLM on its own when the request carries an
+  image). `best:<task>` gives a better pick than the bare alias.
+- **Images are a third kind, not an afterthought.** `kind: image` entries are
+  chosen by the same fit-then-speed logic, where "speed" is seconds per image
+  and the step count comes from the weights (1-4 for a distilled checkpoint, 28
+  otherwise). Quote `imagine plan` rather than guessing: a diffusion model's
+  footprint depends on whether its components take turns, and its quality
+  depends on asking for its native resolution.
 - **This package chooses; it does not infer.** It will not run a prompt for
   you, and serving is Ollama's job.
 - **After running, report the chosen model, the memory it needs and the

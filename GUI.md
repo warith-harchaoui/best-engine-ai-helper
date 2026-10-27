@@ -186,6 +186,23 @@ curl -s 'http://127.0.0.1:8000/api/airllm?answer_tokens=300&batch=8' \
 `GET /` redirects to `/gui`. `GET /docs` (FastAPI's default) has the full
 OpenAPI schema.
 
+### The OpenAI-compatible routes, on the same port
+
+The same app also serves `/v1/models`, `/v1/chat/completions`,
+`/v1/completions`, `/v1/embeddings` and `/v1/images/generations` — see the
+README's [Use it as an OpenAI
+endpoint](README.md#use-it-as-an-openai-endpoint). They are a different kind of
+route from the seven above and the difference is worth stating: `/api/*` is this
+package's own idiom and answers *decisions* (what hardware is this, which model
+should run), while `/v1/*` is somebody else's protocol and *runs* the model.
+
+Two consequences visible from the browser. The `/docs` schema lists both
+families, so an OpenAPI client sees the whole surface. And the error shape
+differs on purpose: `/v1` returns OpenAI's `{"error": {...}}` envelope because
+an SDK reads `error.message`, while `/api` keeps FastAPI's `{"detail": ...}`
+because its callers already expect that — a compatibility layer should not
+change the conventions of the surface it sits beside.
+
 ## Icons
 
 `assets/logo.png` (the engraved glove) is the source of every icon the page

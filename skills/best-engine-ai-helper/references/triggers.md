@@ -36,6 +36,9 @@ a model, fine-tune, or pick a vector index.
 | Native model or streamed model? | `airllm compare` | `airllm_compare`, `airllm_generation_time` | `GET /api/airllm` |
 | Split a checkpoint before the first call | `airllm prepare` | `airllm_load` | n/a |
 | Run a streamed model | — | `airllm_generate`, `llm.chat(engine=…)` | n/a |
+| Which image model runs here | `imagine plan` | `imagine_rank`, `imagine_pick`, `image_footprint_gb` | `GET /v1/models` |
+| Generate an image | `imagine generate` | `imagine_generate` | `POST /v1/images/generations` |
+| Speak OpenAI to it | `serve` | — | `/v1/chat/completions`, `/v1/embeddings`, `/v1/images/generations` |
 
 There is exactly one command line, `best-engine-ai-helper …`, built with
 click — a core dependency here, not an optional extra, so nothing has to be
@@ -65,6 +68,14 @@ do.
   locally", "stream layers off disk", "layer-by-layer inference", "airllm",
   "is it worth running the big model slowly", "how long would a 70B take per
   token", "what is the biggest model this machine could possibly run".
+- **Speak OpenAI to it**: "OpenAI-compatible endpoint", "drop-in replacement
+  for the OpenAI API", "point my existing OpenAI code at a local model",
+  "base_url", "/v1/chat/completions", "local OpenAI server", "serve the model
+  over HTTP", "what do I pass as the model name", "model=best".
+- **Images**: "generate an image locally", "text to image", "local Stable
+  Diffusion / SDXL / FLUX", "can this machine run SDXL", "how long does an
+  image take here", "which image model fits my VRAM", "/v1/images/generations",
+  "a local DALL-E".
 - **Resolution in code**: "which model should this package use", "don't
   hardcode the model name", "read the resolved model", "the env file with the
   chosen engine", `model_for`, `text_model`, `vision_model`,
@@ -93,7 +104,9 @@ the user never names it:
 ## When NOT to use best-engine-ai-helper (SKIP)
 
 - Running a prompt, chatting, or generating text → this package chooses a
-  model, it does not call one.
+  model. It *can* now run one for you over the OpenAI-compatible `/v1` routes
+  (that is what `serve` is for), but choosing is still the job: reach for this
+  skill to decide *which* model, not to get a one-off completion.
 - Serving or hosting a model → that is Ollama's job (or vLLM's).
 - Fine-tuning, quantising, or converting weights.
 - Choosing an approximate-nearest-neighbour backend or a vector index → use
