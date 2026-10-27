@@ -123,9 +123,10 @@ read `references/triggers.md`.
 - **Offline after the download.** `pull` and `catalog update` are the only
   online operations, and the bundled catalogue is enough for everyday use.
 - **"Nothing fits" has two answers, and the second one is slow.** A model too
-  large to load can still be run by streaming its layers off disk (the
-  `[airllm]` extra). Resident memory becomes one layer shard — a 70B in about
-  4 GB instead of 141 — and the price is **seconds per token**, because every
+  large to load can still be run by streaming its layers off disk — the airllm
+  runtime ships with the package, so there is nothing to install first.
+  Resident memory becomes one layer shard — a 70B in about 4 GB instead of 141
+  — and the price is **seconds per token**, because every
   token re-reads the whole checkpoint. Reach for it when the user needs a
   better model than fits, never when they need a quick answer. `airllm
   compare` prices both sides for the same answer length and usually says "stay

@@ -437,7 +437,7 @@ def test_a_machine_with_no_streaming_runtime_says_so_before_the_first_call(
     assert offload.runtime(CPU_ONLY, allow_cpu=True) == "cpu"
 
 
-def test_a_missing_runtime_is_reported_with_the_command_that_fixes_it(
+def test_an_unimportable_runtime_is_reported_with_the_command_that_fixes_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A blocker nobody can act on is just a refusal."""
@@ -722,6 +722,31 @@ def test_the_adapter_passes_airllms_own_arguments_through_unrenamed(
     assert kwargs["delete_original"] is True
 
 
+def test_the_context_length_configured_is_the_one_that_was_priced(
+    fake_airllm: types.ModuleType,
+) -> None:
+    """airllm defaults to 512 tokens and truncates past it, silently.
+
+    Left alone, this package would quote a footprint for a 4k context and then
+    run a 512-token one — the documentation and the behaviour disagreeing in the
+    direction where a user loses the end of their prompt without being told. So
+    `max_seq_len` is passed explicitly, and its default is the same 4k the
+    footprint is priced at.
+    """
+    offload.load("x/y")
+    _, kwargs = fake_airllm.AutoModel.loads[-1]
+    assert kwargs["max_seq_len"] == 4096
+
+    # And a caller who wants more says so, in the same unit the footprint uses.
+    offload.load("x/y", max_seq_len=32768)
+    _, longer = fake_airllm.AutoModel.loads[-1]
+    assert longer["max_seq_len"] == 32768
+    # The KV term is what that costs, and it is already priced.
+    assert offload.footprint_gb({"size_b": 70, "layers": 80}, context_k=32) > offload.footprint_gb(
+        {"size_b": 70, "layers": 80}
+    )
+
+
 def test_generate_strips_the_echoed_prompt(fake_airllm: types.ModuleType) -> None:
     """Callers of `chat` expect the answer, not the prompt plus the answer."""
     answer = offload.generate("Hello", model="x/y", max_new_tokens=8)
@@ -729,12 +754,18 @@ def test_generate_strips_the_echoed_prompt(fake_airllm: types.ModuleType) -> Non
     assert answer == "the streamed answer"
 
 
-def test_a_missing_runtime_raises_the_install_command_not_an_import_error() -> None:
-    """The error a user meets most often, so it has to be the most useful one."""
-    if offload.available():  # pragma: no cover - only on a machine with the extra
-        pytest.skip("airllm is installed here, so the missing-runtime path cannot run")
+def test_an_unimportable_runtime_raises_the_repair_command() -> None:
+    """airllm is a core dependency, so this path means a broken install.
 
-    with pytest.raises(ImportError, match=r"best-engine-ai-helper\[airllm\]"):
+    Which changes what the error has to say: not "opt into the extra" — there is
+    no extra — but "your install is incomplete, here is the command". A message
+    that tells someone to install what they already depend on sends them in a
+    circle.
+    """
+    if offload.available():  # pragma: no cover - the normal case, airllm is a dep
+        pytest.skip("airllm imports here, so the broken-install path cannot run")
+
+    with pytest.raises(ImportError, match="install is incomplete"):
         offload.load("meta-llama/Llama-3.3-70B-Instruct")
 
 

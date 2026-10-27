@@ -687,10 +687,15 @@ def test_airllm_status_reports_the_decision_and_how_to_act_on_it(
     res = runner.invoke(cli, ["airllm", "status"])
     assert res.exit_code == 0, res.output
     assert "Layer streaming (airllm)" in res.output
-    assert "NOT installed" in res.output
-    # A blocker nobody can act on is just a refusal, so the install command is
-    # part of the output rather than something to go and look up.
+    # airllm is a core dependency, so an import that fails is a broken install
+    # rather than a feature nobody opted into — and the wording has to say the
+    # difference, or it sends the reader to install what they already have.
+    assert "runtime import  : FAILS" in res.output
+    assert "install incomplete" in res.output
+    # A blocker nobody can act on is just a refusal, so the command that
+    # repairs it is in the output rather than somewhere to go and look up.
     assert _offload.INSTALL_HINT in res.output
+    assert "Repair the install" in res.output
 
     # `--request always` asks the policy a different question, and the answer
     # must change with it rather than being a fixed capability dump.

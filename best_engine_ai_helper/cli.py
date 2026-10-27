@@ -1317,8 +1317,8 @@ def airllm_group() -> None:
     shard in memory, stream the rest off disk, and the memory a model needs
     stops scaling with its parameter count — a 70B model runs in about 4 GB
     instead of 141. The runtime is airllm (github.com/lyogavin/airllm,
-    Apache-2.0), an optional extra of this package; the arithmetic deciding
-    whether it is worth it is here.
+    Apache-2.0), a core dependency here rather than an extra; the arithmetic
+    deciding whether it is worth it is this package's own.
 
     The cost is time: every token re-reads the whole checkpoint from storage, so
     the unit is seconds per token. These are batch jobs — an overnight
@@ -1381,7 +1381,10 @@ def airllm_status(measure: bool, as_json: bool, request: str | None) -> None:
 
     click.echo("\n=== Layer streaming (airllm) ===")
     click.echo(f"  runtime here    : {decision['runtime'] or 'none'}")
-    click.echo(f"  package         : {'installed' if decision['installed'] else 'NOT installed'}")
+    # "import", not "installed": airllm is a core dependency, so the question
+    # worth answering is whether this interpreter can actually load it.
+    ok = "ok" if decision["installed"] else "FAILS (install incomplete)"
+    click.echo(f"  runtime import  : {ok}")
     click.echo(f"  storage         : {disk['storage']} ({disk['basis']})")
     click.echo(f"  read bandwidth  : {disk['read_gbs']} GB/s")
     click.echo(f"  free disk       : {disk['free_gb']} GB")
@@ -1393,7 +1396,7 @@ def airllm_status(measure: bool, as_json: bool, request: str | None) -> None:
     for blocker in decision["blockers"]:
         click.echo(f"  - {blocker}")
     if not decision["installed"]:
-        click.echo(f"\n  Install the runtime:  {_offload.INSTALL_HINT}")
+        click.echo(f"\n  Repair the install:  {_offload.INSTALL_HINT}")
     click.echo()
 
 

@@ -21,18 +21,23 @@ between it and the rest of this package:
   (see :func:`footprint_gb` and :func:`estimated_tokens_per_second`) and checked
   against airllm's own published figures.
 - **The runtime is imported, not copied.** :func:`load` and :func:`generate`
-  are a thin adapter over ``airllm.AutoModel``, behind an optional extra
-  (``pip install 'best-engine-ai-helper[airllm]'``). Nothing here reimplements
-  layer sharding.
+  are a thin adapter over ``airllm.AutoModel``, which is a **core dependency**
+  of this package: streaming is available on every install, not behind an
+  extra. Nothing here reimplements layer sharding.
 
 Why imported rather than vendored
 ---------------------------------
-1. **Dependency weight.** airllm needs torch, transformers, accelerate,
-   safetensors, scipy and sentencepiece — hundreds of megabytes. This package
-   is pure Python and installs in seconds; making every user of ``detect`` pay
-   for a deep-learning stack to get a *recommendation* would be the wrong
-   trade. As an extra, it is opt-in, exactly like ``[cloud]`` and
-   ``[filtered]``.
+1. **The weight is the price of the capability, and it is paid up front.**
+   airllm needs torch, transformers, accelerate, safetensors, scipy and
+   sentencepiece, so this install is a gigabyte-scale download rather than the
+   seconds-long one it used to be. That cost is accepted deliberately: "which
+   model can this machine run" and "which model can this machine run if it
+   streams the layers" are the same question, and a capability behind an extra
+   is a capability most callers never discover. Vendoring would not have
+   avoided the weight either — airllm's own dependencies are the weight — so
+   this is an argument about *declaring* it, not about copying it. The import
+   stays lazy: nothing imports airllm until a model is actually loaded, so the
+   cost is install size and never startup time.
 2. **It is a moving target.** airllm's value is per-family sharding code
    (Llama, Qwen, DeepSeek, Mixtral, ChatGLM, Kimi), rewritten as each new
    family ships. Vendored, it would be frozen at the day it was copied and rot
@@ -79,8 +84,12 @@ import os_helper as osh
 #: is spelled once.
 PACKAGE = "airllm"
 
-#: What to tell a caller who wants streaming on a machine without the runtime.
-INSTALL_HINT = "pip install 'best-engine-ai-helper[airllm]'"
+#: What to tell a caller whose interpreter cannot import the runtime. airllm is
+#: a CORE dependency, so this is no longer an "opt in" message: reaching it
+#: means the install is incomplete — a stripped environment, a failed wheel
+#: build, a vendored subset — rather than a choice the user made. The command
+#: that fixes that is a reinstall, not an extra.
+INSTALL_HINT = "pip install --upgrade --force-reinstall best-engine-ai-helper"
 
 #: Environment variable that forces the policy :func:`decide` applies.
 #: ``auto`` (the default) activates streaming only as a last resort; ``always``
@@ -182,7 +191,18 @@ _KV_MB_PER_LAYER_PER_K = 4.0
 #: caller names none. 4k is the figure the catalog's own ``ram_gb`` estimates
 #: assume (see catalog.estimate_ram), so the two backends' footprints stay
 #: comparable rather than being quoted at different context lengths.
+#:
+#: It is ALSO what :func:`load` configures on the runtime, which matters more
+#: than it looks: airllm's own ``max_seq_len`` default is **512 tokens**, and it
+#: truncates rather than failing. Leaving that default in place would have made
+#: this package price a 4k context while quietly running a 512-token one — the
+#: documentation and the behaviour disagreeing, in the direction where the user
+#: loses the end of their prompt without being told. The two numbers are now the
+#: same number.
 _DEFAULT_CONTEXT_K = 4.0
+
+#: Tokens per unit of :data:`_DEFAULT_CONTEXT_K`.
+_TOKENS_PER_K = 1024
 
 #: Fraction of raw disk bandwidth a streaming decode achieves. Every forward
 #: pass re-reads the whole checkpoint, so the ceiling is ``read_gbs /
@@ -1043,9 +1063,11 @@ def available() -> bool:
     """
     Whether the airllm runtime is importable in this interpreter.
 
-    Parameters
-    ----------
-    None
+    Normally True: airllm is a core dependency, not an extra. It is still
+    checked rather than assumed, because a dependency being *declared* and a
+    module being *importable* are different claims — a stripped container, a
+    failed wheel build or a partially-installed environment separates them, and
+    finding that out at resolution beats finding it out inside a job.
 
     Returns
     -------
@@ -1431,7 +1453,10 @@ def decide(
             "be asked for explicitly"
         )
     if not installed:
-        blockers.append(f"the {PACKAGE} runtime is not installed — {INSTALL_HINT}")
+        blockers.append(
+            f"the {PACKAGE} runtime cannot be imported, though it is a dependency of "
+            f"this package — the install looks incomplete: {INSTALL_HINT}"
+        )
     if not disk.get("read_gbs"):
         blockers.append(
             "disk read bandwidth is unknown here, and streaming throughput is "
@@ -1977,6 +2002,7 @@ def load(
     hf_token: str | None = None,
     delete_original: bool = False,
     profiling_mode: bool = False,
+    max_seq_len: int = int(_DEFAULT_CONTEXT_K * _TOKENS_PER_K),
 ) -> Any:
     """
     Load a model through airllm's layer-streaming runtime.
@@ -1991,8 +2017,9 @@ def load(
         HuggingFace repository id (``meta-llama/Llama-3.3-70B-Instruct``), or a
         local path to an already-split checkpoint.
     compression : {'4bit', '8bit', None}
-        Block-wise weight compression. Needs ``bitsandbytes``, which the extra
-        installs.
+        Block-wise weight compression. Needs ``bitsandbytes``, a core
+        dependency on every platform that has a wheel for it (not macOS, where
+        the MLX path handles streaming instead).
     prefetching : bool
         Overlap the next shard's read with the current layer's compute.
     layer_shards_saving_path : str or None
@@ -2007,6 +2034,13 @@ def load(
         if the shards are ever lost.
     profiling_mode : bool
         Ask airllm to print per-layer timings.
+    max_seq_len : int
+        Context length to configure, in tokens. Defaults to 4096, matching the
+        context :func:`footprint_gb` prices — **not** airllm's own default of
+        512, which truncates a longer prompt instead of refusing it. Raising
+        this costs KV cache in exactly the proportion
+        :func:`kv_cache_gb` describes, so size it against
+        :func:`budget_gb` rather than maximising it.
 
     Returns
     -------
@@ -2017,7 +2051,7 @@ def load(
     Raises
     ------
     ImportError
-        When the extra is not installed, with the command that fixes it.
+        When the runtime cannot be imported, with the command that fixes it.
 
     Examples
     --------
@@ -2027,21 +2061,28 @@ def load(
         from airllm import AutoModel
     except ImportError as exc:
         raise ImportError(
-            f"Layer streaming needs the {PACKAGE} runtime, which is an optional "
-            f"extra of this package: {INSTALL_HINT}. Everything else in "
-            "best-engine-ai-helper (detection, recommendation, the Ollama and vLLM "
-            "backends) works without it."
+            f"Layer streaming needs the {PACKAGE} runtime, which IS a dependency of "
+            f"best-engine-ai-helper — so reaching this means the install is "
+            f"incomplete rather than that a feature was not opted into: "
+            f"{INSTALL_HINT}. Everything else here (detection, recommendation, the "
+            "Ollama and vLLM backends) keeps working meanwhile, since the import is "
+            "lazy and happens only when a model is actually loaded."
         ) from exc
 
     osh.info(
         f"Loading {model} through airllm layer streaming "
-        f"(compression={compression or 'none'}, prefetching={prefetching})."
+        f"(compression={compression or 'none'}, prefetching={prefetching}, "
+        f"max_seq_len={max_seq_len})."
     )
     kwargs: dict[str, Any] = {
         "compression": compression,
         "prefetching": prefetching,
         "profiling_mode": profiling_mode,
         "delete_original": delete_original,
+        # Passed explicitly, always: airllm defaults to 512 tokens and
+        # truncates past it, which would silently cut the end off a prompt this
+        # package has just finished telling the caller is nearly free.
+        "max_seq_len": max_seq_len,
     }
     if layer_shards_saving_path:
         kwargs["layer_shards_saving_path"] = layer_shards_saving_path
@@ -2059,6 +2100,7 @@ def generate(
     prefetching: bool = True,
     layer_shards_saving_path: str | None = None,
     hf_token: str | None = None,
+    max_seq_len: int = int(_DEFAULT_CONTEXT_K * _TOKENS_PER_K),
     loaded: Any | None = None,
 ) -> str:
     """
@@ -2078,8 +2120,11 @@ def generate(
     max_new_tokens : int
         Tokens to generate. Keep it small: at streaming speeds every token is
         seconds of disk, so a 2000-token answer is an afternoon.
-    compression, prefetching, layer_shards_saving_path, hf_token
-        Passed to :func:`load` when it has to load the model itself.
+    compression, prefetching, layer_shards_saving_path, hf_token, max_seq_len
+        Passed to :func:`load` when it has to load the model itself. Note that
+        ``max_seq_len`` bounds prompt AND answer together, and that the
+        tokenizer truncates to it — so a prompt near the limit leaves no room
+        to answer.
     loaded : Any or None
         An instance from a previous :func:`load`, reused as-is.
 
@@ -2092,7 +2137,7 @@ def generate(
     Raises
     ------
     ImportError
-        When the extra is not installed.
+        When the runtime cannot be imported.
 
     Examples
     --------
@@ -2107,6 +2152,7 @@ def generate(
             prefetching=prefetching,
             layer_shards_saving_path=layer_shards_saving_path,
             hf_token=hf_token,
+            max_seq_len=max_seq_len,
         )
     )
     tokens = instance.tokenizer(

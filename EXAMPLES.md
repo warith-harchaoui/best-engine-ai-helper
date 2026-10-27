@@ -345,15 +345,13 @@ overhead), and the data source.
 ## airllm
 
 Four commands for the one backend that runs a model which does **not** fit in
-memory, by streaming its layers off disk. Needs the extra for the last one only:
-
-```sh
-pip install 'best-engine-ai-helper[airllm]'
-```
+memory, by streaming its layers off disk. Nothing to install: the airllm
+runtime is a core dependency, which is most of why the package's install is
+~2 GB.
 
 `status`, `plan` and `compare` are pure arithmetic over this machine's hardware
-and the catalog — they work, and are useful, on a machine where the extra was
-never installed, which is how you find out what installing it would buy.
+and the catalog — they never import the runtime, so they answer correctly (and
+instantly) even in an environment where it would fail to load.
 
 ### airllm status
 
@@ -365,8 +363,7 @@ best-engine-ai-helper airllm status
 
 ```
 === Layer streaming (airllm) ===
-  runtime here    : mlx
-  package         : NOT installed
+  runtime import  : ok
   storage         : apple-internal (declared)
   read bandwidth  : 4.0 GB/s
   free disk       : 22.3 GB
@@ -378,10 +375,13 @@ best-engine-ai-helper airllm status
   A model already fits this machine's memory, so streaming its layers off disk
   would trade two to three orders of magnitude of speed for nothing. Ask for it
   explicitly (--backend airllm) to override.
-  - the airllm runtime is not installed — pip install 'best-engine-ai-helper[airllm]'
-
-  Install the runtime:  pip install 'best-engine-ai-helper[airllm]'
 ```
+
+`runtime import` is the honest version of a question that used to be "is the
+extra installed": airllm ships with the package, so the only way this reads
+anything but `ok` is an incomplete install (a stripped container, a wheel that
+failed to build) — in which case the line says so and the panel prints the
+reinstall command.
 
 `--measure` replaces the storage-class assumption with a real measurement of
 this drive (~256 MB written and read back with the page cache bypassed, one or
@@ -398,20 +398,23 @@ best-engine-ai-helper airllm status --json --request always
 ```json
 {
   "decision": {
-    "activate": false,
+    "activate": true,
     "request": "always",
     "trigger": "manual",
-    "reason": "Layer streaming cannot run here: the airllm runtime is not installed — pip install 'best-engine-ai-helper[airllm]'",
-    "installed": false,
+    "reason": "Layer streaming was requested explicitly and runs here on mlx.",
+    "installed": true,
     "runtime": "mlx",
-    "blockers": ["the airllm runtime is not installed — pip install 'best-engine-ai-helper[airllm]'"]
+    "blockers": []
   },
   "compute": {"accelerator": "gpu-metal", "chip": "Apple M2 Max", "bandwidth_gbs": 400.0},
   "disk": {"storage": "apple-internal", "read_gbs": 4.0, "basis": "declared", "free_gb": 22.3},
   "memory_budget_gb": 72.0,
-  "install": "pip install 'best-engine-ai-helper[airllm]'"
+  "install": "pip install --upgrade --force-reinstall best-engine-ai-helper"
 }
 ```
+
+`install` is a repair command, not an opt-in one — it is what to run if
+`installed` ever comes back false.
 
 ### airllm plan
 
@@ -588,7 +591,7 @@ print(
     )["verdict"]
 )
 
-# With the extra installed: run it, in this process, no server involved
+# Run it, in this process, with no server involved
 print(
     beah.airllm_generate(
         "Rate this product description 1-5 and say why:…",

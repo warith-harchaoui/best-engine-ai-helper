@@ -32,6 +32,8 @@ Warith Harchaoui, Ph.D. — https://linkedin.com/in/warith-harchaoui/
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -97,3 +99,67 @@ def test_the_catalogue_is_not_empty_from_its_bundled_seed_alone() -> None:
     seed = yaml.safe_load(catalog._SEED_PATH.read_text(encoding="utf-8"))
     entries = seed.get("models", seed) if isinstance(seed, dict) else seed
     assert len(entries) >= 10, f"the bundled seed carries only {len(entries)} entries"
+
+
+# ---------------------------------------------------------------------------
+# Layer streaming ships by default, and that is a decision rather than a drift
+# ---------------------------------------------------------------------------
+
+
+def test_the_streaming_runtime_is_a_core_dependency_not_an_extra() -> None:
+    """airllm installs with the package, so streaming works on every install.
+
+    Pinned because the opposite is the tempting refactor: airllm pulls torch,
+    transformers and accelerate, so someone reading the install size will reach
+    for an extra. The decision is that "which model can this machine run" and
+    "which model can this machine run if it streams the layers" are the same
+    question, and a capability behind an extra is one most callers never
+    discover. If that is ever revisited it should be revisited on purpose, with
+    this test as the place the reasoning is written down.
+    """
+    manifest = (_REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    config = tomllib.loads(manifest)
+    core = config["project"]["dependencies"]
+    extras = config["project"]["optional-dependencies"]
+
+    assert any(dep.startswith("airllm") for dep in core), core
+    # The extra name survives as an empty alias: it is published in release
+    # notes and sits in lockfiles, and an unknown extra is a hard resolution
+    # error rather than a warning.
+    assert extras["airllm"] == []
+    # requirements.txt is the runtime mirror of the core list, so it has to
+    # agree or a pip-based install diverges from a pyproject-based one.
+    runtime = (_REPO_ROOT / "requirements.txt").read_text(encoding="utf-8")
+    assert "airllm" in runtime
+
+
+def test_importing_the_package_does_not_import_torch() -> None:
+    """The weight is install size, never startup time.
+
+    airllm (and so torch) is imported lazily, inside `offload.load`, because a
+    gigabyte of deep-learning stack must not be paged in to answer `detect`.
+    This is the test that keeps a convenience import at the top of a module
+    from quietly costing every CLI invocation a second or two.
+    """
+    source = (_REPO_ROOT / "best_engine_ai_helper" / "offload.py").read_text(encoding="utf-8")
+    module_level = [
+        line
+        for line in source.splitlines()
+        if line.startswith(("import ", "from ")) and ("airllm" in line or "torch" in line)
+    ]
+    assert module_level == [], module_level
+
+    # And the claim itself, measured rather than inferred from the source: a
+    # fresh interpreter that imports the package must not have torch loaded.
+    probe = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys, best_engine_ai_helper; "
+            "print('torch' in sys.modules or 'airllm' in sys.modules)",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert probe.stdout.strip() == "False", probe.stdout

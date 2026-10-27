@@ -15,16 +15,32 @@ All notable changes to best-engine-ai-helper are documented here.
   **4 GB resident instead of 141 GB**.
 
   The runtime is [airllm](https://github.com/lyogavin/airllm) (Apache-2.0),
-  **imported** behind the new `[airllm]` extra rather than vendored. Four
-  reasons, in the order they weigh: its value is per-model-family sharding code
-  rewritten with every new family, so a copy would be frozen at the day it was
-  taken; it pulls torch, transformers and accelerate, hundreds of megabytes this
-  pure-Python package has no business imposing on someone who wants a
-  *recommendation*; Apache-2.0 inside a BSD-3 tree is a notice obligation nobody
-  benefits from; and the division of labour is real — airllm decides *how* to
-  stream, and nothing in it decides *whether* this machine should, *which* model
-  it should stream, or *what it will cost in time*. Those three are exactly what
-  a caller of this package is asking, so they are native here.
+  **imported rather than vendored** — and a **core dependency rather than an
+  extra**, so streaming is available on every install with nothing to opt into.
+  Two separate decisions, worth separating:
+
+  *Imported, not copied*, for three reasons: airllm's value is per-model-family
+  sharding code rewritten with every new family, so a copy would be frozen at
+  the day it was taken; Apache-2.0 inside a BSD-3 tree is a notice obligation
+  nobody benefits from; and the division of labour is real — airllm decides
+  *how* to stream, and nothing in it decides *whether* this machine should,
+  *which* model it should stream, or *what it will cost in time*. Those three
+  are exactly what a caller of this package is asking, so they are native here.
+  (Note that vendoring would not have saved the install weight either: the
+  weight is airllm's dependency tree, torch included, not its source.)
+
+  *Core, not an extra*, because "which model can this machine run" and "which
+  model can it run if it streams the layers" are the same question, and a
+  capability behind an extra is one most callers never discover. The cost is
+  real and is now stated at the top of the install instructions: the package
+  pulls torch, transformers and accelerate, so expect **~2 GB** rather than the
+  seconds-long install this used to be. It is paid at install time only — the
+  import is lazy, nothing of that stack is loaded until a model is actually
+  streamed, and `tests/test_packaging.py` pins that with a subprocess probe so a
+  convenience import at the top of a module cannot quietly cost every CLI
+  invocation a second. The `[airllm]` extra name survives as an empty alias,
+  because an unknown extra is a hard resolution error and that spelling is
+  already published.
 
   What `offload.py` owns, therefore, and none of it imports airllm (which is why
   `airllm status` and `airllm compare` work on a machine where the extra was
@@ -85,6 +101,15 @@ All notable changes to best-engine-ai-helper are documented here.
   model between calls, and a "Too large to load, still runnable" panel in the GUI
   in both languages. Six `backends: [airllm]` catalog entries (70B to 671B) with
   the `layers` / `dtype` / `moe` fields the shard arithmetic needs.
+
+  One trap of airllm's own defaults, worth recording because it was found by
+  reading the installed runtime's constructor rather than its README: its
+  ``max_seq_len`` defaults to **512 tokens** and it truncates past that instead
+  of failing. Left alone, this package would have priced a 4k context and
+  quietly run a 512-token one — documentation and behaviour disagreeing in the
+  direction where a user loses the end of their prompt. The adapter now always
+  passes an explicit ``max_seq_len``, defaulting to the same 4k the footprint is
+  priced at, so the number quoted and the number configured are one number.
 
   Limits, stated in the docs rather than discovered at runtime: no structured
   output (airllm exposes raw generation, with no equivalent of Ollama's

@@ -631,7 +631,8 @@ def _chat_airllm(
     NotImplementedError
         For images or a JSON schema.
     ImportError
-        When the ``[airllm]`` extra is not installed.
+        When the airllm runtime cannot be imported (it is a core dependency,
+        so that means an incomplete install).
     """
     from . import offload as _offload
 

@@ -88,9 +88,9 @@ mechanism. The panel is deliberately four lines rather than a table, because
 only four things decide the question:
 
 - whether this machine has a runtime for it at all (a CUDA/ROCm GPU, or Apple
-  Silicon through MLX), and whether the optional `[airllm]` extra is installed —
-  the panel shows the install command when it is not, since a capability
-  nobody can act on is just a refusal;
+  Silicon through MLX), and whether the airllm runtime actually imports — it is
+  a core dependency, so a failure there means an incomplete install, and the
+  panel prints the repair command rather than leaving a dead end;
 - the **storage class and its read bandwidth**, labelled `measured` or
   `declared`, because the drive sets the entire speed of this backend;
 - the **shard budget**: how much resident memory one layer shard may occupy

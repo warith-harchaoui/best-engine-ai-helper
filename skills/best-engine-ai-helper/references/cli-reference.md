@@ -66,9 +66,11 @@ best-engine-ai-helper recommend --backend airllm
 best-engine-ai-helper resolve --brief llm.brief.yaml --backend airllm
 ```
 
-Needs `pip install 'best-engine-ai-helper[airllm]'` to *run* a model; the three
-read-only commands are pure arithmetic and work without it, which is how a user
-finds out what installing it would buy.
+The airllm runtime is a core dependency, so nothing has to be installed first
+(it is most of why this package's install is ~2 GB). The three read-only
+commands never import it, so they answer correctly even where it would fail to
+load — and `airllm status` reports that failure as an incomplete install, since
+at that point it is one.
 
 **The model, in four numbers.** Resident memory is one layer shard — the
 checkpoint over its decoder depth, ×1.25 (the embedding shard is the biggest

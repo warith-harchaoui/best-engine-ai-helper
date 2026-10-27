@@ -20,10 +20,9 @@ are downloaded. Two honest cases:
    the model weights via Ollama (a normal download from Ollama's servers).
    After that, everything runs offline. Refreshing the catalog
    (`catalog update`) is also online, but optional: the bundled catalog is
-   enough for everyday use. Layer streaming (the optional `[airllm]` extra)
-   follows the same rule: one download from the HuggingFace Hub, then the
-   model runs from your own disk — in your own process, with no server at
-   all.
+   enough for everyday use. Layer streaming follows the same rule: one
+   download from the HuggingFace Hub, then the model runs from your own disk —
+   in your own process, with no server at all.
 
 A minimal browser GUI (`best-engine-ai-helper gui`) covers the read-only half
 of this flow (the hardware snapshot and the task-to-engine recommendation)
@@ -48,14 +47,21 @@ This package sits at the base of the AI Helpers suite's model-selection layer: t
 - Python 3.10 or later
 - [Ollama](https://ollama.com) (needed for `pull`, `validate`, `env`; not for `detect`, `recommend`, or `report`)
 - Everything else installs automatically: os-helper (hardware detection),
-  PyYAML, click, requests, langdetect, and the FastAPI/MCP surfaces
-  (`fastapi`, `uvicorn`, `fastapi-mcp`). The CLI, GUI, HTTP API, and MCP
-  server are all part of the default install, nothing extra to opt into.
-- Optional: `[airllm]` to run a model that does **not** fit in memory by
-  streaming its layers off disk (see [Too large to load, still
-  runnable](#too-large-to-load-still-runnable-layer-streaming)), `[cloud]` for
-  cloud-provider mode (retry, caching, pseudonymization, an OS-keychain
-  fallback for API keys) and `[filtered]` for real NSFW classifiers (a DistilBERT text model; LAION's CLIP-based
+  PyYAML, click, requests, langdetect, the FastAPI/MCP surfaces (`fastapi`,
+  `uvicorn`, `fastapi-mcp`), and **airllm** for [layer
+  streaming](#too-large-to-load-still-runnable-layer-streaming). The CLI, GUI,
+  HTTP API, MCP server and the streaming backend are all part of the default
+  install, nothing extra to opt into.
+- **Budget around 2 GB for the install and a few minutes for it.** That is not
+  this package — it is pure Python and tiny — it is airllm's stack: torch,
+  transformers and accelerate. The trade is deliberate: "which model can this
+  machine run" and "which model can it run if it streams the layers" are the
+  same question, and a capability behind an optional extra is one most people
+  never find. The import stays lazy, so none of that weight is paid at
+  startup: `detect`, `recommend` and `report` are as fast as they ever were.
+- Optional: `[cloud]` for cloud-provider mode (retry, caching,
+  pseudonymization, an OS-keychain fallback for API keys) and `[filtered]` for
+  real NSFW classifiers (a DistilBERT text model; LAION's CLIP-based
   image detector, via `transformers` for the CLIP encoder and a bundled
   `onnxruntime` model for the classifier head). See [Two modes: local (free)
   and cloud (paid)](#two-modes-local-free-and-cloud-paid) below and
@@ -66,8 +72,10 @@ This package sits at the base of the AI Helpers suite's model-selection layer: t
 
 ## Installation
 
-The package is pure Python (Python 3.10+). The only platform-specific pieces
-are **Python itself** and the optional **Ollama** runtime (needed only for
+Python 3.10+. This package's own code is pure Python; its dependency tree is
+not, because the layer-streaming runtime brings torch with it — so expect a
+**download of about 2 GB** and a wheel chosen for your platform. The other
+platform-specific piece is the optional **Ollama** runtime (needed only for
 `pull` / `validate` / `env`, not for `detect`, `recommend`, `report`, the GUI,
 or the MCP surface). Pick your OS below.
 
@@ -378,14 +386,20 @@ with its *widest single layer*. A 70B model becomes about **4 GB resident
 instead of 141 GB**.
 
 The runtime that does this is [airllm](https://github.com/lyogavin/airllm)
-(Apache-2.0), an optional extra of this package:
+(Apache-2.0), and it is a **core dependency**: streaming is available on every
+install, with nothing to opt into.
 
 ```sh
-pip install 'best-engine-ai-helper[airllm]'
+pip install best-engine-ai-helper     # airllm comes with it
 ```
 
-Everything else here — detection, the catalog, recommendation, Ollama, vLLM, the
-GUI, the MCP surface — works without it.
+That is what the ~2 GB of the install buys (torch, transformers, accelerate).
+It is paid once, at install time: the import is lazy, so nothing of that stack
+is loaded until you actually stream a model, and `detect` / `recommend` /
+`report` stay instant. If an interpreter cannot import airllm anyway — a
+stripped container, a failed wheel build — every surface says so and points at
+a reinstall, because at that point the install is incomplete rather than
+un-opted-into.
 
 ### What it costs: seconds per token, not tokens per second
 
@@ -631,16 +645,28 @@ figure `measured` or `declared`.
 - **Experimental on CPU.** airllm's CPU path only works for unsharded models, so
   a CPU-only machine is not offered streaming automatically. It can still be
   asked for.
+- **4-bit compression is unavailable on macOS.** It needs `bitsandbytes`, which
+  publishes no macOS wheel, so the dependency carries a platform marker and
+  Apple Silicon streams through MLX uncompressed. The sizing says so rather
+  than quoting a speed-up that will not happen.
+- **The context is 4096 tokens unless you ask for more.** airllm's own default
+  is 512 and it *truncates* past it, so this adapter always passes an explicit
+  `max_seq_len` — set to the same 4k the footprint above is priced at. The two
+  numbers are deliberately the same one: a tool that quotes memory for a 4k
+  context and then quietly runs a 512-token one would be lying in the direction
+  where you lose the end of your prompt. Raise it with `max_seq_len=` and the
+  KV term rises exactly as the formula says.
 
 ### Why airllm is imported rather than copied in
 
 A fair question for a package that re-derives the arithmetic. Four reasons:
 
-1. **Dependency weight.** airllm needs torch, transformers, accelerate,
-   safetensors, scipy and sentencepiece — hundreds of megabytes. This package is
-   pure Python and installs in seconds. Making every user of `detect` pay for a
-   deep-learning stack to get a *recommendation* would be the wrong trade; as an
-   extra it is opt-in, exactly like `[cloud]` and `[filtered]`.
+1. **Vendoring would not have avoided the weight.** airllm needs torch,
+   transformers, accelerate, safetensors, scipy and sentencepiece, and a copy of
+   its source would need all of them too — the weight *is* its dependency tree,
+   not its code. So the ~2 GB is the price of the capability however it arrives,
+   and it is paid here deliberately rather than hidden behind an extra nobody
+   finds. What a copy would add on top is the next three problems.
 2. **It is a moving target.** airllm's value is per-family sharding code (Llama,
    Qwen, DeepSeek, Mixtral, ChatGLM, Kimi), rewritten as each new family ships.
    Vendored, it would be frozen at the day it was copied and rot from the first
@@ -655,14 +681,14 @@ A fair question for a package that re-derives the arithmetic. Four reasons:
 So the runtime is imported and the **decision** is native: `offload.py` owns the
 footprint arithmetic, the disk-bound timing model, the activation policy, the
 native-versus-streamed comparison, and the catalog metadata all of it needs
-(`layers`, `dtype`, `moe`). None of that imports airllm, which is why
-`airllm status` and `airllm compare` work on a machine where the extra was never
-installed — and tell you what installing it would buy.
+(`layers`, `dtype`, `moe`). None of that imports airllm — which is what keeps
+the import lazy, and what makes `airllm status` and `airllm compare` answer
+correctly even in an environment where the runtime itself will not load.
 
 ### From Python
 
 ```python
-import best_engine_ai_helper as beah
+import best_engine_ai_helper as beah  # airllm is a dependency, nothing to install
 
 hw, disk = beah.available_memory(), beah.disk_profile()
 
@@ -690,7 +716,7 @@ report = beah.airllm_compare(
 )
 print(report["verdict"])
 
-# And, with the extra installed, actually run it
+# And actually run it
 text = beah.airllm_generate(
     "Judge this description:…", model="meta-llama/Llama-3.3-70B-Instruct", max_new_tokens=64
 )

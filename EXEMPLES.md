@@ -363,17 +363,14 @@ mémoire utilisable (après réservation par l'OS) et la source des données.
 ## airllm
 
 Quatre commandes pour le seul moteur qui exécute un modèle ne tenant **pas** en
-mémoire, en lisant ses couches en flux depuis le disque. L'extra n'est
-nécessaire que pour la dernière :
-
-```sh
-pip install 'best-engine-ai-helper[airllm]'
-```
+mémoire, en lisant ses couches en flux depuis le disque. Rien à installer : le
+moteur airllm est une dépendance de plein droit, ce qui explique l'essentiel
+des ~2 Go de l'installation du paquet.
 
 `status`, `plan` puis `compare` sont de l'arithmétique pure sur le matériel de
-cette machine puis sur le catalogue — elles fonctionnent, puis elles sont
-utiles, sur une machine où l'extra n'a jamais été installé : c'est ainsi que
-vous découvrez ce que son installation vous apporterait.
+cette machine puis sur le catalogue — elles n'importent jamais le moteur, donc
+elles répondent juste (puis instantanément) même dans un environnement où il
+refuserait de se charger.
 
 ### airllm status
 
@@ -386,8 +383,7 @@ best-engine-ai-helper airllm status
 
 ```
 === Layer streaming (airllm) ===
-  runtime here    : mlx
-  package         : NOT installed
+  runtime import  : ok
   storage         : apple-internal (declared)
   read bandwidth  : 4.0 GB/s
   free disk       : 22.3 GB
@@ -399,10 +395,13 @@ best-engine-ai-helper airllm status
   A model already fits this machine's memory, so streaming its layers off disk
   would trade two to three orders of magnitude of speed for nothing. Ask for it
   explicitly (--backend airllm) to override.
-  - the airllm runtime is not installed — pip install 'best-engine-ai-helper[airllm]'
-
-  Install the runtime:  pip install 'best-engine-ai-helper[airllm]'
 ```
+
+`runtime import` est la version honnête d'une question qui demandait avant « est-ce
+que l'extra est installé » : airllm vient avec le paquet, donc la seule façon de
+lire autre chose qu'`ok` est une installation incomplète (conteneur allégé, roue
+mal construite) — auquel cas la ligne le dit puis le panneau affiche la commande
+de réinstallation.
 
 `--measure` remplace la supposition de classe de stockage par une vraie mesure
 de ce disque (environ 256 Mo écrits puis relus en contournant le cache de pages,
@@ -420,20 +419,23 @@ best-engine-ai-helper airllm status --json --request always
 ```json
 {
   "decision": {
-    "activate": false,
+    "activate": true,
     "request": "always",
     "trigger": "manual",
-    "reason": "Layer streaming cannot run here: the airllm runtime is not installed — pip install 'best-engine-ai-helper[airllm]'",
-    "installed": false,
+    "reason": "Layer streaming was requested explicitly and runs here on mlx.",
+    "installed": true,
     "runtime": "mlx",
-    "blockers": ["the airllm runtime is not installed — pip install 'best-engine-ai-helper[airllm]'"]
+    "blockers": []
   },
   "compute": {"accelerator": "gpu-metal", "chip": "Apple M2 Max", "bandwidth_gbs": 400.0},
   "disk": {"storage": "apple-internal", "read_gbs": 4.0, "basis": "declared", "free_gb": 22.3},
   "memory_budget_gb": 72.0,
-  "install": "pip install 'best-engine-ai-helper[airllm]'"
+  "install": "pip install --upgrade --force-reinstall best-engine-ai-helper"
 }
 ```
+
+`install` est une commande de réparation, pas d'activation — c'est ce qu'il faut
+lancer si `installed` revenait un jour à faux.
 
 ### airllm plan
 
@@ -614,7 +616,7 @@ print(
     )["verdict"]
 )
 
-# Avec l'extra installé : l'exécuter, dans ce processus, sans aucun serveur
+# L'exécuter, dans ce processus, sans aucun serveur
 print(
     beah.airllm_generate(
         "Note cette description produit de 1 à 5 puis dis pourquoi :…",

@@ -32,9 +32,9 @@ téléchargés. Deux cas, en toute franchise :
    du modèle via Ollama (un téléchargement normal depuis les serveurs Ollama). Ensuite, tout
    fonctionne hors ligne. La mise à jour du catalogue (`catalog update`) est également en ligne,
    mais optionnelle : le catalogue intégré suffit pour un usage courant. Le flux
-   de couches (l'extra optionnel `[airllm]`) suit la même règle : un
-   téléchargement depuis le Hub HuggingFace, puis le modèle s'exécute depuis
-   votre propre disque — dans votre propre processus, sans aucun serveur.
+   de couches suit la même règle : un téléchargement depuis le Hub
+   HuggingFace, puis le modèle s'exécute depuis votre propre disque — dans
+   votre propre processus, sans aucun serveur.
 
 Une GUI minimale dans le navigateur (`best-engine-ai-helper gui`) couvre la moitié en
 lecture seule de ce flux (les caractéristiques matérielles et la recommandation de moteur
@@ -60,15 +60,20 @@ Ce paquet est à la base de la couche de sélection de modèles de la suite AI H
 - [Ollama](https://ollama.com) (nécessaire uniquement pour `pull`, `validate` et `env` ; pas
   requis pour `detect`, `recommend` ou `report`)
 - Tout le reste s'installe automatiquement : os-helper (détection matérielle),
-  PyYAML, click, requests, langdetect, ainsi que les surfaces FastAPI/MCP
-  (`fastapi`, `uvicorn`, `fastapi-mcp`). La CLI, la GUI, l'API HTTP et le
-  serveur MCP font tous partie de l'installation par défaut, rien
-  d'optionnel à activer.
-- Optionnel : `[airllm]` pour exécuter un modèle qui ne tient **pas** en
-  mémoire, en lisant ses couches en flux depuis le disque (voir [Trop gros pour
-  tenir en
-  mémoire](#trop-gros-pour-tenir-en-mémoire-exécutable-quand-même--le-flux-de-couches)),
-  `[cloud]` pour le mode fournisseur cloud (retry, cache,
+  PyYAML, click, requests, langdetect, les surfaces FastAPI/MCP (`fastapi`,
+  `uvicorn`, `fastapi-mcp`), puis **airllm** pour [la lecture des couches en
+  flux](#trop-gros-pour-tenir-en-mémoire-exécutable-quand-même--le-flux-de-couches).
+  La CLI, la GUI, l'API HTTP, le serveur MCP puis le moteur de flux font tous
+  partie de l'installation par défaut, rien d'optionnel à activer.
+- **Comptez environ 2 Go pour l'installation puis quelques minutes.** Ce n'est
+  pas ce paquet — il est en Python pur puis minuscule — c'est la pile d'airllm :
+  torch, transformers, accelerate. L'arbitrage est délibéré : « quel modèle
+  cette machine peut-elle exécuter » puis « quel modèle peut-elle exécuter en
+  lisant les couches en flux » sont la même question, et une capacité derrière
+  un extra optionnel est une capacité que presque personne ne découvre.
+  L'import reste paresseux, donc rien de ce poids n'est payé au démarrage :
+  `detect`, `recommend` puis `report` sont aussi rapides qu'avant.
+- Optionnel : `[cloud]` pour le mode fournisseur cloud (retry, cache,
   pseudonymisation, repli sur le trousseau OS pour les clés API) et
   `[filtered]` pour de vrais classifieurs NSFW (un modèle DistilBERT pour le
   texte ; le détecteur d'image basé sur CLIP de LAION, via `transformers`
@@ -83,11 +88,13 @@ Ce paquet est à la base de la couche de sélection de modèles de la suite AI H
 
 ## Installation
 
-Le paquet est en Python pur (Python 3.10+). Les seuls éléments spécifiques à
-la plateforme sont **Python lui-même** et le runtime **Ollama** optionnel
-(nécessaire uniquement pour `pull` / `validate` / `env`, pas pour `detect`,
-`recommend`, `report`, la GUI ni la surface MCP). Choisissez votre OS
-ci-dessous.
+Python 3.10+. Le code de ce paquet est en Python pur ; son arbre de
+dépendances ne l'est pas, parce que le moteur de lecture en flux amène torch
+avec lui — comptez donc un **téléchargement d'environ 2 Go** puis une roue
+choisie pour votre plateforme. L'autre élément spécifique à la plateforme est
+le runtime **Ollama** optionnel (nécessaire uniquement pour `pull` /
+`validate` / `env`, pas pour `detect`, `recommend`, `report`, la GUI ni la
+surface MCP). Choisissez votre OS ci-dessous.
 
 ### 🍎 macOS
 
@@ -391,14 +398,20 @@ proportionnelle à sa **plus large couche**. Un modèle de 70 milliards de
 paramètres passe ainsi de 141 Go à environ **4 Go résidents**.
 
 Le moteur qui fait cela est [airllm](https://github.com/lyogavin/airllm)
-(Apache-2.0), une dépendance optionnelle de ce paquet :
+(Apache-2.0), puis c'est une **dépendance de plein droit** : le flux de couches
+est disponible sur chaque installation, sans rien à activer.
 
 ```sh
-pip install 'best-engine-ai-helper[airllm]'
+pip install best-engine-ai-helper     # airllm vient avec
 ```
 
-Tout le reste — la détection, le catalogue, la recommandation, Ollama, vLLM, la
-GUI, la surface MCP — fonctionne sans elle.
+C'est ce qu'achètent les ~2 Go de l'installation (torch, transformers,
+accelerate). Ils se paient une fois, à l'installation : l'import est paresseux,
+donc rien de cette pile n'est chargé avant que vous ne diffusiez réellement un
+modèle, puis `detect` / `recommend` / `report` restent instantanés. Si un
+interpréteur n'arrive malgré tout pas à importer airllm — conteneur allégé, roue
+mal construite — chaque surface le dit puis pointe vers une réinstallation,
+parce qu'à ce stade l'installation est incomplète plutôt que non activée.
 
 ### Ce que ça coûte : des secondes par jeton, pas des jetons par seconde
 
@@ -667,17 +680,30 @@ chiffre flatteur, puis chaque surface étiquette la valeur `measured` ou
 - **Expérimental sur processeur.** La voie CPU d'airllm ne fonctionne que pour
   les modèles non découpés, donc une machine sans accélérateur ne reçoit pas le
   flux de couches automatiquement. Elle peut toujours le demander.
+- **La compression 4 bits est indisponible sur macOS.** Elle exige
+  `bitsandbytes`, qui ne publie aucune roue macOS, donc la dépendance porte un
+  marqueur de plateforme puis Apple Silicon diffuse via MLX sans compression.
+  Le dimensionnement le dit au lieu d'annoncer un gain qui n'arrivera pas.
+- **Le contexte vaut 4096 jetons sauf demande contraire.** Le défaut d'airllm
+  est 512 puis il *tronque* au-delà, donc cet adaptateur passe toujours un
+  `max_seq_len` explicite — réglé sur les mêmes 4k que ceux auxquels
+  l'empreinte ci-dessus est tarifée. Les deux nombres sont délibérément le même
+  : un outil qui annonce la mémoire d'un contexte de 4k puis exécute en silence
+  un contexte de 512 mentirait dans le sens où vous perdez la fin de votre
+  prompt. Montez-le avec `max_seq_len=` puis le terme de cache KV monte
+  exactement comme la formule le dit.
 
 ### Pourquoi airllm est importé plutôt que recopié ici
 
 Question légitime pour un paquet qui redérive l'arithmétique. Quatre raisons :
 
-1. **Le poids des dépendances.** airllm exige torch, transformers, accelerate,
-   safetensors, scipy puis sentencepiece — des centaines de mégaoctets. Ce
-   paquet est du Python pur qui s'installe en quelques secondes. Faire payer une
-   pile d'apprentissage profond à qui veut une *recommandation* serait le mauvais
-   marché ; en extra, c'est un choix, exactement comme `[cloud]` puis
-   `[filtered]`.
+1. **Le recopier n'aurait pas évité le poids.** airllm exige torch,
+   transformers, accelerate, safetensors, scipy puis sentencepiece, puis une
+   copie de son code en aurait eu besoin tout autant — le poids, c'est son arbre
+   de dépendances, pas ses lignes. Les ~2 Go sont donc le prix de la capacité
+   quelle que soit la façon dont elle arrive, puis ils sont payés ici
+   délibérément plutôt que cachés derrière un extra que personne ne trouve. Ce
+   qu'une copie ajouterait par-dessus, ce sont les trois problèmes suivants.
 2. **C'est une cible mouvante.** La valeur d'airllm est son code de découpe par
    famille de modèles (Llama, Qwen, DeepSeek, Mixtral, ChatGLM, Kimi), réécrit à
    chaque nouvelle famille. Recopié, il serait figé au jour de la copie puis
@@ -694,9 +720,9 @@ Le moteur est donc importé puis la **décision** est native : `offload.py` poss
 l'arithmétique d'empreinte, le modèle de temps borné par le disque, la politique
 d'activation, la comparaison natif contre flux puis les métadonnées de catalogue
 dont tout cela a besoin (`layers`, `dtype`, `moe`). Rien de cela n'importe
-airllm : c'est pourquoi `airllm status` puis `airllm compare` fonctionnent sur
-une machine où l'extra n'a jamais été installé — en vous disant ce que son
-installation vous apporterait.
+airllm : c'est ce qui garde l'import paresseux, puis ce qui fait que `airllm
+status` et `airllm compare` répondent juste même dans un environnement où le
+moteur lui-même refuserait de se charger.
 
 ### Depuis Python
 
@@ -729,7 +755,7 @@ report = beah.airllm_compare(
 )
 print(report["verdict"])
 
-# Puis, avec l'extra installé, l'exécuter vraiment
+# Puis l'exécuter vraiment
 text = beah.airllm_generate(
     "Juge cette description :…", model="meta-llama/Llama-3.3-70B-Instruct", max_new_tokens=64
 )
