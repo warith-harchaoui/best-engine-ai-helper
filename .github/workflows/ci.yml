@@ -66,6 +66,20 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
+          # torch arrives as a dependency of airllm (layer streaming, a core
+          # dependency since the streaming backend landed), and PyPI's Linux
+          # torch wheel is the CUDA build: gigabytes of nvidia-* payload for a
+          # runner with no GPU that never loads a model. Pre-installing the CPU
+          # build satisfies the requirement first, so the project install below
+          # resolves against it instead of fetching the CUDA one.
+          #
+          # `--index-url`, not `--extra-index-url`: with two indexes offering
+          # the same version, which one pip picks is not a documented
+          # guarantee, and a CI lane whose download size depends on resolver
+          # luck is a CI lane that gets slow again without anyone editing it.
+          # This is PyTorch's own published install command, and their index
+          # also serves torch's dependencies, so it stands alone.
+          pip install --index-url https://download.pytorch.org/whl/cpu torch
           pip install -e "." -r requirements-dev.txt
       # mypy spends most of its time re-reading the dependency stubs it read
       # last run: a cold cache cost 13s of a 69s job, which is the second
@@ -107,14 +121,34 @@ jobs:
     # Install and import, deliberately not the test suite. The tests use 3.11
     # features legitimately (`tomllib`, behind a `tomli` fallback), and gating
     # the floor on dev-only concerns would fail this job for reasons that have
-    # nothing to do with the promise. No member carries torch in its base
-    # dependencies, so this is a cached-wheel install: well under a minute,
-    # which is the point.
+    # nothing to do with the promise.
+    #
+    # This member DOES carry torch in its base dependencies now (airllm, for
+    # layer streaming), so the "cached-wheel install, well under a minute"
+    # this comment used to claim is no longer true by itself -- the CPU wheel
+    # below is what keeps it close. The job still earns its minute: it is the
+    # only place that proves the whole dependency set resolves on the oldest
+    # Python the package promises, which is exactly the promise most likely to
+    # break when a dependency as large as torch joins it.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
           cache: pip
+      # Same reasoning as the gate lane: the CPU build, from PyTorch's index,
+      # before the project asks for any torch at all.
+      - run: pip install --index-url https://download.pytorch.org/whl/cpu torch
       - run: pip install .
       - run: python -c "import best_engine_ai_helper"
+      # The lazy-import promise, on the lane that has the real dependency
+      # installed: importing this package must not drag torch in, or every CLI
+      # invocation pays a second or two for a capability most calls never use.
+      - run: |
+          python - <<'PY'
+          import sys
+          import best_engine_ai_helper  # noqa: F401
+          heavy = sorted(m for m in ("torch", "airllm", "transformers") if m in sys.modules)
+          assert not heavy, f"importing the package pulled in {heavy}"
+          print("OK: the package imports without torch")
+          PY

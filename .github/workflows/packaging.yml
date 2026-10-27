@@ -78,6 +78,12 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -e "."
+          # `--no-deps`, on purpose: this lane builds a wheel and weighs a file
+          # inside it (see gate.sh package). It never imports the package and
+          # never runs a test, so the dependency tree buys it nothing -- and
+          # since airllm joined the base dependencies, "nothing" would cost
+          # gigabytes of torch. The lane that proves the dependencies actually
+          # resolve is `floor` in ci.yml, which is where that belongs.
+          pip install --no-deps -e "."
       - name: Build and inspect the distribution
         run: ./scripts/gate.sh package
