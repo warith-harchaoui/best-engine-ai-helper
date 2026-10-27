@@ -360,6 +360,269 @@ mémoire utilisable (après réservation par l'OS) et la source des données.
 
 ---
 
+## airllm
+
+Quatre commandes pour le seul moteur qui exécute un modèle ne tenant **pas** en
+mémoire, en lisant ses couches en flux depuis le disque. L'extra n'est
+nécessaire que pour la dernière :
+
+```sh
+pip install 'best-engine-ai-helper[airllm]'
+```
+
+`status`, `plan` puis `compare` sont de l'arithmétique pure sur le matériel de
+cette machine puis sur le catalogue — elles fonctionnent, puis elles sont
+utiles, sur une machine où l'extra n'a jamais été installé : c'est ainsi que
+vous découvrez ce que son installation vous apporterait.
+
+### airllm status
+
+Cette machine peut-elle lire les couches en flux, le lui demanderait-on, puis
+qu'est-ce qui bloque ?
+
+```sh
+best-engine-ai-helper airllm status
+```
+
+```
+=== Layer streaming (airllm) ===
+  runtime here    : mlx
+  package         : NOT installed
+  storage         : apple-internal (declared)
+  read bandwidth  : 4.0 GB/s
+  free disk       : 22.3 GB
+  shard budget    : 72.0 GB of resident memory
+  request         : auto
+  would activate  : no
+  trigger         : not-needed
+
+  A model already fits this machine's memory, so streaming its layers off disk
+  would trade two to three orders of magnitude of speed for nothing. Ask for it
+  explicitly (--backend airllm) to override.
+  - the airllm runtime is not installed — pip install 'best-engine-ai-helper[airllm]'
+
+  Install the runtime:  pip install 'best-engine-ai-helper[airllm]'
+```
+
+`--measure` remplace la supposition de classe de stockage par une vraie mesure
+de ce disque (environ 256 Mo écrits puis relus en contournant le cache de pages,
+une à deux secondes). Ça vaut le coup : le disque fixe toute la vitesse de ce
+moteur, puis le champ `basis` passe de `declared` à `measured` pour que les deux
+se distinguent.
+
+`--json` donne la même chose en lisible par machine, ce que renvoie aussi le
+point d'entrée HTTP :
+
+```sh
+best-engine-ai-helper airllm status --json --request always
+```
+
+```json
+{
+  "decision": {
+    "activate": false,
+    "request": "always",
+    "trigger": "manual",
+    "reason": "Layer streaming cannot run here: the airllm runtime is not installed — pip install 'best-engine-ai-helper[airllm]'",
+    "installed": false,
+    "runtime": "mlx",
+    "blockers": ["the airllm runtime is not installed — pip install 'best-engine-ai-helper[airllm]'"]
+  },
+  "compute": {"accelerator": "gpu-metal", "chip": "Apple M2 Max", "bandwidth_gbs": 400.0},
+  "disk": {"storage": "apple-internal", "read_gbs": 4.0, "basis": "declared", "free_gb": 22.3},
+  "memory_budget_gb": 72.0,
+  "install": "pip install 'best-engine-ai-helper[airllm]'"
+}
+```
+
+### airllm plan
+
+Que pourrait exécuter cette machine, puis à quel prix ?
+
+```sh
+best-engine-ai-helper airllm plan --kind llm --compression 4bit
+```
+
+```
+=== LLM: streamable off nvme at 4.0 GB/s, 22.08 GB shard budget ===
+id                params  shard_gb  ckpt_gb  s/token  disk_gb  runs  notes
+----------------  ------  --------  -------  -------  -------  ----  ------------------------------
+qwen3:235b-a22b   235B    5.1       117.5    45.5     599.2    yes   94 layers
+llama3.1:405b     405B    6.5       202.5    76.9     1032.8   yes   126 layers
+qwen2.5-vl:72b    73B     2.9       36.5     14.3     186.2    yes   80 layers
+llama3.3:70b      70B     2.8       35.0     13.7     178.5    yes   80 layers
+mixtral:8x22b     141B    4.5       70.5     27.8     359.6    yes   56 layers
+deepseek-v3:671b  671B    15.2      335.5    125.0    1040.0   NO    estimated 0.008 tok/s (125.0 s
+
+  Pick: Qwen/Qwen3-235B-A22B-Instruct-2507 — 235B in 5.1 GB resident, 45.5 s/token,
+  599 GB free disk to split (129 GB after).
+```
+
+Trois colonnes à lire dans cet ordre : `shard_gb` est ce qui doit tenir en
+mémoire (une tranche de couche, pas le modèle), `disk_gb` est ce qui doit être
+libre *pendant la découpe* — la contrainte qui refuse d'ordinaire un modèle —
+puis `s/token` est ce que vous attendrez. `--context 32` retarife la tranche
+pour un contexte de 32k, qui n'est pas gratuit : le cache KV est la seule chose
+que le flux de couches ne réduit pas.
+
+Deux leçons dans l'ordre des lignes. Le modèle de 405 milliards de paramètres se
+diffuse dans une tranche *plus légère* que celui de 141 milliards — 126 couches
+contre 56 — donc c'est la profondeur, pas la taille, qui décide de ce qui tient.
+Puis DeepSeek-V3 est refusé sur la vitesse plutôt que sur la mémoire : 125
+s/jeton dépasse le plancher de traitement par lots, puis le motif le dit au lieu
+d'offrir une éternité techniquement correcte.
+
+### airllm compare
+
+Modèle natif ou modèle en flux, même réponse, les deux prix. C'est la décision
+que ce moteur impose vraiment.
+
+```sh
+best-engine-ai-helper airllm compare --tokens 300
+```
+
+```
+=== LLM: ollama vs airllm, for a 300-token answer ===
+  budgets: 11.04 GB resident (ollama) · 22.08 GB per shard (airllm) · disk 4.0 GB/s (declared)
+model                       backend  score  resident  tok/s  answer  runs
+--------------------------  -------  -----  --------  -----  ------  ----
+qwen3:72b-q8_0              ollama   89     78.0      8.4    36 s    NO
+qwen3:72b-q4_k_m            ollama   87     48.0      13.7   22 s    NO
+qwen3:14b                   ollama   78     10.5      62.4   5 s     yes
+gemma3:12b                  ollama   77     9.2       71.2   4 s     yes
+Qwen/Qwen3-72B-Instruct     airllm   89     6.2       0.024  3.5 h   yes
+Qwen/Qwen3-VL-72B-Instruct  airllm   88     6.2       0.024  3.5 h   yes
+
+  Streaming buys 11 benchmark points (89 vs 78) for 2647x the wait: 3.5 h
+  instead of 5 s for a 300-token answer.
+```
+
+`--batch 8` est le levier à essayer avant de conclure que c'est trop lent : huit
+prompts traversent ensemble chaque passe de couches, donc huit réponses
+arrivent dans le temps d'une. `--compression 4bit` est l'autre (environ ×3). Ils
+se composent.
+
+### airllm prepare
+
+Payer le téléchargement puis la découpe délibérément, plutôt que dans votre
+premier appel d'inférence — ce qui, pour un gros modèle, représente des dizaines
+de minutes de disque puis se lit exactement comme un blocage.
+
+```sh
+best-engine-ai-helper airllm prepare --model meta-llama/Llama-3.3-70B-Instruct \
+  --compression 4bit --shards-path /Volumes/rapide/airllm-shards
+```
+
+```
+Prepared meta-llama/Llama-3.3-70B-Instruct: layer shards are on disk and the
+first call will not have to split them.
+```
+
+`--shards-path` mérite de pointer vers votre volume le plus rapide : la lecture
+des tranches *est* la vitesse de décodage. `--delete-original` supprime le
+checkpoint téléchargé une fois les tranches écrites, divisant par deux le besoin
+en disque — au prix d'un nouveau téléchargement si les tranches venaient à être
+perdues.
+
+### resolve --backend airllm
+
+Le même cahier des charges, résolu pour le flux de couches au lieu d'Ollama :
+
+```sh
+best-engine-ai-helper resolve --brief llm.brief.yaml --backend airllm
+```
+
+```
+Wrote llm.engine.yaml
+  backend: airllm  (llm=meta-llama/Llama-3.3-70B-Instruct)
+  NOTE: hardware-specific — add 'llm.engine.yaml' to .gitignore, do not commit.
+  bring it up:  best-engine-ai-helper airllm prepare --model meta-llama/Llama-3.3-70B-Instruct
+```
+
+```yaml
+# llm.engine.yaml (ignoré par git, propre à la machine)
+backend: airllm
+base_url: ''              # une bibliothèque, pas un serveur : ça tourne dans votre processus
+min_tps: 0.01             # le plancher par lots, pas les 15 jetons/s interactifs
+airllm:
+  activate: true
+  trigger: manual
+  reason: Layer streaming was requested explicitly and runs here on cuda.
+  runtime: cuda
+  installed: true
+  compression: null
+  blockers: []
+llm:
+  model: meta-llama/Llama-3.3-70B-Instruct
+  catalog_id: llama3.3:70b
+  backend: airllm         # par genre, pour qu'un descripteur mixte reste lisible
+  streaming: true
+  ram_gb: 6.1             # une tranche résidente
+  checkpoint_gb: 140.0    # ce que chaque jeton relit
+  layers: 80
+  layers_estimated: false
+  disk_peak_gb: 294.0
+  disk_steady_gb: 154.0
+  disk_fits: true
+  est_tokens_per_s: 0.024
+  seconds_per_token: 41.7
+  structured_output: false  # airllm n'a pas de génération contrainte par schéma
+  fits: true
+  comfortable: true
+serve:
+- best-engine-ai-helper airllm prepare --model meta-llama/Llama-3.3-70B-Instruct
+```
+
+Ou laissez-le arriver tout seul : sans `--backend`, un genre pour lequel rien ne
+tient sur cette machine bascule de lui-même vers le flux de couches, puis lui
+seul bascule. Mettez `airllm: never` dans le cahier des charges (ou
+`BEST_ENGINE_AIRLLM=never`) pour couper complètement cette escalade.
+
+### Depuis Python
+
+```python
+import best_engine_ai_helper as beah
+
+hw, disk = beah.available_memory(), beah.disk_profile(measure=True)
+entry = {"id": "llama3.3:70b", "size_b": 70, "layers": 80,
+         "hf_id": "meta-llama/Llama-3.3-70B-Instruct"}
+
+# Trois réponses différentes à « à quelle vitesse ? », toutes vraies
+timing = beah.airllm_generation_time(entry, disk["read_gbs"], new_tokens=300, batch=8)
+print(timing["decode_tps"])              # 0,024  — régime, une séquence
+print(timing["time_to_first_token_s"])   # 41,2   — une passe, prompt compris
+print(timing["effective_tps"])           # 0,194  — huit réponses partagent chaque passe
+
+# Cette machine devrait-elle diffuser ?
+print(beah.airllm_decide(conventional_resolved=False)["reason"])
+
+# Natif ou en flux, pour une réponse de 300 jetons ?
+print(beah.airllm_compare(beah.load_catalog(), hw=hw, disk=disk,
+                          bandwidth_gbs=beah.compute_profile()["bandwidth_gbs"],
+                          new_tokens=300)["verdict"])
+
+# Avec l'extra installé : l'exécuter, dans ce processus, sans aucun serveur
+print(beah.airllm_generate("Note cette description produit de 1 à 5 puis dis pourquoi :…",
+                           model="meta-llama/Llama-3.3-70B-Instruct",
+                           max_new_tokens=64))
+```
+
+### HTTP / MCP
+
+```sh
+curl -s 'http://127.0.0.1:8000/api/airllm?answer_tokens=300&batch=8' | jq '.comparison.verdict'
+```
+
+```json
+"Streaming buys 11 benchmark points (89 vs 78) for 2647x the wait: 3.5 h instead of 5 s for a 300-token answer."
+```
+
+Le point d'entrée renvoie la décision, le profil de stockage, les plans classés
+puis la comparaison en un seul appel, puis il est exposé comme outil MCP comme
+toutes les autres routes.
+
+---
+
 ## Utilisation en bibliothèque Python
 
 Toutes les fonctions publiques sont importables sans passer par Click :

@@ -79,6 +79,36 @@ variable's name) rather than the secret, and the same rule holds here.
 
 ![Cloud providers panel](assets/screenshots/gui-providers.png)
 
+### 1ter. Too large to load, still runnable
+
+What this machine could run by **streaming a model's layers off disk** rather
+than loading it — see the README's [layer streaming
+section](README.md#too-large-to-load-still-runnable-layer-streaming) for the
+mechanism. The panel is deliberately four lines rather than a table, because
+only four things decide the question:
+
+- whether this machine has a runtime for it at all (a CUDA/ROCm GPU, or Apple
+  Silicon through MLX), and whether the optional `[airllm]` extra is installed —
+  the panel shows the install command when it is not, since a capability
+  nobody can act on is just a refusal;
+- the **storage class and its read bandwidth**, labelled `measured` or
+  `declared`, because the drive sets the entire speed of this backend;
+- the **shard budget**: how much resident memory one layer shard may occupy
+  here, which is a different budget from the one above it (a transient shard
+  does not pay the headroom a resident model does);
+- the **biggest model it would actually run**, with the three figures that
+  decide feasibility — resident gigabytes, seconds per token, and the free disk
+  the layer split needs.
+
+The last line is the verdict in prose, straight from the same policy the CLI
+and `resolve` consult, so the page cannot disagree with them: usually "a model
+already fits this machine, so streaming would trade two to three orders of
+magnitude of speed for nothing".
+
+Nothing is measured on page load. The disk probe writes and reads back ~256 MB,
+which is not something a page view should do unasked, so the panel reads the
+storage-class table and `GET /api/airllm?measure=true` is opt-in.
+
 ### 2. Describe the task → best engine(s)
 
 Type a free-text task (the same kind of phrase `report --task "..."` takes)
@@ -127,7 +157,7 @@ recording enabled. A
 
 ## HTTP surface
 
-The GUI is a client of six JSON endpoints, usable directly (e.g. from
+The GUI is a client of seven JSON endpoints, usable directly (e.g. from
 another tool, or `curl`):
 
 | Method | Path | Body | Returns |
@@ -138,6 +168,7 @@ another tool, or `curl`):
 | `POST` | `/api/preferences` | any of `quality_vs_cost`, `headroom`, `min_tps`, `local_only`, `live_load` | the full set as now saved, to `~/.best-engine-ai-helper/preferences.yaml` — never `settings.yaml`, which holds keys |
 | `GET`  | `/api/providers` | (none) | one row per cloud provider: `provider`, `key_env`, `available`, `reason`, `models`. Never a key value |
 | `GET`  | `/api/activity` | (none) | ledger summary: `total_calls`, `total_cost_usd`, `error_rate`, `by_user`, `by_model`, `recent_errors` |
+| `GET`  | `/api/airllm` | query: `measure` (bool, default false), `kind` (`llm`/`vlm`), `compression` (`4bit`/`8bit`), `answer_tokens` (int, default 300), `batch` (int, default 1) | layer streaming: `decision` (activate / trigger / reason / blockers), `disk` (class, read GB/s, basis, free GB), `memory_budget_gb`, `chosen`, ranked `plans`, and `comparison` — native model vs streamed model priced in seconds for the same answer |
 
 ```sh
 curl -s http://127.0.0.1:8000/api/system | python3 -m json.tool
@@ -146,6 +177,10 @@ curl -s -X POST http://127.0.0.1:8000/api/recommend \
      -H 'Content-Type: application/json' \
      -d '{"task": "product descriptions and image-quality checks"}' \
   | python3 -m json.tool
+
+# Is a too-large model worth the wait on this machine?
+curl -s 'http://127.0.0.1:8000/api/airllm?answer_tokens=300&batch=8' \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["comparison"]["verdict"])'
 ```
 
 `GET /` redirects to `/gui`. `GET /docs` (FastAPI's default) has the full

@@ -3,17 +3,18 @@ name: best-engine-ai-helper
 description: >-
   Pick, pull and validate the best local LLM or VLM for the machine at hand.
   Detects available memory (Apple Silicon unified pool, NVIDIA VRAM, or system
-  RAM), consults a bundled model catalogue, ranks what fits inside a safety
-  headroom, pulls the winner through Ollama, puts it through two quality gates
-  (a seeded text flaw and a seeded visual defect), and writes the environment
-  file downstream projects read. Use when the user asks "which model should I
+  RAM), ranks a bundled catalogue inside a safety headroom, pulls the winner
+  through Ollama, puts it through two quality gates (a seeded text flaw and a
+  seeded visual defect), and writes the environment file downstream projects
+  read. Also sizes and times models that do NOT fit, runnable by streaming
+  their layers off disk (airllm). Use when the user asks "which model should I
   run on this machine", "what LLM fits in my RAM / VRAM", "can this Mac run a
-  14B", "pull a local model", "set up Ollama for this project", "which vision
-  model", "is this model good enough", "how many tokens per second", or names
-  `best-engine-ai-helper`, `model_for`, `resolved_models`, `recommend_engines`.
-  **Any suite package that needs an LLM or VLM must route through this one
-  rather than hardcode a model name.** Do NOT use to run inference, serve a
-  model, or pick a vector index (ann-router).
+  14B", "can I run a 70B on 8 GB", "pull a local model", "which vision model",
+  "is this model good enough", "how many tokens per second", or names
+  `best-engine-ai-helper`, `model_for`, `airllm`, `recommend_engines`. **Any
+  suite package that needs an LLM or VLM must route through this one rather
+  than hardcode a model name.** Do NOT use to run inference, serve a model, or
+  pick a vector index (ann-router).
 license: BSD-3-Clause
 metadata:
   author: Warith Harchaoui
@@ -84,6 +85,10 @@ for `detect`, `recommend` or `report`.
 | What is running right now | `activity` | — |
 | Task families and usages | `usages` | `list_usages`, `resolve_usage` |
 | Browser version of the read-only half | `gui` | — |
+| Could this machine stream a too-large model | `airllm status` | `airllm_decide`, `disk_profile` |
+| What it could stream, and at what price | `airllm plan` | `airllm_rank`, `airllm_pick` |
+| Native model or streamed model | `airllm compare` | `airllm_compare`, `airllm_generation_time` |
+| Split a checkpoint before the first call | `airllm prepare` | `airllm_load` |
 
 Quick examples:
 
@@ -92,6 +97,7 @@ best-engine-ai-helper detect
 best-engine-ai-helper recommend "summarise long French meeting transcripts"
 best-engine-ai-helper pull && best-engine-ai-helper validate
 best-engine-ai-helper env                 # writes the file downstream reads
+best-engine-ai-helper airllm compare --tokens 300   # when nothing good fits
 ```
 
 For the full command and flag matrix, the catalogue schema and the headroom
@@ -116,6 +122,25 @@ read `references/triggers.md`.
   `text_model()` / `vision_model()`; it does not re-run detection.
 - **Offline after the download.** `pull` and `catalog update` are the only
   online operations, and the bundled catalogue is enough for everyday use.
+- **"Nothing fits" has two answers, and the second one is slow.** A model too
+  large to load can still be run by streaming its layers off disk (the
+  `[airllm]` extra). Resident memory becomes one layer shard — a 70B in about
+  4 GB instead of 141 — and the price is **seconds per token**, because every
+  token re-reads the whole checkpoint. Reach for it when the user needs a
+  better model than fits, never when they need a quick answer. `airllm
+  compare` prices both sides for the same answer length and usually says "stay
+  native"; quote its verdict rather than guessing.
+- **Under streaming, the prompt is nearly free and batching is the big
+  lever.** One forward pass reads the checkpoint once whatever rides through
+  it, so a 2000-token prompt costs what a 10-token one does (unique to this
+  backend), and eight prompts answered together arrive in the time of one.
+  4-bit compression is worth ~3x; a batch of 8 is worth 8x.
+- **Disk, not memory, is what refuses a streamed model.** The layer split needs
+  roughly twice the checkpoint free at once. Check `airllm status` for free
+  space before promising anything.
+- **No streamed model honours a JSON schema.** airllm exposes raw generation,
+  so schema-driven tasks stay on an Ollama model. The engine file says
+  `structured_output: false` and `llm.chat` raises rather than pretending.
 - **This package chooses; it does not infer.** It will not run a prompt for
   you, and serving is Ollama's job.
 - **After running, report the chosen model, the memory it needs and the

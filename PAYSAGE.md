@@ -159,6 +159,17 @@ Autant le dire clairement, rien de tout cela n'a été inventé ici.
   situent les économies de routage entre 60 % puis 85 % sur des charges mixtes. C'est la
   raison pour laquelle `pricing.yaml` porte des tarifs publics et que le sélecteur expose
   un poids qualité-contre-coût plutôt que de classer sur la seule qualité.
+- **airllm : « est-ce que ça tient ? » est la mauvaise question pour un transformeur
+  séquentiel.** Tous les outils de cette carte, celui-ci compris, répondaient à *quel
+  modèle tient dans la mémoire que j'ai*. airllm fait remarquer qu'un décodeur lit ses
+  couches dans l'ordre, donc que seule la couche en cours de calcul doit être résidente
+  — puis la mémoire qu'exige un modèle s'effondre de son nombre de paramètres à sa plus
+  large couche. C'est une idée réellement différente plutôt qu'une meilleure estimation,
+  puis c'est désormais le moteur `airllm` ici (voir LISEZMOI). Ce que ce projet ajoute
+  par-dessus est la part qu'airllm n'a aucune raison de posséder : si *cette* machine
+  devrait prendre le marché, quel modèle diffuser, puis ce que le meilleur modèle coûtera
+  en secondes par jeton face à celui qui tient déjà. Le moteur est importé, pas recopié —
+  l'arithmétique puis la décision sont natives.
 
 ## Notice par outil
 
@@ -197,6 +208,23 @@ Un recommandeur appris et infogéré qui optimise la qualité par euro. Le plus 
 projet par l'intention, l'opposé par la posture : la décision se prend sur les serveurs de
 quelqu'un d'autre, contre un catalogue qu'on ne peut pas lire et les modèles locaux n'y
 sont pas.
+
+### airllm
+
+Pas un sélecteur du tout, puis sans chercher à l'être : un *moteur* de lecture des couches
+en flux. Il découpe un checkpoint en tranches par couche puis les relit une à une, donc un
+modèle de 70 milliards de paramètres s'exécute dans environ 4 Go résidents au lieu de 141
+— sans quantification, sans distillation, sans élagage. Le coût est que chaque jeton relit
+tout le checkpoint depuis le disque, ce qui le place à des secondes par jeton plutôt qu'à
+des jetons par seconde.
+
+L'entrée la plus intéressante de cette carte, parce qu'elle ne concurrence rien d'autre
+dessus : elle change le sens du mot « tient ». Là où elle s'arrête est exactement là où ce
+projet commence — airllm diffusera volontiers un modèle de 671 milliards de paramètres
+vers un disque qui n'a pas la place pour la découpe, à deux minutes par jeton, puis il n'a
+aucun avis sur l'opportunité de le faire. Ces jugements (empreinte résidente, disque exigé
+par la découpe, secondes par jeton, puis natif contre flux tarifés dans la même unité)
+sont natifs ici, puis le moteur est un extra optionnel. Apache-2.0.
 
 ### Ollama
 

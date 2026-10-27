@@ -147,6 +147,16 @@ Worth saying plainly, since none of this was invented here.
   savings at 60-85% on mixed workloads. That is the reason `pricing.yaml` carries list
   prices and the picker exposes a quality-versus-cost weight rather than ranking on
   quality alone.
+- **airllm: "does it fit?" is the wrong question when a transformer is sequential.**
+  Every tool on this map, this one included, answered *which model fits the memory I
+  have*. airllm points out that a decoder reads its layers in order, so only the layer
+  being computed has to be resident — and the memory a model needs collapses from its
+  parameter count to its widest single layer. That is a genuinely different idea rather
+  than a better estimate, and it is now the `airllm` backend here (see the README).
+  What this project adds on top is the part airllm has no reason to own: whether *this*
+  machine should take the trade, which model it should stream, and what the better model
+  will cost in seconds per token versus the one that already fits. The runtime is
+  imported, not copied — the arithmetic and the decision are native.
 
 ## Per-tool write-up
 
@@ -181,6 +191,22 @@ overhead, at the cost of every request leaving your network.
 A managed learned recommender optimising quality-per-dollar. Closest in intent to this
 project's picker, opposite in posture: the decision happens on someone else's servers,
 against a catalogue you cannot read, and local models are not in it.
+
+### airllm
+
+Not a selector at all, and not trying to be: a layer-streaming *runtime*. It splits a
+checkpoint into per-layer shards and reads them back one at a time, so a 70B model runs
+in about 4 GB of resident memory instead of 141 — no quantisation, no distillation, no
+pruning. The cost is that every token re-reads the whole checkpoint from disk, which puts
+it at seconds per token rather than tokens per second.
+
+The most interesting entry on this map, because it does not compete with anything else on
+it: it changes what the word "fits" means. Where it stops is exactly where this project
+starts — airllm will happily stream a 671B model onto a drive with no room for the split,
+at two minutes a token, and has no opinion about whether you should. Those judgements
+(resident footprint, disk required for the split, seconds per token, and native-versus-
+streamed priced in the same unit) are native here, and the runtime is an optional extra.
+Apache-2.0.
 
 ### Ollama
 

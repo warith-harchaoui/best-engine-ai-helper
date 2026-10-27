@@ -342,6 +342,260 @@ overhead), and the data source.
 
 ---
 
+## airllm
+
+Four commands for the one backend that runs a model which does **not** fit in
+memory, by streaming its layers off disk. Needs the extra for the last one only:
+
+```sh
+pip install 'best-engine-ai-helper[airllm]'
+```
+
+`status`, `plan` and `compare` are pure arithmetic over this machine's hardware
+and the catalog — they work, and are useful, on a machine where the extra was
+never installed, which is how you find out what installing it would buy.
+
+### airllm status
+
+Can this machine stream layers, would it be asked to, and what is in the way?
+
+```sh
+best-engine-ai-helper airllm status
+```
+
+```
+=== Layer streaming (airllm) ===
+  runtime here    : mlx
+  package         : NOT installed
+  storage         : apple-internal (declared)
+  read bandwidth  : 4.0 GB/s
+  free disk       : 22.3 GB
+  shard budget    : 72.0 GB of resident memory
+  request         : auto
+  would activate  : no
+  trigger         : not-needed
+
+  A model already fits this machine's memory, so streaming its layers off disk
+  would trade two to three orders of magnitude of speed for nothing. Ask for it
+  explicitly (--backend airllm) to override.
+  - the airllm runtime is not installed — pip install 'best-engine-ai-helper[airllm]'
+
+  Install the runtime:  pip install 'best-engine-ai-helper[airllm]'
+```
+
+`--measure` replaces the storage-class assumption with a real measurement of
+this drive (~256 MB written and read back with the page cache bypassed, one or
+two seconds). Worth it: the drive sets the entire speed of this backend, and the
+`basis` field flips from `declared` to `measured` so you can tell the two apart.
+
+`--json` gives the same thing machine-readably, which is what the HTTP endpoint
+returns:
+
+```sh
+best-engine-ai-helper airllm status --json --request always
+```
+
+```json
+{
+  "decision": {
+    "activate": false,
+    "request": "always",
+    "trigger": "manual",
+    "reason": "Layer streaming cannot run here: the airllm runtime is not installed — pip install 'best-engine-ai-helper[airllm]'",
+    "installed": false,
+    "runtime": "mlx",
+    "blockers": ["the airllm runtime is not installed — pip install 'best-engine-ai-helper[airllm]'"]
+  },
+  "compute": {"accelerator": "gpu-metal", "chip": "Apple M2 Max", "bandwidth_gbs": 400.0},
+  "disk": {"storage": "apple-internal", "read_gbs": 4.0, "basis": "declared", "free_gb": 22.3},
+  "memory_budget_gb": 72.0,
+  "install": "pip install 'best-engine-ai-helper[airllm]'"
+}
+```
+
+### airllm plan
+
+What could this machine stream, and at what price?
+
+```sh
+best-engine-ai-helper airllm plan --kind llm --compression 4bit
+```
+
+```
+=== LLM: streamable off nvme at 4.0 GB/s, 22.08 GB shard budget ===
+id                params  shard_gb  ckpt_gb  s/token  disk_gb  runs  notes
+----------------  ------  --------  -------  -------  -------  ----  ------------------------------
+qwen3:235b-a22b   235B    5.1       117.5    45.5     599.2    yes   94 layers
+llama3.1:405b     405B    6.5       202.5    76.9     1032.8   yes   126 layers
+qwen2.5-vl:72b    73B     2.9       36.5     14.3     186.2    yes   80 layers
+llama3.3:70b      70B     2.8       35.0     13.7     178.5    yes   80 layers
+mixtral:8x22b     141B    4.5       70.5     27.8     359.6    yes   56 layers
+deepseek-v3:671b  671B    15.2      335.5    125.0    1040.0   NO    estimated 0.008 tok/s (125.0 s
+
+  Pick: Qwen/Qwen3-235B-A22B-Instruct-2507 — 235B in 5.1 GB resident, 45.5 s/token,
+  599 GB free disk to split (129 GB after).
+```
+
+Two things that row order teaches. The 405B model streams in a *leaner shard*
+than the 141B one — 126 layers against 56 — so depth, not size, decides what
+fits. And DeepSeek-V3 is refused on speed rather than on memory: 125 s/token is
+past the batch floor, and the blocker says so instead of offering a
+technically-correct eternity.
+
+Three columns to read in order: `shard_gb` is what has to fit in memory (one
+layer shard, not the model), `disk_gb` is what has to be free *during the split*
+— the constraint that usually refuses a model — and `s/token` is what you will
+wait. `--context 32` re-prices the shard for a 32k context, which is not free:
+the KV cache is the one thing streaming does not shrink.
+
+### airllm compare
+
+Native model or streamed model, same answer, both prices. This is the decision
+the backend actually forces.
+
+```sh
+best-engine-ai-helper airllm compare --tokens 300
+```
+
+```
+=== LLM: ollama vs airllm, for a 300-token answer ===
+  budgets: 11.04 GB resident (ollama) · 22.08 GB per shard (airllm) · disk 4.0 GB/s (declared)
+model                       backend  score  resident  tok/s  answer  runs
+--------------------------  -------  -----  --------  -----  ------  ----
+qwen3:72b-q8_0              ollama   89     78.0      8.4    36 s    NO
+qwen3:72b-q4_k_m            ollama   87     48.0      13.7   22 s    NO
+qwen3:14b                   ollama   78     10.5      62.4   5 s     yes
+gemma3:12b                  ollama   77     9.2       71.2   4 s     yes
+Qwen/Qwen3-72B-Instruct     airllm   89     6.2       0.024  3.5 h   yes
+Qwen/Qwen3-VL-72B-Instruct  airllm   88     6.2       0.024  3.5 h   yes
+
+  Streaming buys 11 benchmark points (89 vs 78) for 2647x the wait: 3.5 h
+  instead of 5 s for a 300-token answer.
+```
+
+`--batch 8` is the lever worth trying before concluding it is too slow: eight
+prompts ride through each layer pass together, so eight answers arrive in the
+time of one. `--compression 4bit` is the other (~3x). They compose.
+
+### airllm prepare
+
+Pay the download and the layer split deliberately, rather than inside your first
+inference call — which for a large model is tens of minutes of disk, and reads
+exactly like a hang.
+
+```sh
+best-engine-ai-helper airllm prepare --model meta-llama/Llama-3.3-70B-Instruct \
+  --compression 4bit --shards-path /Volumes/fast/airllm-shards
+```
+
+```
+Prepared meta-llama/Llama-3.3-70B-Instruct: layer shards are on disk and the
+first call will not have to split them.
+```
+
+`--shards-path` is worth pointing at your fastest volume: the shard read *is*
+the decode speed. `--delete-original` drops the downloaded checkpoint once the
+shards exist, halving the disk requirement — at the cost of re-downloading if the
+shards are ever lost.
+
+### resolve --backend airllm
+
+The same brief, resolved for streaming instead of for Ollama:
+
+```sh
+best-engine-ai-helper resolve --brief llm.brief.yaml --backend airllm
+```
+
+```
+Wrote llm.engine.yaml
+  backend: airllm  (llm=meta-llama/Llama-3.3-70B-Instruct)
+  NOTE: hardware-specific — add 'llm.engine.yaml' to .gitignore, do not commit.
+  bring it up:  best-engine-ai-helper airllm prepare --model meta-llama/Llama-3.3-70B-Instruct
+```
+
+```yaml
+# llm.engine.yaml (gitignored, machine-specific)
+backend: airllm
+base_url: ''              # a library, not a server: it runs in your process
+min_tps: 0.01             # the batch floor, not the 15 tok/s interactive one
+airllm:
+  activate: true
+  trigger: manual
+  reason: Layer streaming was requested explicitly and runs here on cuda.
+  runtime: cuda
+  installed: true
+  compression: null
+  blockers: []
+llm:
+  model: meta-llama/Llama-3.3-70B-Instruct
+  catalog_id: llama3.3:70b
+  backend: airllm         # per-kind, so a mixed descriptor is readable
+  streaming: true
+  ram_gb: 6.1             # one resident shard
+  checkpoint_gb: 140.0    # what every token re-reads
+  layers: 80
+  layers_estimated: false
+  disk_peak_gb: 294.0
+  disk_steady_gb: 154.0
+  disk_fits: true
+  est_tokens_per_s: 0.024
+  seconds_per_token: 41.7
+  structured_output: false  # airllm has no schema-constrained generation
+  fits: true
+  comfortable: true
+serve:
+- best-engine-ai-helper airllm prepare --model meta-llama/Llama-3.3-70B-Instruct
+```
+
+Or let it happen by itself: with no `--backend`, a kind for which nothing fits
+this machine falls back to streaming on its own, and only that kind does. Set
+`airllm: never` in the brief (or `BEST_ENGINE_AIRLLM=never`) to switch the
+escalation off entirely.
+
+### From Python
+
+```python
+import best_engine_ai_helper as beah
+
+hw, disk = beah.available_memory(), beah.disk_profile(measure=True)
+entry = {"id": "llama3.3:70b", "size_b": 70, "layers": 80,
+         "hf_id": "meta-llama/Llama-3.3-70B-Instruct"}
+
+# Three different answers to "how fast is it", all of them true
+timing = beah.airllm_generation_time(entry, disk["read_gbs"], new_tokens=300, batch=8)
+print(timing["decode_tps"])              # 0.024  — steady state, one sequence
+print(timing["time_to_first_token_s"])   # 41.2   — one pass, prompt included
+print(timing["effective_tps"])           # 0.194  — eight answers share each pass
+
+# Should this machine stream at all?
+print(beah.airllm_decide(conventional_resolved=False)["reason"])
+
+# Native or streamed, for a 300-token answer?
+print(beah.airllm_compare(beah.load_catalog(), hw=hw, disk=disk,
+                          bandwidth_gbs=beah.compute_profile()["bandwidth_gbs"],
+                          new_tokens=300)["verdict"])
+
+# With the extra installed: run it, in this process, no server involved
+print(beah.airllm_generate("Rate this product description 1-5 and say why:…",
+                           model="meta-llama/Llama-3.3-70B-Instruct",
+                           max_new_tokens=64))
+```
+
+### HTTP / MCP
+
+```sh
+curl -s 'http://127.0.0.1:8000/api/airllm?answer_tokens=300&batch=8' | jq '.comparison.verdict'
+```
+
+```json
+"Streaming buys 11 benchmark points (89 vs 78) for 2647x the wait: 3.5 h instead of 5 s for a 300-token answer."
+```
+
+The endpoint returns the decision, the storage profile, the ranked plans and the
+comparison in one call, and is exposed as an MCP tool like every other route.
+
+---
+
 ## Python library usage
 
 All public functions are importable without invoking Click:

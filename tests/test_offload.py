@@ -1058,3 +1058,54 @@ def test_the_comparison_is_reachable_from_the_package_root() -> None:
     assert root.airllm_compare is offload.compare
     assert root.airllm_generation_time is offload.generation_time
     assert root.airllm_seconds_per_pass is offload.seconds_per_pass
+
+
+def test_a_bigger_slower_weaker_candidate_never_wins() -> None:
+    """Dominated on every axis, so size alone must not carry it.
+
+    The first rule here was "biggest that runs", and the side-by-side
+    comparison showed what that costs: a 141B mixture-of-experts scoring 84 beat
+    a dense 72B scoring 87 on parameter count, while taking twice as long per
+    token. Nobody would choose that. Capability leads; size only decides where
+    the benchmark is silent.
+    """
+    moe = {
+        "id": "moe:141b",
+        "kind": "llm",
+        "size_b": 141,
+        "layers": 56,
+        "hf_id": "x/moe",
+        "benchmarks": {"general": 84},
+    }
+    dense = {
+        "id": "dense:72b",
+        "kind": "llm",
+        "size_b": 72,
+        "layers": 80,
+        "hf_id": "x/dense",
+        "benchmarks": {"general": 87},
+    }
+    plans = offload.rank([moe, dense], budget_gb=24.0, disk=FAST_DISK)
+    chosen = offload.pick(plans)
+
+    assert chosen is not None
+    assert chosen["catalog_id"] == "dense:72b"
+    assert chosen["est_tokens_per_s"] > plans[-1]["est_tokens_per_s"]
+    # The table's first row and the pick are the same model, or the display
+    # contradicts the decision.
+    assert plans[0]["catalog_id"] == chosen["catalog_id"]
+
+
+def test_size_still_decides_when_no_benchmark_does() -> None:
+    """An absent score ranks low and is honest; among silent entries, bigger wins."""
+    small = {"id": "s", "kind": "llm", "size_b": 8, "layers": 32, "hf_id": "x/s"}
+    large = {"id": "l", "kind": "llm", "size_b": 70, "layers": 80, "hf_id": "x/l"}
+    scored_small = {**small, "benchmarks": {"general": 74}}
+
+    both_silent = offload.pick(offload.rank([small, large], budget_gb=24.0, disk=FAST_DISK))
+    one_scored = offload.pick(offload.rank([scored_small, large], budget_gb=24.0, disk=FAST_DISK))
+
+    assert both_silent is not None and both_silent["catalog_id"] == "l"
+    # A measured 74 outranks an unmeasured giant, the same way it does
+    # everywhere else in this package.
+    assert one_scored is not None and one_scored["catalog_id"] == "s"

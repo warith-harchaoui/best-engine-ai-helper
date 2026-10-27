@@ -20,7 +20,10 @@ are downloaded. Two honest cases:
    the model weights via Ollama (a normal download from Ollama's servers).
    After that, everything runs offline. Refreshing the catalog
    (`catalog update`) is also online, but optional: the bundled catalog is
-   enough for everyday use.
+   enough for everyday use. Layer streaming (the optional `[airllm]` extra)
+   follows the same rule: one download from the HuggingFace Hub, then the
+   model runs from your own disk — in your own process, with no server at
+   all.
 
 A minimal browser GUI (`best-engine-ai-helper gui`) covers the read-only half
 of this flow (the hardware snapshot and the task-to-engine recommendation)
@@ -48,9 +51,11 @@ This package sits at the base of the AI Helpers suite's model-selection layer: t
   PyYAML, click, requests, langdetect, and the FastAPI/MCP surfaces
   (`fastapi`, `uvicorn`, `fastapi-mcp`). The CLI, GUI, HTTP API, and MCP
   server are all part of the default install, nothing extra to opt into.
-- Optional: `[cloud]` for cloud-provider mode (retry, caching,
-  pseudonymization, an OS-keychain fallback for API keys) and `[filtered]`
-  for real NSFW classifiers (a DistilBERT text model; LAION's CLIP-based
+- Optional: `[airllm]` to run a model that does **not** fit in memory by
+  streaming its layers off disk (see [Too large to load, still
+  runnable](#too-large-to-load-still-runnable-layer-streaming)), `[cloud]` for
+  cloud-provider mode (retry, caching, pseudonymization, an OS-keychain
+  fallback for API keys) and `[filtered]` for real NSFW classifiers (a DistilBERT text model; LAION's CLIP-based
   image detector, via `transformers` for the CLIP encoder and a bundled
   `onnxruntime` model for the classifier head). See [Two modes: local (free)
   and cloud (paid)](#two-modes-local-free-and-cloud-paid) below and
@@ -167,6 +172,10 @@ best-engine-ai-helper gui
 
 # Who's calling what, and at what cost (local SQLite ledger)
 best-engine-ai-helper activity
+
+# Nothing good fits? See what this machine could run by streaming layers off
+# disk, and what the better model would cost you in seconds per token
+best-engine-ai-helper airllm compare --tokens 300
 ```
 
 The same `/api/system`, `/api/recommend`, and `/api/activity` endpoints are
@@ -217,7 +226,9 @@ read the same ledger. See `best_engine_ai_helper.observe` for the library API
 ## How selection works
 
 Selection weighs four factors, each made explicit in the `report` output so the
-recommendation is reproducible and can be argued with.
+recommendation is reproducible and can be argued with. (One backend is judged on
+different ones, because a different resource binds it: see [layer
+streaming](#too-large-to-load-still-runnable-layer-streaming) below.)
 
 ### 1. Structured-output capability (can it be driven by a schema?)
 
@@ -267,7 +278,9 @@ alternative when one is nearly as strong. Bigger is not automatically better: a
 72B model that technically fits may run at a few tokens/s, while an 8-14B model
 leaves headroom and runs several times faster.
 
-When nothing fits, the tool falls back to the smallest model and says so.
+When nothing fits, the tool falls back to the smallest model and says so — and
+on a machine with the disk for it, offers to run a *good* model instead by
+streaming its layers (see [below](#too-large-to-load-still-runnable-layer-streaming)).
 
 ### 5. Live server load (optional, `--live`)
 
@@ -351,6 +364,335 @@ is 15 tok/s, so an uncorrected estimate of 28.3 sails past it while the real
 15.2 only just clears it. The correction is the difference between a
 recommendation that sounds comfortable and one that is.
 
+## Too large to load, still runnable: layer streaming
+
+Everything above answers one question: **which model fits?** This section is
+about the question that follows when the honest answer is *none of the good
+ones*.
+
+A transformer never needs all of its layers in memory at once. Decoding reads
+layer 1, then layer 2, then layer 3; only the layer being computed has to be
+resident. Keep one layer shard in memory, stream the rest off the disk, and the
+memory a model needs stops scaling with its parameter count and starts scaling
+with its *widest single layer*. A 70B model becomes about **4 GB resident
+instead of 141 GB**.
+
+The runtime that does this is [airllm](https://github.com/lyogavin/airllm)
+(Apache-2.0), an optional extra of this package:
+
+```sh
+pip install 'best-engine-ai-helper[airllm]'
+```
+
+Everything else here — detection, the catalog, recommendation, Ollama, vLLM, the
+GUI, the MCP surface — works without it.
+
+### What it costs: seconds per token, not tokens per second
+
+The trade is real and it is large. Under every other backend, generation is
+bounded by **memory bandwidth**. Under streaming it is bounded by the **disk**,
+and by a much harder bound: the weights do not stay anywhere, so each token
+costs a full pass over the checkpoint. On a 4 GB/s NVMe drive a 70B model at
+bf16 decodes at about **0.024 tok/s — roughly forty seconds a token**.
+
+That makes streaming a batch tool: one hard question, an overnight evaluation, a
+quality reference to judge the small model you run every day. Not a chat window.
+The package says so in every surface, in seconds per token rather than in
+tokens per second, because "0.024" reads like a rounding error and "41 s/token"
+reads like what it is.
+
+### The unit is a forward pass, which has three useful consequences
+
+A streamed forward pass walks the layers in order, reads each shard, computes it
+over *every token in the pass*, and frees it. So a pass costs what reading the
+checkpoint once costs — **independent of how many tokens rode through it**.
+Three things follow, and the second and third are levers you can pull:
+
+**1. One generated token costs one pass.** Decoding is autoregressive: token
+N+1 needs its own walk through every layer. This is where the
+seconds-per-token figure comes from, and it is why a long *answer* is
+expensive.
+
+**2. The prompt is nearly free.** A 2000-token prompt is processed in the same
+single pass as a 10-token one. No other backend has that property — under
+Ollama or vLLM a long prompt is real prefill work. It makes streaming
+comparatively good at *long document in, short verdict out*: classification,
+extraction, judging, a one-line answer over a long context. Past a few thousand
+tokens the per-layer compute starts to matter and the estimate says so rather
+than pretending otherwise.
+
+**3. A batch of B prompts costs one pass, not B.** B independent questions
+answered together go B times faster per answer. Compression gives about 3×; a
+batch of 8 gives 8×. For a real batch job the batch is the bigger lever by far,
+and its only cost is one KV cache per sequence — which the footprint estimate
+charges you for, so a batch job cannot plan itself into an out-of-memory.
+
+So "how fast is it?" has three answers, and quoting the wrong one is how a batch
+job gets planned as an interactive one. All three are reported:
+
+| Figure | What it means |
+|---|---|
+| `decode_tps` | Steady-state rate, one token per pass. The headline, and the pessimistic reading. |
+| `time_to_first_token_s` | One pass, prompt included — the *same* as any other token, which is unusual. |
+| `effective_tps` | Tokens delivered per second of wall clock, batch included. The one that decides whether a job finishes overnight. |
+
+### What it costs in memory, and where the real constraint is
+
+Resident memory is one shard, plus the one thing streaming does **not** shrink:
+
+```
+resident ≈ (checkpoint ÷ layers) × 1.25 × shards_resident
+           + KV cache for every layer
+           + activations and runtime buffers
+```
+
+- `checkpoint ÷ layers` is the average shard. The **biggest** shard is the
+  token-embedding matrix rather than a decoder layer — a modern 128k–152k
+  vocabulary makes it so — hence the 1.25.
+- `shards_resident` is 2 with airllm's prefetch on (the next shard is read while
+  the current one computes, which is where its ~10% speed-up comes from) and 1
+  without. Turning prefetch off is the single knob that gets a 70B model onto a
+  4 GB card, and this package tries it automatically before rejecting a
+  candidate for memory.
+- The **KV cache is not streamed**: autoregressive decoding cannot recompute
+  earlier keys and values, so every layer's slice stays resident for the whole
+  generation. It grows with context *and* with depth, and on a deep model it is
+  the second-largest term. This is why a context length buys or loses you a
+  model here.
+
+Worked, on a 4 GB/s NVMe drive at a 4k context:
+
+| Model | Checkpoint | Layers | Resident (prefetch / serial) | s/token | Free disk to split |
+|---|---|---|---|---|---|
+| Llama-3.3-70B | 140 GB | 80 | 6.1 GB / 3.9 GB | 41 s | 294 GB |
+| Qwen2.5-VL-72B | 146 GB | 80 | 6.3 GB / 4.0 GB | 43 s | 307 GB |
+| Mixtral-8x22B (141B, MoE) | 282 GB | 56 | 14.0 GB / 7.7 GB | 83 s | 592 GB |
+| Qwen3-235B-A22B (MoE) | 470 GB | 94 | 14.5 GB / 8.2 GB | 138 s | 987 GB |
+| DeepSeek-V3 (671B, fp8, MoE) | 671 GB | 61 | 29.0 GB / 15.2 GB | 197 s | 1409 GB |
+| Llama-3.1-405B | 810 GB | 126 | 18.5 GB / 10.5 GB | 238 s | 1701 GB |
+
+Depth is what makes the last row possible: 405B parameters over 126 layers is a
+*leaner shard* than 141B over 56. A mixture-of-experts breaks the usual
+relation between size and depth (DeepSeek-V3 is 671B across 61 layers, where
+the dense trend would predict twice as many), so a MoE entry that does not
+declare its `layers` is **refused** rather than guessed at — a guess there is
+wrong by a factor of two, in the direction that over-promises.
+
+Read that last column first. **Disk space, not memory, is what usually refuses
+a model**: airllm writes per-layer shards beside the downloaded checkpoint, so
+the cache holds both at once and the split needs roughly twice the checkpoint
+free. A 405B model is an 810 GB download before it is anything else. Memory is
+the easy half of streaming.
+
+These figures were checked against airllm's own published numbers, and the check
+is worth stating precisely because the headline "70B on a 4 GB GPU" is true at a
+context length nobody mentions: the same model is 3.0 GB serially at a 1k
+context — the demo — 3.9 GB serially at 4k, and 6.1 GB at 4k with prefetch on.
+The weights are identical in all three. What moves is the cache that is not
+streamed.
+
+### Native model or streamed model? `airllm compare` answers in one screen
+
+This is the decision streaming actually forces, and neither ranking answers it
+alone. A machine that runs a 14B model comfortably can also stream a 70B one:
+the two differ by a handful of benchmark points in one direction and three
+orders of magnitude of latency in the other.
+
+A tokens-per-second column cannot settle it — 26 and 0.024 do not sit on a scale
+anybody reasons about. Seconds for the same answer do:
+
+```sh
+best-engine-ai-helper airllm compare --tokens 300
+```
+
+```
+=== LLM: ollama vs airllm, for a 300-token answer ===
+  budgets: 11.04 GB resident (ollama) · 22.08 GB per shard (airllm) · disk 4.0 GB/s (declared)
+model                       backend  score  resident  tok/s  answer  runs
+--------------------------  -------  -----  --------  -----  ------  ----
+qwen3:72b-q8_0              ollama   89     78.0      8.4    36 s    NO
+qwen3:72b-q4_k_m            ollama   87     48.0      13.7   22 s    NO
+qwen3:14b                   ollama   78     10.5      62.4   5 s     yes
+gemma3:12b                  ollama   77     9.2       71.2   4 s     yes
+Qwen/Qwen3-72B-Instruct     airllm   89     6.2       0.024  3.5 h   yes
+Qwen/Qwen3-VL-72B-Instruct  airllm   88     6.2       0.024  3.5 h   yes
+
+  Streaming buys 11 benchmark points (89 vs 78) for 2647x the wait: 3.5 h
+  instead of 5 s for a 300-token answer.
+```
+
+Read the `runs` column: the 72B that scores 89 is right there in the Ollama
+catalog and **does not fit** this 24 GB card. Streaming is what puts the same
+class of model within reach, at the price in the `answer` column.
+
+Each side is ranked by its own backend's rules, and the streamed side inverts
+the usual one. Everywhere else this package picks the **leanest** model within a
+few benchmark points of the best, because a gigabyte of residency is paid on
+every run and competes with your own workload. Streaming breaks that premise:
+residency is one shard whatever the model's size, so leanness buys nothing and
+the anti-greed rule lands on an 8B model — the one senseless outcome, since an
+8B model runs natively a hundred times faster. The streamed pick is instead the
+**most capable** model that runs, by benchmark score, with parameter count
+deciding only where no benchmark does.
+
+Not simply the biggest, and the difference is not academic: the first rule here
+*was* "biggest that runs", and this very table showed what it cost — a 141B
+mixture-of-experts scoring 84 beat a dense 72B scoring 87 on parameter count
+while taking twice as long per token. Bigger, slower **and** weaker is dominated
+on every axis a caller cares about.
+
+The comparison carries one deliberate bias, stated so you can discount it: the
+native timing counts decode only and ignores prompt processing, while the
+streamed timing is complete. That flatters the native side — the right direction
+for an honest comparison whose conclusion is usually "stay native", and the
+backend has to be willing to say that about itself.
+
+### When it switches on
+
+Never by default. Two triggers, and nothing else:
+
+**Automatic** — the conventional backend resolved nothing that *fits* this
+machine for a kind your brief needs. Streaming is then the difference between a
+model and no model, so `resolve` proposes it with its cost stated. The rescue is
+**per kind**: if your LLM fits and no VLM does, only the VLM falls back, and the
+engine file is honestly mixed (Ollama for one kind, `airllm` for the other —
+`model_for()` reads the per-kind backend first). The descriptor records the
+decision and its reason under `airllm:`, *including when the answer was no*, so
+a machine that cannot stream says why instead of staying silent.
+
+**Manual** — you ask:
+
+```sh
+best-engine-ai-helper resolve --brief llm.brief.yaml --backend airllm
+```
+
+or in the committed brief:
+
+```yaml
+kind: llm
+task: judge the quality of generated product descriptions
+airllm: always          # auto (default) | always | never
+airllm_compression: 4bit
+```
+
+or in the environment, which outranks nothing but defaults:
+
+```sh
+export BEST_ENGINE_AIRLLM=always   # or never, to switch the whole path off
+```
+
+`never` wins over everything, including the automatic trigger. A human who
+wants a 235B model on a laptop overnight is making a legitimate choice that no
+automatic rule should have to guess, and a human who never wants their disk
+thrashed deserves one switch that means it.
+
+### The commands
+
+```sh
+# Can this machine stream, should it, and what is in the way?
+best-engine-ai-helper airllm status
+best-engine-ai-helper airllm status --measure      # measure the disk, don't assume it
+
+# What could it stream, biggest runnable first?
+best-engine-ai-helper airllm plan --kind llm --compression 4bit
+
+# Native or streamed, same answer length, both prices
+best-engine-ai-helper airllm compare --tokens 300 --batch 8
+
+# Pay the download and the layer split now, not inside your first call
+best-engine-ai-helper airllm prepare --model meta-llama/Llama-3.3-70B-Instruct
+```
+
+`--measure` is worth knowing about. The drive sets the entire speed of this
+backend, so assuming its class (Apple internal NVMe, generic NVMe, SATA SSD,
+spinning disk) is a weaker input than measuring it. The measurement writes and
+reads back ~256 MB **with the page cache bypassed** (`F_NOCACHE` on macOS,
+`O_DIRECT` on Linux); without that step the read is served from RAM and reports
+the memory bus — which is how this probe first claimed 13 GB/s on a drive whose
+own specification tops out near 7. On a platform with no way to bypass the cache
+it returns nothing rather than a flattering number, and every surface labels the
+figure `measured` or `declared`.
+
+### Limits, stated plainly
+
+- **No structured output.** airllm exposes raw generation, with no equivalent of
+  Ollama's grammar-constrained `format`. Every streamed model is therefore
+  `structured_output: false` — a fact about the backend, not about the weights —
+  and the suite's schema-driven tasks stay on an Ollama model. `llm.chat` raises
+  rather than honouring a schema in name only.
+- **Text only.** The adapter returns a bare causal language model, without the
+  image processor a VLM prompt needs. Images raise instead of being silently
+  answered from the text alone.
+- **No server.** airllm is a library, so a streamed model runs *in your own
+  process*; the engine file's `base_url` is empty on purpose, because inventing
+  a localhost port would send a consumer looking for a daemon that will never
+  exist. `llm.chat` keeps the loaded model between calls — splitting a 141 GB
+  checkpoint per call would make the transport unusable.
+- **Experimental on CPU.** airllm's CPU path only works for unsharded models, so
+  a CPU-only machine is not offered streaming automatically. It can still be
+  asked for.
+
+### Why airllm is imported rather than copied in
+
+A fair question for a package that re-derives the arithmetic. Four reasons:
+
+1. **Dependency weight.** airllm needs torch, transformers, accelerate,
+   safetensors, scipy and sentencepiece — hundreds of megabytes. This package is
+   pure Python and installs in seconds. Making every user of `detect` pay for a
+   deep-learning stack to get a *recommendation* would be the wrong trade; as an
+   extra it is opt-in, exactly like `[cloud]` and `[filtered]`.
+2. **It is a moving target.** airllm's value is per-family sharding code (Llama,
+   Qwen, DeepSeek, Mixtral, ChatGLM, Kimi), rewritten as each new family ships.
+   Vendored, it would be frozen at the day it was copied and rot from the first
+   release after.
+3. **Licence hygiene.** airllm is Apache-2.0; this package is BSD-3-Clause.
+   Importing keeps the two trees, and their notice obligations, separate.
+4. **The division of labour is real, not a dodge.** airllm decides *how* to
+   stream. Nothing in it decides *whether* this machine should, *which* model it
+   should stream, or *what it will cost you in time* — and those are the three
+   questions a caller of this package is actually asking.
+
+So the runtime is imported and the **decision** is native: `offload.py` owns the
+footprint arithmetic, the disk-bound timing model, the activation policy, the
+native-versus-streamed comparison, and the catalog metadata all of it needs
+(`layers`, `dtype`, `moe`). None of that imports airllm, which is why
+`airllm status` and `airllm compare` work on a machine where the extra was never
+installed — and tell you what installing it would buy.
+
+### From Python
+
+```python
+import best_engine_ai_helper as beah
+
+hw, disk = beah.available_memory(), beah.disk_profile()
+
+# Should this machine stream at all?
+decision = beah.airllm_decide(conventional_resolved=False)
+print(decision["activate"], decision["reason"], decision["blockers"])
+
+# What would a 70B cost here?
+entry = {"id": "llama3.3:70b", "size_b": 70, "layers": 80,
+         "hf_id": "meta-llama/Llama-3.3-70B-Instruct"}
+print(beah.airllm_footprint_gb(entry))                      # 6.1 GB resident
+print(beah.airllm_generation_time(entry, disk["read_gbs"], new_tokens=300, batch=8))
+
+# Native or streamed, for a 300-token answer?
+report = beah.airllm_compare(beah.load_catalog(), hw=hw, disk=disk,
+                             bandwidth_gbs=beah.compute_profile()["bandwidth_gbs"],
+                             new_tokens=300)
+print(report["verdict"])
+
+# And, with the extra installed, actually run it
+text = beah.airllm_generate("Judge this description:…",
+                            model="meta-llama/Llama-3.3-70B-Instruct",
+                            max_new_tokens=64)
+```
+
+The HTTP surface answers the same questions in one call —
+`GET /api/airllm?answer_tokens=300&batch=8` returns the decision, the storage
+profile, the ranked plans and the comparison — and it is reachable as an MCP
+tool like every other endpoint.
+
 ## Available commands
 
 | Command | Description |
@@ -374,6 +716,10 @@ recommendation that sounds comfortable and one that is.
 | `usages list` | List usage profiles and families (needs only, never a model) |
 | `usages show <profile>` | Show one profile's needs (task, structured output, floors) |
 | `usages resolve <profile>` | Resolve a profile (or `--family`) to the model best-engine picks here |
+| `airllm status` | Can this machine stream layers off disk, should it, and what is in the way (`--measure` to measure the drive) |
+| `airllm plan` | What a too-large model would cost here, ranked: resident shard, seconds per token, disk to split |
+| `airllm compare` | Native model vs streamed model, same answer length, both priced in seconds |
+| `airllm prepare` | Download and split a checkpoint now, instead of inside the first call |
 
 ## Model catalog
 

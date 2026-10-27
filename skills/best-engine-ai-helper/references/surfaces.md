@@ -88,6 +88,22 @@ can advise but cannot download weights or rewrite the environment file.
 to switch. It covers the hardware snapshot and the task-to-engine
 recommendation without touching the terminal. See the repo's `GUI.md`.
 
+## 6. Layer streaming — the one backend with no server
+
+`airllm` is a library, not a daemon, so a streamed model runs **in the caller's
+own process**. The engine descriptor's `base_url` is empty on purpose: a
+localhost port would send a consumer looking for something that will never
+exist. `llm.chat` dispatches on the backend name, keeps the loaded model
+between calls (splitting a 141 GB checkpoint per call would make the transport
+unusable), and raises rather than accepting images or a JSON schema, neither of
+which this runtime can honour.
+
+The read-only half is on every other surface: `airllm status|plan|compare` on
+the CLI, `GET /api/airllm?answer_tokens=300&batch=8` over HTTP (decision +
+storage profile + ranked plans + native-vs-streamed comparison in one call),
+the same route as an MCP tool, and a "Too large to load, still runnable" panel
+in the GUI in both languages.
+
 ## Where this sits in the suite
 
 ```

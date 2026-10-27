@@ -6,7 +6,10 @@ that should invoke it.
 
 `best-engine-ai-helper` **chooses** a local LLM or VLM for the machine at hand,
 pulls it through Ollama, gates it on quality, and writes the environment file
-downstream projects read. It is local-first: detection, selection, the gates
+downstream projects read. It also answers the question that follows when
+nothing good fits: a model too large to load can still be *run* by streaming
+its layers off disk, and this package sizes that, times it, and says whether
+the better model is worth the wait. It is local-first: detection, selection, the gates
 and the env file all run on your machine. It does **not** run inference, serve
 a model, fine-tune, or pick a vector index.
 
@@ -28,6 +31,11 @@ a model, fine-tune, or pick a vector index.
 | Task families / usages | `usages` | `list_usages`, `get_usage`, `resolve_usage`, `list_families` | n/a |
 | Refresh the catalogue (online) | `catalog update`, `update` | — | n/a |
 | Browser GUI (read-only half) | `gui` | — | `GET /gui` |
+| Can this machine stream layers? | `airllm status` | `airllm_decide`, `airllm_runtime`, `disk_profile` | `GET /api/airllm` |
+| What could it stream, and at what price? | `airllm plan` | `airllm_rank`, `airllm_plan`, `airllm_pick` | `GET /api/airllm` |
+| Native model or streamed model? | `airllm compare` | `airllm_compare`, `airllm_generation_time` | `GET /api/airllm` |
+| Split a checkpoint before the first call | `airllm prepare` | `airllm_load` | n/a |
+| Run a streamed model | — | `airllm_generate`, `llm.chat(engine=…)` | n/a |
 
 There is exactly one command line, `best-engine-ai-helper …`, built with
 click — a core dependency here, not an optional extra, so nothing has to be
@@ -52,6 +60,11 @@ do.
 - **Throughput and cost**: "how many tokens per second", "will this be fast
   enough", "estimate the footprint", "how much memory will it take",
   "headroom".
+- **Too large to load**: "can I run a 70B on 8 GB", "run a model bigger than
+  my VRAM", "my GPU is too small for this model", "run DeepSeek / a 235B
+  locally", "stream layers off disk", "layer-by-layer inference", "airllm",
+  "is it worth running the big model slowly", "how long would a 70B take per
+  token", "what is the biggest model this machine could possibly run".
 - **Resolution in code**: "which model should this package use", "don't
   hardcode the model name", "read the resolved model", "the env file with the
   chosen engine", `model_for`, `text_model`, `vision_model`,
@@ -87,6 +100,10 @@ the user never names it:
   `ann-router`, the vector-search sibling.
 - Choosing a cloud/API model for its own sake — the `[cloud]` extra adds price
   lookups, but the package's purpose is local models.
+- Wanting a *fast* answer from a model that does not fit. Layer streaming is
+  seconds per token: it is the right answer to "I need a better model than
+  fits" and the wrong one to "I need this quickly". `airllm compare` says
+  which case you are in, and usually says "stay native".
 - Picking a Python library, a framework, or a package manager.
 
 ## See also

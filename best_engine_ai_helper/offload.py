@@ -1516,10 +1516,11 @@ def rank(
     Rank catalog entries by what streaming unlocks on this machine.
 
     Streaming inverts the usual ranking. With memory no longer the binding
-    constraint, the best streamable model is simply the **biggest** one whose
-    shards still fit and whose rate clears the batch floor — parameter count is
-    the one axis every benchmark correlates with, and the trade being made here
-    is explicitly "slower for better".
+    constraint, leanness stops being a virtue: what is wanted is the most
+    capable model whose shards still fit and whose rate clears the batch floor,
+    with parameter count deciding only where no benchmark does. The trade being
+    made here is explicitly "slower for better", so "better" is the sort key —
+    see :func:`pick` for why that is not the same as "biggest".
 
     Parameters
     ----------
@@ -1546,8 +1547,8 @@ def rank(
     Returns
     -------
     list[dict[str, Any]]
-        :func:`plan` dicts, usable ones first and biggest first within that,
-        each carrying the entry's ``size_b`` and benchmark ``score`` for
+        :func:`plan` dicts, usable ones first and most capable first within
+        that, each carrying the entry's ``size_b`` and benchmark ``score`` for
         display.
 
     Examples
@@ -1616,9 +1617,9 @@ def rank(
         row["score"] = (entry.get("benchmarks") or {}).get("general")
         plans.append(row)
 
-    # Usable first, then biggest: among models that genuinely run here, more
-    # parameters is the whole reason to accept seconds per token.
-    plans.sort(key=lambda r: (r["usable"], r["size_b"]), reverse=True)
+    # Usable first, then by the same key `pick` uses, so the table's top row
+    # and the chosen candidate are never two different models.
+    plans.sort(key=lambda r: (r["usable"], r.get("score") or 0.0, r["size_b"]), reverse=True)
     return plans
 
 
@@ -1630,17 +1631,24 @@ def pick(plans: list[dict[str, Any]]) -> dict[str, Any] | None:
     benchmark points of the best — the anti-greed rule, and the right one when
     a gigabyte of footprint is paid on every run and competes with the caller's
     own workload. Streaming breaks that premise: resident memory is one shard
-    whatever the model's size, so a bigger model costs nothing but time, and
-    time is precisely what a caller who chose streaming has already agreed to
-    spend. Applying the anti-greed rule here picks an 8B model to stream, which
-    is the one outcome that makes no sense at all: an 8B model runs natively at
-    a hundred times the speed.
+    whatever the model's size, so leanness buys nothing, and the anti-greed rule
+    lands on an 8B model — the one outcome that makes no sense at all, since an
+    8B model runs natively a hundred times faster.
 
-    So: among candidates that fit memory AND disk, the **biggest** one clearing
-    :data:`COMFORT_TPS_STREAMING`; benchmark score breaks a size tie. When none
-    clears the floor, the **fastest** one that still fits, because "everything
-    here is too slow" is better answered with the least-slow option than with
-    the largest.
+    So, among candidates that fit memory AND disk and clear
+    :data:`COMFORT_TPS_STREAMING`: the **most capable** one, by benchmark score,
+    with parameter count as the tiebreak. Not simply the biggest — that was the
+    first rule here and the side-by-side comparison made its error obvious: a
+    141B mixture-of-experts scoring 84 beat a dense 72B scoring 87 on size
+    alone, while being twice as slow. A candidate that is bigger, slower AND
+    weaker is dominated on every axis a caller cares about. Size decides only
+    where the benchmark is silent, which is the convention the rest of this
+    package follows: an absent score ranks low and is honest, a guessed one
+    ranks wrongly and looks authoritative.
+
+    When nothing clears the floor, the **fastest** candidate that still fits,
+    because "everything here is too slow" is better answered with the least-slow
+    option than with the largest.
 
     Parameters
     ----------
@@ -1660,8 +1668,14 @@ def pick(plans: list[dict[str, Any]]) -> dict[str, Any] | None:
     ...         {"id": "xl", "size_b": 671, "layers": 61, "dtype": "fp8",
     ...          "hf_id": "x/xl"}]
     >>> plans = rank(rows, budget_gb=40.0, disk=disk)
-    >>> pick(plans)["catalog_id"]          # biggest that clears the floor
+    >>> pick(plans)["catalog_id"]          # unscored: size is all there is
     'm'
+    >>> # With scores on the table, capability wins over sheer size — here the
+    >>> # smaller model is better AND faster, so bigger-but-weaker is dominated.
+    >>> scored = [{**rows[1], "benchmarks": {"general": 84}},
+    ...           {**rows[0], "benchmarks": {"general": 87}}]
+    >>> pick(rank(scored, budget_gb=40.0, disk=disk))["catalog_id"]
+    's'
     >>> # Nothing clears the floor on a slow drive: take the least-slow.
     >>> slow = rank(rows, budget_gb=40.0, disk={"read_gbs": 0.12, "free_gb": 4000.0})
     >>> pick(slow)["catalog_id"]
@@ -1674,7 +1688,7 @@ def pick(plans: list[dict[str, Any]]) -> dict[str, Any] | None:
         return None
     usable = [p for p in eligible if p["usable"]]
     if usable:
-        return max(usable, key=lambda p: (p["size_b"], p.get("score") or 0.0))
+        return max(usable, key=lambda p: (p.get("score") or 0.0, p["size_b"]))
     fastest = max(eligible, key=lambda p: p["est_tokens_per_s"] or 0.0)
     osh.warning(
         "No streaming candidate clears the "

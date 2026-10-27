@@ -31,7 +31,10 @@ téléchargés. Deux cas, en toute franchise :
 2. **La seule réserve : le téléchargement initial.** La commande `pull` télécharge les poids
    du modèle via Ollama (un téléchargement normal depuis les serveurs Ollama). Ensuite, tout
    fonctionne hors ligne. La mise à jour du catalogue (`catalog update`) est également en ligne,
-   mais optionnelle : le catalogue intégré suffit pour un usage courant.
+   mais optionnelle : le catalogue intégré suffit pour un usage courant. Le flux
+   de couches (l'extra optionnel `[airllm]`) suit la même règle : un
+   téléchargement depuis le Hub HuggingFace, puis le modèle s'exécute depuis
+   votre propre disque — dans votre propre processus, sans aucun serveur.
 
 Une GUI minimale dans le navigateur (`best-engine-ai-helper gui`) couvre la moitié en
 lecture seule de ce flux (les caractéristiques matérielles et la recommandation de moteur
@@ -61,7 +64,11 @@ Ce paquet est à la base de la couche de sélection de modèles de la suite AI H
   (`fastapi`, `uvicorn`, `fastapi-mcp`). La CLI, la GUI, l'API HTTP et le
   serveur MCP font tous partie de l'installation par défaut, rien
   d'optionnel à activer.
-- Optionnel : `[cloud]` pour le mode fournisseur cloud (retry, cache,
+- Optionnel : `[airllm]` pour exécuter un modèle qui ne tient **pas** en
+  mémoire, en lisant ses couches en flux depuis le disque (voir [Trop gros pour
+  tenir en
+  mémoire](#trop-gros-pour-tenir-en-mémoire-exécutable-quand-même--le-flux-de-couches)),
+  `[cloud]` pour le mode fournisseur cloud (retry, cache,
   pseudonymisation, repli sur le trousseau OS pour les clés API) et
   `[filtered]` pour de vrais classifieurs NSFW (un modèle DistilBERT pour le
   texte ; le détecteur d'image basé sur CLIP de LAION, via `transformers`
@@ -184,6 +191,11 @@ best-engine-ai-helper gui
 
 # Qui appelle quoi et à quel coût (journal SQLite local)
 best-engine-ai-helper activity
+
+# Rien de bon ne tient ? Voir ce que cette machine pourrait exécuter en lisant
+# les couches en flux depuis le disque, puis ce que le meilleur modèle coûterait
+# en secondes par jeton
+best-engine-ai-helper airllm compare --tokens 300
 ```
 
 Les mêmes points d'accès `/api/system`, `/api/recommend` et `/api/activity`
@@ -236,7 +248,10 @@ et `GET /api/activity` lisent le même journal. Voir
 ## Comment fonctionne la sélection
 
 La sélection pèse quatre facteurs, tous rendus explicites dans la sortie de `report` pour
-que la recommandation soit reproductible et discutable.
+que la recommandation soit reproductible et discutable. (Un moteur est jugé sur
+d'autres facteurs, parce qu'une autre ressource le borne : voir [le flux de
+couches](#trop-gros-pour-tenir-en-mémoire-exécutable-quand-même--le-flux-de-couches)
+plus bas.)
 
 ### 1. Capacité de sortie structurée
 
@@ -277,7 +292,10 @@ alternative plus légère et plus rapide quand elle est presque aussi forte. Plu
 pas toujours mieux : un modèle 72B qui tient tout juste peut tourner à quelques jetons/s,
 là où un modèle 8-14B laisse de la marge et va plusieurs fois plus vite.
 
-Quand aucun modèle ne tient, l'outil sélectionne le plus petit du catalogue et le signale.
+Quand aucun modèle ne tient, l'outil sélectionne le plus petit du catalogue puis
+le signale — puis, sur une machine qui a le disque pour cela, propose d'exécuter
+un *bon* modèle à la place en lisant ses couches en flux (voir [plus
+bas](#trop-gros-pour-tenir-en-mémoire-exécutable-quand-même--le-flux-de-couches)).
 
 #### Le débit mesuré, puis pourquoi l'estimation demandait une correction
 
@@ -358,6 +376,362 @@ sonde en direct (~0,1-0,5 s : `nvidia-smi`/`ioreg`, un ping Ollama local, un éc
 `psutil`) et rend la recommandation dépendante de cet instant précis plutôt que d'être une
 fonction déterministe du seul matériel, ce qui compte pour des rapports reproductibles et la CI.
 
+## Trop gros pour tenir en mémoire, exécutable quand même : le flux de couches
+
+Tout ce qui précède répond à une question : **quel modèle tient ?** Cette
+section traite de la question suivante, celle qui vient quand la réponse
+honnête est *aucun des bons*.
+
+Un transformeur n'a jamais besoin de toutes ses couches en mémoire à la fois. Le
+décodage lit la couche 1, puis la couche 2, puis la couche 3 ; seule la couche
+en cours de calcul doit être résidente. En gardant une tranche de couche en
+mémoire puis en lisant les autres depuis le disque, la mémoire qu'exige un
+modèle cesse d'être proportionnelle à son nombre de paramètres : elle devient
+proportionnelle à sa **plus large couche**. Un modèle de 70 milliards de
+paramètres passe ainsi de 141 Go à environ **4 Go résidents**.
+
+Le moteur qui fait cela est [airllm](https://github.com/lyogavin/airllm)
+(Apache-2.0), une dépendance optionnelle de ce paquet :
+
+```sh
+pip install 'best-engine-ai-helper[airllm]'
+```
+
+Tout le reste — la détection, le catalogue, la recommandation, Ollama, vLLM, la
+GUI, la surface MCP — fonctionne sans elle.
+
+### Ce que ça coûte : des secondes par jeton, pas des jetons par seconde
+
+Le marché est réel puis considérable. Sous tous les autres moteurs, la
+génération est bornée par la **bande passante mémoire**. Sous le flux de
+couches, elle est bornée par le **disque**, puis par une borne bien plus dure :
+les poids ne restent nulle part, donc chaque jeton coûte une passe complète sur
+le checkpoint. Sur un disque NVMe à 4 Go/s, un modèle de 70 milliards de
+paramètres en bf16 décode à environ **0,024 jeton/s, soit une quarantaine de
+secondes par jeton**.
+
+Cela fait du flux de couches un outil de traitement par lots : une question
+difficile, une évaluation nocturne, une référence de qualité pour juger le petit
+modèle que vous utilisez tous les jours. Pas une fenêtre de discussion. Le
+paquet le dit sur chaque surface, en secondes par jeton plutôt qu'en jetons par
+seconde, parce que « 0,024 » se lit comme une erreur d'arrondi alors que
+« 41 s/jeton » se lit pour ce que c'est.
+
+### L'unité est la passe avant, ce qui a trois conséquences utiles
+
+Une passe avant en flux parcourt les couches dans l'ordre, lit chaque tranche,
+la calcule sur **tous les jetons de la passe** puis la libère. Une passe coûte
+donc ce que coûte une lecture du checkpoint, **indépendamment du nombre de
+jetons qui l'ont traversée**. Trois choses en découlent, dont deux sont des
+leviers que vous pouvez actionner :
+
+**1. Un jeton produit coûte une passe.** Le décodage est autorégressif : le
+jeton N+1 exige son propre parcours de toutes les couches. C'est de là que vient
+le chiffre en secondes par jeton, puis c'est pourquoi une longue *réponse* coûte
+cher.
+
+**2. Le prompt est quasi gratuit.** Un prompt de 2000 jetons est traité dans la
+même passe unique qu'un prompt de 10 jetons. Aucun autre moteur n'offre cette
+propriété : sous Ollama ou sous vLLM, un long prompt est du vrai travail de
+préremplissage. Le flux de couches est donc comparativement bon pour « long
+document en entrée, verdict court en sortie » : classification, extraction,
+jugement, une réponse d'une ligne sur un long contexte. Au-delà de quelques
+milliers de jetons, le calcul par couche commence à compter puis l'estimation le
+signale au lieu de faire comme si de rien n'était.
+
+**3. Un lot de B prompts coûte une passe, pas B.** B questions indépendantes
+traitées ensemble vont B fois plus vite par réponse. La compression apporte
+environ ×3 ; un lot de 8 apporte ×8. Pour un vrai travail par lots, le lot est
+de loin le plus gros levier, son seul coût étant un cache KV par séquence — que
+l'estimation d'empreinte vous facture, pour qu'un travail par lots ne puisse pas
+se planifier lui-même jusqu'au manque de mémoire.
+
+« À quelle vitesse ? » a donc trois réponses, puis citer la mauvaise est la
+façon dont un travail par lots se fait planifier comme un travail interactif.
+Les trois sont rapportées :
+
+| Chiffre | Ce qu'il signifie |
+|---|---|
+| `decode_tps` | Débit en régime, un jeton par passe. Le chiffre d'affiche, le plus pessimiste aussi. |
+| `time_to_first_token_s` | Une passe, prompt compris — le *même* temps que n'importe quel autre jeton, ce qui est inhabituel. |
+| `effective_tps` | Jetons livrés par seconde d'horloge, lot compris. Celui qui décide si un travail finit dans la nuit. |
+
+### Ce que ça coûte en mémoire, puis où est la vraie contrainte
+
+La mémoire résidente, c'est une tranche, plus la seule chose que le flux de
+couches ne réduit **pas** :
+
+```
+résident ≈ (checkpoint ÷ couches) × 1,25 × tranches_résidentes
+           + cache KV de toutes les couches
+           + activations et tampons du moteur
+```
+
+- `checkpoint ÷ couches` est la tranche moyenne. La **plus grosse** tranche est
+  la matrice d'embedding des jetons plutôt qu'une couche de décodeur — un
+  vocabulaire moderne de 128 000 à 152 000 entrées le veut ainsi — d'où le 1,25.
+- `tranches_résidentes` vaut 2 avec le préchargement d'airllm (la tranche
+  suivante est lue pendant que la courante calcule, d'où son gain d'environ
+  10 %) puis 1 sans. Couper le préchargement est le seul bouton qui fait tenir un
+  70B sur une carte de 4 Go, puis ce paquet l'essaie automatiquement avant de
+  rejeter un candidat pour cause de mémoire.
+- Le **cache KV n'est pas diffusé** : le décodage autorégressif ne peut pas
+  recalculer les clés puis les valeurs antérieures, donc la tranche de chaque
+  couche reste résidente pendant toute la génération. Il croît avec le contexte
+  *et* avec la profondeur, puis sur un modèle profond c'est le deuxième terme le
+  plus lourd. C'est pourquoi une longueur de contexte vous fait gagner ou perdre
+  un modèle ici.
+
+Chiffré, sur un disque NVMe à 4 Go/s avec un contexte de 4k :
+
+| Modèle | Checkpoint | Couches | Résident (préchargé / série) | s/jeton | Disque libre pour la découpe |
+|---|---|---|---|---|---|
+| Llama-3.3-70B | 140 Go | 80 | 6,1 Go / 3,9 Go | 41 s | 294 Go |
+| Qwen2.5-VL-72B | 146 Go | 80 | 6,3 Go / 4,0 Go | 43 s | 307 Go |
+| Mixtral-8x22B (141B, MoE) | 282 Go | 56 | 14,0 Go / 7,7 Go | 83 s | 592 Go |
+| Qwen3-235B-A22B (MoE) | 470 Go | 94 | 14,5 Go / 8,2 Go | 138 s | 987 Go |
+| DeepSeek-V3 (671B, fp8, MoE) | 671 Go | 61 | 29,0 Go / 15,2 Go | 197 s | 1409 Go |
+| Llama-3.1-405B | 810 Go | 126 | 18,5 Go / 10,5 Go | 238 s | 1701 Go |
+
+C'est la profondeur qui rend la dernière ligne possible : 405 milliards de
+paramètres sur 126 couches donnent une tranche *plus légère* que 141 milliards
+sur 56. Un mélange d'experts (MoE) brise la relation habituelle entre taille et
+profondeur — DeepSeek-V3 fait 671 milliards sur 61 couches là où la tendance
+dense en prédirait le double — donc une entrée MoE qui ne déclare pas ses
+`layers` est **refusée** plutôt que devinée : une devinette s'y trompe d'un
+facteur deux, dans le sens qui promet trop.
+
+Lisez la dernière colonne en premier. **C'est l'espace disque, pas la mémoire,
+qui refuse d'ordinaire un modèle** : airllm écrit les tranches par couche à côté
+du checkpoint téléchargé, donc le cache contient les deux en même temps puis la
+découpe exige à peu près le double du checkpoint en libre. Un modèle de 405
+milliards de paramètres, c'est 810 Go de téléchargement avant d'être quoi que ce
+soit d'autre. La mémoire est la moitié facile du problème.
+
+Ces chiffres ont été vérifiés contre ceux que publie airllm, puis la
+vérification mérite d'être énoncée précisément, parce que le « 70B sur un GPU de
+4 Go » de l'affiche est vrai à une longueur de contexte que personne ne
+mentionne : le même modèle fait 3,0 Go en série à 1k de contexte — la démo —
+3,9 Go en série à 4k puis 6,1 Go à 4k avec le préchargement. Les poids sont
+identiques dans les trois cas. Ce qui bouge, c'est le cache qui n'est pas
+diffusé.
+
+### Modèle natif ou modèle en flux ? `airllm compare` répond en un écran
+
+C'est la décision que le flux de couches impose vraiment, puis aucun des deux
+classements n'y répond seul. Une machine qui exécute confortablement un modèle
+de 14 milliards de paramètres peut aussi en diffuser un de 70 : les deux
+diffèrent de quelques points de référence dans un sens puis de trois ordres de
+grandeur de latence dans l'autre.
+
+Une colonne en jetons par seconde ne peut pas trancher — 26 puis 0,024 ne se
+situent pas sur une échelle dont quiconque raisonne. Des secondes pour la même
+réponse, oui :
+
+```sh
+best-engine-ai-helper airllm compare --tokens 300
+```
+
+```
+=== LLM: ollama vs airllm, for a 300-token answer ===
+  budgets: 11.04 GB resident (ollama) · 22.08 GB per shard (airllm) · disk 4.0 GB/s (declared)
+model                       backend  score  resident  tok/s  answer  runs
+--------------------------  -------  -----  --------  -----  ------  ----
+qwen3:72b-q8_0              ollama   89     78.0      8.4    36 s    NO
+qwen3:72b-q4_k_m            ollama   87     48.0      13.7   22 s    NO
+qwen3:14b                   ollama   78     10.5      62.4   5 s     yes
+gemma3:12b                  ollama   77     9.2       71.2   4 s     yes
+Qwen/Qwen3-72B-Instruct     airllm   89     6.2       0.024  3.5 h   yes
+Qwen/Qwen3-VL-72B-Instruct  airllm   88     6.2       0.024  3.5 h   yes
+
+  Streaming buys 11 benchmark points (89 vs 78) for 2647x the wait: 3.5 h
+  instead of 5 s for a 300-token answer.
+```
+
+Lisez la colonne `runs` : le modèle de 72 milliards de paramètres qui marque 89
+est bien présent dans le catalogue Ollama puis **il ne tient pas** sur cette
+carte de 24 Go. Le flux de couches est ce qui met la même classe de modèle à
+portée, au prix affiché dans la colonne `answer`.
+
+Chaque côté est classé selon les règles de son propre moteur, puis le côté en
+flux inverse la règle habituelle. Partout ailleurs, ce paquet choisit le modèle
+le **plus léger** à quelques points de référence du meilleur, parce qu'un
+gigaoctet de résidence se paie à chaque exécution puis entre en concurrence avec
+votre propre charge. Le flux de couches brise cette prémisse : la résidence est
+une tranche quelle que soit la taille du modèle, donc la légèreté n'achète rien
+puis la règle anti-gourmandise atterrit sur un modèle de 8 milliards de
+paramètres — le seul résultat absurde, puisqu'un 8B tourne nativement cent fois
+plus vite. Le choix en flux est donc le modèle le **plus capable** qui s'exécute,
+au score de référence, la taille ne tranchant que là où aucun score ne le fait.
+
+Pas simplement le plus gros, puis la différence n'est pas académique : la
+première règle ici *était* « le plus gros qui s'exécute », puis ce tableau même a
+montré ce qu'elle coûte — un mélange d'experts de 141 milliards marquant 84
+battait un modèle dense de 72 milliards marquant 87 sur le seul nombre de
+paramètres, en étant deux fois plus lent par jeton. Plus gros, plus lent **puis**
+plus faible est dominé sur tous les axes qui intéressent l'appelant.
+
+La comparaison porte un biais délibéré, énoncé pour que vous puissiez en tenir
+compte : le temps natif ne compte que le décodage puis ignore le traitement du
+prompt, alors que le temps en flux est complet. Cela flatte le côté natif — la
+bonne direction pour une comparaison honnête dont la conclusion est le plus
+souvent « restez en natif » ; ce moteur doit être prêt à le dire de lui-même.
+
+### Quand ça s'active
+
+Jamais par défaut. Deux déclencheurs, rien d'autre :
+
+**Automatique** — le moteur conventionnel n'a rien résolu qui *tienne* sur cette
+machine pour un genre que votre cahier des charges demande. Le flux de couches
+est alors la différence entre un modèle puis aucun, donc `resolve` le propose
+avec son coût énoncé. Le secours est **par genre** : si votre LLM tient puis
+qu'aucun VLM ne tient, seul le VLM bascule, puis le fichier moteur est
+honnêtement mixte (Ollama pour un genre, `airllm` pour l'autre —
+`model_for()` lit d'abord le moteur du genre). Le descripteur enregistre la
+décision puis sa raison sous `airllm:`, *y compris quand la réponse est non*,
+pour qu'une machine qui ne peut pas diffuser dise pourquoi au lieu de rester
+muette.
+
+**Manuelle** — vous le demandez :
+
+```sh
+best-engine-ai-helper resolve --brief llm.brief.yaml --backend airllm
+```
+
+ou dans le cahier des charges versionné :
+
+```yaml
+kind: llm
+task: juger la qualité de descriptions produit générées
+airllm: always          # auto (défaut) | always | never
+airllm_compression: 4bit
+```
+
+ou dans l'environnement, qui ne surclasse que les valeurs par défaut :
+
+```sh
+export BEST_ENGINE_AIRLLM=always   # ou never, pour couper toute la voie
+```
+
+`never` gagne sur tout, y compris sur le déclencheur automatique. Qui veut un
+modèle de 235 milliards de paramètres sur un portable pendant la nuit fait un
+choix légitime qu'aucune règle automatique ne devrait avoir à deviner, puis qui
+ne veut jamais voir son disque malmené mérite un seul interrupteur qui le dise
+vraiment.
+
+### Les commandes
+
+```sh
+# Cette machine peut-elle diffuser, devrait-elle, puis qu'est-ce qui bloque ?
+best-engine-ai-helper airllm status
+best-engine-ai-helper airllm status --measure      # mesurer le disque au lieu de le supposer
+
+# Que pourrait-elle diffuser, le plus capable d'abord ?
+best-engine-ai-helper airllm plan --kind llm --compression 4bit
+
+# Natif ou en flux, même longueur de réponse, les deux prix
+best-engine-ai-helper airllm compare --tokens 300 --batch 8
+
+# Payer le téléchargement puis la découpe maintenant, pas dans le premier appel
+best-engine-ai-helper airllm prepare --model meta-llama/Llama-3.3-70B-Instruct
+```
+
+`--measure` mérite d'être connu. Le disque fixe toute la vitesse de ce moteur,
+donc supposer sa classe (NVMe interne Apple, NVMe générique, SSD SATA, disque à
+plateaux) est une entrée plus faible que la mesurer. La mesure écrit puis relit
+environ 256 Mo **en contournant le cache de pages** (`F_NOCACHE` sur macOS,
+`O_DIRECT` sur Linux) ; sans cette étape, la lecture est servie depuis la RAM
+puis rapporte la bande passante mémoire — c'est ainsi que cette sonde a d'abord
+annoncé 13 Go/s sur un disque dont la fiche technique plafonne près de 7. Sur une
+plateforme sans moyen de contourner le cache, elle ne renvoie rien plutôt qu'un
+chiffre flatteur, puis chaque surface étiquette la valeur `measured` ou
+`declared`.
+
+### Les limites, énoncées franchement
+
+- **Pas de sortie structurée.** airllm expose une génération brute, sans
+  équivalent du `format` contraint par grammaire d'Ollama. Tout modèle en flux
+  est donc `structured_output: false` — un fait sur le moteur, pas sur les poids
+  — puis les tâches de la suite pilotées par schéma restent sur un modèle
+  Ollama. `llm.chat` lève une erreur au lieu d'honorer un schéma de nom
+  seulement.
+- **Texte uniquement.** L'adaptateur renvoie un modèle de langage causal nu,
+  sans le processeur d'images qu'exige un prompt de VLM. Les images lèvent une
+  erreur au lieu d'être silencieusement traitées depuis le seul texte.
+- **Pas de serveur.** airllm est une bibliothèque, donc un modèle en flux
+  s'exécute *dans votre propre processus* ; le `base_url` du fichier moteur est
+  vide à dessein, parce qu'inventer un port local enverrait un consommateur
+  chercher un démon qui n'existera jamais. `llm.chat` garde le modèle chargé
+  entre les appels — découper un checkpoint de 141 Go à chaque appel rendrait le
+  transport inutilisable.
+- **Expérimental sur processeur.** La voie CPU d'airllm ne fonctionne que pour
+  les modèles non découpés, donc une machine sans accélérateur ne reçoit pas le
+  flux de couches automatiquement. Elle peut toujours le demander.
+
+### Pourquoi airllm est importé plutôt que recopié ici
+
+Question légitime pour un paquet qui redérive l'arithmétique. Quatre raisons :
+
+1. **Le poids des dépendances.** airllm exige torch, transformers, accelerate,
+   safetensors, scipy puis sentencepiece — des centaines de mégaoctets. Ce
+   paquet est du Python pur qui s'installe en quelques secondes. Faire payer une
+   pile d'apprentissage profond à qui veut une *recommandation* serait le mauvais
+   marché ; en extra, c'est un choix, exactement comme `[cloud]` puis
+   `[filtered]`.
+2. **C'est une cible mouvante.** La valeur d'airllm est son code de découpe par
+   famille de modèles (Llama, Qwen, DeepSeek, Mixtral, ChatGLM, Kimi), réécrit à
+   chaque nouvelle famille. Recopié, il serait figé au jour de la copie puis
+   pourrirait dès la version suivante.
+3. **Hygiène de licence.** airllm est en Apache-2.0 ; ce paquet est en
+   BSD-3-Clause. L'import garde les deux arbres, puis leurs obligations de
+   notice, séparés.
+4. **Le partage du travail est réel, pas une esquive.** airllm décide *comment*
+   diffuser. Rien chez lui ne décide *si* cette machine devrait le faire, *quel*
+   modèle diffuser, ni *ce que ça vous coûtera en temps* — et ce sont les trois
+   questions que pose réellement l'appelant de ce paquet.
+
+Le moteur est donc importé puis la **décision** est native : `offload.py` possède
+l'arithmétique d'empreinte, le modèle de temps borné par le disque, la politique
+d'activation, la comparaison natif contre flux puis les métadonnées de catalogue
+dont tout cela a besoin (`layers`, `dtype`, `moe`). Rien de cela n'importe
+airllm : c'est pourquoi `airllm status` puis `airllm compare` fonctionnent sur
+une machine où l'extra n'a jamais été installé — en vous disant ce que son
+installation vous apporterait.
+
+### Depuis Python
+
+```python
+import best_engine_ai_helper as beah
+
+hw, disk = beah.available_memory(), beah.disk_profile()
+
+# Cette machine devrait-elle diffuser ?
+decision = beah.airllm_decide(conventional_resolved=False)
+print(decision["activate"], decision["reason"], decision["blockers"])
+
+# Que coûterait un 70B ici ?
+entry = {"id": "llama3.3:70b", "size_b": 70, "layers": 80,
+         "hf_id": "meta-llama/Llama-3.3-70B-Instruct"}
+print(beah.airllm_footprint_gb(entry))                      # 6,1 Go résidents
+print(beah.airllm_generation_time(entry, disk["read_gbs"], new_tokens=300, batch=8))
+
+# Natif ou en flux, pour une réponse de 300 jetons ?
+report = beah.airllm_compare(beah.load_catalog(), hw=hw, disk=disk,
+                             bandwidth_gbs=beah.compute_profile()["bandwidth_gbs"],
+                             new_tokens=300)
+print(report["verdict"])
+
+# Puis, avec l'extra installé, l'exécuter vraiment
+text = beah.airllm_generate("Juge cette description :…",
+                            model="meta-llama/Llama-3.3-70B-Instruct",
+                            max_new_tokens=64)
+```
+
+La surface HTTP répond aux mêmes questions en un seul appel —
+`GET /api/airllm?answer_tokens=300&batch=8` renvoie la décision, le profil de
+stockage, les plans classés puis la comparaison — puis elle est accessible comme
+outil MCP, comme tous les autres points d'entrée.
+
 ## Commandes disponibles
 
 | Commande | Description |
@@ -381,6 +755,10 @@ fonction déterministe du seul matériel, ce qui compte pour des rapports reprod
 | `usages list` | Liste les profils d'usage et les familles (besoins uniquement, jamais de modèle) |
 | `usages show <profil>` | Affiche les besoins d'un profil (tâche, *structured output*, planchers) |
 | `usages resolve <profil>` | Résout un profil (ou `--family`) vers le modèle que best-engine choisit ici |
+| `airllm status` | Cette machine peut-elle lire les couches en flux depuis le disque, devrait-elle, puis qu'est-ce qui bloque (`--measure` pour mesurer le disque) |
+| `airllm plan` | Ce qu'un modèle trop gros coûterait ici, classé : tranche résidente, secondes par jeton, disque pour la découpe |
+| `airllm compare` | Modèle natif contre modèle en flux, même longueur de réponse, les deux tarifés en secondes |
+| `airllm prepare` | Télécharger puis découper un checkpoint maintenant, plutôt que dans le premier appel |
 
 ## Catalogue de modèles
 

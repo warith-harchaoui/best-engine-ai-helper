@@ -2,6 +2,157 @@
 
 All notable changes to best-engine-ai-helper are documented here.
 
+## [Unreleased]
+
+### Added
+
+- **Layer streaming: run a model that does NOT fit in memory
+  (`best_engine_ai_helper.offload`, backend `airllm`).** A transformer never
+  needs all of its layers resident at once — decoding reads layer 1, then
+  layer 2, then layer 3. Keep one layer shard in memory, stream the rest off
+  the disk, and the memory a model needs stops scaling with its parameter count
+  and starts scaling with its widest single layer: a 70B model becomes about
+  **4 GB resident instead of 141 GB**.
+
+  The runtime is [airllm](https://github.com/lyogavin/airllm) (Apache-2.0),
+  **imported** behind the new `[airllm]` extra rather than vendored. Four
+  reasons, in the order they weigh: its value is per-model-family sharding code
+  rewritten with every new family, so a copy would be frozen at the day it was
+  taken; it pulls torch, transformers and accelerate, hundreds of megabytes this
+  pure-Python package has no business imposing on someone who wants a
+  *recommendation*; Apache-2.0 inside a BSD-3 tree is a notice obligation nobody
+  benefits from; and the division of labour is real — airllm decides *how* to
+  stream, and nothing in it decides *whether* this machine should, *which* model
+  it should stream, or *what it will cost in time*. Those three are exactly what
+  a caller of this package is asking, so they are native here.
+
+  What `offload.py` owns, therefore, and none of it imports airllm (which is why
+  `airllm status` and `airllm compare` work on a machine where the extra was
+  never installed, and say what installing it would buy):
+
+  - **The footprint.** One shard — the checkpoint over its decoder depth, times
+    1.25 because the token-embedding matrix is bigger than a decoder layer, times
+    the two shards prefetching keeps in flight — plus the KV cache **of every
+    layer**, which streaming does not shrink, plus a flat activation allowance.
+    Checked against airllm's published figures, and the check is worth stating
+    precisely: the headline "70B on a 4 GB GPU" holds at a context length nobody
+    mentions. The same model is 3.0 GB serially at a 1k context (the demo),
+    3.9 GB serially at 4k, and 6.1 GB at 4k with prefetch on. The weights are
+    identical; what moves is the cache that is not streamed. A candidate that
+    misses with prefetching is automatically re-planned without it before being
+    rejected — the single knob behind the 4 GB claim.
+  - **The speed model, whose unit is the forward pass rather than the token.** A
+    pass reads the checkpoint once *whatever rides through it*, which has three
+    consequences. One generated token costs one pass (hence seconds per token).
+    A long prompt is nearly free — 2000 tokens ride through each layer together,
+    in the same single pass as 10, which no other backend can say and which makes
+    streaming comparatively good at "long document in, short verdict out". And a
+    batch of B prompts costs one pass, not B, so eight answers arrive in the time
+    of one: a bigger lever than 4-bit compression (~3x, pinned to upstream's own
+    claim rather than to the 4x the byte count suggests, because dequantisation
+    is not free) and orthogonal to it. `generation_time()` reports all three
+    readings — `decode_tps`, `time_to_first_token_s`, `effective_tps` — because
+    quoting the wrong one is how a batch job gets planned as an interactive one.
+  - **Disk, which is the constraint that actually bites.** The layer split writes
+    shards beside the download, so the cache holds both and needs roughly twice
+    the checkpoint free at once. A 405B model is an 810 GB download before it is
+    anything else. Memory is the easy half of streaming.
+  - **`airllm compare`: the decision the backend forces.** A machine that runs a
+    14B model comfortably can also stream a 70B one; the two differ by a handful
+    of benchmark points in one direction and three orders of magnitude of latency
+    in the other. A tokens-per-second column cannot settle that — 26 and 0.024 do
+    not sit on a scale anybody reasons about — so both sides are priced in
+    *seconds for the same answer*, and a one-line verdict says which wins here.
+    The native timing deliberately ignores prompt processing while the streamed
+    one is complete, which flatters the native side: the right direction for a
+    comparison whose conclusion is usually "stay native", and a backend has to be
+    willing to say that about itself.
+  - **The activation policy, in one inspectable place.** Never the default.
+    Automatic only when the conventional backend resolved nothing that *fits* for
+    a kind the brief needs — and then **per kind**, so a descriptor can honestly
+    read "Ollama for the LLM, airllm for the VLM" (`model_for()` now reads a
+    per-kind backend first). Manual by `--backend airllm`, `airllm: always` in
+    the brief, or `BEST_ENGINE_AIRLLM=always`. `never` wins over everything,
+    including the automatic trigger. The engine file records the decision and its
+    reason under `airllm:` *including when the answer was no*, and records which
+    kinds the rescue actually rescued — a machine small enough that no model fits
+    can be small enough that no shard fits either, and that has to be visible
+    rather than inferred from the absence of a change.
+
+  Surfaces: `airllm status|plan|compare|prepare`, `--backend airllm` on
+  `recommend` and `resolve`, `GET /api/airllm` (reachable as an MCP tool like
+  every other route), an in-process transport in `llm.chat` that keeps the loaded
+  model between calls, and a "Too large to load, still runnable" panel in the GUI
+  in both languages. Six `backends: [airllm]` catalog entries (70B to 671B) with
+  the `layers` / `dtype` / `moe` fields the shard arithmetic needs.
+
+  Limits, stated in the docs rather than discovered at runtime: no structured
+  output (airllm exposes raw generation, with no equivalent of Ollama's
+  grammar-constrained `format`, so every streamed model is
+  `structured_output: false` and `llm.chat` raises rather than honouring a schema
+  in name only), text only (images raise instead of being answered from the text
+  alone), no server (`base_url` is empty on purpose), and experimental on CPU.
+
+- **`detect.disk_profile()` / `storage_class()` / `measure_disk_read_gbs()`.**
+  Memory bandwidth bounds a resident decode; *disk* bandwidth bounds a streamed
+  one, so the drive needed the same treatment the memory bus already had. Four
+  coarse storage classes with declared figures, plus an opt-in measurement that
+  **bypasses the page cache** (`F_NOCACHE` on macOS, `O_DIRECT` on Linux) —
+  without which the read is served from RAM and reports the memory bus. That is
+  not hypothetical: the probe first claimed 13 GB/s on a drive whose own
+  specification tops out near 7, because the pages its own write had left in the
+  cache were served back from memory. On a platform that cannot bypass the cache
+  it returns None rather than a flattering number, and every surface labels the
+  figure `measured` or `declared`.
+
+- **`score.usable_pool_gb()`.** The accelerator's usable pool, split out of
+  `effective_budget` because the streaming backend needs it on its own: what the
+  headroom reserves — room for the OS and for KV-cache growth — is already
+  counted inside the streaming footprint, where the cache is sized explicitly per
+  layer. Applying it a second time reserves the same gigabytes twice and rejects
+  exactly the models this backend exists to run: a 70B needs about 4 GB resident,
+  which clears a 4 GB card's real budget and fails a doubly-discounted one.
+  Nothing changes for any existing caller — `effective_budget` is now
+  `usable_pool_gb × headroom`.
+
+### Changed
+
+- **ApXML catalog entries are offered to the streaming backend too**
+  (`backends: ["vllm", "airllm"]`, was `["vllm"]`), and carry `moe: true` when
+  the directory says so. That directory is in fact the best source of streaming
+  candidates there is — it catalogues the 200B-and-up open-weight models no
+  machine in this package's range can load — so omitting `airllm` hid exactly
+  the entries the backend exists for. The MoE flag is load-bearing rather than
+  decorative: without it, a mixture-of-experts model's decoder depth would be
+  interpolated from its parameter count, and that relation does not hold for MoE
+  (DeepSeek-V3 is 671B across 61 layers where the dense trend predicts twice as
+  many). Flagged, the depth is **refused** instead of guessed wrong by a factor
+  of two in the direction that over-promises.
+
+- **`recommend --backend {ollama,vllm,airllm}`**, and the candidate table is now
+  filtered to what the chosen backend can actually serve. `resolve` has always
+  filtered; this view had not, so it could offer Ollama a model named by a
+  directory slug that `ollama pull` cannot resolve.
+
+- **`recommend`'s report carries the `backend` it was computed for.** Without it,
+  a `ram_gb` column invites being read as Ollama's — which is wrong by 3x under
+  vLLM and by 30x under streaming.
+
+### Fixed
+
+- **Two mistakes of my own, both found by running the thing rather than reading
+  it, and both worth recording because each was a plausible-looking number that
+  made the feature useless in opposite directions.** The streaming comfort floor
+  started at 0.2 tok/s, an order of magnitude too strict: it admitted nothing
+  above an 8B checkpoint, which is to say nothing worth streaming, since an 8B
+  model runs natively a hundred times faster. It is 0.01 tok/s (100 s/token) —
+  the trade airllm actually offers, an answer by morning. And the streamed pick
+  started as "the biggest model that runs", which the side-by-side comparison
+  immediately exposed: a 141B mixture-of-experts scoring 84 beat a dense 72B
+  scoring 87 on parameter count alone, while taking twice as long per token.
+  Bigger, slower **and** weaker is dominated on every axis a caller cares about,
+  so capability leads and size decides only where no benchmark does.
+
 ## [1.9.0] - 2026-10-25
 
 ### Removed
