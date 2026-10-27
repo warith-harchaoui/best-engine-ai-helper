@@ -1029,6 +1029,188 @@ une personne nommée sur une machine partagée. L'API bibliothèque derrière to
 cela est `best_engine_ai_helper.observe` (`enable()`, `as_user(name)`,
 `Ledger.summary()`).
 
+## 8bis. Lui parler en OpenAI
+
+La vue extérieure : n'importe quel SDK OpenAI, aucun changement de code, puis
+aucun nom de modèle à choisir.
+
+```sh
+best-engine-ai-helper serve
+```
+
+```
+  OpenAI-compatible API : http://127.0.0.1:8000/v1
+  Browser GUI           : http://127.0.0.1:8000/gui
+  OpenAPI schema        : http://127.0.0.1:8000/docs
+  MCP endpoint          : http://127.0.0.1:8000/mcp
+
+  from openai import OpenAI
+  client = OpenAI(base_url="http://127.0.0.1:8000/v1", api_key="not-needed")
+  client.chat.completions.create(model="best", messages=[...])
+
+  Model names: best · best-llm · best-vlm · best-embed · best-image
+               best:<task>  (e.g. best:write SQL)
+```
+
+### Discuter, le modèle étant choisi pour vous
+
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="http://127.0.0.1:8000/v1", api_key="not-needed")
+
+done = client.chat.completions.create(
+    model="best",  # pas un nom qu'il fallait connaître
+    messages=[{"role": "user", "content": "nomme trois couleurs"}],
+)
+print(done.model)  # 'qwen3:14b' — ce qui a réellement tourné
+print(done.choices[0].message.content)
+print(done.system_fingerprint)  # 'best-engine-ai-helper:usage=reported'
+```
+
+Le champ `model` de la réponse est tout l'intérêt : vous avez renoncé à le
+nommer, donc la réponse vous le dit. `system_fingerprint` indique si `usage` a
+été compté par le moteur ou estimé à partir des caractères — Ollama rapporte de
+vrais comptes, donc on y lit d'ordinaire `usage=reported`.
+
+Nommez la tâche puis vous obtenez un meilleur choix, sur l'axe qui compte :
+
+```python
+client.chat.completions.create(
+    model="best:write SQL for a warehouse",
+    messages=[{"role": "user", "content": "les 10 meilleurs clients par chiffre"}],
+)
+```
+
+### La vision, en envoyant une image comme le font les exemples du SDK
+
+```python
+import base64, pathlib
+
+encoded = base64.b64encode(pathlib.Path("capture.png").read_bytes()).decode()
+client.chat.completions.create(
+    model="best",  # se résout en VLM à cause de l'image
+    messages=[
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "qu'est-ce qui cloche dans cette mise en page ?"},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded}"}},
+            ],
+        }
+    ],
+)
+```
+
+Une URL `data:` marche toujours. Une URL `http(s)` est refusée sauf si vous
+posez `BEST_OPENAI_FETCH_IMAGE_URLS=1`, parce qu'aller chercher une adresse
+choisie par *l'appelant* transforme ce serveur en relais de falsification de
+requête vers le réseau privé qu'il voit.
+
+### Le flux, puis un schéma
+
+```python
+for chunk in client.chat.completions.create(
+    model="best", messages=[{"role": "user", "content": "compte jusqu'à cinq"}], stream=True
+):
+    print(chunk.choices[0].delta.content or "", end="")
+```
+
+```python
+done = client.chat.completions.create(
+    model="best",
+    messages=[{"role": "user", "content": "trois couleurs, en JSON"}],
+    response_format={
+        "type": "json_schema",
+        "json_schema": {
+            "name": "couleurs",
+            "schema": {"type": "object", "properties": {"couleurs": {"type": "array"}}},
+        },
+    },
+)
+```
+
+Le schéma est une vraie contrainte, pas une consigne de prompt : il part vers la
+sortie contrainte par grammaire d'Ollama, donc la forme est garantie plutôt que
+demandée. C'est aussi pourquoi une requête à schéma arrive en un seul morceau
+quand elle est diffusée — la voie contrainte ne diffuse pas, puis un faux
+goutte-à-goutte ne vous dirait rien de vrai.
+
+### Embeddings puis images
+
+```python
+vectors = client.embeddings.create(model="best-embed", input=["un", "deux"])
+len(vectors.data), len(vectors.data[0].embedding)  # (2, 768)
+
+picture = client.images.generate(
+    model="best-image",
+    prompt="un vélo rouge sous la pluie",
+    n=1,
+)
+pathlib.Path("velo.png").write_bytes(base64.b64decode(picture.data[0].b64_json))
+```
+
+`b64_json` est ici le format de réponse par défaut plutôt que l'`url` d'OpenAI,
+parce qu'un serveur local n'a nulle part où héberger un fichier ; demander
+`url` renvoie une URL `data:`. `size` vaut `"auto"` par défaut, c'est-à-dire la
+résolution native du modèle choisi — la seule taille où il est vraiment bon.
+
+### À quoi ressemble un refus
+
+```python
+from openai import BadRequestError
+
+try:
+    client.chat.completions.create(model="best", messages=[{"role": "user", "content": "x"}], n=3)
+except BadRequestError as exc:
+    print(exc)  # 400 - n must be 1: this server runs one local model per request
+```
+
+Chaque paramètre non géré répond ainsi, en se nommant. Un paramètre ignoré en
+silence serait pire : vous croiriez avoir obtenu ce que vous demandiez.
+
+## 8ter. Une image, en local
+
+```sh
+best-engine-ai-helper imagine plan
+```
+
+```
+=== Image models: 36.0 GB budget, 400.0 GB/s memory bandwidth ===
+id             params  size       steps  gb    offload  s/image  runs  notes
+-------------  ------  ---------  -----  ----  -------  -------  ----  -----
+flux1-schnell  16.9B   1024x1024  4      30.8  yes      16.9     yes
+sd35-medium    10.9B   1024x1024  28     28.3  no       24.8     yes
+sdxl           3.5B    1024x1024  28     9.8   no       25.8     yes
+sdxl-turbo     3.5B    512x512    4      9.0   no       0.9      yes
+sd15           1.1B    512x512    28     2.9   no       2.1      yes
+
+  Pick: black-forest-labs/FLUX.1-schnell — 1024x1024 in 30.8 GB resident,
+  4 steps, about 16.9 s an image (components taking turns).
+```
+
+Trois colonnes portent toute la décision. `gb` est ce qui doit être résident,
+puis `offload` dit si ce chiffre suppose que les composants du pipeline se
+relaient sur l'accélérateur — essayé automatiquement avant qu'un modèle soit
+rejeté pour cause de mémoire, parce que sur FLUX c'est la différence entre
+43 Go puis 31 Go. `s/image` vaut les étapes fois les passes du dénoiseur, d'où
+le fait qu'un modèle distillé à 4 étapes batte sept fois un modèle de même
+taille à 28.
+
+```sh
+best-engine-ai-helper imagine generate --prompt "un vélo rouge sous la pluie" --out velo.png
+```
+
+```
+Using black-forest-labs/FLUX.1-schnell at 1024x1024, about 16.9 s an image.
+Wrote velo.png (1483 kB)
+```
+
+Les poids se téléchargent au premier usage, puis les licences diffèrent selon le
+modèle — SD 1.5 puis SDXL en CreativeML OpenRAIL-M, SD 3.5 sous la licence
+communautaire Stability, FLUX.1-schnell en Apache-2.0 — vérifiez donc celle du
+modèle choisi avant de publier sa sortie.
+
 ## 9. La GUI, l'API HTTP puis les outils MCP
 
 Un seul processus sert les trois surfaces.

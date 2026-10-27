@@ -204,6 +204,14 @@ best-engine-ai-helper activity
 # les couches en flux depuis le disque, puis ce que le meilleur modèle coûterait
 # en secondes par jeton
 best-engine-ai-helper airllm compare --tokens 300
+
+# Quel modèle texte-vers-image tourne ici, puis combien de temps prend une image
+best-engine-ai-helper imagine plan
+
+# Tout servir comme un point d'entrée compatible OpenAI : n'importe quel SDK
+# OpenAI, aucun changement de code, puis `model="best"` au lieu d'un nom de
+# modèle qu'il aurait fallu choisir
+best-engine-ai-helper serve
 ```
 
 Les mêmes points d'accès `/api/system`, `/api/recommend` et `/api/activity`
@@ -794,6 +802,9 @@ outil MCP, comme tous les autres points d'entrée.
 | `airllm plan` | Ce qu'un modèle trop gros coûterait ici, classé : tranche résidente, secondes par jeton, disque pour la découpe |
 | `airllm compare` | Modèle natif contre modèle en flux, même longueur de réponse, les deux tarifés en secondes |
 | `airllm prepare` | Télécharger puis découper un checkpoint maintenant, plutôt que dans le premier appel |
+| `imagine plan` | Quel modèle texte-vers-image cette machine peut exécuter, son empreinte puis ses secondes par image |
+| `imagine generate` | Générer une image en local, vers un fichier PNG |
+| `serve` | Servir l'API compatible OpenAI : pointez n'importe quel SDK OpenAI dessus puis demandez `best` |
 
 ## Catalogue de modèles
 
@@ -1036,6 +1047,156 @@ que `engine=` est un descripteur cloud :
 Voir [la section « modèle payant » d'EXEMPLES.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXEMPLES.md#4-un-modèle-payant-seulement-si-vous-donnez-une-clé) pour la recette complète
 (settings.yaml, trousseau, sortie structurée, chaîne de repli) et [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) pour le
 tableau de bord d'activité.
+
+## L'utiliser comme un point d'entrée OpenAI
+
+Tout ce qui précède est l'idiome propre à ce paquet : cahiers des charges,
+fichiers moteur, `model_for()`. Cette section va dans l'autre sens : **vu de
+l'extérieur, il se comporte comme un serveur compatible OpenAI.**
+
+```sh
+best-engine-ai-helper serve          # http://127.0.0.1:8000/v1
+```
+
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="http://127.0.0.1:8000/v1", api_key="not-needed")
+
+client.chat.completions.create(model="best", messages=[{"role": "user", "content": "…"}])
+client.embeddings.create(model="best-embed", input=["…"])
+client.images.generate(model="best-image", prompt="un vélo rouge")
+```
+
+Aucun changement de code côté client, puis aucun nom de modèle à connaître.
+Cette seconde moitié est tout l'intérêt : le serveur compatible OpenAI habituel
+— vLLM, le `/v1` d'Ollama, LM Studio — vous demande *quel* modèle charger, ce
+qui laisse la partie difficile (est-ce que ça tient, est-ce assez rapide, un
+plus gros vaut-il l'attente) à qui écrit la configuration. Ici le protocole est
+le protocole familier puis **le choix est le produit**.
+
+### `best` est un nom de modèle virtuel
+
+Il se résout à chaque requête, contre cette machine, vers le modèle le mieux
+classé qui tient — puis une requête portant une image exige un VLM, donc le même
+nom se résout différemment selon ce qu'elle contient. La grammaire est petite :
+
+| Nom de modèle | Se résout en |
+|---|---|
+| `best` / `auto` | Meilleur modèle texte ; meilleur modèle **vision** quand la requête porte des images |
+| `best-llm` | Meilleur modèle texte ; une image dans la requête est refusée plutôt qu'ignorée |
+| `best-vlm` | Meilleur modèle vision-langage |
+| `best-embed` | Meilleur modèle d'embedding, classé sur la recherche (MTEB) plutôt que sur la connaissance générale |
+| `best-image` | Meilleur modèle texte-vers-image |
+| `best:<tâche>` | Meilleur modèle *pour cette tâche* — `best:write SQL`, `best:read screenshots`. La tâche choisit l'axe de référence, exactement comme `report --task`, puis donne un meilleur choix que l'alias nu |
+| n'importe quoi d'autre | Passe tel quel : `qwen3:14b` veut toujours dire `qwen3:14b` |
+
+La réponse annonce le modèle qui a réellement tourné (`"model": "qwen3:14b"`),
+ce qu'un nom virtuel vous rend : vous avez renoncé à le nommer, donc la réponse
+vous le dit.
+
+### Ce qu'il sert
+
+| Point d'entrée | Notes |
+|---|---|
+| `GET /v1/models` | Les alias ci-dessus, plus tout modèle du catalogue qui **tient sur cette machine** — la liste déroulante d'un client cesse donc de proposer un 72B à un portable |
+| `POST /v1/chat/completions` | Texte puis vision. Flux réel (SSE), `response_format` comme vraie contrainte de schéma, conversation multi-tours rendue en transcription étiquetée plutôt que tronquée au dernier message |
+| `POST /v1/completions` | Le point d'entrée historique, routé par le chat — tous les moteurs ici sont instruits, il n'y a donc aucun mode de complétion brute à exposer |
+| `POST /v1/embeddings` | Encodage `float` ou `base64`, un vecteur par entrée, indices compris |
+| `POST /v1/images/generations` | Diffusion locale. `size: "auto"` (le défaut) utilise la résolution **native** du modèle ; `b64_json` est le format de réponse par défaut, un serveur local n'ayant nulle part où héberger un fichier |
+
+`/v1` vit sur la même application que la GUI, les routes `/api/*` puis le point
+d'entrée MCP : un processus, un port. La surface MCP ne publie délibérément
+**pas** les routes `/v1` — sa description promet qu'aucun appel de modèle n'a
+lieu dans ses outils, puis ça reste vrai.
+
+### Ce qui n'est délibérément pas simulé
+
+Une couche de compatibilité se gagne en refusant plutôt qu'en faisant semblant :
+
+- **Les comptes de jetons sont réels quand le moteur les rapporte.** Ollama
+  renvoie `prompt_eval_count`/`eval_count`, puis c'est ce que porte `usage`. Là
+  où un moteur ne rapporte rien, les comptes sont une estimation par caractères
+  — puis `system_fingerprint` le dit (`usage=estimated` contre
+  `usage=reported`) au lieu de faire passer l'un pour l'autre.
+- **Le flux est un vrai flux** pour du texte simple. Pour une requête qui exige
+  en plus un schéma ou qui porte une image, il dégrade à un seul morceau, parce
+  que le transport sous-jacent ne porte ni l'un ni l'autre. Un goutte-à-goutte
+  mot à mot sur une réponse déjà complète aurait meilleure allure puis ne vous
+  dirait rien de vrai sur l'avancement.
+- **Les paramètres non gérés sont des erreurs qui se nomment.** `n > 1`,
+  `logprobs` puis `tools` renvoient un 400. Un paramètre ignoré en silence est
+  pire qu'un paramètre refusé : vous croiriez avoir obtenu ce que vous
+  demandiez. (Pour les outils, demandez plutôt un schéma JSON : tout modèle
+  Ollama l'applique nativement.)
+- **Les `image_url` distants sont coupés par défaut.** Une URL `data:` marche
+  toujours ; une URL `http(s)` fait chercher au serveur une adresse choisie par
+  *l'appelant*, ce qui est une primitive de falsification de requête côté
+  serveur, puis ce serveur tourne d'ordinaire sur une machine ayant accès à un
+  réseau privé. Posez `BEST_OPENAI_FETCH_IMAGE_URLS=1` pour l'autoriser.
+- **Les erreurs utilisent l'enveloppe d'OpenAI**, jusqu'aux 422 de FastAPI : un
+  SDK déballe `error.message`, puis un corps `{"detail": …}` arrive à
+  l'utilisateur comme « unknown error ». Bornée à `/v1` — les appelants de
+  `/api` gardent les conventions de FastAPI.
+
+L'affirmation « un SDK OpenAI analyse ça » est testée avec le SDK OpenAI
+(`tests/test_openai_sdk.py`), pas avec des assertions de notre cru.
+
+## Des pixels autant que du texte : génération d'images locale
+
+`kind: image` est la troisième sorte de modèle que ce paquet choisit, puis il
+est choisi comme les autres — une empreinte contre le vrai budget de cette
+machine, une estimation de temps dans l'unité où l'on attend, une entrée de
+catalogue plutôt qu'un nom en dur.
+
+```sh
+best-engine-ai-helper imagine plan                    # ce qui tourne ici, puis à quelle vitesse
+best-engine-ai-helper imagine generate --prompt "un vélo rouge" --out velo.png
+```
+
+```
+=== Image models: 36.0 GB budget, 400.0 GB/s memory bandwidth ===
+id             params  size       steps  gb    offload  s/image  runs
+-------------  ------  ---------  -----  ----  -------  -------  ----
+flux1-schnell  16.9B   1024x1024  4      30.8  yes      16.9     yes
+sd35-medium    10.9B   1024x1024  28     28.3  no       24.8     yes
+sdxl           3.5B    1024x1024  28     9.8   no       25.8     yes
+sdxl-turbo     3.5B    512x512    4      9.0   no       0.9      yes
+sd15           1.1B    512x512    28     2.9   no       2.1      yes
+```
+
+Un modèle de diffusion n'est pas une pile de couches mais **trois ou quatre
+réseaux qui se relaient** — encodeurs de texte, un dénoiseur (UNet ou
+transformeur), un VAE — puis deux conséquences traversent toute la
+fonctionnalité :
+
+**La mémoire dépend de la façon dont ils se relaient.** Tous résidents,
+l'empreinte est leur somme. Confiés à `enable_model_cpu_offload()` de
+`diffusers`, seul le composant qui calcule reste résident puis le pic devient le
+*plus gros* — le même marché que la lecture des couches en flux pour un LLM, à
+une pénalité bien moindre, parce que les composants se relaient quelques fois
+par image au lieu d'une fois par jeton. C'est la colonne `offload` ci-dessus,
+puis elle est essayée automatiquement avant qu'un modèle soit rejeté pour cause
+de mémoire : sur FLUX, où 8,4B des 16,9B sont un encodeur T5 utilisé une fois
+par image, c'est la différence entre l'exécuter puis ne pas l'exécuter.
+
+**Le temps, ce sont des étapes, pas des jetons.** La boucle d'échantillonnage
+exécute un nombre fixe d'étapes de débruitage, chacune une passe complète du
+dénoiseur, donc l'unité honnête est la seconde par image — puis le plus gros
+levier est le nombre d'étapes, qui est une propriété des *poids*, pas une
+préférence. SDXL-Turbo puis FLUX.1-schnell sont distillés pour 1 à 4 étapes là
+où SDXL en veut 28 ; exécuter un checkpoint distillé à 28 étapes est plus lent
+**puis** moins bon. Le nombre d'étapes vient donc du catalogue, ce qui est ce
+qui rend utilisable un modèle d'image choisi automatiquement.
+
+Deux autres choses que le catalogue porte pour la même raison. **La résolution
+native**, parce que c'est la seule taille où un modèle de diffusion est bon :
+demander 1024×1024 à un modèle 512px duplique les sujets au lieu d'ajouter du
+détail, d'où `size: "auto"` qui résout vers le chiffre du modèle. Puis **la
+licence diffère selon le modèle** — SD 1.5 puis SDXL sont en CreativeML
+OpenRAIL-M, SD 3.5 sous la licence communautaire Stability, FLUX.1-schnell en
+Apache-2.0 (son frère `[dev]` non) — vérifiez donc celle du modèle choisi avant
+de publier sa sortie.
 
 ## Usages / profils de tâche
 

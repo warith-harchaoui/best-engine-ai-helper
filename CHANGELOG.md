@@ -6,6 +6,75 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Added
 
+- **An OpenAI-compatible surface: from the outside, this package is an OpenAI
+  endpoint** (`best_engine_ai_helper.openai_api`, `best-engine-ai-helper
+  serve`). `/v1/models`, `/v1/chat/completions` (text and vision, streaming or
+  not, `response_format` as a real schema constraint), `/v1/completions`,
+  `/v1/embeddings` and `/v1/images/generations`, on the same app as the GUI, the
+  `/api/*` routes and `/mcp` — one process, one port.
+
+  The inversion is the point. The usual OpenAI-compatible server (vLLM,
+  Ollama's `/v1`, LM Studio) asks *you* which model to load, which leaves the
+  hard part — does it fit, is it fast enough, is a bigger one worth the wait —
+  to whoever writes the config. Here the wire protocol is the familiar one and
+  the **choice** is the product: `model="best"` resolves per request to the
+  highest-ranked model that fits this machine, and resolves to a *vision* model
+  on its own when the request carries an image. The grammar is small and total:
+  `best`/`auto`, `best-llm`, `best-vlm`, `best-embed`, `best-image`,
+  `best:<free-text task>` (which picks the benchmark axis exactly as
+  `report --task` does), and anything else passes through verbatim, so
+  `qwen3:14b` still means `qwen3:14b`. The response reports the model that
+  actually ran, which is what a virtual name buys back.
+
+  What is deliberately **not** faked, because a compatibility layer earns trust
+  by refusing rather than pretending: token counts are real where the backend
+  reports them (Ollama returns `prompt_eval_count`/`eval_count`) and flagged as
+  estimates in `system_fingerprint` where it does not; streaming is real SSE
+  for plain text and degrades to one chunk for a schema or an image, since the
+  streaming transport carries neither; `n > 1`, `logprobs` and `tools` are 400s
+  that name themselves, because a parameter silently ignored is worse than one
+  refused; `http(s)` image URLs need `BEST_OPENAI_FETCH_IMAGE_URLS=1`, as
+  fetching a caller-chosen address is a server-side request forgery primitive;
+  and errors use OpenAI's envelope down to FastAPI's own 422s, scoped to `/v1`
+  so `/api` callers keep FastAPI's conventions.
+
+  The claim "an OpenAI SDK parses this" is tested with the OpenAI SDK
+  (`tests/test_openai_sdk.py`), routed through Starlette's synchronous ASGI
+  transport rather than a socket. `httpx.ASGITransport` looks like the obvious
+  choice and is not: it implements only the async side, so a synchronous SDK
+  call lands on a missing `handle_request`.
+
+  The MCP surface deliberately did **not** gain inference. fastapi-mcp
+  publishes every route it finds, which would have falsified its own
+  description ("no model call happens inside these tools"), so the `/v1`
+  operations are excluded — read out of the OpenAPI schema rather than off
+  `app.routes`, where an included router appears as one opaque entry and the
+  first spelling of that exclusion silently covered nothing.
+
+- **Text-to-image, the third kind of model this package chooses**
+  (`best_engine_ai_helper.imagine`, `kind: image`, `imagine plan` /
+  `imagine generate`, `POST /v1/images/generations`). Five catalogue entries
+  from SD 1.5 to FLUX.1-schnell, chosen the same way as everything else here: a
+  footprint against this machine's real budget, a time estimate in the unit a
+  human waits in, a catalogue entry rather than a hardcoded name.
+
+  A diffusion model breaks the assumption the rest of the package rests on: it
+  is not one stack of layers but three or four networks taking turns — text
+  encoders, a denoiser, a VAE. So **memory depends on how they take turns**
+  (all resident is their sum; `diffusers`' `enable_model_cpu_offload()` makes
+  the peak the largest one, which `plan()` falls back to before rejecting
+  anything — on FLUX, where 8.4B of 16.9B is a T5 encoder used once per image,
+  that is 43 GB versus 31 GB), and **time is steps rather than tokens**, with
+  the step count a property of the weights (1-4 distilled, 28 otherwise) and
+  therefore catalogue data: running a distilled checkpoint at 28 steps is
+  slower *and* worse. `size: "auto"` resolves to each model's native
+  resolution, the one size it is actually good at — asking a 512px model for
+  1024x1024 duplicates subjects rather than adding detail.
+
+  `diffusers` joins the core dependencies for the reason airllm did: torch is
+  already there, so the increment is a few megabytes of Python plus Pillow, and
+  an image endpoint that apologises is worth nothing.
+
 - **Layer streaming: run a model that does NOT fit in memory
   (`best_engine_ai_helper.offload`, backend `airllm`).** A transformer never
   needs all of its layers resident at once — decoding reads layer 1, then

@@ -184,6 +184,13 @@ best-engine-ai-helper activity
 # Nothing good fits? See what this machine could run by streaming layers off
 # disk, and what the better model would cost you in seconds per token
 best-engine-ai-helper airllm compare --tokens 300
+
+# Which text-to-image model runs here, and how long an image takes
+best-engine-ai-helper imagine plan
+
+# Serve all of it as an OpenAI-compatible endpoint: any OpenAI SDK, no code
+# changes, and `model="best"` instead of a model name you had to choose
+best-engine-ai-helper serve
 ```
 
 The same `/api/system`, `/api/recommend`, and `/api/activity` endpoints are
@@ -754,6 +761,9 @@ tool like every other endpoint.
 | `airllm plan` | What a too-large model would cost here, ranked: resident shard, seconds per token, disk to split |
 | `airllm compare` | Native model vs streamed model, same answer length, both priced in seconds |
 | `airllm prepare` | Download and split a checkpoint now, instead of inside the first call |
+| `imagine plan` | Which text-to-image model this machine can run, its footprint and its seconds per image |
+| `imagine generate` | Generate one image locally, to a PNG file |
+| `serve` | Serve the OpenAI-compatible API: point any OpenAI SDK at it and ask for `best` |
 
 ## Model catalog
 
@@ -919,6 +929,148 @@ Every cloud engine also carries an embedded local **fallback**, resolved from th
 | **Cost tracking** | every call, local or paid, appended to the local activity ledger, priced from real provider token counts when reported, else a character estimate | `best-engine-ai-helper activity`, opt out with `BEST_ENGINE_NO_LEDGER=1` |
 
 See [EXAMPLES.md's paid-model section](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXAMPLES.md#4-a-paid-model-only-when-you-hand-it-a-key) for the full worked recipe (settings.yaml, keyring, structured output, the failover chain) and [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) for the activity dashboard.
+
+## Use it as an OpenAI endpoint
+
+Everything above is this package's own idiom: briefs, engine files,
+`model_for()`. This section is the other direction — **from the outside, it
+behaves like an OpenAI-compatible server.**
+
+```sh
+best-engine-ai-helper serve          # http://127.0.0.1:8000/v1
+```
+
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="http://127.0.0.1:8000/v1", api_key="not-needed")
+
+client.chat.completions.create(model="best", messages=[{"role": "user", "content": "…"}])
+client.embeddings.create(model="best-embed", input=["…"])
+client.images.generate(model="best-image", prompt="a red bicycle")
+```
+
+No code changes in the client, and no model name to know. That second half is
+the point: the usual OpenAI-compatible server — vLLM, Ollama's `/v1`, LM Studio
+— asks *you* which model to load, which leaves the hard part (does it fit, is it
+fast enough, is a bigger one worth the wait) to whoever writes the config. Here
+the protocol is the familiar one and **the choice is the product**.
+
+### `best` is a virtual model name
+
+It resolves per request, against this machine, to the highest-ranked model that
+fits — and a request carrying an image needs a VLM, so the same name resolves
+differently depending on what is in the request. The grammar is small:
+
+| Model name | Resolves to |
+|---|---|
+| `best` / `auto` | Best text model; best **vision** model when the request carries images |
+| `best-llm` | Best text model; an image in the request is refused rather than ignored |
+| `best-vlm` | Best vision-language model |
+| `best-embed` | Best embedding model, ranked on retrieval (MTEB) rather than on general knowledge |
+| `best-image` | Best text-to-image model |
+| `best:<task>` | Best model *for that task* — `best:write SQL`, `best:read screenshots`. The task picks the benchmark axis, exactly as `report --task` does, and gives a better pick than the bare alias |
+| anything else | Passed through verbatim, so `qwen3:14b` still means `qwen3:14b` |
+
+The response reports the model that actually ran (`"model": "qwen3:14b"`), which
+is what a virtual name buys back: you gave up naming it, so the answer tells you.
+
+### What it serves
+
+| Endpoint | Notes |
+|---|---|
+| `GET /v1/models` | The aliases above, plus every catalogue model that **fits this machine** — so a client's model picker stops offering a 72B to a laptop |
+| `POST /v1/chat/completions` | Text and vision. Streaming (real SSE), `response_format` as a genuine schema constraint, multi-turn rendered as a labelled transcript rather than truncated to the last message |
+| `POST /v1/completions` | The legacy endpoint, routed through chat — every backend here is instruction-tuned, so there is no separate raw-completion mode to expose |
+| `POST /v1/embeddings` | `float` or `base64` encoding, one vector per input, indices included |
+| `POST /v1/images/generations` | Local diffusion. `size: "auto"` (the default) uses the model's **native** resolution; `b64_json` is the default response format, since a local server has nowhere to host a file |
+
+`/v1` sits on the same app as the GUI, the `/api/*` routes and the MCP
+endpoint: one process, one port. The MCP surface deliberately does **not**
+publish the `/v1` routes — its description promises that no model call happens
+inside its tools, and that stays true.
+
+### What is deliberately not faked
+
+A compatibility layer earns trust by refusing rather than pretending:
+
+- **Token counts are real where the backend reports them.** Ollama returns
+  `prompt_eval_count`/`eval_count` and those are what `usage` carries. Where a
+  backend reports nothing, the counts are a character estimate — and
+  `system_fingerprint` says so (`usage=estimated` versus `usage=reported`)
+  instead of passing one off as the other.
+- **Streaming is real streaming** for plain text. For a request that also needs a
+  schema or carries an image it degrades to a single chunk, because the
+  underlying stream carries neither. A word-by-word drip over an
+  already-complete answer would look better and tell you nothing true about
+  progress.
+- **Unsupported parameters are errors that name themselves.** `n > 1`,
+  `logprobs` and `tools` return a 400. A parameter silently ignored is worse
+  than one refused: you would believe you got what you asked for. (For tools,
+  ask for a JSON schema instead — every Ollama model enforces one natively.)
+- **Remote image URLs are off by default.** A `data:` URI always works; an
+  `http(s)` one makes the server fetch an address the *caller* chose, which is a
+  server-side request forgery primitive, and this server usually runs on a
+  machine with access to a private network. Set
+  `BEST_OPENAI_FETCH_IMAGE_URLS=1` to allow it.
+- **Errors use OpenAI's envelope**, down to FastAPI's own 422s: an SDK unwraps
+  `error.message`, and a `{"detail": …}` body reaches the user as "unknown
+  error". Scoped to `/v1` — `/api` callers keep FastAPI's conventions.
+
+The claim "an OpenAI SDK parses this" is tested with the OpenAI SDK
+(`tests/test_openai_sdk.py`), not with assertions of our own choosing.
+
+## Pixels as well as text: local image generation
+
+`kind: image` is the third kind of model this package chooses, and it is chosen
+the same way as the others — a footprint against this machine's real budget, a
+time estimate in the unit a human waits in, a catalogue entry rather than a
+hardcoded name.
+
+```sh
+best-engine-ai-helper imagine plan                    # what runs here, and how fast
+best-engine-ai-helper imagine generate --prompt "a red bicycle" --out bike.png
+```
+
+```
+=== Image models: 36.0 GB budget, 400.0 GB/s memory bandwidth ===
+id             params  size       steps  gb    offload  s/image  runs
+-------------  ------  ---------  -----  ----  -------  -------  ----
+flux1-schnell  16.9B   1024x1024  4      30.8  yes      16.9     yes
+sd35-medium    10.9B   1024x1024  28     28.3  no       24.8     yes
+sdxl           3.5B    1024x1024  28     9.8   no       25.8     yes
+sdxl-turbo     3.5B    512x512    4      9.0   no       0.9      yes
+sd15           1.1B    512x512    28     2.9   no       2.1      yes
+```
+
+A diffusion model is not one stack of layers but **three or four networks that
+take turns** — text encoders, a denoiser (UNet or transformer), a VAE — and two
+consequences of that run through the whole feature:
+
+**Memory depends on how they take turns.** All resident, the footprint is their
+sum. Handed to `diffusers`' `enable_model_cpu_offload()`, only the component
+computing stays resident and the peak becomes the *largest* one — the same trade
+layer streaming makes for an LLM, at a far smaller penalty, because the
+components swap a few times per image rather than once per token. That is the
+`offload` column above, and it is tried automatically before a model is rejected
+for memory: on FLUX, where 8.4B of 16.9B is a T5 text encoder used once per
+image, it is the difference between running it and not.
+
+**Time is steps, not tokens.** The sampling loop runs a fixed number of
+denoising steps, each a full pass through the denoiser, so the honest unit is
+seconds per image — and the biggest lever is the step count, which is a property
+of the *weights*, not a preference. SDXL-Turbo and FLUX.1-schnell are distilled
+for 1–4 steps where SDXL wants 28; running a distilled checkpoint at 28 is
+slower **and** worse. So the step count comes from the catalogue, which is what
+makes an auto-selected image model usable at all.
+
+Two more things the catalogue carries for the same reason. **The native
+resolution**, because that is the one size a diffusion model is good at: asking
+a 512px model for 1024×1024 duplicates subjects rather than adding detail, which
+is why `size: "auto"` resolves to the model's own figure. And **the licence
+differs per model** — SD 1.5 and SDXL are CreativeML OpenRAIL-M, SD 3.5 is the
+Stability Community licence, FLUX.1-schnell is Apache-2.0 (its `[dev]` sibling
+is not) — so check the one you pick before shipping its output.
 
 ## Usages / task profiles
 
