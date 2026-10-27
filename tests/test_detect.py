@@ -219,3 +219,91 @@ def test_server_load_and_running_engines(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr("requests.get", _raise)
     monkeypatch.setattr(psutil, "process_iter", lambda fields: iter([]))
     assert detect._running_engines() == 0
+
+
+# ---------------------------------------------------------------------------
+# Storage: the bound on a layer-streaming decode
+# ---------------------------------------------------------------------------
+
+
+def test_the_storage_class_never_invents_a_speed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A fabricated disk figure would silently set every streaming estimate.
+
+    The classes are coarse on purpose — four of them — because the goal is the
+    right order of magnitude, not a device database. What matters is that an
+    unclassifiable drive says so.
+    """
+    assert detect.storage_class() in ("apple-internal", "nvme", "ssd-sata", "hdd", "unknown")
+
+    # Apple Silicon ships soldered NVMe; an Intel Mac may not, and is not worth
+    # probing for, so it degrades to the generic figure rather than claiming the
+    # faster one.
+    monkeypatch.setattr(detect, "platform_name", lambda: "darwin")
+    monkeypatch.setattr(detect, "chip_vendor", lambda: "apple")
+    assert detect.storage_class() == "apple-internal"
+    monkeypatch.setattr(detect, "chip_vendor", lambda: "intel")
+    assert detect.storage_class() == "nvme"
+
+    # An unrecognised platform is "unknown", and disk_profile turns that into
+    # "no rate" rather than a default.
+    monkeypatch.setattr(detect, "platform_name", lambda: "plan9")
+    assert detect.storage_class() == "unknown"
+    profile = detect.disk_profile()
+    assert profile["read_gbs"] is None
+    assert profile["basis"] == "unknown"
+
+
+def test_a_linux_block_device_that_cannot_be_read_is_unknown_not_a_guess(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every sysfs read here can fail on a container, an overlay or a bind mount."""
+    monkeypatch.setattr(detect, "platform_name", lambda: "linux")
+    monkeypatch.setattr(
+        detect.os, "stat", lambda _p: (_ for _ in ()).throw(OSError("no such device"))
+    )
+
+    assert detect._linux_storage_class() == "unknown"
+
+
+def test_the_read_measurement_bypasses_the_cache_or_declines_to_answer() -> None:
+    """A cached read reports the memory bus, which is the wrong answer by 3x.
+
+    This is how the probe first came back at 13 GB/s on a drive whose own
+    specification tops out near 7: the pages the write left in the cache were
+    served from RAM. On a platform with no way to bypass the cache the honest
+    result is None, so the storage-class table is used instead of a flattering
+    measurement.
+    """
+    measured = detect.measure_disk_read_gbs(total_bytes=8 * 1024 * 1024)
+
+    if detect.platform_name() in ("darwin", "linux"):
+        # Either a real figure, or None when the filesystem refused O_DIRECT
+        # (tmpfs, overlayfs and most network mounts do).
+        assert measured is None or 0.0 < measured < 60.0
+    else:
+        assert measured is None
+
+
+def test_an_unsupported_platform_declines_rather_than_reporting_a_cached_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Windows has no per-descriptor cache bypass, so it gets the table figure."""
+    monkeypatch.setattr(detect, "platform_name", lambda: "windows")
+
+    assert detect.measure_disk_read_gbs() is None
+    # And the profile still answers, from the class table, saying which it is.
+    monkeypatch.setattr(detect, "chip_vendor", lambda: "intel")
+    profile = detect.disk_profile(measure=True)
+    assert profile == {**profile, "storage": "nvme", "basis": "declared"}
+
+
+def test_the_profile_labels_a_measurement_as_measured(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Measured and assumed are different claims; every surface shows which."""
+    monkeypatch.setattr(detect, "measure_disk_read_gbs", lambda **_: 7.5)
+    profile = detect.disk_profile(measure=True)
+
+    assert profile["read_gbs"] == 7.5
+    assert profile["basis"] == "measured"
+    # Unasked, nothing is measured: a recommendation stays a deterministic
+    # function of the hardware unless the caller says otherwise.
+    assert detect.disk_profile()["basis"] in ("declared", "unknown")

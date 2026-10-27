@@ -50,6 +50,10 @@ EXPECTED_COMMANDS = {
     "gui",
     "env",
     "activity",
+    "airllm status",
+    "airllm plan",
+    "airllm compare",
+    "airllm prepare",
 }
 
 
@@ -78,7 +82,7 @@ def test_the_command_inventory_and_every_help_screen(runner: CliRunner) -> None:
 
     # A --help that raises is invisible from every other test in this file,
     # since none of them asks for one.
-    for path in sorted(EXPECTED_COMMANDS | {"catalog", "hardware", "usages"}):
+    for path in sorted(EXPECTED_COMMANDS | {"catalog", "hardware", "usages", "airllm"}):
         res = runner.invoke(cli, [*path.split(), "--help"])
         assert res.exit_code == 0, f"{path} --help -> {res.exit_code}\n{res.output}"
         assert res.output.strip()
@@ -665,3 +669,131 @@ def test_storage_and_doctor_commands(
     assert "daemon      : reachable" in res.output
     assert "serves      : qwen3:8b" in res.output
     assert "Everything the engine file names can be served right now." in res.output
+
+
+# ---------------------------------------------------------------------------
+# Layer streaming: the three commands, and the backend flag on two others
+# ---------------------------------------------------------------------------
+
+
+def test_airllm_status_reports_the_decision_and_how_to_act_on_it(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The command exists to be read by a human who then has something to do."""
+    from best_engine_ai_helper import offload as _offload
+
+    monkeypatch.setattr(_offload, "available", lambda: False)
+
+    res = runner.invoke(cli, ["airllm", "status"])
+    assert res.exit_code == 0, res.output
+    assert "Layer streaming (airllm)" in res.output
+    assert "NOT installed" in res.output
+    # A blocker nobody can act on is just a refusal, so the install command is
+    # part of the output rather than something to go and look up.
+    assert _offload.INSTALL_HINT in res.output
+
+    # `--request always` asks the policy a different question, and the answer
+    # must change with it rather than being a fixed capability dump.
+    monkeypatch.setattr(_offload, "available", lambda: True)
+    forced = runner.invoke(cli, ["airllm", "status", "--request", "always", "--json"])
+    assert forced.exit_code == 0, forced.output
+    payload = json.loads(forced.output)
+    assert payload["decision"]["request"] == "always"
+    assert payload["decision"]["trigger"] in ("manual", "disabled")
+    assert payload["memory_budget_gb"] > 0
+
+
+def test_airllm_plan_ranks_candidates_in_seconds_per_token(runner: CliRunner) -> None:
+    """Biggest runnable first, and priced in the unit that is honest here."""
+    res = runner.invoke(cli, ["airllm", "plan", "--kind", "llm"])
+    assert res.exit_code == 0, res.output
+    assert "s/token" in res.output
+    assert "shard_gb" in res.output
+    # Whatever this machine is, the table has to say whether each row runs.
+    assert "runs" in res.output
+
+
+def test_airllm_prepare_fails_readably_without_the_runtime(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The command's whole job is the download, so a missing runtime is its first error."""
+    from best_engine_ai_helper import offload as _offload
+
+    def _no_runtime(*_a: object, **_k: object) -> None:
+        raise ImportError(f"needs the airllm runtime: {_offload.INSTALL_HINT}")
+
+    monkeypatch.setattr(_offload, "load", _no_runtime)
+
+    res = runner.invoke(cli, ["airllm", "prepare", "--model", "meta-llama/Llama-3.3-70B-Instruct"])
+    assert res.exit_code == 1
+    assert "airllm" in res.output
+
+
+def test_recommend_backend_airllm_switches_the_table_and_the_floor(runner: CliRunner) -> None:
+    """Streaming candidates are a different table, not the same one relabelled."""
+    plain = runner.invoke(cli, ["recommend", "--kind", "llm"])
+    streamed = runner.invoke(cli, ["recommend", "--kind", "llm", "--backend", "airllm"])
+
+    assert plain.exit_code == 0 and streamed.exit_code == 0, streamed.output
+    assert "(ollama)" in plain.output and "(airllm)" in streamed.output
+    # The interactive comfort floor describes a resident model; judging a
+    # streamed one by it would mark every row uncomfortable and say nothing.
+    assert "Batch floor: 0.01 tok/s" in streamed.output
+    assert "Memory is one layer shard" in streamed.output
+    # And the columns differ, because `ram_gb` would be a lie in this table.
+    assert "shard_gb" in streamed.output and "shard_gb" not in plain.output
+
+
+def test_resolve_accepts_the_streaming_backend(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """End to end: a brief in, a streaming engine file out."""
+    from best_engine_ai_helper import offload as _offload
+
+    monkeypatch.setattr(_offload, "available", lambda: True)
+    brief = tmp_path / "llm.brief.yaml"
+    brief.write_text("kind: llm\ntask: general assistant\nstructured_output: false\n")
+
+    res = runner.invoke(cli, ["resolve", "--brief", str(brief), "--backend", "airllm"])
+    assert res.exit_code == 0, res.output
+    assert "backend: airllm" in res.output
+
+    written = yaml.safe_load((tmp_path / "llm.engine.yaml").read_text())
+    assert written["backend"] == "airllm"
+    assert written["llm"]["streaming"] is True
+    assert written["llm"]["seconds_per_token"] > 0
+
+
+def test_airllm_compare_prices_both_backends_for_the_same_answer(runner: CliRunner) -> None:
+    """The decision the backend forces, in one screen.
+
+    Tokens per second cannot be read across these backends — 26 and 0.024 do
+    not sit on a scale a person reasons about. Seconds for the same answer do,
+    and the verdict line says which side wins on this machine.
+    """
+    res = runner.invoke(cli, ["airllm", "compare", "--tokens", "300"])
+    assert res.exit_code == 0, res.output
+    assert "vs airllm, for a 300-token answer" in res.output
+    assert "answer" in res.output  # the shared unit
+    # Both sides are present, each ranked by its own backend's rules.
+    assert "ollama" in res.output and "airllm" in res.output
+    # And a verdict a human can act on, whichever way it goes.
+    assert any(
+        phrase in res.output
+        for phrase in ("Stay native", "benchmark points", "only option", "Nothing can be streamed")
+    )
+
+
+def test_airllm_compare_json_carries_the_timings_behind_the_verdict(runner: CliRunner) -> None:
+    """A consumer must be able to re-derive the conclusion, not just read it."""
+    res = runner.invoke(cli, ["airllm", "compare", "--tokens", "120", "--json"])
+    assert res.exit_code == 0, res.output
+
+    report = json.loads(res.output)
+    assert report["new_tokens"] == 120
+    assert set(report) >= {"native", "streamed", "verdict", "quality_gain", "slowdown"}
+    for plan in report["streamed"]["rows"]:
+        # Seconds per pass is the atom; the answer time is the product. Both
+        # travel, so the arithmetic is checkable from the outside.
+        assert "seconds_per_pass" in plan
+        assert "answer_seconds" in plan

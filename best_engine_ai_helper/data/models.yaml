@@ -32,8 +32,29 @@
 #                      routes every structured call through a schema, so the
 #                      recommender treats a false here as disqualifying for auto-
 #                      selection. Default (absent) is treated as true.
-#   vllm_id     HuggingFace model ID for vLLM, null if unavailable
+#   vllm_id     HuggingFace model ID for vLLM, null if unavailable. The SAME id
+#               the airllm (layer-streaming) backend downloads and splits, so
+#               `hf_id` is accepted as an alias where that reads better.
 #   fetched_at  ISO 8601 date of last external refresh; null = bundled seed
+#
+# Fields read only by the layer-streaming backend (see offload.py). All optional:
+#   layers      Decoder depth (`num_hidden_layers` in the HF config). THE divisor
+#               of the streaming footprint -- resident memory is one shard, and a
+#               shard is the checkpoint over this number. Absent, it is
+#               interpolated from size_b for a dense model and REFUSED for a MoE
+#               one (DeepSeek-V3 is 671B across 61 layers; the dense trend would
+#               predict twice that, in the direction that over-promises).
+#   dtype       Dtype the HF checkpoint is STORED in: bf16 (default), fp16, fp8,
+#               int8. Sets bytes-per-parameter, and so both the shard size and
+#               the per-token disk traffic. Distinct from `quant`, which names a
+#               GGUF quantisation of an Ollama tag -- a file airllm never reads.
+#   moe         true for a mixture-of-experts checkpoint. Only effect: without a
+#               declared `layers`, depth is refused rather than guessed.
+#   backends    Which backends this entry is OFFERED to (default: all of them).
+#               `[airllm]` marks a streaming-only candidate: curated for layer
+#               streaming, and deliberately kept out of the Ollama/vLLM pools so
+#               a 141 GB checkpoint can never become a last-resort pick on a
+#               machine with 16 GB of RAM.
 
 - id: qwen2.5:3b
   kind: llm
@@ -313,6 +334,162 @@
   notes: "72B at Q8; needs 96 GB unified. Reliable structured JSON output."
   structured_output: true
   vllm_id: Qwen/Qwen3-72B-Instruct
+  fetched_at: null
+
+# --- Streaming-only giants (backends: [airllm]) ---------------------------
+# Models no machine in this package's target range can LOAD, and every one of
+# which it can nonetheless RUN by streaming the layers off disk one at a time
+# (see offload.py and `best-engine-ai-helper airllm`).
+#
+# Three things to know before reaching for one:
+#
+# 1. The cost is time, and the honest unit is seconds per token. Each token
+#    re-reads the whole checkpoint from storage, so a 70B at bf16 on a 4 GB/s
+#    NVMe drive decodes at about 0.024 tok/s -- roughly forty seconds a token.
+#    airllm's 4-bit compression divides that by four. These are batch jobs:
+#    an overnight evaluation, one hard question, a quality reference to compare
+#    a small local model against. Not a chat window.
+# 2. The binding constraint is DISK, not memory. `disk_gb` below is the
+#    download; the split needs about twice that free at once (offload
+#    .disk_required_gb). A 405B model is a 810 GB download before it is
+#    anything else.
+# 3. No structured output. airllm exposes raw `generate`, with none of
+#    Ollama's JSON-schema enforcement, so `structured_output: false` is a fact
+#    about the backend rather than about the weights. Every schema-driven task
+#    in the suite needs an Ollama model; these answer prose.
+#
+# `ram_gb` is what a CONVENTIONAL backend would need to hold the model
+# resident -- deliberately truthful, so a direct `score.rank()` call reports
+# these as not fitting instead of being surprised by them. The streaming
+# footprint is computed from `layers`, and runs from 4.9 GB (the 70B) to 28 GB
+# (DeepSeek-V3) with airllm's prefetch on. Turning prefetch off roughly halves
+# each figure, at some cost in an already slow decode.
+#
+# Benchmark figures are seed estimates from each model's own release notes and
+# public leaderboards at time of writing, on the same footing as the rest of
+# this file: good for comparing candidates, not for a procurement decision.
+
+- id: llama3.3:70b
+  kind: llm
+  size_b: 70
+  layers: 80
+  dtype: bf16
+  quant: BF16
+  disk_gb: 141
+  ram_gb: 155
+  backends: [airllm]
+  benchmarks:
+    general: 86
+    vision: null
+    ocr: null
+    code: 88
+    math: 77
+  notes: "Dense 70B, 80 layers: the reference streaming target (~4.9 GB resident). No structured output."
+  structured_output: false
+  vllm_id: meta-llama/Llama-3.3-70B-Instruct
+  fetched_at: null
+
+- id: qwen2.5-vl:72b
+  kind: vlm
+  size_b: 73
+  layers: 80
+  dtype: bf16
+  quant: BF16
+  disk_gb: 146
+  ram_gb: 161
+  backends: [airllm]
+  benchmarks:
+    general: 86
+    vision: 91
+    ocr: 88
+    code: null
+    math: null
+  notes: "Streamable 72B vision-language model, for one hard image when no VLM fits. No structured output."
+  structured_output: false
+  vllm_id: Qwen/Qwen2.5-VL-72B-Instruct
+  fetched_at: null
+
+- id: mixtral:8x22b
+  kind: llm
+  size_b: 141
+  layers: 56
+  dtype: bf16
+  quant: BF16
+  disk_gb: 282
+  ram_gb: 310
+  moe: true
+  backends: [airllm]
+  benchmarks:
+    general: 84
+    vision: null
+    ocr: null
+    code: 76
+    math: 62
+  notes: "Mixture of experts, 141B over 56 layers: shallow, so a fat shard -- ~13 GB resident. No structured output."
+  structured_output: false
+  vllm_id: mistralai/Mixtral-8x22B-Instruct-v0.1
+  fetched_at: null
+
+- id: qwen3:235b-a22b
+  kind: llm
+  size_b: 235
+  layers: 94
+  dtype: bf16
+  quant: BF16
+  disk_gb: 470
+  ram_gb: 517
+  moe: true
+  backends: [airllm]
+  benchmarks:
+    general: 90
+    vision: null
+    ocr: null
+    code: 89
+    math: 88
+  notes: "235B MoE over 94 layers: frontier-class open weights, ~13 GB resident, a terabyte of disk to split. No structured output."
+  structured_output: false
+  vllm_id: Qwen/Qwen3-235B-A22B-Instruct-2507
+  fetched_at: null
+
+- id: deepseek-v3:671b
+  kind: llm
+  size_b: 671
+  layers: 61
+  dtype: fp8
+  quant: FP8
+  disk_gb: 671
+  ram_gb: 738
+  moe: true
+  backends: [airllm]
+  benchmarks:
+    general: 91
+    vision: null
+    ocr: null
+    code: 90
+    math: 90
+  notes: "671B MoE, published in fp8 over 61 layers. The largest entry here, and the one whose disk requirement bites first. No structured output."
+  structured_output: false
+  vllm_id: deepseek-ai/DeepSeek-V3
+  fetched_at: null
+
+- id: llama3.1:405b
+  kind: llm
+  size_b: 405
+  layers: 126
+  dtype: bf16
+  quant: BF16
+  disk_gb: 810
+  ram_gb: 891
+  backends: [airllm]
+  benchmarks:
+    general: 88
+    vision: null
+    ocr: null
+    code: 89
+    math: 74
+  notes: "Dense 405B over 126 layers: depth is what makes it streamable -- ~17 GB resident for 405B of weights. No structured output."
+  structured_output: false
+  vllm_id: meta-llama/Llama-3.1-405B-Instruct
   fetched_at: null
 
 # --- Embedding models (kind: embed) ---------------------------------------

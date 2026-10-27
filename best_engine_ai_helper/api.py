@@ -4,6 +4,9 @@ api — FastAPI HTTP surface for best-engine-ai-helper.
 Exposes the two calls the GUI needs:
 
 - ``GET /api/system``    — detected hardware + compute profile + memory budget.
+- ``GET /api/airllm``    — whether layer streaming is available/warranted here,
+  and which too-large models it would unlock (see
+  :mod:`best_engine_ai_helper.offload`).
 - ``POST /api/recommend`` — a free-text task -> the same report ``recommend()``
   produces for the CLI's ``report`` command, as JSON, plus the best PAID model
   under ``"cloud"`` (reference only, on by default; see ``cli.py``'s
@@ -41,6 +44,7 @@ from . import catalog as _catalog
 from . import cloud_catalog as _cloud_catalog
 from . import detect as _detect
 from . import observe as _observe
+from .engine import default_backend as _default_backend
 from .gui import render_gui
 from .recommend import cloud_recommend as _cloud_recommend_engines
 from .recommend import recommend as _recommend_engines
@@ -186,6 +190,86 @@ def recommend(body: RecommendRequest) -> dict[str, Any]:
             body.task, quality_vs_cost=body.quality_vs_cost, provider=body.cloud_provider
         )
     return rep
+
+
+@app.get("/api/airllm")
+def airllm(
+    measure: bool = False,
+    kind: str = "llm",
+    compression: str | None = None,
+    answer_tokens: int = 300,
+    batch: int = 1,
+) -> dict[str, Any]:
+    """
+    Layer streaming: can this machine do it, should it, and what would it run?
+
+    The read-only half of the ``airllm`` command group (``status`` plus
+    ``plan``) in one call, so the GUI and any other consumer can show the
+    capability without shelling out.
+
+    Parameters
+    ----------
+    measure : bool
+        Measure disk read bandwidth instead of reading the storage-class table.
+        Off by default: it writes and reads back ~256 MB, which is not something
+        a page load should do unasked.
+    kind : str
+        ``llm`` or ``vlm``.
+    compression : str or None
+        ``4bit`` / ``8bit``, airllm's block-wise weight compression.
+    answer_tokens : int
+        Answer length every timing is computed for. The per-token rate alone
+        does not tell a caller whether a job finishes before lunch.
+    batch : int
+        Sequences answered together. Nearly free in time under streaming (one
+        pass is shared) and one KV cache each in memory.
+
+    Returns
+    -------
+    dict[str, Any]
+        ``decision`` (:func:`offload.decide`), ``disk``, ``memory_budget_gb``,
+        ``chosen`` (:func:`offload.pick`), the ranked ``plans``, and
+        ``comparison`` (:func:`offload.compare`) — the same model streamed
+        against the best this machine runs natively, both priced in seconds for
+        one answer, which is the decision a caller is actually making.
+    """
+    from . import offload as _offload
+
+    hw = _detect.available_memory()
+    compute = _detect.compute_profile()
+    disk = _detect.disk_profile(measure=measure)
+    budget = _offload.budget_gb(hw)
+    entries = _catalog.servable_only(_catalog.load_catalog(), "airllm")
+    plans = _offload.rank(
+        entries,
+        budget_gb=budget,
+        disk=disk,
+        compression=compression,
+        kind="vlm" if kind == "vlm" else "llm",
+        batch=batch,
+        new_tokens=answer_tokens,
+    )
+    comparison = _offload.compare(
+        _catalog.load_catalog(),
+        hw=hw,
+        disk=disk,
+        bandwidth_gbs=compute.get("bandwidth_gbs"),
+        kind="vlm" if kind == "vlm" else "llm",
+        native_backend=_default_backend(),
+        new_tokens=answer_tokens,
+        batch=batch,
+        compression=compression,
+    )
+    return {
+        "decision": _offload.decide(compute=compute, disk=disk),
+        "disk": disk,
+        "memory_budget_gb": budget,
+        "comfort_tps_streaming": _offload.COMFORT_TPS_STREAMING,
+        "install": _offload.INSTALL_HINT,
+        "chosen": _offload.pick(plans),
+        "plans": plans,
+        "comparison": comparison,
+    }
 
 
 @app.get("/api/activity")

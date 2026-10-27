@@ -53,7 +53,10 @@ ENGINE_NAME = "llm.engine.yaml"
 _OLLAMA_URL = "http://localhost:11434"
 _VLLM_URL = "http://localhost:8000/v1"
 
-_VALID_BACKENDS = ("ollama", "vllm")
+# `airllm` is valid but never automatic: `default_backend` cannot return it,
+# and `_resolve_local` only reaches it when a human asks or when nothing else
+# fits (see offload.decide). Streaming is a rescue, not a preference.
+_VALID_BACKENDS = ("ollama", "vllm", "airllm")
 
 # Default API roots for cloud providers, used when a cloud brief does not pin
 # its own base_url.
@@ -130,6 +133,11 @@ def _base_url(backend: str, endpoint: str | None) -> str:
     """Resolve the server base URL for a backend, honouring an explicit endpoint."""
     if endpoint:
         return endpoint.rstrip("/")
+    if backend == "airllm":
+        # There is no URL to resolve: airllm is a library that runs inside the
+        # caller's own process. An empty string says so; inventing a localhost
+        # port would send `llm.chat` looking for a daemon that will never exist.
+        return ""
     return _OLLAMA_URL if backend == "ollama" else _VLLM_URL
 
 
@@ -137,6 +145,11 @@ def _serve_command(backend: str, model: str, base_url: str) -> str:
     """The shell command that brings ``model`` up on ``backend`` for this machine."""
     if backend == "ollama":
         return f"ollama pull {model}"
+    if backend == "airllm":
+        # Nothing to bring up, but something to do: the first call pays for the
+        # download and the layer split, and a caller who discovers that inside a
+        # job will think it hung. This command pays it deliberately instead.
+        return f"best-engine-ai-helper airllm prepare --model {model}"
     # vLLM: serve the HuggingFace model on the base URL's port (default 8000).
     port = urlparse(base_url).port or 8000
     return f"vllm serve {model} --port {port}"
@@ -162,6 +175,7 @@ def resolve(
     hw: dict[str, float | None] | None = None,
     compute: dict[str, Any] | None = None,
     cloud_catalog: list[dict[str, Any]] | None = None,
+    disk: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Resolve a usage brief into a concrete engine descriptor.
@@ -178,6 +192,15 @@ def resolve(
       ``pricing.yaml`` catalog on a quality-vs-price trade-off (see
       :func:`_resolve_cloud` and :mod:`best_engine_ai_helper.cloud_catalog`).
 
+    In ``local`` mode there is one escalation: when the conventional backend
+    resolves nothing that FITS for a kind the brief needs, resolution consults
+    :func:`offload.decide` and, if this machine can stream, rescues that kind
+    alone with a layer-streamed model (``backend: airllm`` inside the kind's
+    own section — see :func:`model_for`). The descriptor records the decision
+    and its reason under ``airllm``, including when the answer was no. Set
+    ``airllm: never`` in the brief, or ``BEST_ENGINE_AIRLLM=never``, to switch
+    the escalation off.
+
     Parameters
     ----------
     brief : str | Path | dict
@@ -188,10 +211,13 @@ def resolve(
         ``provider``, ``model`` (both optional -> auto-pick), ``vlm_model``,
         ``base_url``, ``api_key_env``, ``quality_vs_cost`` (0..1, default
         :data:`cloud_catalog.DEFAULT_QUALITY_VS_COST`, only used when
-        auto-picking).
-    backend : {'auto', 'ollama', 'vllm'}
-        ``auto`` picks per :func:`default_backend`; an explicit value forces it.
-        Local mode only.
+        auto-picking); streaming-only: ``airllm``
+        (``auto``/``always``/``never``, default ``auto``) and
+        ``airllm_compression`` (``4bit``/``8bit``).
+    backend : {'auto', 'ollama', 'vllm', 'airllm'}
+        ``auto`` picks per :func:`default_backend` — which never returns
+        ``airllm``: layer streaming is reached automatically only as a rescue
+        (see below), and otherwise by naming it here. Local mode only.
     endpoint : str or None
         Override the server base URL (defaults to the local endpoint for the
         backend, or the provider's default API root for cloud mode).
@@ -201,6 +227,9 @@ def resolve(
     cloud_catalog : optional
         Injectable for tests; defaults to the live ``pricing.yaml`` catalog.
         Cloud mode only, and only consulted when the brief omits ``model``.
+    disk : optional
+        Injectable storage profile (:func:`detect.disk_profile`). Read only on
+        the layer-streaming path, where the drive bounds throughput.
 
     Returns
     -------
@@ -221,7 +250,13 @@ def resolve(
     if mode != "local":
         osh.warning(f"Unknown brief mode {mode!r}; treating as 'local'.")
     return _resolve_local(
-        spec, backend=backend, endpoint=endpoint, catalog=catalog, hw=hw, compute=compute
+        spec,
+        backend=backend,
+        endpoint=endpoint,
+        catalog=catalog,
+        hw=hw,
+        compute=compute,
+        disk=disk,
     )
 
 
@@ -233,10 +268,12 @@ def _resolve_local(
     catalog: list[dict[str, Any]] | None = None,
     hw: dict[str, float | None] | None = None,
     compute: dict[str, Any] | None = None,
+    disk: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Resolve a ``mode: local`` brief into a hardware-specific descriptor."""
     from . import catalog as _catalog
     from . import detect as _detect
+    from . import offload as _offload
     from .recommend import recommend as _recommend
 
     if backend == "auto":
@@ -246,6 +283,10 @@ def _resolve_local(
 
     headroom = min(float(spec.get("headroom", MAX_HEADROOM)), MAX_HEADROOM)
     min_tps = float(spec.get("min_tps", COMFORT_TPS))
+    # A brief that says nothing about streaming gets `auto`, which only fires
+    # when the conventional backend comes back empty. `--backend airllm` is the
+    # manual door and does not consult this.
+    stream_request = _offload.requested(spec.get("airllm"))
     kinds = _kinds_from_brief(spec.get("kind", "both"))
     task = spec.get("task")
     # The brief's own word on whether the job needs schema-constrained output.
@@ -276,6 +317,29 @@ def _resolve_local(
             "`best-engine-ai-helper catalog update`, or resolve for another backend."
         )
     base_url = _base_url(backend, endpoint)
+
+    if backend == "airllm":
+        # Asked for by name. `decide` is still consulted — not to veto the
+        # request, but so an unusable machine is told why here instead of at
+        # the first generate() call — and `never` still wins, because an
+        # environment that switched streaming off meant it.
+        decision = _offload.decide(
+            request="never" if stream_request == "never" else "always",
+            compute=compute,
+            disk=disk,
+        )
+        return _resolve_streaming(
+            spec,
+            kinds=kinds,
+            task=task,
+            headroom=headroom,
+            hw=hw,
+            compute=compute,
+            disk=decision["disk"],
+            catalog=catalog,
+            decision=decision,
+            min_tps=spec.get("min_tps"),
+        )
 
     # What the daemon has right now. Asked before ranking rather than after, so
     # the list can break a tie between two comparable candidates instead of only
@@ -358,6 +422,271 @@ def _resolve_local(
                     f"run `ollama pull {model}` before the first call."
                 )
         cmd = _serve_command(backend, model, base_url)
+        if cmd not in serve:
+            serve.append(cmd)
+
+    engine["serve"] = serve
+
+    # The automatic trigger. A kind is "unrescued" when the conventional
+    # backend found nothing for it, or found only something that does not fit
+    # this machine's budget -- in both cases the caller has no usable model,
+    # which is the one situation where trading three orders of magnitude of
+    # speed for capability is the better deal.
+    unrescued = [k for k in kinds if not (engine.get(k) or {}).get("fits")]
+    if unrescued and stream_request != "never":
+        decision = _offload.decide(
+            request=stream_request,
+            conventional_resolved=False,
+            compute=compute,
+            disk=disk,
+        )
+        engine["airllm"] = {
+            "activate": decision["activate"],
+            "trigger": decision["trigger"],
+            "reason": decision["reason"],
+            "runtime": decision["runtime"],
+            "installed": decision["installed"],
+            "blockers": decision["blockers"],
+            "kinds": unrescued,
+        }
+        if decision["activate"]:
+            streamed = _resolve_streaming(
+                spec,
+                kinds=unrescued,
+                task=task,
+                headroom=headroom,
+                hw=hw,
+                compute=compute,
+                disk=decision["disk"],
+                catalog=_catalog.load_catalog(),
+                decision=decision,
+                min_tps=spec.get("min_tps"),
+            )
+            rescued: list[str] = []
+            for kind in unrescued:
+                section = streamed.get(kind)
+                if not section:
+                    continue
+                rescued.append(kind)
+                # The descriptor stays on its conventional backend and the
+                # rescued kind carries its own, so a mixed engine file
+                # (Ollama for the LLM, streaming for the VLM) says exactly
+                # that. `model_for` reads the per-kind value first.
+                engine[kind] = section
+                osh.warning(
+                    f"No {kind} model fits this machine, so {kind} fell back to layer "
+                    f"streaming: {section['model']} at ~{section.get('seconds_per_token')} "
+                    "s/token. This is a batch-grade speed, not an interactive one."
+                )
+            # What the rescue actually achieved, which is not always what it
+            # set out to do: a machine small enough that nothing fits in
+            # memory can also be small enough that no single layer shard
+            # fits. `activate: true` with an empty `rescued` is that case,
+            # and it has to be visible rather than inferred from the absence
+            # of a change.
+            engine["airllm"]["rescued"] = rescued
+            if not rescued:
+                osh.warning(
+                    "Layer streaming was activated but rescued nothing: no catalog "
+                    "entry fits both one resident layer shard and the free disk the "
+                    "split needs on this machine."
+                )
+            for cmd in streamed.get("serve", []):
+                if cmd not in engine["serve"]:
+                    engine["serve"].append(cmd)
+
+    return engine
+
+
+def _resolve_streaming(
+    spec: dict[str, Any],
+    *,
+    kinds: list[Literal["llm", "vlm"]],
+    task: str | None,
+    headroom: float,
+    hw: dict[str, float | None],
+    compute: dict[str, Any],
+    disk: dict[str, Any],
+    catalog: list[dict[str, Any]],
+    decision: dict[str, Any],
+    min_tps: float | str | None = None,
+) -> dict[str, Any]:
+    """
+    Resolve a brief against the layer-streaming backend.
+
+    Deliberately the SAME pipeline as every other backend —
+    :func:`recommend.recommend` with ``backend='airllm'`` — rather than a second
+    picker. The backend-specific parts (one shard instead of the whole model, a
+    disk-bound rate) already live in ``score``/``offload``, so routing through
+    the common path keeps one ranking, one report shape, and one place where the
+    four decision factors are applied.
+
+    Parameters
+    ----------
+    spec : dict[str, Any]
+        The brief.
+    kinds : list of {'llm', 'vlm'}
+        Kinds to resolve. The automatic trigger passes only the unrescued ones.
+    task : str or None
+        The brief's free-text task, for the benchmark axis.
+    headroom : float
+        Memory safety fraction, already clamped.
+    hw, compute, disk : dict
+        Detected hardware, compute profile and storage profile.
+    catalog : list of dict
+        Catalog entries, not yet filtered for this backend.
+    decision : dict[str, Any]
+        The :func:`offload.decide` verdict that got us here, echoed into the
+        descriptor so the file records WHY it names a streamed model.
+    min_tps : float or str or None
+        The brief's ``min_tps`` if it set one (YAML may hand it over as a
+        string). When it did not, the floor
+        becomes :data:`offload.COMFORT_TPS_STREAMING` instead of the 15 tok/s
+        interactive default — a floor written for a resident model would reject
+        every streamed candidate and report "nothing fits" about a backend whose
+        entire purpose is to fit.
+
+    Returns
+    -------
+    dict[str, Any]
+        An engine descriptor with ``backend: airllm``, a per-kind section, and
+        the streaming facts a caller needs: resident shard size, checkpoint
+        size, disk requirement, and seconds per token.
+    """
+    from . import catalog as _catalog
+    from . import offload as _offload
+    from .recommend import recommend as _recommend
+
+    floor = float(min_tps) if min_tps is not None else _offload.COMFORT_TPS_STREAMING
+    compression = spec.get("airllm_compression")
+    rows = _catalog.servable_only(catalog, "airllm")
+    if catalog and not rows:
+        osh.warning(
+            "No catalog entry can be streamed: layer streaming loads safetensors "
+            "from the HuggingFace Hub, and no entry names a repository "
+            "(`hf_id`/`vllm_id`). Run `best-engine-ai-helper catalog update`."
+        )
+
+    # `recommend` supplies the candidate table: the right footprints, the right
+    # disk-bound rates, the right benchmark axis per kind. What it must NOT
+    # supply here is the PICK — its anti-greed selector takes the leanest model
+    # within a quality band, and under streaming that lands on an 8B checkpoint
+    # (see offload.pick for why that is the one senseless answer). So the table
+    # comes from the common pipeline and the choice from the streaming rule.
+    report = _recommend(
+        hw,
+        rows,
+        task,
+        headroom=headroom,
+        compute=compute,
+        min_tps=floor,
+        # Streaming has no schema enforcement at all (airllm exposes raw
+        # generation), so requiring structured output would disqualify the
+        # whole pool. The brief's own wish is honoured by the warning below
+        # rather than by a filter that can only ever return nothing.
+        require_structured=False,
+        backend="airllm",
+        kinds=kinds,
+        disk=disk,
+    )
+    # Same figure the report just used (recommend switches to the streaming
+    # budget for this backend); read from the report rather than recomputed, so
+    # the table's `fits` column and the pick can never disagree.
+    budget_gb = report["memory_budget_gb"]
+
+    memory_gb = hw.get("unified_gb") or hw.get("vram_gb") or hw.get("ram_gb")
+    engine: dict[str, Any] = {
+        "generated_by": "best-engine-ai-helper — machine-specific, do not commit",
+        "mode": "local",
+        "resolved_for": {
+            "chip": compute.get("chip"),
+            "accelerator": compute.get("accelerator"),
+            "memory_gb": round(float(memory_gb), 1) if memory_gb else None,
+            "storage": disk.get("storage"),
+            "disk_read_gbs": disk.get("read_gbs"),
+            "disk_read_basis": disk.get("basis"),
+        },
+        "backend": "airllm",
+        # No URL, on purpose: airllm is a library and runs in the caller's own
+        # process. `llm.chat` dispatches on the backend name, not on a port.
+        "base_url": "",
+        "headroom": headroom,
+        "min_tps": floor,
+        "airllm": {
+            "activate": decision["activate"],
+            "trigger": decision["trigger"],
+            "reason": decision["reason"],
+            "runtime": decision["runtime"],
+            "installed": decision["installed"],
+            "blockers": decision["blockers"],
+            "compression": compression,
+            "install": _offload.INSTALL_HINT,
+        },
+    }
+
+    serve: list[str] = []
+    for kind in kinds:
+        axis_scores = {
+            str(row.get("id")): row.get("score")
+            for row in (report.get("recommendations", {}).get(kind) or {}).get("candidates", [])
+        }
+        plans = _offload.rank(
+            rows,
+            budget_gb=budget_gb,
+            disk=disk,
+            compression=compression,
+            prefetching=True,
+            kind=kind,
+        )
+        # Score on the TASK's axis, not the generic one `rank` carried, so a
+        # vision brief chooses between two streamable giants on vision.
+        for row in plans:
+            if row["catalog_id"] in axis_scores:
+                row["score"] = axis_scores[str(row["catalog_id"])]
+        plan = _offload.pick(plans)
+        if plan is None:
+            osh.warning(
+                f"No {kind} model can be streamed on this machine: nothing in the "
+                "catalog fits both one resident shard and the free disk the layer "
+                "split needs."
+            )
+            engine[kind] = None
+            continue
+        engine[kind] = {
+            "model": plan["model"],
+            "catalog_id": plan["catalog_id"],
+            # Named `backend` per kind so a MIXED descriptor is readable: the
+            # automatic trigger rescues one kind and leaves the other alone.
+            "backend": "airllm",
+            "base_url": "",
+            "streaming": True,
+            "ram_gb": plan["resident_gb"],
+            "checkpoint_gb": plan["checkpoint_gb"],
+            "layers": plan["layers"],
+            "layers_estimated": plan["layers_estimated"],
+            "disk_peak_gb": plan["disk"]["peak_gb"],
+            "disk_steady_gb": plan["disk"]["steady_gb"],
+            "disk_fits": plan["disk_fits"],
+            "est_tokens_per_s": plan["est_tokens_per_s"],
+            "seconds_per_token": plan["seconds_per_token"],
+            "tps_basis": "estimated",
+            # A fact about the backend, not about the weights: airllm has no
+            # equivalent of Ollama's `format=<schema>`.
+            "structured_output": False,
+            "score": plan.get("score"),
+            "fits": plan["fits"],
+            "comfortable": plan["usable"],
+            "blockers": plan["blockers"],
+        }
+        for blocker in plan["blockers"]:
+            osh.warning(f"{kind} streaming candidate {plan['model']}: {blocker}.")
+        if spec.get("structured_output") is not False:
+            osh.warning(
+                f"The brief wants schema-constrained output and {kind} resolved to a "
+                "streamed model, which cannot honour one. Schema-driven calls must "
+                "stay on an Ollama model."
+            )
+        cmd = _serve_command("airllm", plan["model"], "")
         if cmd not in serve:
             serve.append(cmd)
 
@@ -661,6 +990,17 @@ def model_for(engine: dict[str, Any], kind: str) -> tuple[str, str, str]:
 
     Raises ``KeyError`` if the descriptor has no entry for ``kind`` (e.g. asking
     for a VLM from an engine resolved for an ``llm``-only brief).
+
+    Examples
+    --------
+    >>> engine = {"backend": "ollama", "base_url": "http://localhost:11434",
+    ...           "llm": {"model": "qwen3:14b"}}
+    >>> model_for(engine, "llm")
+    ('ollama', 'http://localhost:11434', 'qwen3:14b')
+    >>> # A kind that fell back to streaming carries its own backend.
+    >>> engine["vlm"] = {"model": "Qwen/Qwen2.5-VL-72B-Instruct", "backend": "airllm"}
+    >>> model_for(engine, "vlm")
+    ('airllm', '', 'Qwen/Qwen2.5-VL-72B-Instruct')
     """
     section = engine.get(kind)
     if not section or not section.get("model"):
@@ -668,7 +1008,14 @@ def model_for(engine: dict[str, Any], kind: str) -> tuple[str, str, str]:
             f"Engine has no usable '{kind}' model; the brief may not request it, "
             f"or resolution found none for this machine."
         )
-    return engine["backend"], engine["base_url"], section["model"]
+    # A kind may override the descriptor's backend. That happens when nothing
+    # fit this machine for THAT kind and resolution fell back to layer
+    # streaming for it alone — a mixed descriptor (Ollama for the LLM, airllm
+    # for the VLM) is the honest outcome, and a consumer reading the top-level
+    # backend for every kind would send a streaming model to an Ollama URL.
+    backend = str(section.get("backend") or engine["backend"])
+    base_url = section.get("base_url", engine["base_url"] if backend == engine["backend"] else "")
+    return backend, str(base_url), section["model"]
 
 
 def diagnose(

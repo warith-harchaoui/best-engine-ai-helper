@@ -71,8 +71,11 @@ _SLUG_SOURCES: frozenset[str] = frozenset({"apxml"})
 #: Backends this gate knows how to rule on. vLLM is deliberately absent: an
 #: entry without a ``vllm_id`` already falls back to the raw tag with a
 #: warning, which is a documented behaviour and a reasonable one. The gate
-#: exists for the case that is *not* recoverable — a name Ollama cannot pull.
-_GATED_BACKENDS: frozenset[str] = frozenset({"ollama"})
+#: exists for the cases that are *not* recoverable — a name Ollama cannot pull,
+#: and (for ``airllm``) an entry naming no HuggingFace repository at all, since
+#: layer streaming reads safetensors from the Hub and has no registry to fall
+#: back to.
+_GATED_BACKENDS: frozenset[str] = frozenset({"ollama", "airllm"})
 
 
 def servable(entry: dict[str, Any], backend: str) -> bool:
@@ -84,8 +87,8 @@ def servable(entry: dict[str, Any], backend: str) -> bool:
     entry : dict[str, Any]
         A catalog entry.
     backend : str
-        ``ollama``, ``vllm``, or anything else (unknown backends are trusted:
-        this is a gate against a known mismatch, not a whitelist).
+        ``ollama``, ``vllm``, ``airllm``, or anything else (unknown backends are
+        trusted: this is a gate against a known mismatch, not a whitelist).
 
     Returns
     -------
@@ -111,6 +114,10 @@ def servable(entry: dict[str, Any], backend: str) -> bool:
     False
     >>> servable({"id": "whatever"}, "some-future-backend")
     True
+    >>> servable({"id": "llama3.3:70b", "vllm_id": "meta-llama/x"}, "airllm")
+    True
+    >>> servable({"id": "gemma3:12b"}, "airllm")      # no Hub repo to stream
+    False
     """
     declared = entry.get("backends")
     if isinstance(declared, list) and declared:
@@ -119,6 +126,15 @@ def servable(entry: dict[str, Any], backend: str) -> bool:
         return True
     if not str(entry.get("id") or "").strip():
         return False
+    if backend == "airllm":
+        # A pull tag is useless to a streaming backend: airllm downloads
+        # safetensors from the Hub and splits them into per-layer shards, so an
+        # entry that names no repository names nothing it can load. The slug
+        # rule below is the opposite case and does not apply — a slug source
+        # like ApXML carries exactly the `vllm_id` this needs.
+        from . import offload as _offload
+
+        return _offload.hf_id(entry) is not None
     return str(entry.get("source") or "").strip() not in _SLUG_SOURCES
 
 
@@ -456,12 +472,29 @@ def normalize_apxml_spec(spec: dict[str, Any], fetched_at: str) -> dict[str, Any
         "benchmarks": dict(_EMPTY_BENCHMARKS),
         # Say it rather than leave it to be inferred. ApXML keys its directory
         # by the paper's slug (`qwen36-35b-a3b`), which is a HuggingFace repo
-        # name and not an `ollama pull` tag, so these entries are vLLM-servable
-        # and nothing else. `servable()` can deduce as much from `source`, and
-        # still does for entries cached by older versions, but a filter that
-        # infers a fact the writer already knew is a net under a gap rather
-        # than a fix for it. Written here, the entry is simply honest.
-        "backends": ["vllm"],
+        # name and not an `ollama pull` tag, so these entries are servable by
+        # whatever loads from the Hub and by nothing else. `servable()` can
+        # deduce as much from `source`, and still does for entries cached by
+        # older versions, but a filter that infers a fact the writer already
+        # knew is a net under a gap rather than a fix for it.
+        #
+        # Two backends load from the Hub, not one: vLLM and layer streaming.
+        # This directory is in fact the best source of streaming candidates
+        # there is — it catalogues the 200B-and-up open-weight models that no
+        # machine here can load and that streaming is the only way to run — so
+        # omitting `airllm` here hid exactly the entries the backend exists for.
+        "backends": ["vllm", "airllm"],
+        # Mixture-of-experts, when the directory says so. Load-bearing for the
+        # streaming footprint: without it, a MoE model's decoder depth is
+        # interpolated from its parameter count, and that relation does not
+        # hold for MoE (DeepSeek-V3 is 671B across 61 layers where the dense
+        # trend predicts twice as many). Flagged here, `offload.layer_count`
+        # refuses to guess instead of guessing wrong by a factor of two.
+        **(
+            {"moe": True}
+            if (spec.get("num_of_experts") or 0) and float(spec["num_of_experts"]) > 1
+            else {}
+        ),
         "vllm_id": spec.get("vllm_id"),
         "context_length": spec.get("context_length"),
         "license": spec.get("license"),

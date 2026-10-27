@@ -20,14 +20,23 @@ msgstr "(mélangé)"
 msgid "A provider whose key is missing is not a candidate. Keys are looked up in settings.yaml, then a .env file, then the environment, then the OS keychain. Only their presence is checked here; no key value is ever read or shown."
 msgstr "Un fournisseur dont la clé est absente n'est pas un candidat. Les clés sont cherchées dans settings.yaml, puis un fichier .env, puis l'environnement, puis le trousseau du système. Seule leur présence est vérifiée ici : aucune valeur de clé n'est lue ni affichée."
 
+msgid "A transformer never needs all of its layers in memory at once. Keeping one layer shard resident and streaming the rest off the disk, this machine can run models far beyond its memory — at seconds per token rather than tokens per second. Batch work only: one hard question, an overnight evaluation, a quality reference for the smaller model you run every day."
+msgstr "Un transformeur n'a jamais besoin de toutes ses couches en mémoire à la fois. En gardant une seule tranche de couche résidente puis en lisant les autres depuis le disque, cette machine exécute des modèles très au-delà de sa mémoire — à quelques secondes par jeton plutôt qu'à des jetons par seconde. Réservé au traitement par lots : une question difficile, une évaluation nocturne, une référence de qualité pour le petit modèle du quotidien."
+
 msgid "Activity"
 msgstr "Activité"
 
 msgid "All candidates"
 msgstr "Tous les candidats"
 
+msgid "already-running engines:"
+msgstr "moteurs déjà lancés :"
+
 msgid "Analyzing task and hardware…"
 msgstr "Analyse de la tâche et du matériel…"
+
+msgid "axis:"
+msgstr "axe :"
 
 msgid "Best"
 msgstr "Meilleur"
@@ -35,11 +44,17 @@ msgstr "Meilleur"
 msgid "Best local or cloud LLM / VLM"
 msgstr "Meilleur LLM / VLM local ou cloud"
 
+msgid "Biggest model this machine could stream:"
+msgstr "Plus gros modèle exécutable ici en flux de couches :"
+
 msgid "By model"
 msgstr "Par modèle"
 
 msgid "By user"
 msgstr "Par utilisateur"
+
+msgid "calls"
+msgstr "appels"
 
 msgid "Chip / accelerator"
 msgstr "Puce / accélérateur"
@@ -49,6 +64,9 @@ msgstr "Cloud (payant)"
 
 msgid "Cloud providers"
 msgstr "Fournisseurs cloud"
+
+msgid "cost"
+msgstr "coût"
 
 msgid "Describe the task"
 msgstr "Décrire la tâche"
@@ -65,8 +83,14 @@ msgstr "Détection en cours…"
 msgid "Detection failed: "
 msgstr "Détection impossible : "
 
+msgid "disk free"
+msgstr "disque libre"
+
 msgid "Done."
 msgstr "Terminé."
+
+msgid "e.g. “write product descriptions and check photo quality”"
+msgstr "ex. « rédiger des fiches produit et vérifier la qualité de photos »"
 
 msgid "Error rate:"
 msgstr "Taux d'erreur :"
@@ -74,17 +98,35 @@ msgstr "Taux d'erreur :"
 msgid "Error."
 msgstr "Erreur."
 
+msgid "exceeds the memory budget — will be slow"
+msgstr "dépasse le budget mémoire — sera lent"
+
 msgid "Failed to load: "
 msgstr "Échec du chargement : "
+
+msgid "fits"
+msgstr "tient"
 
 msgid "GB"
 msgstr "Go"
 
+msgid "GB free disk for the layer split"
+msgstr "Go de disque libre pour la découpe en couches"
+
 msgid "GB RAM"
 msgstr "Go RAM"
 
+msgid "GB resident"
+msgstr "Go résidents"
+
 msgid "GB/s"
 msgstr "Go/s"
+
+msgid "general-purpose text assistant"
+msgstr "assistant texte généraliste"
+
+msgid "key found"
+msgstr "clé trouvée"
 
 msgid "Lighter alternative:"
 msgstr "Alternative plus légère :"
@@ -101,6 +143,9 @@ msgstr "Local (gratuit)"
 msgid "Local call ledger (user, model, cost) — see the `activity` command."
 msgstr "Journal local des appels (utilisateur, modèle, coût) — voir la commande `activity`."
 
+msgid "local only, no telemetry"
+msgstr "local uniquement, aucune télémétrie"
+
 msgid "Main"
 msgstr "Principal"
 
@@ -113,8 +158,14 @@ msgstr "Marge mémoire"
 msgid "Mode"
 msgstr "Mode"
 
+msgid "model"
+msgstr "modèle"
+
 msgid "Needs:"
 msgstr "Besoins :"
+
+msgid "no"
+msgstr "non"
 
 msgid "No calls recorded yet."
 msgstr "Aucun appel enregistré pour le moment."
@@ -122,11 +173,29 @@ msgstr "Aucun appel enregistré pour le moment."
 msgid "No candidate found."
 msgstr "Aucun candidat trouvé."
 
+msgid "no key"
+msgstr "pas de clé"
+
+msgid "no structured JSON output — unfit for schema-driven tasks"
+msgstr "pas de sortie JSON structurée — inadapté aux tâches à schéma"
+
+msgid "Nothing can be streamed here: no model fits both one resident layer shard and the free disk the split needs."
+msgstr "Rien n'est exécutable en flux ici : aucun modèle ne tient à la fois dans une tranche de couche résidente et dans l'espace disque libre que la découpe exige."
+
 msgid "One sentence is enough — visual keywords add a VLM to the recommendation."
 msgstr "Une phrase suffit — les mots-clés visuels ajoutent un VLM à la recommandation."
 
 msgid "Platform"
 msgstr "Plateforme"
+
+msgid "price unknown"
+msgstr "tarif inconnu"
+
+msgid "provider"
+msgstr "fournisseur"
+
+msgid "quality / cost"
+msgstr "qualité / coût"
 
 msgid "RAM free"
 msgstr "RAM libre"
@@ -143,23 +212,47 @@ msgstr "Référence seulement — aucune clé API lue, aucun appel réseau."
 msgid "Refresh"
 msgstr "Rafraîchir"
 
+msgid "resident shard budget"
+msgstr "budget de tranche résidente"
+
+msgid "runtime installed"
+msgstr "moteur installé"
+
+msgid "runtime not installed"
+msgstr "moteur non installé"
+
+msgid "s/token"
+msgstr "s/jeton"
+
+msgid "score"
+msgstr "score"
+
 msgid "Server load:"
 msgstr "Charge serveur :"
 
 msgid "Skip to content"
 msgstr "Aller au contenu"
 
-msgid "System RAM"
-msgstr "RAM système"
+msgid "storage"
+msgstr "stockage"
+
+msgid "structured"
+msgstr "structuré"
 
 msgid "System characteristics"
 msgstr "Caractéristiques système"
+
+msgid "System RAM"
+msgstr "RAM système"
 
 msgid "Task description"
 msgstr "Description de la tâche"
 
 msgid "Task:"
 msgstr "Tâche :"
+
+msgid "This machine offers no runtime for layer streaming (a CUDA/ROCm GPU, or Apple Silicon through MLX)."
+msgstr "Cette machine n'offre aucun moteur pour la lecture en flux des couches (un GPU CUDA/ROCm ou Apple Silicon via MLX)."
 
 msgid "This machine's characteristics, and the best engine (LLM / VLM), local or cloud, for the task you describe."
 msgstr "Caractéristiques de cette machine et le meilleur moteur (LLM / VLM), local ou cloud, pour la tâche que vous décrivez."
@@ -170,89 +263,35 @@ msgstr "Caractéristiques matérielles de cette machine et meilleur moteur local
 msgid "Toggle theme"
 msgstr "Changer de thème"
 
+msgid "tok/s"
+msgstr "tok/s"
+
+msgid "Too large to load, still runnable"
+msgstr "Trop gros pour tenir en mémoire, exécutable quand même"
+
 msgid "Total cost:"
 msgstr "Coût total :"
 
 msgid "Unified memory"
 msgstr "Mémoire unifiée"
 
-msgid "Usable model budget"
-msgstr "Budget modèle utilisable"
-
-msgid "VRAM"
-msgstr "VRAM"
-
-msgid "Vendor"
-msgstr "Fournisseur"
-
-msgid "already-running engines:"
-msgstr "moteurs déjà lancés :"
-
-msgid "axis:"
-msgstr "axe :"
-
-msgid "calls"
-msgstr "appels"
-
-msgid "cost"
-msgstr "coût"
-
-msgid "disk free"
-msgstr "disque libre"
-
-msgid "e.g. “write product descriptions and check photo quality”"
-msgstr "ex. « rédiger des fiches produit et vérifier la qualité de photos »"
-
-msgid "exceeds the memory budget — will be slow"
-msgstr "dépasse le budget mémoire — sera lent"
-
-msgid "fits"
-msgstr "tient"
-
-msgid "general-purpose text assistant"
-msgstr "assistant texte généraliste"
-
-msgid "key found"
-msgstr "clé trouvée"
-
-msgid "local only, no telemetry"
-msgstr "local uniquement, aucune télémétrie"
-
-msgid "model"
-msgstr "modèle"
-
-msgid "no"
-msgstr "non"
-
-msgid "no key"
-msgstr "pas de clé"
-
-msgid "no structured JSON output — unfit for schema-driven tasks"
-msgstr "pas de sortie JSON structurée — inadapté aux tâches à schéma"
-
-msgid "price unknown"
-msgstr "tarif inconnu"
-
-msgid "provider"
-msgstr "fournisseur"
-
-msgid "quality / cost"
-msgstr "qualité / coût"
-
-msgid "score"
-msgstr "score"
-
-msgid "structured"
-msgstr "structuré"
-
-msgid "tok/s"
-msgstr "tok/s"
-
 msgid "unknown"
 msgstr "inconnue"
 
 msgid "unknown cost"
 msgstr "coût inconnu"
+
+msgid "Usable model budget"
+msgstr "Budget modèle utilisable"
+
+msgid "Vendor"
+msgstr "Fournisseur"
+
+msgid "VRAM"
+msgstr "VRAM"
+
+msgid "would run here"
+msgstr "exécutables ici"
 
 msgid "yes"
 msgstr "oui"

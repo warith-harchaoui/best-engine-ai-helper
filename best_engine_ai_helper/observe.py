@@ -66,7 +66,9 @@ _PRICING_PATH = _PACKAGE_ROOT / "pricing.yaml"
 
 # Backends that never incur a per-call charge: local inference, whatever the
 # hardware. Any other backend name is treated as a paid API.
-_FREE_BACKENDS = frozenset({"ollama", "vllm", "langchain"})
+# `airllm` is free in money and expensive in time: it runs locally off this
+# machine's own disk, so there is no API call to price.
+_FREE_BACKENDS = frozenset({"ollama", "vllm", "langchain", "airllm"})
 
 # Rough English-text approximation (OpenAI's own rule of thumb: ~4 characters
 # per token). A real count from the provider's `usage` field is always

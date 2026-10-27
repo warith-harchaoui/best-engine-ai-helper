@@ -25,6 +25,13 @@ gemini
 langchain
     Thin wrapper over ``ChatOllama`` or ``ChatOpenAI`` from LangChain.
     Only useful if you need LangChain retrievers or agent abstractions.
+airllm
+    Layer streaming, for a model too large to fit in memory: no server at all,
+    the model runs **in this process** and reads one layer shard at a time off
+    disk (see :mod:`best_engine_ai_helper.offload`). Text only, no JSON schema,
+    and seconds per token rather than tokens per second. Reached when an engine
+    descriptor names it — never from the ``BEST_LLM_BACKEND`` env path, because
+    a 141 GB download is not something an environment variable should start.
 
 A cloud engine descriptor (``engine.resolve`` with ``mode: cloud``) carries an
 embedded local ``fallback``; :func:`chat` tries the cloud primary first and
@@ -557,6 +564,103 @@ def _chat_ollama(
 # ---------------------------------------------------------------------------
 # OpenAI-compatible backend
 # ---------------------------------------------------------------------------
+
+
+#: Streamed models loaded in this process, keyed by (repository, compression).
+#: Splitting and loading a 141 GB checkpoint is minutes of disk; a transport
+#: that paid it per call would be unusable, and there is no daemon holding the
+#: model between calls the way Ollama does. Bounded in practice by how many
+#: giant models one process can hold, which is one.
+_STREAMED: dict[tuple[str, str | None], Any] = {}
+
+
+def _chat_airllm(
+    prompt: str,
+    *,
+    system: str | None,
+    images: list[bytes] | None,
+    json_schema: dict[str, Any] | None,
+    model: str,
+    temperature: float,
+    max_new_tokens: int = 256,
+    compression: str | None = None,
+) -> tuple[str, dict[str, float | None]]:
+    """
+    Generate with a layer-streamed model, in this process.
+
+    The odd transport out: there is no server and no socket. airllm is a
+    library, so this runs the model inside the caller's interpreter, reading one
+    layer shard at a time off disk (see
+    :mod:`best_engine_ai_helper.offload`). Expect seconds per token.
+
+    Parameters
+    ----------
+    prompt : str
+        User prompt.
+    system : str or None
+        Prepended to the prompt as a plain preamble. There is no chat template
+        here: airllm hands back a bare causal LM, so a role-structured message
+        list has nowhere to go.
+    images : list[bytes] or None
+        Not supported. Raises rather than silently answering a vision question
+        from the text alone — the failure mode that would be hardest to notice.
+    json_schema : dict or None
+        Not supported, for the same reason: airllm exposes raw generation with
+        no equivalent of Ollama's grammar-constrained ``format``, so a schema
+        here could only be a suggestion the caller would read as a guarantee.
+    model : str
+        HuggingFace repository id.
+    temperature : float
+        Accepted for signature compatibility and ignored: the adapter uses the
+        runtime's own greedy default, the only setting whose behaviour is the
+        same across every model family airllm supports.
+    max_new_tokens : int
+        Token budget for one call. Small on purpose — every token is seconds.
+    compression : {'4bit', '8bit', None}
+        airllm's block-wise weight compression.
+
+    Returns
+    -------
+    tuple[str, dict]
+        The generated text and a usage dict. Token counts are None: airllm
+        reports none, and a character estimate dressed as a count would be
+        worse than an honest absence.
+
+    Raises
+    ------
+    NotImplementedError
+        For images or a JSON schema.
+    ImportError
+        When the ``[airllm]`` extra is not installed.
+    """
+    from . import offload as _offload
+
+    if images:
+        raise NotImplementedError(
+            "The layer-streaming backend has no vision path: airllm returns a bare "
+            "causal language model, without the image processor a VLM prompt needs. "
+            "Send images to an Ollama VLM instead."
+        )
+    if json_schema:
+        raise NotImplementedError(
+            "The layer-streaming backend cannot honour a JSON schema: airllm exposes "
+            "raw generation, with no equivalent of Ollama's grammar-constrained "
+            "`format`. Route schema-driven calls to an Ollama model -- an engine "
+            "descriptor whose streamed section says `structured_output: false` is "
+            "already skipped for them (see _engine_capable)."
+        )
+
+    key = (model, compression)
+    if key not in _STREAMED:
+        osh.info(f"First streaming call for {model}: loading and splitting layers.")
+        _STREAMED[key] = _offload.load(model, compression=compression)
+    text = _offload.generate(
+        f"{system}\n\n{prompt}" if system else prompt,
+        model=model,
+        max_new_tokens=max_new_tokens,
+        loaded=_STREAMED[key],
+    )
+    return text, {"in_tokens": None, "out_tokens": None}
 
 
 def _chat_openai(
@@ -1188,6 +1292,17 @@ def _dispatch(
             base_url=base_url,
             api_key=api_key,
         )
+    if transport == "airllm":
+        # No base_url and no api_key: this one runs in-process. Passing them
+        # would imply a server that does not exist.
+        return _chat_airllm(
+            prompt,
+            system=system,
+            images=images,
+            json_schema=json_schema,
+            model=model,
+            temperature=temperature,
+        )
     if transport == "langchain":
         return _chat_langchain(
             prompt,
@@ -1199,7 +1314,7 @@ def _dispatch(
         )
     raise ValueError(
         f"Unknown backend: {transport!r}. "
-        "Valid values: 'ollama', 'openai', 'anthropic', 'gemini', 'langchain'."
+        "Valid values: 'ollama', 'openai', 'anthropic', 'gemini', 'langchain', 'airllm'."
     )
 
 

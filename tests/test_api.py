@@ -168,3 +168,56 @@ def test_activity_gui_and_static_endpoints(client: TestClient, tmp_path: Path) -
     assert client.get("/static/icons/favicon.ico").status_code == 200
     manifest = client.get("/static/site.webmanifest")
     assert manifest.status_code == 200 and manifest.json()["name"] == "Best Engine AI Helper"
+
+
+def test_the_airllm_endpoint_answers_the_status_and_plan_questions_at_once(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One call, because a capability without candidates is not actionable.
+
+    This is the read-only half of the `airllm` command group, so the GUI (and
+    any other consumer) never has to shell out to learn whether this machine
+    can stream a model it cannot load.
+    """
+    from best_engine_ai_helper import offload
+
+    res = client.get("/api/airllm")
+    assert res.status_code == 200
+    data = res.json()
+    assert set(data) == {
+        "decision",
+        "disk",
+        "memory_budget_gb",
+        "comfort_tps_streaming",
+        "install",
+        "chosen",
+        "plans",
+        "comparison",
+    }
+    # The capability question and the "is it worth it" question, answered
+    # together: a page that showed only the first would leave the reader to
+    # guess at the trade.
+    assert data["comparison"]["verdict"]
+    assert data["comparison"]["new_tokens"] == 300
+    assert data["decision"]["trigger"] in ("manual", "fallback", "not-needed", "disabled")
+    assert data["disk"]["basis"] in ("declared", "measured", "unknown")
+    assert data["comfort_tps_streaming"] == offload.COMFORT_TPS_STREAMING
+    assert data["install"] == offload.INSTALL_HINT
+
+    # Every plan has to carry the two figures that decide feasibility, and the
+    # rate has to be in the unit that is honest at these speeds.
+    for plan in data["plans"]:
+        assert "disk" in plan and "peak_gb" in plan["disk"]
+        assert "seconds_per_token" in plan
+
+    # A page load must not write 256 MB to the user's disk, so measuring is
+    # opt-in here exactly as it is on the command line.
+    called: list[bool] = []
+    monkeypatch.setattr(
+        "best_engine_ai_helper.detect.measure_disk_read_gbs",
+        lambda **_: called.append(True) or 2.0,
+    )
+    assert client.get("/api/airllm").status_code == 200
+    assert called == []
+    assert client.get("/api/airllm?measure=true").status_code == 200
+    assert called == [True]

@@ -264,12 +264,40 @@ def test_a_fresh_snapshot_enriches_and_counts_coverage(monkeypatch) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_apxml_entries_declare_vllm_explicitly() -> None:
-    """The writer knows these are HuggingFace repo names, so it should say so."""
+def test_apxml_entries_declare_their_backends_explicitly() -> None:
+    """The writer knows these are HuggingFace repo names, so it should say so.
+
+    Both Hub-loading backends, not just vLLM: this directory catalogues the
+    200B-and-up open-weight models that only layer streaming can run here, so
+    leaving `airllm` out hid the entries that backend exists for.
+    """
     entry = catalog.normalize_apxml_spec({"slug": "qwen36-35b-a3b", "ram_gb": 20.0}, "2026-10-19")
 
     assert entry is not None
-    assert entry["backends"] == ["vllm"]
+    assert entry["backends"] == ["vllm", "airllm"]
+    assert catalog.servable(entry, "airllm") is True
+    assert catalog.servable(entry, "ollama") is False
+
+
+def test_apxml_mixture_of_experts_is_flagged_so_depth_is_never_guessed() -> None:
+    """A MoE entry must carry `moe`, or its streaming footprint is wrong by 2x."""
+    moe = catalog.normalize_apxml_spec(
+        {"slug": "deepseek-v3", "size_b": 671.0, "ram_gb": 400.0, "num_of_experts": 256},
+        "2026-10-19",
+    )
+    dense = catalog.normalize_apxml_spec(
+        {"slug": "llama-3-70b", "size_b": 70.0, "ram_gb": 40.0, "num_of_experts": 1},
+        "2026-10-19",
+    )
+
+    assert moe is not None and moe["moe"] is True
+    assert dense is not None and "moe" not in dense
+
+    # And the flag is what stops the depth interpolation from firing.
+    from best_engine_ai_helper import offload
+
+    assert offload.layer_count(moe) == (None, False)
+    assert offload.layer_count(dense) == (80, True)
 
 
 def test_the_declared_backend_is_what_gates_an_apxml_entry() -> None:

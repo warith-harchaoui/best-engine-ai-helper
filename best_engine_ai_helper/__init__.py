@@ -8,6 +8,8 @@ Public API (importable without invoking the CLI):
   from best_engine_ai_helper.catalog import load_catalog, estimate_ram
   from best_engine_ai_helper.hardware import load_hardware, lookup_chip
   from best_engine_ai_helper.score import select, rank, effective_budget
+  from best_engine_ai_helper import airllm_decide, airllm_plan  # layer streaming
+  from best_engine_ai_helper import airllm_compare  # streamed vs native, timed
   from best_engine_ai_helper import text_model, vision_model  # cheap tag resolvers
 
 The CLI entry point is ``best-engine-ai-helper`` (see cli.py). Importing this
@@ -42,7 +44,10 @@ from .detect import (
     chip_name,
     chip_vendor,
     compute_profile,
+    disk_profile,
+    measure_disk_read_gbs,
     platform_name,
+    storage_class,
 )
 
 # The brief -> engine resolution flow: turn a repo's committed usage brief into a
@@ -60,6 +65,27 @@ from .engine import (
 )
 from .hardware import load_hardware, lookup_chip
 
+# Layer streaming (airllm): run a model that does NOT fit in memory by reading
+# one layer shard at a time off disk. Exported under `airllm_*` names because
+# that is the word a caller is looking for; the module is `offload` because the
+# idea is bigger than the one package implementing it.
+from .offload import COMFORT_TPS_STREAMING
+from .offload import available as airllm_available
+from .offload import budget_gb as streaming_budget_gb
+from .offload import compare as airllm_compare
+from .offload import decide as airllm_decide
+from .offload import disk_required_gb as airllm_disk_required_gb
+from .offload import estimated_tokens_per_second as airllm_tokens_per_second
+from .offload import footprint_gb as airllm_footprint_gb
+from .offload import generate as airllm_generate
+from .offload import generation_time as airllm_generation_time
+from .offload import load as airllm_load
+from .offload import pick as airllm_pick
+from .offload import plan as airllm_plan
+from .offload import rank as airllm_rank
+from .offload import runtime as airllm_runtime
+from .offload import seconds_per_pass as airllm_seconds_per_pass
+
 # Export the engine-recommendation function under a distinct name so it does
 # not shadow the ``recommend`` submodule on attribute access.
 from .recommend import parse_task, to_markdown, write_report
@@ -71,6 +97,7 @@ from .score import (
     model_footprint_gb,
     rank,
     select,
+    usable_pool_gb,
 )
 
 # The usage catalog: named sev7n workloads (text2sql, rag-answer, embeddings, …)
@@ -95,6 +122,9 @@ __all__ = [
     "chip_name",
     "available_memory",
     "compute_profile",
+    "disk_profile",
+    "storage_class",
+    "measure_disk_read_gbs",
     "load_catalog",
     "estimate_ram",
     "load_hardware",
@@ -102,9 +132,27 @@ __all__ = [
     "select",
     "rank",
     "effective_budget",
+    "usable_pool_gb",
     "estimated_tokens_per_second",
     "model_footprint_gb",
     "MAX_HEADROOM",
+    # layer streaming (airllm)
+    "airllm_available",
+    "airllm_runtime",
+    "airllm_decide",
+    "airllm_footprint_gb",
+    "airllm_tokens_per_second",
+    "airllm_seconds_per_pass",
+    "airllm_generation_time",
+    "airllm_compare",
+    "airllm_disk_required_gb",
+    "airllm_plan",
+    "airllm_rank",
+    "airllm_pick",
+    "airllm_load",
+    "airllm_generate",
+    "streaming_budget_gb",
+    "COMFORT_TPS_STREAMING",
     "recommend_engines",
     "parse_task",
     "to_markdown",

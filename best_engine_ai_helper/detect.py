@@ -26,6 +26,10 @@ Warith Harchaoui <warithmetics@deraison.ai>
 
 from __future__ import annotations
 
+import mmap
+import os
+import tempfile
+import time
 from typing import Any
 
 import os_helper as osh
@@ -467,3 +471,332 @@ def server_load() -> dict[str, Any]:
         f"running engines: {load['running_engines']}"
     )
     return load
+
+
+# ---------------------------------------------------------------------------
+# Storage bandwidth — the ceiling on layer-streaming (airllm) decode
+# ---------------------------------------------------------------------------
+
+#: Sequential-read bandwidth (GB/s) assumed per storage class, used when no
+#: measurement is available. Deliberately on the low side of each class: the
+#: figure bounds :func:`offload.estimated_tokens_per_second`, and an optimistic
+#: disk number promises a streaming speed the machine will not deliver.
+#:
+#: - ``apple-internal``: Apple Silicon's soldered NVMe reads 4-7 GB/s depending
+#:   on chip and capacity (M1 ~4.5, M2/M3/M4 up to ~7); 4.0 is the floor of the
+#:   range, so every Mac meets or beats it.
+#: - ``nvme``: a PCIe 3.0 x4 drive sustains ~3.0-3.5 GB/s and Gen4 ~5-7; 2.5
+#:   holds for the oldest NVMe still shipping in a workstation.
+#: - ``ssd-sata``: the SATA III link itself caps at 6 Gbit/s ≈ 0.55 GB/s.
+#: - ``hdd``: 0.12 GB/s is a 7200 rpm platter's sustained outer-track rate.
+#:
+#: Sources: manufacturer sequential-read specifications per class; see
+#: references/CODING.md.
+_DISK_READ_GBS: dict[str, float] = {
+    "apple-internal": 4.0,
+    "nvme": 2.5,
+    "ssd-sata": 0.55,
+    "hdd": 0.12,
+}
+
+#: macOS ``fcntl`` command that turns the unified buffer cache off for one file
+#: descriptor (``F_NOCACHE`` in ``<sys/fcntl.h>``). Not exposed by Python's
+#: ``fcntl`` module, so the constant is spelled out here.
+_F_NOCACHE = 48
+
+#: Chunk size and default total for the optional read measurement. 4 MiB is a
+#: multiple of every sector/page size O_DIRECT demands alignment against, and
+#: 256 MiB is long enough to leave the burst/SLC window of a consumer SSD while
+#: still writing in well under a second on any drive worth streaming from.
+_PROBE_CHUNK_BYTES = 4 * 1024 * 1024
+_PROBE_TOTAL_BYTES = 256 * 1024 * 1024
+
+
+def storage_class() -> str:
+    """
+    Classify the drive that holds the model cache.
+
+    Layer streaming reads the weights off this drive once per token, so its
+    class — not the memory bus — is what bounds throughput. Classification is
+    deliberately coarse (four classes, see :data:`_DISK_READ_GBS`): the goal is
+    the right order of magnitude for an estimate, not a device database.
+
+    Returns
+    -------
+    str
+        One of ``'apple-internal'``, ``'nvme'``, ``'ssd-sata'``, ``'hdd'`` or
+        ``'unknown'``. ``'unknown'`` is returned rather than a guess when the
+        platform exposes no rotational/transport hint, so callers can say
+        "not estimated" instead of inventing a speed.
+
+    Examples
+    --------
+    >>> storage_class() in ('apple-internal', 'nvme', 'ssd-sata', 'hdd', 'unknown')
+    True
+    """
+    system = platform_name()
+    if system == "darwin":
+        # Every Apple Silicon Mac ships soldered NVMe; an Intel Mac may not, and
+        # its class is not worth probing for a product whose floor is an M-series
+        # machine, so it degrades to the generic NVMe figure.
+        return "apple-internal" if chip_vendor() == "apple" else "nvme"
+
+    if system == "linux":
+        return _linux_storage_class()
+
+    # Windows: WMI would answer this (MSFT_PhysicalDisk.MediaType), but it
+    # needs a subprocess and this module leaves raw probing to os_helper.
+    # An NVMe assumption is right on any machine bought to run models, and
+    # the basis field says it was assumed.
+    return "nvme" if system == "windows" else "unknown"
+
+
+def _linux_storage_class() -> str:
+    """
+    Classify the Linux block device backing the home directory.
+
+    Reads ``/sys/block/<dev>/queue/rotational`` — the kernel's own answer to
+    "is this a platter?" — and keys an SSD's transport off the device name
+    (``nvme*`` versus ``sd*``). Pure sysfs reads, no subprocess.
+
+    Returns
+    -------
+    str
+        One of ``'nvme'``, ``'ssd-sata'``, ``'hdd'`` or ``'unknown'``.
+
+    Examples
+    --------
+    >>> _linux_storage_class() in ('nvme', 'ssd-sata', 'hdd', 'unknown')
+    True
+    """
+    import re
+    from pathlib import Path
+
+    try:
+        dev = os.stat(Path.home()).st_dev
+        major, minor = os.major(dev), os.minor(dev)
+        link = Path(f"/sys/dev/block/{major}:{minor}")
+        # The home directory usually sits on a partition (`nvme0n1p2`), and only
+        # the whole device carries the `queue/` attributes, so walk up to it.
+        name = link.resolve().name
+        whole = re.sub(r"(p?\d+)$", "", name) if not name.startswith("dm-") else name
+        rotational = Path(f"/sys/block/{whole}/queue/rotational")
+        if not rotational.is_file():
+            return "unknown"
+        if rotational.read_text().strip() == "1":
+            return "hdd"
+        return "nvme" if whole.startswith("nvme") else "ssd-sata"
+    except OSError as exc:
+        osh.debug(f"Linux storage classification failed: {exc}")
+        return "unknown"
+
+
+def _bypass_flag() -> int:
+    """
+    Return the ``open`` flag that bypasses the page cache on this platform.
+
+    Returns
+    -------
+    int
+        ``os.O_DIRECT`` on Linux, 0 elsewhere (macOS has no such flag and uses
+        :func:`_bypass_cache` after opening instead).
+
+    Examples
+    --------
+    >>> _bypass_flag() >= 0
+    True
+    """
+    return getattr(os, "O_DIRECT", 0) if platform_name() == "linux" else 0
+
+
+def _bypass_cache(fd: int) -> None:
+    """
+    Turn the buffer cache off for an already-open descriptor (macOS only).
+
+    Parameters
+    ----------
+    fd : int
+        Open file descriptor.
+
+    Examples
+    --------
+    >>> import os, tempfile
+    >>> handle, name = tempfile.mkstemp()
+    >>> _bypass_cache(handle) is None
+    True
+    >>> os.close(handle); os.unlink(name)
+    """
+    if platform_name() != "darwin":
+        return
+    import fcntl
+
+    try:
+        fcntl.fcntl(fd, _F_NOCACHE, 1)
+    except OSError as exc:  # a filesystem may refuse it; the caller still reads
+        osh.debug(f"F_NOCACHE refused on fd {fd}: {exc}")
+
+
+def measure_disk_read_gbs(
+    total_bytes: int = _PROBE_TOTAL_BYTES, directory: str | None = None
+) -> float | None:
+    """
+    Measure sequential read bandwidth (GB/s), defeating the page cache.
+
+    Writes a scratch file, flushes it to the device, then reads it back with
+    caching disabled for that descriptor (``F_NOCACHE`` on macOS, ``O_DIRECT``
+    on Linux). Without that step the read is served from RAM and reports the
+    memory bus, not the drive — a number three times too high, which would make
+    layer streaming look comfortable when it is not.
+
+    Returns None rather than a cached-read figure on any platform that offers no
+    way to bypass the cache (Windows), so an unmeasurable machine falls back to
+    the declared class figure instead of to a flattering one.
+
+    Parameters
+    ----------
+    total_bytes : int
+        Bytes to write and read back. Rounded down to a multiple of 4 MiB, the
+        alignment ``O_DIRECT`` requires. Defaults to 256 MiB.
+    directory : str or None
+        Where to put the scratch file. None uses the system temp directory.
+        Point it at the volume holding the model cache when that differs.
+
+    Returns
+    -------
+    float or None
+        Measured GB/s (rounded to two decimals), or None when the measurement
+        is unavailable or the platform cannot bypass its cache.
+
+    Examples
+    --------
+    >>> v = measure_disk_read_gbs(total_bytes=4 * 1024 * 1024)
+    >>> v is None or v > 0
+    True
+    """
+    system = platform_name()
+    if system not in ("darwin", "linux"):
+        osh.debug(f"No cache-bypassing read on {system}; disk bandwidth not measured.")
+        return None
+
+    chunks = max(1, total_bytes // _PROBE_CHUNK_BYTES)
+    size = chunks * _PROBE_CHUNK_BYTES
+    path: str | None = None
+    try:
+        fd, path = tempfile.mkstemp(prefix="beah-disk-", dir=directory)
+        os.close(fd)
+        # mmap hands back a page-aligned buffer, which is half of what O_DIRECT
+        # demands (aligned address, offset AND length). A single repeated page
+        # would let a compressing filesystem (APFS, ZFS, btrfs) store almost
+        # nothing and "read" it back at memory speed, so the payload is
+        # incompressible.
+        buffer = mmap.mmap(-1, _PROBE_CHUNK_BYTES)
+        buffer.write(os.urandom(_PROBE_CHUNK_BYTES))
+        view = memoryview(buffer)
+
+        # The cache is bypassed on the WRITE too, not just the read. Pages the
+        # write path leaves in the cache are still served from RAM afterwards,
+        # however emphatically the reader asks for uncached I/O — which is how
+        # this probe first reported 13 GB/s on a drive whose own specification
+        # tops out near 7.
+        write_fd = os.open(path, os.O_WRONLY | _bypass_flag())
+        try:
+            _bypass_cache(write_fd)
+            for index in range(chunks):
+                os.pwritev(write_fd, [view], index * _PROBE_CHUNK_BYTES)
+            os.fsync(write_fd)
+        finally:
+            os.close(write_fd)
+
+        read_fd = os.open(path, os.O_RDONLY | _bypass_flag())
+        try:
+            _bypass_cache(read_fd)
+            start = time.perf_counter()
+            read = 0
+            while read < size:
+                got = os.preadv(read_fd, [view], read)
+                if not got:
+                    break
+                read += got
+            elapsed = time.perf_counter() - start
+        finally:
+            os.close(read_fd)
+
+        if elapsed <= 0 or read <= 0:
+            return None
+        gbs = (read / 1e9) / elapsed
+        osh.info(f"Measured sequential disk read: {gbs:.2f} GB/s over {read / 1e6:.0f} MB.")
+        return round(gbs, 2)
+    except (OSError, ValueError) as exc:
+        # O_DIRECT is refused by tmpfs, overlayfs and most network mounts, and
+        # the alignment rules are strict -- a failure here means "cannot
+        # measure", never "slow disk".
+        osh.debug(f"Disk read measurement unavailable: {exc}")
+        return None
+    finally:
+        if path:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
+
+def disk_profile(measure: bool = False, directory: str | None = None) -> dict[str, Any]:
+    """
+    Describe the storage this machine would stream model layers from.
+
+    The counterpart of :func:`compute_profile` for a disk-bound backend. Where
+    memory bandwidth bounds an in-memory decode, *disk* bandwidth bounds a
+    layer-streaming one (``offload``/airllm), which reads every layer back per
+    token.
+
+    Parameters
+    ----------
+    measure : bool
+        Run :func:`measure_disk_read_gbs` instead of reading the class table.
+        Off by default: it writes a few hundred MB and takes a second or two, and
+        a recommendation should stay a deterministic function of the hardware
+        unless the caller asks for a measurement.
+    directory : str or None
+        Volume to measure, when ``measure`` is True. None uses the temp
+        directory.
+
+    Returns
+    -------
+    dict[str, Any]
+        ``storage`` : str
+            Class from :func:`storage_class`.
+        ``read_gbs`` : float or None
+            Sequential read bandwidth in GB/s; None when the class is unknown
+            and no measurement succeeded.
+        ``basis`` : {'measured', 'declared', 'unknown'}
+            Where ``read_gbs`` came from — the same honesty rule the throughput
+            estimates follow: a measured number is never presented as a table
+            lookup, nor the reverse.
+        ``free_gb`` : float or None
+            Free space on the volume holding the home directory, where both the
+            HuggingFace cache and airllm's layer shards land.
+
+    Examples
+    --------
+    >>> p = disk_profile()
+    >>> p['basis'] in ('measured', 'declared', 'unknown')
+    True
+    >>> p['read_gbs'] is None or p['read_gbs'] > 0
+    True
+    """
+    storage = storage_class()
+    read_gbs = _DISK_READ_GBS.get(storage)
+    basis = "declared" if read_gbs is not None else "unknown"
+
+    if measure:
+        measured = measure_disk_read_gbs(directory=directory)
+        if measured is not None:
+            read_gbs, basis = measured, "measured"
+
+    free_gb: float | None = None
+    try:
+        free_gb = float(osh.hardware_info()["disk"]["free_gb"])
+    except (KeyError, TypeError, ValueError) as exc:
+        osh.debug(f"Free-space probe failed: {exc}")
+
+    return {"storage": storage, "read_gbs": read_gbs, "basis": basis, "free_gb": free_gb}

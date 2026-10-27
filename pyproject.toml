@@ -63,6 +63,36 @@ cloud = [
     "Faker>=25",
     "keyring>=24",
 ]
+# Layer streaming (offload.py): run a model that does NOT fit in memory by
+# reading one layer shard at a time off disk. The runtime is airllm
+# (github.com/lyogavin/airllm, Apache-2.0), IMPORTED rather than vendored --
+# see offload.py's module docstring for the full argument, in short: its value
+# is per-model-family sharding code rewritten with every new family, so a copy
+# would be frozen at the day it was taken; its dependency tree is a deep
+# learning stack this package otherwise does not need; and Apache-2.0 inside a
+# BSD-3 tree is a notice obligation nobody benefits from.
+#
+# An extra, not a dependency, for exactly that dependency weight: torch,
+# transformers and accelerate are hundreds of megabytes, and everything else
+# here -- detection, the catalogue, recommendation, Ollama, vLLM, the GUI --
+# works without them. What this package owns natively is the DECISION (when
+# streaming is worth it), the SIZING (one shard, disk-bound throughput) and the
+# catalogue metadata it needs; none of that imports airllm.
+#
+# bitsandbytes is airllm's 4-bit/8-bit block-wise compression, which divides
+# the bytes read per token and is therefore the single biggest lever on
+# streaming speed (~3x). Not a hard requirement of airllm, so declared here;
+# it has no macOS wheel, hence the platform marker -- on Apple Silicon the
+# MLX path handles streaming and compression is unavailable, which
+# `offload.bytes_per_param` sizes honestly either way.
+airllm = [
+    # Floor at 2.11 (the `prefetching` / `delete_original` arguments the
+    # adapter passes) and capped below 5 like every other dependency here: the
+    # three constructor arguments `offload.load` relies on have been stable
+    # across the 2.x-4.x line, and a major bump is free to rename them.
+    "airllm>=2.11,<5",
+    "bitsandbytes>=0.43; platform_system != 'Darwin'",
+]
 # NSFW / policy filtering for chat(safety=...) (safety.py): a DistilBERT model
 # fine-tuned for NSFW text (via transformers), and LAION's CLIP-based NSFW
 # image detector -- transformers for the CLIP ViT-L/14 encoder, onnxruntime

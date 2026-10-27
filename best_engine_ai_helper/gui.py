@@ -93,6 +93,17 @@ _JS_NAME_TO_SOURCE: dict[str, str] = {
     "runningEngines": "already-running engines:",
     "score": "score",
     "serverLoad": "Server load:",
+    "strBiggest": "Biggest model this machine could stream:",
+    "strNoRuntime": "This machine offers no runtime for layer streaming (a CUDA/ROCm GPU, or Apple Silicon through MLX).",
+    "strNothing": "Nothing can be streamed here: no model fits both one resident layer shard and the free disk the split needs.",
+    "strPackageMissing": "runtime not installed",
+    "strPackageOk": "runtime installed",
+    "strResident": "GB resident",
+    "strSecToken": "s/token",
+    "strShardBudget": "resident shard budget",
+    "strSplitDisk": "GB free disk for the layer split",
+    "strStorage": "storage",
+    "strWouldRun": "would run here",
     "task": "Task:",
     "thCalls": "calls",
     "thCost": "cost",
@@ -277,6 +288,19 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
         <h2 class="text-2xl font-bold tracking-tight">{{_("Cloud providers")}}</h2>
         <p class="mt-2 max-w-3xl text-neutral-600 dark:text-neutral-300">{{_("A provider whose key is missing is not a candidate. Keys are looked up in settings.yaml, then a .env file, then the environment, then the OS keychain. Only their presence is checked here; no key value is ever read or shown.")}}</p>
         <div id="provider-list"
+             class="mt-4 grid gap-2 rounded-xl border border-neutral-200 bg-white p-5 text-sm shadow-sm
+                    dark:border-neutral-800 dark:bg-neutral-950">
+          <p class="text-neutral-500 dark:text-neutral-400">{{_("Detecting…")}}</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 1ter) Layer streaming: too large to load, still runnable -->
+    <section class="border-t border-neutral-200/70 dark:border-neutral-800">
+      <div class="mx-auto max-w-4xl px-5 py-10">
+        <h2 class="text-2xl font-bold tracking-tight">{{_("Too large to load, still runnable")}}</h2>
+        <p class="mt-2 max-w-3xl text-neutral-600 dark:text-neutral-300">{{_("A transformer never needs all of its layers in memory at once. Keeping one layer shard resident and streaming the rest off the disk, this machine can run models far beyond its memory — at seconds per token rather than tokens per second. Batch work only: one hard question, an overnight evaluation, a quality reference for the smaller model you run every day.")}}</p>
+        <div id="airllm-panel"
              class="mt-4 grid gap-2 rounded-xl border border-neutral-200 bg-white p-5 text-sm shadow-sm
                     dark:border-neutral-800 dark:bg-neutral-950">
           <p class="text-neutral-500 dark:text-neutral-400">{{_("Detecting…")}}</p>
@@ -494,6 +518,65 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
       }
     }
 
+    // --- 1ter) Layer streaming ---------------------------------------------
+    // Rendered from /api/airllm, which answers the capability question and the
+    // "what would it run" question in one call, so the page never has to
+    // decide either for itself.
+    function renderStreaming(data) {
+      const d = data.decision || {};
+      const disk = data.disk || {};
+      const badge = d.installed
+        ? `<span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800
+                        dark:bg-emerald-900/40 dark:text-emerald-300">${T.strPackageOk}</span>`
+        : `<span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800
+                        dark:bg-amber-900/40 dark:text-amber-300">${T.strPackageMissing}</span>`;
+
+      const facts = `<div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+          ${badge}
+          <span class="text-neutral-500 dark:text-neutral-400">${T.strStorage}:
+            <span class="font-mono text-neutral-700 dark:text-neutral-300">${esc(disk.storage)} ·
+            ${fmt1(disk.read_gbs)} ${T.gbs} (${esc(disk.basis)})</span></span>
+          <span class="text-neutral-500 dark:text-neutral-400">${T.strShardBudget}:
+            <span class="font-mono text-neutral-700 dark:text-neutral-300">${fmt1(data.memory_budget_gb)} ${T.gb}</span></span>
+        </div>`;
+
+      // The pick, with the two figures that decide whether the job is feasible
+      // at all: how long a token takes, and how much disk the split needs.
+      const chosen = data.chosen;
+      const pick = chosen
+        ? `<p class="mt-2"><span class="text-neutral-500 dark:text-neutral-400">${T.strBiggest}</span>
+             <span class="font-mono">${esc(chosen.model)}</span>
+             <span class="text-neutral-500 dark:text-neutral-400">—
+               ${fmt1(chosen.resident_gb)} ${T.strResident},
+               ${fmt1(chosen.seconds_per_token)} ${T.strSecToken},
+               ${fmt1(chosen.disk && chosen.disk.peak_gb)} ${T.strSplitDisk}</span></p>`
+        : `<p class="mt-2 text-neutral-500 dark:text-neutral-400">${T.strNothing}</p>`;
+
+      const runnable = (data.plans || []).filter((p) => p.usable).length;
+      const runs = chosen
+        ? `<p class="text-xs text-neutral-500 dark:text-neutral-400">${runnable} ${T.strWouldRun}</p>`
+        : "";
+      const why = d.runtime
+        ? `<p class="text-xs text-neutral-500 dark:text-neutral-400">${esc(d.reason)}</p>`
+        : `<p class="text-xs text-neutral-500 dark:text-neutral-400">${T.strNoRuntime}</p>`;
+      const install = d.installed
+        ? ""
+        : `<p class="text-xs"><code class="font-mono text-neutral-600 dark:text-neutral-400">${esc(data.install)}</code></p>`;
+
+      $("airllm-panel").innerHTML = facts + pick + runs + why + install;
+    }
+
+    async function loadStreaming() {
+      try {
+        const res = await fetch("/api/airllm");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        renderStreaming(await res.json());
+      } catch (err) {
+        $("airllm-panel").innerHTML =
+          `<p class="text-red-600 dark:text-red-400">${T.detectFail}${err}</p>`;
+      }
+    }
+
     // --- Preferences -------------------------------------------------------
     // The YAML on disk is the source of truth: these handlers write it and read
     // it back, rather than keeping a second copy of the state in the page.
@@ -590,9 +673,11 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
     $("refresh-system").addEventListener("click", () => {
       loadSystem();
       loadProviders();
+      loadStreaming();
     });
     loadSystem();
     loadProviders();
+    loadStreaming();
     loadPreferences();
 
     // --- 4) Activity ledger ------------------------------------------------

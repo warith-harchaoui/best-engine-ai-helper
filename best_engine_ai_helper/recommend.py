@@ -195,12 +195,14 @@ def _candidate_row(
     axis: str,
     min_tps: float = COMFORT_TPS,
     backend: str = "ollama",
+    disk_read_gbs: float | None = None,
 ) -> dict[str, Any]:
     """One catalog entry annotated with the four decision factors.
 
     ``ram_gb``, ``fits`` and ``est_tokens_per_s`` are computed for ``backend``:
     an Ollama pick sizes against the Q4 ``ram_gb``, a vLLM pick against the
-    heavier FP16 footprint (see :func:`score.model_footprint_gb`).
+    heavier FP16 footprint, and an airllm pick against ONE layer shard with a
+    disk-bound rate (see :func:`score.model_footprint_gb`).
     """
     from .score import _benchmark_score, model_footprint_gb  # local: internal
 
@@ -221,7 +223,9 @@ def _candidate_row(
         tps = entry.get("_tps")
         basis = entry.get("_tps_basis")
     else:
-        tps = estimated_tokens_per_second(entry, bandwidth_gbs, backend)
+        tps = estimated_tokens_per_second(
+            entry, bandwidth_gbs, backend, disk_read_gbs=disk_read_gbs
+        )
         basis = "estimated" if tps is not None else None
 
     return {
@@ -293,6 +297,7 @@ def recommend(
     load: dict[str, Any] | None = None,
     installed: set[str] | None = None,
     require_structured: bool = True,
+    disk: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Recommend the best engine per needed kind for this hardware and task.
@@ -314,9 +319,16 @@ def recommend(
     min_tps : float
         Comfort throughput floor; a fitting model below it is only picked when no
         comfortable one exists (and the choice is warned about).
-    backend : {'ollama', 'vllm'}
+    backend : {'ollama', 'vllm', 'airllm'}
         Serving backend, so memory fit and throughput reflect what actually
         loads. Threaded to :func:`score.rank` and :func:`_candidate_row`.
+        ``'airllm'`` ranks layer-streaming candidates: ``ram_gb`` becomes one
+        resident shard and the rate becomes disk-bound, which is why ``disk``
+        matters there and nowhere else.
+    disk : dict or None
+        Storage profile from :func:`detect.disk_profile`. Read only under
+        ``backend='airllm'``, where it bounds throughput; also echoed into the
+        report so a streaming recommendation states the drive it assumed.
     require_structured : bool
         Whether the job needs schema-constrained output. True (the default)
         keeps a model that cannot honour it out of auto-selection; False lets
@@ -350,7 +362,20 @@ def recommend(
     """
     compute = compute or {}
     bandwidth = compute.get("bandwidth_gbs")
-    budget = effective_budget(hw, headroom=headroom, load=load)
+    # Only the streaming backend reads this, and only it should: a disk figure
+    # has no bearing on a model that sits in memory.
+    disk_read_gbs = (disk or {}).get("read_gbs") if backend == "airllm" else None
+    if backend == "airllm":
+        # Streaming sizes against the whole usable pool, not the
+        # headroom-reduced budget: what the headroom reserves is already
+        # counted inside the streaming footprint. See offload.budget_gb for the
+        # argument -- applying it twice rejects the models this backend exists
+        # to run.
+        from . import offload as _offload
+
+        budget = _offload.budget_gb(hw, load)
+    else:
+        budget = effective_budget(hw, headroom=headroom, load=load)
     parsed = parse_task(task)
     needed_kinds = (
         kinds if kinds is not None else cast(list[Literal["llm", "vlm"]], parsed["kinds"])
@@ -384,8 +409,12 @@ def recommend(
             min_tps=min_tps,
             installed=installed,
             require_structured=require_structured,
+            disk_read_gbs=disk_read_gbs,
         )
-        rows = [_candidate_row(e, budget, bandwidth, axis, min_tps, backend) for e in ranked]
+        rows = [
+            _candidate_row(e, budget, bandwidth, axis, min_tps, backend, disk_read_gbs)
+            for e in ranked
+        ]
         fitting = [r for r in rows if r["fits"]]
         comfortable = [r for r in fitting if r["comfortable"]]
         # Prefer models that fit memory AND decode fast enough to be usable; fall
@@ -461,12 +490,17 @@ def recommend(
         "task": {"input": task, **parsed},
         "hardware": {**hw, **({"compute": compute} if compute else {})},
         **({"server_load": load} if load else {}),
+        # The backend the figures below were computed FOR. A report that does
+        # not say so invites its `ram_gb` column to be read as Ollama's, which
+        # is wrong by 3x under vLLM and by 30x under streaming.
+        "backend": backend,
+        **({"disk": disk} if disk and backend == "airllm" else {}),
         "memory_budget_gb": budget,
         "headroom": headroom,
         "comfort_tps": min_tps,
         "recommendations": picks,
-        "method": _METHOD_NOTE,
-        "sources": _SOURCES,
+        "method": _STREAMING_METHOD_NOTE if backend == "airllm" else _METHOD_NOTE,
+        "sources": _SOURCES + (_STREAMING_SOURCES if backend == "airllm" else []),
     }
 
 
@@ -485,6 +519,32 @@ _METHOD_NOTE = (
     "and never auto-chosen over a comfortable one, however high it scores. A "
     "lighter alternative is offered when one is nearly as strong but smaller and faster."
 )
+
+_STREAMING_METHOD_NOTE = (
+    "Layer streaming (airllm) changes which resource binds, so it is judged on "
+    "different factors from the other backends. Memory fit is computed against ONE "
+    "resident layer shard rather than the whole model -- the checkpoint divided by "
+    "its decoder depth, times a margin for the larger embedding shard, times the two "
+    "shards prefetching keeps in flight -- which is what lets a 70B model run in "
+    "about 5 GB. Throughput is bounded by the DISK, not the memory bus: every token "
+    "re-reads the whole checkpoint from storage, so tokens/s = disk read bandwidth / "
+    "checkpoint size x 0.85, and the honest unit is usually seconds per token. The "
+    "comfort floor is therefore 0.2 tok/s (a batch floor), not the 15 tok/s "
+    "interactive floor -- judging a streamed model by the interactive floor would "
+    "reject every candidate and hide the capability. Disk SPACE is the constraint "
+    "that bites first: the layer split needs about twice the checkpoint free at once. "
+    "And no streamed model honours a JSON schema: airllm exposes raw generation, so "
+    "schema-driven tasks still need an Ollama model."
+)
+
+_STREAMING_SOURCES = [
+    "Layer-by-layer streaming inference: airllm (github.com/lyogavin/airllm, "
+    "Apache-2.0) -- resident memory tracks the widest layer, not the model.",
+    "Streaming decode is disk-bandwidth bound: each token re-reads the whole "
+    "checkpoint, so tokens/s ~= disk read GB/s / checkpoint GB.",
+    "Sequential-read bandwidth per storage class (manufacturer specifications), "
+    "or measured on this machine with a cache-bypassing read.",
+]
 
 _SOURCES = [
     "Apple Metal recommendedMaxWorkingSetSize ~66% (<=36 GB) / ~75% (>36 GB) of "

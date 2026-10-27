@@ -156,7 +156,9 @@ def model_footprint_gb(entry: dict[str, Any], backend: str = "ollama") -> float:
     """
     Estimate a model's peak inference memory (GB) on a given serving backend.
 
-    The catalog's ``ram_gb`` is an **Ollama Q4** estimate. vLLM instead loads the
+    Three backends, three different physical situations, and sizing one against
+    another's figure is how a picker comes to recommend a model that will not
+    load. The catalog's ``ram_gb`` is an **Ollama Q4** estimate. vLLM instead loads the
     full FP16/BF16 HuggingFace weights (~2 bytes/param) plus KV cache and runtime
     buffers, so the same model is markedly heavier there. Sizing a vLLM pick
     against ``ram_gb`` would over-promise and pick a model that will not actually
@@ -166,15 +168,36 @@ def model_footprint_gb(entry: dict[str, Any], backend: str = "ollama") -> float:
     ----------
     entry : dict[str, Any]
         Catalog entry; uses ``ram_gb`` (Ollama) or ``size_b`` (vLLM).
-    backend : {'ollama', 'vllm'}
+    backend : {'ollama', 'vllm', 'airllm'}
         Serving backend the footprint is estimated for. Unknown values are
-        treated as ``'ollama'`` (the conservative catalog figure).
+        treated as ``'ollama'`` (the conservative catalog figure). ``'airllm'``
+        streams layers off disk and so reports the resident size of ONE shard
+        rather than of the model — see :func:`offload.footprint_gb`.
 
     Returns
     -------
     float
         Estimated peak memory in GB.
+
+    Examples
+    --------
+    >>> model_footprint_gb({'id': 'a', 'ram_gb': 9.9, 'size_b': 14})
+    9.9
+    >>> model_footprint_gb({'id': 'a', 'ram_gb': 9.9, 'size_b': 14}, 'vllm')
+    32.2
+    >>> # Streaming sizes one shard, not the model: a 70B becomes laptop-sized.
+    >>> model_footprint_gb({'id': 'b', 'size_b': 70, 'layers': 80}, 'airllm')
+    6.1
     """
+    if backend == "airllm":
+        # Layer streaming breaks the premise every other branch rests on: the
+        # model is never resident, one shard is. The arithmetic lives in
+        # `offload` with the rest of the streaming reasoning, so there is one
+        # place to read it and one place to correct it.
+        from . import offload as _offload
+
+        return _offload.footprint_gb(entry)
+
     ram = float(entry.get("ram_gb", 0) or 0)
     size_b = float(entry.get("size_b", 0) or 0)
 
@@ -265,6 +288,57 @@ def sizeable_only(
     return kept
 
 
+def usable_pool_gb(hw: dict[str, float | None]) -> float:
+    """
+    The accelerator's usable memory pool (GB), before any safety headroom.
+
+    The first half of :func:`effective_budget`, split out because one backend
+    needs it on its own. On Apple Silicon the usable pool is NOT the whole
+    unified memory — Metal caps GPU allocations at about 66% of a pool up to
+    36 GB and 75% above it, beyond which inference spills to CPU. A discrete
+    GPU's VRAM is nearly all usable; a CPU-only machine is held to half its RAM.
+
+    Every caller sizing a model that STAYS in memory wants
+    :func:`effective_budget` instead: the extra headroom is what leaves room for
+    the OS, the caller's own workload and KV-cache growth. The exception is
+    layer streaming, where what occupies memory is one transient shard that the
+    runtime frees per layer, and where the KV cache is sized explicitly rather
+    than absorbed into a margin (see :func:`offload.footprint_gb`) — applying
+    the headroom there would reserve the same memory twice and reject the models
+    the backend exists to run.
+
+    Parameters
+    ----------
+    hw : dict[str, float | None]
+        Output of :func:`detect.available_memory`.
+
+    Returns
+    -------
+    float
+        Usable pool in GB.
+
+    Examples
+    --------
+    >>> usable_pool_gb({'unified_gb': 96.0, 'vram_gb': None, 'ram_gb': 96.0})
+    72.0
+    >>> usable_pool_gb({'unified_gb': 8.0, 'vram_gb': None, 'ram_gb': 8.0})
+    5.28
+    >>> usable_pool_gb({'unified_gb': None, 'vram_gb': 24.0, 'ram_gb': 64.0})
+    22.08
+    >>> usable_pool_gb({'unified_gb': None, 'vram_gb': None, 'ram_gb': 32.0})
+    16.0
+    """
+    if hw.get("unified_gb"):
+        pool = float(hw["unified_gb"])  # type: ignore[arg-type]
+        cap = (
+            _APPLE_GPU_FRACTION_LARGE if pool > _APPLE_SMALL_POOL_GB else _APPLE_GPU_FRACTION_SMALL
+        )
+        return round(pool * cap, 3)
+    if hw.get("vram_gb"):
+        return round(float(hw["vram_gb"]) * _DISCRETE_VRAM_FRACTION, 3)  # type: ignore[arg-type]
+    return round(float(hw.get("ram_gb") or 8.0) * _CPU_RAM_FRACTION, 3)
+
+
 def effective_budget(
     hw: dict[str, float | None],
     headroom: float = MAX_HEADROOM,
@@ -323,18 +397,7 @@ def effective_budget(
     # Clamp to the hard ceiling: an over-generous headroom is the main source of
     # unrealistically large picks, so it is silently reduced, never exceeded.
     headroom = min(headroom, MAX_HEADROOM)
-    if hw.get("unified_gb"):
-        pool = float(hw["unified_gb"])  # type: ignore[arg-type]
-        cap = (
-            _APPLE_GPU_FRACTION_LARGE if pool > _APPLE_SMALL_POOL_GB else _APPLE_GPU_FRACTION_SMALL
-        )
-        available = pool * cap
-    elif hw.get("vram_gb"):
-        available = float(hw["vram_gb"]) * _DISCRETE_VRAM_FRACTION  # type: ignore[arg-type]
-    else:
-        available = float(hw.get("ram_gb") or 8.0) * _CPU_RAM_FRACTION
-
-    budget = available * headroom
+    budget = usable_pool_gb(hw) * headroom
 
     if load:
         # Never let the theoretical accelerator cap exceed what is actually
@@ -364,6 +427,8 @@ def estimated_tokens_per_second(
     bandwidth_gbs: float | None,
     backend: str = "ollama",
     calibrated: bool = True,
+    *,
+    disk_read_gbs: float | None = None,
 ) -> float | None:
     """
     Estimate local decode throughput (tokens/s) for a model on this machine.
@@ -384,8 +449,12 @@ def estimated_tokens_per_second(
         Memory bandwidth in GB/s from :func:`detect.compute_profile`. When None
         (unknown hardware, e.g. an unrecognised discrete-GPU model) the
         estimate is not computable and None is returned.
-    backend : {'ollama', 'vllm'}
-        Serving backend. Affects both the size proxy (heavier FP16 weights
+    backend : {'ollama', 'vllm', 'airllm'}
+        Serving backend. ``'airllm'`` switches the whole model: throughput is
+        bounded by disk read bandwidth rather than memory bandwidth, and
+        ``disk_read_gbs`` is the input that matters (see
+        :func:`offload.estimated_tokens_per_second`). For the other two it
+        affects both the size proxy (heavier FP16 weights
         under vLLM decode more slowly than the Q4 Ollama figure) AND the
         decode efficiency (vLLM's PagedAttention + CUDA-graph decode tracks
         closer to the bandwidth ceiling than llama.cpp's — confirmed to
@@ -399,14 +468,54 @@ def estimated_tokens_per_second(
         strictly better than one that has not. Pass False to see the raw
         bandwidth model, which is what the calibration itself is derived
         against -- leaving it True there would feed the correction back into
-        its own input.
+        its own input. Ignored under ``backend='airllm'``: the calibration was
+        measured against a memory-bound decode and does not describe a
+        disk-bound one.
+    disk_read_gbs : float or None
+        Sequential disk read bandwidth in GB/s, from
+        :func:`detect.disk_profile`. Only read under ``backend='airllm'``;
+        None lets that branch look it up from the storage class.
 
     Returns
     -------
     float or None
         Estimated tokens/s, rounded to one decimal, or None when bandwidth or
-        model size is unavailable.
+        model size is unavailable. Under ``backend='airllm'`` the figure is
+        rounded to three decimals instead, because the honest answer there is
+        usually a fraction of a token per second.
+
+    Examples
+    --------
+    >>> entry = {'id': 'a', 'ram_gb': 9.9, 'size_b': 14}
+    >>> estimated_tokens_per_second(entry, 400.0, calibrated=False)
+    26.3
+    >>> estimated_tokens_per_second(entry, None) is None
+    True
+    >>> # Same model, streamed off a 4 GB/s drive: a thousand times slower.
+    >>> estimated_tokens_per_second(entry, 400.0, 'airllm', disk_read_gbs=4.0)
+    0.121
     """
+    if backend == "airllm":
+        # A streamed model is bounded by the DISK, not the memory bus: the
+        # weights are not resident, so every token re-reads the checkpoint.
+        # Handing this branch `bandwidth_gbs` would report a rate three orders
+        # of magnitude too high.
+        from . import offload as _offload
+
+        read_gbs = disk_read_gbs
+        if read_gbs is None:
+            from . import detect as _detect
+
+            read_gbs = _detect.disk_profile().get("read_gbs")
+            osh.debug(
+                f"No disk bandwidth supplied for the airllm estimate of "
+                f"{entry.get('id', '?')}; read {read_gbs} GB/s from the storage class."
+            )
+        # Deliberately NOT calibrated: `throughput.calibration_factor` is
+        # measured against memory-bound Ollama/vLLM decodes, and a correction
+        # for one bottleneck does not transfer to another.
+        return _offload.estimated_tokens_per_second(entry, read_gbs)
+
     if not bandwidth_gbs:
         return None
     ram = model_footprint_gb(entry, backend)
@@ -625,6 +734,7 @@ def rank(
     min_tps: float | None = None,
     installed: set[str] | None = None,
     require_structured: bool = True,
+    disk_read_gbs: float | None = None,
 ) -> list[dict[str, Any]]:
     """
     Return all candidates sorted by benchmark score, annotated with fit status.
@@ -658,6 +768,10 @@ def rank(
         Memory bandwidth from :func:`detect.compute_profile`, used to estimate
         throughput for candidates with no measurement. None leaves the
         throughput annotations unpopulated unless a measurement exists.
+    disk_read_gbs : float or None
+        Sequential disk read bandwidth from :func:`detect.disk_profile`, used
+        only under ``backend='airllm'``, where throughput is bounded by the
+        drive rather than the memory bus.
     min_tps : float or None
         Throughput floor in tokens/s. A candidate **measured** below it on this
         machine is demoted out of auto-selection, in the same way and for the
@@ -723,12 +837,22 @@ def rank(
         # a wall-clock figure also contains prompt processing and queueing, so
         # it understates speed, and understating is what would wrongly demote a
         # model below.
-        measured = _throughput.measured_tps(str(copy.get("id") or ""), trusted_only=True)
+        # A measurement is per (model, machine) -- but NOT per backend, and a
+        # streamed decode has nothing in common with the Ollama decode the
+        # store recorded. Reusing one here would report 30 tok/s for a model
+        # that streams at 0.03.
+        measured = (
+            None
+            if backend == "airllm"
+            else _throughput.measured_tps(str(copy.get("id") or ""), trusted_only=True)
+        )
         if measured is not None:
             copy["_tps"] = measured
             copy["_tps_basis"] = "measured"
         else:
-            estimated = estimated_tokens_per_second(entry, bandwidth_gbs, backend)
+            estimated = estimated_tokens_per_second(
+                entry, bandwidth_gbs, backend, disk_read_gbs=disk_read_gbs
+            )
             copy["_tps"] = estimated
             copy["_tps_basis"] = "estimated" if estimated is not None else None
 

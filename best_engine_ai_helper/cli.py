@@ -25,6 +25,9 @@ Commands:
   gui             Launch the minimal browser GUI.
   env             Print the env block for ~/.zshrc or sourcing.
   activity        Summarize the local activity/cost ledger.
+  airllm status   Can this machine stream layers, and should it?
+  airllm plan     What a too-large model would cost here, ranked.
+  airllm prepare  Download and split a checkpoint before the first call.
 
 Author
 ------
@@ -50,6 +53,7 @@ from . import cloud_catalog as _cloud_catalog
 from . import detect as _detect
 from . import hardware as _hardware
 from . import observe as _observe
+from . import offload as _offload
 from . import score as _score
 from . import throughput as _throughput
 from .recommend import _fmt_tps
@@ -196,6 +200,75 @@ def _report_measurement(meter: _throughput.Meter, tag: str) -> None:
     )
 
 
+#: Columns of the streaming candidate table. Deliberately different from the
+#: resident-model table: `ram_gb` there is the model, here it is one shard, and
+#: "tok/s" would read as a rounding error at these rates, so the honest column
+#: is seconds per token.
+_STREAM_COLUMNS = ["id", "params", "shard_gb", "ckpt_gb", "s/token", "disk_gb", "runs", "notes"]
+
+
+def _streaming_rows(
+    entries: list[dict[str, Any]],
+    hw: dict[str, float | None],
+    disk: dict[str, Any],
+    kind: str,
+) -> list[dict[str, Any]]:
+    """
+    Build the streaming candidate table for one kind.
+
+    Parameters
+    ----------
+    entries : list[dict]
+        Catalog entries, already filtered to what the streaming backend serves.
+    hw : dict[str, float | None]
+        Detected memory pools.
+    disk : dict[str, Any]
+        Storage profile from :func:`detect.disk_profile`.
+    kind : str
+        ``llm`` or ``vlm``.
+
+    Returns
+    -------
+    list[dict[str, Any]]
+        Display rows in :data:`_STREAM_COLUMNS` order, biggest runnable first.
+
+    Examples
+    --------
+    >>> rows = _streaming_rows(
+    ...     [{"id": "a", "kind": "llm", "size_b": 70, "layers": 80, "hf_id": "x/a"}],
+    ...     {"ram_gb": 64.0, "unified_gb": None, "vram_gb": None},
+    ...     {"read_gbs": 4.0, "free_gb": 900.0},
+    ...     "llm",
+    ... )
+    >>> rows[0]["id"], rows[0]["runs"]
+    ('a', 'yes')
+    """
+    plans = _offload.rank(
+        entries,
+        budget_gb=_offload.budget_gb(hw),
+        disk=disk,
+        kind=kind,  # type: ignore[arg-type]
+    )
+    rows: list[dict[str, Any]] = []
+    for plan in plans:
+        # A blocker is the reason a candidate is not offered, and it is more
+        # useful in the notes column than the catalog's marketing line.
+        note = plan["blockers"][0] if plan["blockers"] else (f"{plan['layers']} layers")
+        rows.append(
+            {
+                "id": plan["catalog_id"],
+                "params": f"{plan['size_b']:.0f}B" if plan["size_b"] else "-",
+                "shard_gb": plan["resident_gb"] if plan["resident_gb"] is not None else "-",
+                "ckpt_gb": plan["checkpoint_gb"] if plan["checkpoint_gb"] is not None else "-",
+                "s/token": plan["seconds_per_token"] if plan["seconds_per_token"] else "-",
+                "disk_gb": plan["disk"]["peak_gb"],
+                "runs": "yes" if plan["usable"] else "NO",
+                "notes": note[:52],
+            }
+        )
+    return rows
+
+
 @cli.command("detect")
 @click.option("--json", "as_json", is_flag=True, default=True, hidden=True)
 def detect_cmd(as_json: bool) -> None:
@@ -272,14 +345,48 @@ _VALID_APPLICATIONS = ["code", "math", "ocr", "vision", "chat", "generalist"]
         "rather than being a deterministic function of the hardware alone."
     ),
 )
+@click.option(
+    "--backend",
+    type=click.Choice(["ollama", "vllm", "airllm"]),
+    default="ollama",
+    show_default=True,
+    help=(
+        "Size and rank for this backend. 'vllm' loads heavier FP16 weights; "
+        "'airllm' streams layers off disk, so the footprint becomes one shard "
+        "and the rate becomes disk-bound (seconds per token). Candidates the "
+        "backend cannot serve are left out."
+    ),
+)
 def recommend_cmd(
-    kind: str, headroom: float, application: str | None, min_tps: float, live: bool
+    kind: str,
+    headroom: float,
+    application: str | None,
+    min_tps: float,
+    live: bool,
+    backend: str,
 ) -> None:
     """Print ranked model candidates for this hardware (dry run, no pull)."""
     hw = _detect.available_memory()
     bandwidth = _detect.compute_profile().get("bandwidth_gbs")
-    entries = _catalog.load_catalog()
+    # The catalog is a catalog of models; a backend can only run some of them.
+    # Without this the table offered Ollama a model named by a directory slug it
+    # cannot pull, and offered the streaming backend a GGUF tag it cannot read —
+    # `resolve` has always filtered, and this view had not.
+    entries = _catalog.servable_only(_catalog.load_catalog(), backend)
     load = _detect.server_load() if live else None
+    streaming = backend == "airllm"
+    disk = _detect.disk_profile() if streaming else {}
+    if streaming:
+        # The interactive floor describes a resident model. Judging a streamed
+        # one by it marks every candidate uncomfortable and says nothing.
+        if min_tps == _score.COMFORT_TPS:
+            min_tps = _offload.COMFORT_TPS_STREAMING
+        click.echo(
+            f"\nLayer streaming off {disk.get('storage')} storage at "
+            f"{disk.get('read_gbs')} GB/s ({disk.get('basis')}), "
+            f"{disk.get('free_gb')} GB free. Memory is one layer shard; the drive "
+            f"sets the speed. Batch floor: {min_tps} tok/s."
+        )
 
     kinds: list[str] = ["llm", "vlm"] if kind == "both" else [kind]
 
@@ -297,12 +404,18 @@ def recommend_cmd(
             load=load,
             bandwidth_gbs=bandwidth,
             min_tps=min_tps,
+            backend=backend,
+            disk_read_gbs=disk.get("read_gbs"),
         )
         header = f"\n=== {k.upper()} candidates"
         if application:
             header += f" [{application}]"
-        header += " ==="
+        header += f" ({backend}) ==="
         click.echo(header)
+        if streaming:
+            click.echo(header)
+            click.echo(_fmt_table(_streaming_rows(ranked, hw, disk, k), _STREAM_COLUMNS))
+            continue
         rows = []
         for e in ranked:
             # rank() has already decided these, and it is the only caller that
@@ -352,10 +465,16 @@ def recommend_cmd(
 )
 @click.option(
     "--backend",
-    type=click.Choice(["auto", "ollama", "vllm"]),
+    type=click.Choice(["auto", "ollama", "vllm", "airllm"]),
     default="auto",
     show_default=True,
-    help="Serving backend. 'auto' = vLLM on Linux with a discrete GPU (NVIDIA/AMD), else Ollama.",
+    help=(
+        "Serving backend. 'auto' = vLLM on Linux with a discrete GPU (NVIDIA/AMD), "
+        "else Ollama — and, when nothing fits this machine's memory, an automatic "
+        "fallback to 'airllm' layer streaming for the kinds that found nothing "
+        "(set BEST_ENGINE_AIRLLM=never, or `airllm: never` in the brief, to switch "
+        "that off). 'airllm' here asks for streaming outright."
+    ),
 )
 @click.option(
     "--endpoint",
@@ -1192,6 +1311,398 @@ def validate_cmd() -> None:
 
     if not (vlm_ok and llm_ok):
         sys.exit(1)
+
+
+@cli.group("airllm")
+def airllm_group() -> None:
+    """Layer streaming: run a model that does NOT fit in this machine's memory.
+
+    A transformer never needs every layer resident at once. Keep one layer
+    shard in memory, stream the rest off disk, and the memory a model needs
+    stops scaling with its parameter count — a 70B model runs in about 4 GB
+    instead of 141. The runtime is airllm (github.com/lyogavin/airllm,
+    Apache-2.0), an optional extra of this package; the arithmetic deciding
+    whether it is worth it is here.
+
+    The cost is time: every token re-reads the whole checkpoint from storage, so
+    the unit is seconds per token. These are batch jobs — an overnight
+    evaluation, one hard question, a quality reference for a smaller local
+    model. Not a chat window.
+    """
+
+
+@airllm_group.command("status")
+@click.option(
+    "--measure",
+    is_flag=True,
+    default=False,
+    help=(
+        "Measure this machine's sequential disk read instead of reading the "
+        "storage-class table. Writes and reads back ~256 MB with the page cache "
+        "bypassed; takes a second or two and is worth it, since the drive sets "
+        "the whole speed of this backend."
+    ),
+)
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    default=False,
+    help="Emit the decision as JSON.",
+)
+@click.option(
+    "--request",
+    type=click.Choice(["auto", "always", "never"]),
+    default=None,
+    help=(
+        "Ask the policy as if the brief said this. Default: whatever "
+        f"{_offload.ENV_VAR} says, else 'auto'."
+    ),
+)
+def airllm_status(measure: bool, as_json: bool, request: str | None) -> None:
+    """Can this machine stream layers, and would it be asked to?"""
+    compute = _detect.compute_profile()
+    disk = _detect.disk_profile(measure=measure)
+    decision = _offload.decide(request=request, compute=compute, disk=disk)
+    hw = _detect.available_memory()
+    budget = _offload.budget_gb(hw)
+
+    if as_json:
+        click.echo(
+            json.dumps(
+                {
+                    "decision": decision,
+                    "compute": compute,
+                    "disk": disk,
+                    "memory_budget_gb": budget,
+                    "install": _offload.INSTALL_HINT,
+                },
+                indent=2,
+                default=str,
+            )
+        )
+        return
+
+    click.echo("\n=== Layer streaming (airllm) ===")
+    click.echo(f"  runtime here    : {decision['runtime'] or 'none'}")
+    click.echo(f"  package         : {'installed' if decision['installed'] else 'NOT installed'}")
+    click.echo(f"  storage         : {disk['storage']} ({disk['basis']})")
+    click.echo(f"  read bandwidth  : {disk['read_gbs']} GB/s")
+    click.echo(f"  free disk       : {disk['free_gb']} GB")
+    click.echo(f"  shard budget    : {budget} GB of resident memory")
+    click.echo(f"  request         : {decision['request']}")
+    click.echo(f"  would activate  : {'YES' if decision['activate'] else 'no'}")
+    click.echo(f"  trigger         : {decision['trigger']}")
+    click.echo(f"\n  {decision['reason']}")
+    for blocker in decision["blockers"]:
+        click.echo(f"  - {blocker}")
+    if not decision["installed"]:
+        click.echo(f"\n  Install the runtime:  {_offload.INSTALL_HINT}")
+    click.echo()
+
+
+@airllm_group.command("plan")
+@click.option(
+    "--kind",
+    type=click.Choice(["llm", "vlm", "both"]),
+    default="llm",
+    show_default=True,
+    help="Model type to plan for.",
+)
+@click.option(
+    "--compression",
+    type=click.Choice(["4bit", "8bit"]),
+    default=None,
+    help=(
+        "airllm's block-wise weight compression. Divides the bytes read per "
+        "token, so it is the single biggest lever on speed (~3x at 4-bit) and "
+        "shrinks the shards too. Needs bitsandbytes, which the extra installs."
+    ),
+)
+@click.option(
+    "--context",
+    "context_k",
+    type=float,
+    default=4.0,
+    show_default=True,
+    help=(
+        "Context length in thousands of tokens. Unlike the weights, the KV cache "
+        "is NOT streamed: every layer's slice stays resident, so a long context "
+        "costs real memory here."
+    ),
+)
+@click.option(
+    "--measure",
+    is_flag=True,
+    default=False,
+    help="Measure disk read bandwidth rather than assuming the storage class.",
+)
+@click.option("--json", "as_json", is_flag=True, default=False, help="Emit JSON.")
+def airllm_plan(
+    kind: str, compression: str | None, context_k: float, measure: bool, as_json: bool
+) -> None:
+    """Rank what this machine could stream, biggest runnable model first."""
+    hw = _detect.available_memory()
+    disk = _detect.disk_profile(measure=measure)
+    entries = _catalog.servable_only(_catalog.load_catalog(), "airllm")
+    budget = _offload.budget_gb(hw)
+    kinds = ["llm", "vlm"] if kind == "both" else [kind]
+
+    payload: dict[str, Any] = {"memory_budget_gb": budget, "disk": disk, "kinds": {}}
+    for k in kinds:
+        plans = _offload.rank(
+            entries,
+            budget_gb=budget,
+            disk=disk,
+            compression=compression,
+            kind=k,  # type: ignore[arg-type]
+        )
+        chosen = _offload.pick(plans)
+        payload["kinds"][k] = {"plans": plans, "chosen": chosen}
+        if as_json:
+            continue
+        click.echo(
+            f"\n=== {k.upper()}: streamable off {disk['storage']} at "
+            f"{disk['read_gbs']} GB/s, {budget} GB shard budget ==="
+        )
+        click.echo(_fmt_table(_streaming_rows(entries, hw, disk, k), _STREAM_COLUMNS))
+        if chosen:
+            click.echo(
+                f"\n  Pick: {chosen['model']} — {chosen['size_b']:.0f}B in "
+                f"{chosen['resident_gb']} GB resident, {chosen['seconds_per_token']} s/token, "
+                f"{chosen['disk']['peak_gb']:.0f} GB free disk to split "
+                f"({chosen['disk']['steady_gb']:.0f} GB after)."
+            )
+            if not chosen["prefetching"]:
+                click.echo(
+                    "  Prefetching off for this pick: it does not fit with two shards "
+                    "resident, and one does. Slower, but it runs."
+                )
+        else:
+            click.echo(
+                "\n  Nothing streamable: no candidate fits both one resident shard and "
+                "the free disk the layer split needs."
+            )
+
+    if as_json:
+        click.echo(json.dumps(payload, indent=2, default=str))
+    else:
+        click.echo()
+
+
+@airllm_group.command("prepare")
+@click.option(
+    "--model",
+    type=str,
+    required=True,
+    help=(
+        "HuggingFace repository id to download and split (e.g. meta-llama/Llama-3.3-70B-Instruct)."
+    ),
+)
+@click.option(
+    "--compression",
+    type=click.Choice(["4bit", "8bit"]),
+    default=None,
+    help="Compress the shards as they are written.",
+)
+@click.option(
+    "--shards-path",
+    type=str,
+    default=None,
+    help=(
+        "Where to write the per-layer shards. Default: beside the HuggingFace "
+        "cache. Point this at your fastest volume — the shard read IS the decode "
+        "speed."
+    ),
+)
+@click.option(
+    "--delete-original",
+    is_flag=True,
+    default=False,
+    help=(
+        "Remove the downloaded checkpoint once the shards exist, halving the disk "
+        "requirement. The shards are then the only copy: losing them means "
+        "downloading again."
+    ),
+)
+def airllm_prepare(
+    model: str, compression: str | None, shards_path: str | None, delete_original: bool
+) -> None:
+    """Download and split a checkpoint now, rather than inside the first call.
+
+    The first streaming call pays for the download and the layer split, which
+    for a large model is tens of minutes of disk. A caller who meets that inside
+    a job will reasonably conclude it has hung. This pays it deliberately.
+    """
+    try:
+        _offload.load(
+            model,
+            compression=compression,
+            layer_shards_saving_path=shards_path,
+            delete_original=delete_original,
+        )
+    except ImportError as exc:
+        click.echo(str(exc), err=True)
+        sys.exit(1)
+    except Exception as exc:  # the download/split surface is wide; stay readable
+        osh.error(f"airllm prepare failed:\n\t{exc}")
+        click.echo(f"airllm prepare failed: {exc}", err=True)
+        sys.exit(1)
+    click.echo(
+        f"Prepared {model}: layer shards are on disk and the first call will not "
+        "have to split them."
+    )
+
+
+@airllm_group.command("compare")
+@click.option(
+    "--kind",
+    type=click.Choice(["llm", "vlm"]),
+    default="llm",
+    show_default=True,
+    help="Model type to compare.",
+)
+@click.option(
+    "--application",
+    type=click.Choice(_VALID_APPLICATIONS),
+    default=None,
+    help="Benchmark axis, so both sides are scored on the task that matters.",
+)
+@click.option(
+    "--tokens",
+    "new_tokens",
+    type=int,
+    default=300,
+    show_default=True,
+    help=("Answer length both sides are timed for. 300 tokens is about a long paragraph."),
+)
+@click.option(
+    "--prompt-tokens",
+    type=int,
+    default=0,
+    show_default=True,
+    help=(
+        "Prompt length. Free on the streamed side — one pass reads the whole "
+        "checkpoint whatever rides through it — which is the one axis where "
+        "streaming beats a resident model."
+    ),
+)
+@click.option(
+    "--batch",
+    type=int,
+    default=1,
+    show_default=True,
+    help=(
+        "Independent prompts answered together. On the streamed side this is "
+        "nearly free in time and costs one KV cache per sequence, so it is the "
+        "biggest speed lever the backend has."
+    ),
+)
+@click.option(
+    "--compression",
+    type=click.Choice(["4bit", "8bit"]),
+    default=None,
+    help="airllm weight compression for the streamed side (~3x at 4-bit).",
+)
+@click.option(
+    "--native-backend",
+    type=click.Choice(["ollama", "vllm"]),
+    default=None,
+    help="Backend to compare against. Default: what `resolve` would pick here.",
+)
+@click.option("--measure", is_flag=True, default=False, help="Measure disk read bandwidth.")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Emit JSON.")
+def airllm_compare(
+    kind: str,
+    application: str | None,
+    new_tokens: int,
+    prompt_tokens: int,
+    batch: int,
+    compression: str | None,
+    native_backend: str | None,
+    measure: bool,
+    as_json: bool,
+) -> None:
+    """Native model or streamed model: the same machine, the same answer, both prices.
+
+    The decision streaming actually forces. A machine that runs a 14B model
+    comfortably can also stream a 70B one; the two differ by a few benchmark
+    points in one direction and three orders of magnitude of latency in the
+    other. This prints both, priced in seconds for one answer of the same
+    length, so the trade can be made rather than guessed at.
+    """
+    from . import engine as _engine
+
+    hw = _detect.available_memory()
+    compute = _detect.compute_profile()
+    disk = _detect.disk_profile(measure=measure)
+    report = _offload.compare(
+        _catalog.load_catalog(),
+        hw=hw,
+        disk=disk,
+        bandwidth_gbs=compute.get("bandwidth_gbs"),
+        kind="vlm" if kind == "vlm" else "llm",
+        application=application,
+        native_backend=native_backend or _engine.default_backend(),
+        new_tokens=new_tokens,
+        prompt_tokens=prompt_tokens,
+        batch=batch,
+        compression=compression,
+    )
+
+    if as_json:
+        click.echo(json.dumps(report, indent=2, default=str))
+        return
+
+    native = report["native"]
+    streamed = report["streamed"]
+    click.echo(
+        f"\n=== {kind.upper()}: {native['backend']} vs airllm, for a {new_tokens}-token answer ==="
+    )
+    click.echo(
+        f"  budgets: {native['budget_gb']} GB resident ({native['backend']}) · "
+        f"{streamed['budget_gb']} GB per shard (airllm) · "
+        f"disk {disk['read_gbs']} GB/s ({disk['basis']})"
+    )
+    if batch > 1:
+        click.echo(f"  batch of {batch}: counted on the streamed side, where a pass is shared")
+
+    rows = []
+    for row in native["rows"][:6]:
+        rows.append(
+            {
+                "model": row["catalog_id"],
+                "backend": row["backend"],
+                "score": f"{row['score']:.0f}" if row["score"] else "-",
+                "resident": f"{row['resident_gb']:.1f}" if row["resident_gb"] else "-",
+                "tok/s": f"{row['tokens_per_s']:.1f}" if row["tokens_per_s"] else "-",
+                "answer": row["answer_human"],
+                "runs": "yes" if row["usable"] else "NO",
+            }
+        )
+    for row in streamed["rows"][:6]:
+        rows.append(
+            {
+                "model": (row["model"] or "")[:40],
+                "backend": "airllm",
+                "score": f"{row['score']:.0f}" if row.get("score") else "-",
+                "resident": f"{row['resident_gb']:.1f}" if row["resident_gb"] else "-",
+                "tok/s": f"{row['effective_tps']:.3f}" if row.get("effective_tps") else "-",
+                "answer": row["answer_human"],
+                "runs": "yes" if row["usable"] else "NO",
+            }
+        )
+    click.echo(
+        _fmt_table(rows, ["model", "backend", "score", "resident", "tok/s", "answer", "runs"])
+    )
+    click.echo(f"\n  {report['verdict']}")
+    if prompt_tokens:
+        click.echo(
+            f"  Note: the {prompt_tokens}-token prompt is counted on neither side — it is "
+            "free under streaming (one pass) and unpriced here under "
+            f"{native['backend']}, which flatters {native['backend']}."
+        )
+    click.echo()
 
 
 @cli.command("gui")
