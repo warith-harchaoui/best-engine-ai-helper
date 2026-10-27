@@ -74,6 +74,20 @@ dependencies = [
     # handles streaming and compression is simply unavailable, which
     # `offload.bytes_per_param` sizes honestly either way.
     "bitsandbytes>=0.43; platform_system != 'Darwin'",
+    # airllm's own macOS path, which it imports unconditionally
+    # (`airllm/__init__.py` does `from .airllm_llama_mlx import ...` when
+    # `sys.platform == "darwin"`) and does NOT declare. Without this, `import
+    # airllm` raises `ModuleNotFoundError: No module named 'mlx'` on every Mac
+    # — so the streaming backend would be a core dependency that cannot be
+    # imported on the platform this suite is developed on. Found by installing
+    # the dependency set and importing it, which is the only way to find it.
+    #
+    # Marked for Apple Silicon only: mlx publishes no wheel for an Intel Mac,
+    # and pinning it there would make the whole package uninstallable. An Intel
+    # Mac therefore still cannot import airllm — upstream's bug, not one this
+    # package can fix, and `offload.available()` reports it as an unusable
+    # runtime rather than pretending.
+    "mlx>=0.18; platform_system == 'Darwin' and platform_machine == 'arm64'",
     # Text-to-image (imagine.py), the third kind of model this package chooses.
     # Core for the same reason airllm is: "what can this machine run" covers
     # pixels as well as text, and the OpenAI-compatible surface advertises an

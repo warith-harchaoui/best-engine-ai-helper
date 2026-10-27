@@ -756,9 +756,24 @@ def test_resolve_accepts_the_streaming_backend(
     runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """End to end: a brief in, a streaming engine file out."""
+    from best_engine_ai_helper import detect as _detect
     from best_engine_ai_helper import offload as _offload
 
     monkeypatch.setattr(_offload, "available", lambda: True)
+    # The storage profile is injected, not probed. Streaming needs room for the
+    # layer split, so a run on a nearly-full disk resolves nothing and this
+    # test fails for a reason that has nothing to do with what it checks —
+    # observed for real when installing torch took 9 GB off this machine.
+    monkeypatch.setattr(
+        _detect,
+        "disk_profile",
+        lambda measure=False, directory=None: {
+            "storage": "nvme",
+            "read_gbs": 4.0,
+            "basis": "declared",
+            "free_gb": 4000.0,
+        },
+    )
     brief = tmp_path / "llm.brief.yaml"
     brief.write_text("kind: llm\ntask: general assistant\nstructured_output: false\n")
 
@@ -807,13 +822,30 @@ def test_airllm_compare_json_carries_the_timings_behind_the_verdict(runner: CliR
         assert "answer_seconds" in plan
 
 
-def test_airllm_plan_shows_the_batch_trade_on_both_sides(runner: CliRunner) -> None:
+def test_airllm_plan_shows_the_batch_trade_on_both_sides(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Eight answers in the time of one, for eight KV caches. Both halves visible.
 
     The batch is the biggest speed lever this backend has, so a plan that only
     priced single sequences hid it. And it is not free: the shard figure has to
     grow with the batch, or a user would plan a batch job into an OOM.
     """
+    from best_engine_ai_helper import detect as _detect
+
+    # Injected for the same reason as the resolve test: a nearly-full disk
+    # means nothing can be split, so the pick line never prints and the
+    # assertion fails on ambient machine state rather than on behaviour.
+    monkeypatch.setattr(
+        _detect,
+        "disk_profile",
+        lambda measure=False, directory=None: {
+            "storage": "nvme",
+            "read_gbs": 4.0,
+            "basis": "declared",
+            "free_gb": 4000.0,
+        },
+    )
     single = runner.invoke(cli, ["airllm", "plan", "--kind", "llm", "--tokens", "300"])
     batched = runner.invoke(
         cli, ["airllm", "plan", "--kind", "llm", "--tokens", "300", "--batch", "8"]

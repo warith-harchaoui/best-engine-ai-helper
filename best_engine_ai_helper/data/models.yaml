@@ -495,11 +495,11 @@
 # --- Text-to-image models (kind: image) -----------------------------------
 # The third kind this package chooses (see imagine.py). Not chat models and not
 # embedders: the LLM/VLM picker ignores `kind: image` entirely, and the image
-# endpoint selects among these on memory fit, output size puis time per image.
+# endpoint selects among these on memory fit, output size and time per image.
 #
 # Fields particular to this kind:
 #   size_b          TOTAL parameters across every component — text encoders,
-#                   denoiser puis VAE. A diffusion model is three or four
+#                   denoiser and VAE. A diffusion model is three or four
 #                   networks taking turns, not one stack, so the total is what
 #                   an all-resident run costs.
 #   denoiser_size_b The biggest single component. It is what a
@@ -517,11 +517,11 @@
 #   benchmarks.image  Rough image-quality standing, same footing as every other
 #                   score here: hand-maintained, good for ordering candidates
 #                   against each other, not a measurement.
-#   backends        [diffusers]: these are Hub pipelines, so Ollama, vLLM puis
+#   backends        [diffusers]: these are Hub pipelines, so Ollama, vLLM and
 #                   the layer-streaming backend are all offered nothing.
 #
 # Weights download on first use, like every other model here, and the licences
-# differ: SD 1.5 puis SDXL are CreativeML OpenRAIL-M, SD 3.5 is the Stability
+# differ: SD 1.5 and SDXL are CreativeML OpenRAIL-M, SD 3.5 is the Stability
 # Community licence, FLUX.1-schnell is Apache-2.0 (its [dev] sibling is not).
 # Check the one you pick before shipping its output.
 
@@ -630,7 +630,7 @@
     code: null
     math: null
     image: 88
-  notes: "FLUX.1-schnell: the best open image model here puis the heaviest. 4 steps, Apache-2.0, needs component offload below 32 GB."
+  notes: "FLUX.1-schnell: the best open image model here and the heaviest. 4 steps, Apache-2.0, needs component offload below 32 GB."
   structured_output: false
   hf_id: black-forest-labs/FLUX.1-schnell
   fetched_at: null

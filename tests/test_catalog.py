@@ -26,7 +26,7 @@ def test_load_catalog_seed_and_cache_overlay(tmp_path: Path, monkeypatch) -> Non
         assert {"id", "kind", "ram_gb", "benchmarks"} <= e.keys()
         # Four kinds now, each with its own picker and its own idea of what
         # "fits": llm/vlm (score.rank), embed (text embedders for the
-        # ann-router index, ranked on MTEB by the F3 usage) puis image
+        # ann-router index, ranked on MTEB by the F3 usage) and image
         # (imagine.rank, sized per component and timed in seconds per image).
         # The generative picker ignores the last two.
         assert e["kind"] in ("llm", "vlm", "embed", "image")

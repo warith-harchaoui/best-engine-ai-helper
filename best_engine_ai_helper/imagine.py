@@ -42,6 +42,7 @@ Warith Harchaoui <warithmetics@deraison.ai>
 
 from __future__ import annotations
 
+import importlib
 import math
 from typing import Any
 
@@ -482,13 +483,20 @@ def seconds_per_image(
     return round(per_step * (steps if steps else steps_for(entry)), 1)
 
 
+#: Memoized result of :func:`available`; importing diffusers drags torch in.
+_AVAILABLE: bool | None = None
+
+
 def available() -> bool:
     """
     Whether the ``diffusers`` runtime is importable in this interpreter.
 
     Normally True: it is a core dependency. Checked rather than assumed for the
     same reason :func:`offload.available` is — declared and importable are
-    different claims, and a stripped container separates them.
+    different claims, and a stripped container separates them. A real import
+    rather than ``find_spec`` for the same reason too: a package whose
+    ``__init__`` raises has a findable spec and is still unusable, which is how
+    airllm behaves on a Mac without ``mlx``.
 
     Returns
     -------
@@ -500,12 +508,15 @@ def available() -> bool:
     >>> available() in (True, False)
     True
     """
-    from importlib.util import find_spec
-
-    try:
-        return find_spec(PACKAGE) is not None
-    except (ImportError, ValueError):
-        return False
+    global _AVAILABLE
+    if _AVAILABLE is None:
+        try:
+            importlib.import_module(PACKAGE)
+            _AVAILABLE = True
+        except Exception as exc:  # noqa: BLE001 — any import failure means unusable
+            osh.debug(f"The {PACKAGE} runtime cannot be imported here: {exc!r}")
+            _AVAILABLE = False
+    return _AVAILABLE
 
 
 def plan(
@@ -793,7 +804,7 @@ def load(
     """
     try:
         import torch
-        from diffusers import AutoPipelineForText2Image
+        from diffusers import AutoPipelineForText2Image as _Pipeline
     except ImportError as exc:
         raise ImportError(
             f"Image generation needs the {PACKAGE} runtime, which IS a dependency of "
@@ -817,7 +828,14 @@ def load(
     kwargs: dict[str, Any] = {"torch_dtype": torch_dtype}
     if hf_token:
         kwargs["token"] = hf_token
-    pipeline = AutoPipelineForText2Image.from_pretrained(model, **kwargs)
+    # Through an `Any` rather than called directly: diffusers ships partial
+    # type information, so `from_pretrained` is untyped and mypy's strict mode
+    # rejects the call — but only when diffusers is actually installed, which
+    # is why this passed locally and failed in CI. An inline `type: ignore`
+    # would then be flagged as unused on a machine without it; the indirection
+    # is correct in both states.
+    factory: Any = _Pipeline
+    pipeline = factory.from_pretrained(model, **kwargs)
 
     if offload:
         # Components take turns on the device; the peak becomes the largest one.

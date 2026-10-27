@@ -74,6 +74,7 @@ Warith Harchaoui <warithmetics@deraison.ai>
 
 from __future__ import annotations
 
+import importlib
 import math
 import os
 from typing import Any, Literal
@@ -1077,6 +1078,11 @@ def seconds_per_token(tps: float | None) -> float | None:
     return round(1.0 / tps, 1)
 
 
+#: Memoized result of :func:`available`. None means "not asked yet"; importing
+#: airllm drags torch in, so the question is asked once per process.
+_AVAILABLE: bool | None = None
+
+
 def available() -> bool:
     """
     Whether the airllm runtime is importable in this interpreter.
@@ -1087,6 +1093,14 @@ def available() -> bool:
     failed wheel build or a partially-installed environment separates them, and
     finding that out at resolution beats finding it out inside a job.
 
+    The check is a real **import**, not ``importlib.util.find_spec``. That
+    distinction is not theoretical: airllm's ``__init__`` imports its MLX path
+    unconditionally on macOS, so on a Mac without ``mlx`` the spec is found and
+    the import then raises. ``find_spec`` answered True there while
+    :func:`load` could not work at all — the exact shape of lie this function
+    exists to prevent. Cached, because importing airllm pulls in torch and that
+    is seconds, not milliseconds.
+
     Returns
     -------
     bool
@@ -1096,13 +1110,18 @@ def available() -> bool:
     --------
     >>> available() in (True, False)
     True
+    >>> available() is available()          # cached, so it is asked once
+    True
     """
-    from importlib.util import find_spec
-
-    try:
-        return find_spec(PACKAGE) is not None
-    except (ImportError, ValueError):  # a broken/partial install is "not available"
-        return False
+    global _AVAILABLE
+    if _AVAILABLE is None:
+        try:
+            importlib.import_module(PACKAGE)
+            _AVAILABLE = True
+        except Exception as exc:  # noqa: BLE001 — any import failure means unusable
+            osh.debug(f"The {PACKAGE} runtime cannot be imported here: {exc!r}")
+            _AVAILABLE = False
+    return _AVAILABLE
 
 
 def runtime(compute: dict[str, Any] | None = None, allow_cpu: bool = False) -> str | None:

@@ -10,4 +10,5 @@ fastapi-mcp>=0.3,<1
 mcp>=1.12,<2
 airllm>=2.11,<5
 bitsandbytes>=0.43; platform_system != 'Darwin'
+mlx>=0.18; platform_system == 'Darwin' and platform_machine == 'arm64'
 diffusers>=0.31,<1
