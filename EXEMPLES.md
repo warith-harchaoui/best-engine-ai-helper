@@ -584,27 +584,41 @@ seul bascule. Mettez `airllm: never` dans le cahier des charges (ou
 import best_engine_ai_helper as beah
 
 hw, disk = beah.available_memory(), beah.disk_profile(measure=True)
-entry = {"id": "llama3.3:70b", "size_b": 70, "layers": 80,
-         "hf_id": "meta-llama/Llama-3.3-70B-Instruct"}
+entry = {
+    "id": "llama3.3:70b",
+    "size_b": 70,
+    "layers": 80,
+    "hf_id": "meta-llama/Llama-3.3-70B-Instruct",
+}
 
 # Trois réponses différentes à « à quelle vitesse ? », toutes vraies
 timing = beah.airllm_generation_time(entry, disk["read_gbs"], new_tokens=300, batch=8)
-print(timing["decode_tps"])              # 0,024  — régime, une séquence
-print(timing["time_to_first_token_s"])   # 41,2   — une passe, prompt compris
-print(timing["effective_tps"])           # 0,194  — huit réponses partagent chaque passe
+print(timing["decode_tps"])  # 0,024  — régime, une séquence
+print(timing["time_to_first_token_s"])  # 41,2   — une passe, prompt compris
+print(timing["effective_tps"])  # 0,194  — huit réponses partagent chaque passe
 
 # Cette machine devrait-elle diffuser ?
 print(beah.airllm_decide(conventional_resolved=False)["reason"])
 
 # Natif ou en flux, pour une réponse de 300 jetons ?
-print(beah.airllm_compare(beah.load_catalog(), hw=hw, disk=disk,
-                          bandwidth_gbs=beah.compute_profile()["bandwidth_gbs"],
-                          new_tokens=300)["verdict"])
+print(
+    beah.airllm_compare(
+        beah.load_catalog(),
+        hw=hw,
+        disk=disk,
+        bandwidth_gbs=beah.compute_profile()["bandwidth_gbs"],
+        new_tokens=300,
+    )["verdict"]
+)
 
 # Avec l'extra installé : l'exécuter, dans ce processus, sans aucun serveur
-print(beah.airllm_generate("Note cette description produit de 1 à 5 puis dis pourquoi :…",
-                           model="meta-llama/Llama-3.3-70B-Instruct",
-                           max_new_tokens=64))
+print(
+    beah.airllm_generate(
+        "Note cette description produit de 1 à 5 puis dis pourquoi :…",
+        model="meta-llama/Llama-3.3-70B-Instruct",
+        max_new_tokens=64,
+    )
+)
 ```
 
 ### HTTP / MCP

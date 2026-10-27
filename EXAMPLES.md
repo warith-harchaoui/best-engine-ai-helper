@@ -558,27 +558,41 @@ escalation off entirely.
 import best_engine_ai_helper as beah
 
 hw, disk = beah.available_memory(), beah.disk_profile(measure=True)
-entry = {"id": "llama3.3:70b", "size_b": 70, "layers": 80,
-         "hf_id": "meta-llama/Llama-3.3-70B-Instruct"}
+entry = {
+    "id": "llama3.3:70b",
+    "size_b": 70,
+    "layers": 80,
+    "hf_id": "meta-llama/Llama-3.3-70B-Instruct",
+}
 
 # Three different answers to "how fast is it", all of them true
 timing = beah.airllm_generation_time(entry, disk["read_gbs"], new_tokens=300, batch=8)
-print(timing["decode_tps"])              # 0.024  — steady state, one sequence
-print(timing["time_to_first_token_s"])   # 41.2   — one pass, prompt included
-print(timing["effective_tps"])           # 0.194  — eight answers share each pass
+print(timing["decode_tps"])  # 0.024  — steady state, one sequence
+print(timing["time_to_first_token_s"])  # 41.2   — one pass, prompt included
+print(timing["effective_tps"])  # 0.194  — eight answers share each pass
 
 # Should this machine stream at all?
 print(beah.airllm_decide(conventional_resolved=False)["reason"])
 
 # Native or streamed, for a 300-token answer?
-print(beah.airllm_compare(beah.load_catalog(), hw=hw, disk=disk,
-                          bandwidth_gbs=beah.compute_profile()["bandwidth_gbs"],
-                          new_tokens=300)["verdict"])
+print(
+    beah.airllm_compare(
+        beah.load_catalog(),
+        hw=hw,
+        disk=disk,
+        bandwidth_gbs=beah.compute_profile()["bandwidth_gbs"],
+        new_tokens=300,
+    )["verdict"]
+)
 
 # With the extra installed: run it, in this process, no server involved
-print(beah.airllm_generate("Rate this product description 1-5 and say why:…",
-                           model="meta-llama/Llama-3.3-70B-Instruct",
-                           max_new_tokens=64))
+print(
+    beah.airllm_generate(
+        "Rate this product description 1-5 and say why:…",
+        model="meta-llama/Llama-3.3-70B-Instruct",
+        max_new_tokens=64,
+    )
+)
 ```
 
 ### HTTP / MCP

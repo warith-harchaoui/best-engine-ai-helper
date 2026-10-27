@@ -710,21 +710,29 @@ decision = beah.airllm_decide(conventional_resolved=False)
 print(decision["activate"], decision["reason"], decision["blockers"])
 
 # Que coûterait un 70B ici ?
-entry = {"id": "llama3.3:70b", "size_b": 70, "layers": 80,
-         "hf_id": "meta-llama/Llama-3.3-70B-Instruct"}
-print(beah.airllm_footprint_gb(entry))                      # 6,1 Go résidents
+entry = {
+    "id": "llama3.3:70b",
+    "size_b": 70,
+    "layers": 80,
+    "hf_id": "meta-llama/Llama-3.3-70B-Instruct",
+}
+print(beah.airllm_footprint_gb(entry))  # 6,1 Go résidents
 print(beah.airllm_generation_time(entry, disk["read_gbs"], new_tokens=300, batch=8))
 
 # Natif ou en flux, pour une réponse de 300 jetons ?
-report = beah.airllm_compare(beah.load_catalog(), hw=hw, disk=disk,
-                             bandwidth_gbs=beah.compute_profile()["bandwidth_gbs"],
-                             new_tokens=300)
+report = beah.airllm_compare(
+    beah.load_catalog(),
+    hw=hw,
+    disk=disk,
+    bandwidth_gbs=beah.compute_profile()["bandwidth_gbs"],
+    new_tokens=300,
+)
 print(report["verdict"])
 
 # Puis, avec l'extra installé, l'exécuter vraiment
-text = beah.airllm_generate("Juge cette description :…",
-                            model="meta-llama/Llama-3.3-70B-Instruct",
-                            max_new_tokens=64)
+text = beah.airllm_generate(
+    "Juge cette description :…", model="meta-llama/Llama-3.3-70B-Instruct", max_new_tokens=64
+)
 ```
 
 La surface HTTP répond aux mêmes questions en un seul appel —
