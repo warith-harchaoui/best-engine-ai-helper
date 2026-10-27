@@ -24,10 +24,12 @@ def test_load_catalog_seed_and_cache_overlay(tmp_path: Path, monkeypatch) -> Non
     assert len(ids) == len(set(ids))  # ids are unique
     for e in entries:
         assert {"id", "kind", "ram_gb", "benchmarks"} <= e.keys()
-        # embed entries (text embedders for the ann-router index) join llm/vlm as
-        # a third kind; the generative picker ignores them, the F3 usage selects
-        # among them by memory fit.
-        assert e["kind"] in ("llm", "vlm", "embed")
+        # Four kinds now, each with its own picker and its own idea of what
+        # "fits": llm/vlm (score.rank), embed (text embedders for the
+        # ann-router index, ranked on MTEB by the F3 usage) puis image
+        # (imagine.rank, sized per component and timed in seconds per image).
+        # The generative picker ignores the last two.
+        assert e["kind"] in ("llm", "vlm", "embed", "image")
         assert float(e["ram_gb"]) > 0
 
     def _entry(general: int, note: str, fetched: str | None) -> str:

@@ -7,6 +7,14 @@ Exposes the two calls the GUI needs:
 - ``GET /api/airllm``    — whether layer streaming is available/warranted here,
   and which too-large models it would unlock (see
   :mod:`best_engine_ai_helper.offload`).
+
+It also mounts the **OpenAI-compatible** surface from
+:mod:`best_engine_ai_helper.openai_api` on the same app: ``/v1/models``,
+``/v1/chat/completions`` (text and vision, streaming or not),
+``/v1/completions``, ``/v1/embeddings`` and ``/v1/images/generations``. Point
+any OpenAI SDK at ``http://127.0.0.1:8000/v1`` and ask for the model named
+``best`` — from the outside this package then behaves like an OpenAI endpoint,
+while inside it is choosing the model this machine should actually run.
 - ``POST /api/recommend`` — a free-text task -> the same report ``recommend()``
   produces for the CLI's ``report`` command, as JSON, plus the best PAID model
   under ``"cloud"`` (reference only, on by default; see ``cli.py``'s
@@ -46,6 +54,8 @@ from . import detect as _detect
 from . import observe as _observe
 from .engine import default_backend as _default_backend
 from .gui import render_gui
+from .openai_api import install_error_handlers as _install_openai_errors
+from .openai_api import router as _openai_router
 from .recommend import cloud_recommend as _cloud_recommend_engines
 from .recommend import recommend as _recommend_engines
 from .score import MAX_HEADROOM as _MAX_HEADROOM
@@ -58,6 +68,17 @@ app = FastAPI(
     description="Detect this machine's hardware and recommend the best local LLM/VLM engine(s).",
 )
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+
+# The OpenAI-compatible surface, on the same app rather than a second server:
+# one process, one port, one thing to start. `/api/*` is this package's own
+# idiom (hardware, recommendations, decisions); `/v1/*` is somebody else's
+# protocol, implemented so an existing client needs no changes at all. Keeping
+# them side by side is deliberate — the `/v1` caller never has to learn this
+# package, and the `/api` caller never has to pretend to be OpenAI.
+app.include_router(_openai_router)
+# And its error envelope: FastAPI nests a raised detail under `detail`, which
+# is one level too deep for a client reading `error.message`.
+_install_openai_errors(app)
 
 
 class RecommendRequest(BaseModel):

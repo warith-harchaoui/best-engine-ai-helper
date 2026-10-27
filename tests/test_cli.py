@@ -54,6 +54,9 @@ EXPECTED_COMMANDS = {
     "airllm plan",
     "airllm compare",
     "airllm prepare",
+    "imagine plan",
+    "imagine generate",
+    "serve",
 }
 
 
@@ -82,7 +85,7 @@ def test_the_command_inventory_and_every_help_screen(runner: CliRunner) -> None:
 
     # A --help that raises is invisible from every other test in this file,
     # since none of them asks for one.
-    for path in sorted(EXPECTED_COMMANDS | {"catalog", "hardware", "usages", "airllm"}):
+    for path in sorted(EXPECTED_COMMANDS | {"catalog", "hardware", "usages", "airllm", "imagine"}):
         res = runner.invoke(cli, [*path.split(), "--help"])
         assert res.exit_code == 0, f"{path} --help -> {res.exit_code}\n{res.output}"
         assert res.output.strip()

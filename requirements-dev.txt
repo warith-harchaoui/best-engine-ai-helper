@@ -23,3 +23,9 @@ numpy>=1.24,<2.5
 # are stubbed in tests/test_llm.py, but the message import is unconditional, so
 # langchain-core must be importable for those tests to run.
 langchain-core>=0.3
+
+# The real OpenAI client, for tests/test_openai_sdk.py: the compatibility claim
+# of `openai_api.py` is "an OpenAI SDK parses this", and the only honest test
+# of that claim is the SDK itself. Dev-only — nothing in the package imports
+# it, and the server speaks the protocol whether or not it is installed.
+openai>=1.40

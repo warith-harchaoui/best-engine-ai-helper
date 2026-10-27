@@ -492,6 +492,149 @@
   vllm_id: meta-llama/Llama-3.1-405B-Instruct
   fetched_at: null
 
+# --- Text-to-image models (kind: image) -----------------------------------
+# The third kind this package chooses (see imagine.py). Not chat models and not
+# embedders: the LLM/VLM picker ignores `kind: image` entirely, and the image
+# endpoint selects among these on memory fit, output size puis time per image.
+#
+# Fields particular to this kind:
+#   size_b          TOTAL parameters across every component — text encoders,
+#                   denoiser puis VAE. A diffusion model is three or four
+#                   networks taking turns, not one stack, so the total is what
+#                   an all-resident run costs.
+#   denoiser_size_b The biggest single component. It is what a
+#                   component-offloaded run costs (diffusers'
+#                   enable_model_cpu_offload keeps only the active one on the
+#                   device), and the term the time estimate scales with, since
+#                   the denoiser is what every sampling step runs.
+#   native_size     The resolution the checkpoint was TRAINED at, and the one
+#                   `size: auto` resolves to. Not a default to be overridden
+#                   lightly: asking a 512px model for 1024x1024 duplicates
+#                   subjects rather than adding detail.
+#   steps           Denoising steps the checkpoint expects. A property of the
+#                   weights, not a taste — a distilled model (Turbo, schnell)
+#                   converges in 1-4 and is both slower AND worse at 28.
+#   benchmarks.image  Rough image-quality standing, same footing as every other
+#                   score here: hand-maintained, good for ordering candidates
+#                   against each other, not a measurement.
+#   backends        [diffusers]: these are Hub pipelines, so Ollama, vLLM puis
+#                   the layer-streaming backend are all offered nothing.
+#
+# Weights download on first use, like every other model here, and the licences
+# differ: SD 1.5 puis SDXL are CreativeML OpenRAIL-M, SD 3.5 is the Stability
+# Community licence, FLUX.1-schnell is Apache-2.0 (its [dev] sibling is not).
+# Check the one you pick before shipping its output.
+
+- id: sdxl-turbo
+  kind: image
+  size_b: 3.5
+  denoiser_size_b: 2.6
+  dtype: fp16
+  native_size: 512x512
+  steps: 4
+  disk_gb: 7.0
+  ram_gb: 9.8
+  backends: [diffusers]
+  benchmarks:
+    general: null
+    vision: null
+    ocr: null
+    code: null
+    math: null
+    image: 70
+  notes: "SDXL distilled to 1-4 steps: the fastest sensible default, about a second an image on a 4090. Guidance off."
+  structured_output: false
+  hf_id: stabilityai/sdxl-turbo
+  fetched_at: null
+
+- id: sd15
+  kind: image
+  size_b: 1.07
+  denoiser_size_b: 0.86
+  dtype: fp16
+  native_size: 512x512
+  steps: 28
+  disk_gb: 2.1
+  ram_gb: 2.9
+  backends: [diffusers]
+  benchmarks:
+    general: null
+    vision: null
+    ocr: null
+    code: null
+    math: null
+    image: 58
+  notes: "Stable Diffusion 1.5: the small fallback. Runs on almost anything, including CPU; the weakest output here."
+  structured_output: false
+  hf_id: stable-diffusion-v1-5/stable-diffusion-v1-5
+  fetched_at: null
+
+- id: sdxl
+  kind: image
+  size_b: 3.5
+  denoiser_size_b: 2.6
+  dtype: fp16
+  native_size: 1024x1024
+  steps: 28
+  disk_gb: 7.0
+  ram_gb: 9.8
+  backends: [diffusers]
+  benchmarks:
+    general: null
+    vision: null
+    ocr: null
+    code: null
+    math: null
+    image: 75
+  notes: "SDXL base at full 28 steps: markedly better than its Turbo twin, and roughly seven times the wait."
+  structured_output: false
+  hf_id: stabilityai/stable-diffusion-xl-base-1.0
+  fetched_at: null
+
+- id: sd35-medium
+  kind: image
+  size_b: 10.9
+  denoiser_size_b: 2.5
+  dtype: fp16
+  native_size: 1024x1024
+  steps: 28
+  disk_gb: 21.8
+  ram_gb: 28.3
+  backends: [diffusers]
+  benchmarks:
+    general: null
+    vision: null
+    ocr: null
+    code: null
+    math: null
+    image: 82
+  notes: "SD 3.5 Medium: a 2.5B transformer behind 8.4B of text encoders (T5-XXL), so the offloaded footprint is a third of the resident one."
+  structured_output: false
+  hf_id: stabilityai/stable-diffusion-3.5-medium
+  fetched_at: null
+
+- id: flux1-schnell
+  kind: image
+  size_b: 16.9
+  denoiser_size_b: 11.9
+  dtype: bf16
+  native_size: 1024x1024
+  steps: 4
+  disk_gb: 33.8
+  ram_gb: 43.3
+  backends: [diffusers]
+  benchmarks:
+    general: null
+    vision: null
+    ocr: null
+    code: null
+    math: null
+    image: 88
+  notes: "FLUX.1-schnell: the best open image model here puis the heaviest. 4 steps, Apache-2.0, needs component offload below 32 GB."
+  structured_output: false
+  hf_id: black-forest-labs/FLUX.1-schnell
+  fetched_at: null
+
 # --- Embedding models (kind: embed) ---------------------------------------
 # Text embedders for the multi-granular ann-router index, NOT chat models: the
 # LLM/VLM benchmark picker ignores kind: embed, and the embeddings usage (F3)

@@ -16,7 +16,10 @@ from best_engine_ai_helper import mcp as mcp_module
 
 def test_mcp_mounted_api_served_and_main_boots(monkeypatch: pytest.MonkeyPatch) -> None:
     # Importing the module publishes an /mcp endpoint named 'best-engine-ai-helper'.
-    paths = {r.path for r in mcp_module.app.routes}
+    # `getattr`, because an included router appears in `app.routes` as one
+    # opaque entry with no `.path` of its own — which is what the
+    # OpenAI-compatible router is.
+    paths = {getattr(r, "path", "") for r in mcp_module.app.routes}
     assert any("/mcp" in p for p in paths), paths
     assert mcp_module.mcp.name == "best-engine-ai-helper"
 

@@ -28,6 +28,9 @@ Commands:
   airllm status   Can this machine stream layers, and should it?
   airllm plan     What a too-large model would cost here, ranked.
   airllm prepare  Download and split a checkpoint before the first call.
+  imagine plan    Which text-to-image model this machine can run, and how fast.
+  imagine generate  Generate one image locally, to a PNG file.
+  serve           Serve the OpenAI-compatible API (point any OpenAI SDK at it).
 
 Author
 ------
@@ -52,6 +55,7 @@ from . import catalog as _catalog
 from . import cloud_catalog as _cloud_catalog
 from . import detect as _detect
 from . import hardware as _hardware
+from . import imagine as _imagine
 from . import observe as _observe
 from . import offload as _offload
 from . import score as _score
@@ -1738,6 +1742,205 @@ def airllm_compare(
             f"{native['backend']}, which flatters {native['backend']}."
         )
     click.echo()
+
+
+@cli.command("serve")
+@click.option("--host", default="127.0.0.1", show_default=True, help="Bind address.")
+@click.option("--port", default=8000, show_default=True, help="Port to listen on.")
+def serve_cmd(host: str, port: int) -> None:
+    """Serve the OpenAI-compatible API, with the model chosen for this machine.
+
+    Point any OpenAI SDK at the base URL this prints and ask for the model
+    named `best`. Chat, vision, embeddings and images all work; the model is
+    not a name you have to know, it is whatever this hardware should actually
+    run.
+
+    The same process also serves the browser GUI at /gui, this package's own
+    /api/* routes, and the MCP endpoint at /mcp — one port, one thing to start.
+    """
+    import uvicorn
+
+    base = f"http://{host}:{port}/v1"
+    click.echo(f"\n  OpenAI-compatible API : {base}")
+    click.echo(f"  Browser GUI           : http://{host}:{port}/gui")
+    click.echo(f"  OpenAPI schema        : http://{host}:{port}/docs")
+    click.echo(f"  MCP endpoint          : http://{host}:{port}/mcp")
+    click.echo("\n  from openai import OpenAI")
+    click.echo(f'  client = OpenAI(base_url="{base}", api_key="not-needed")')
+    click.echo('  client.chat.completions.create(model="best", messages=[...])\n')
+    click.echo("  Model names: best · best-llm · best-vlm · best-embed · best-image")
+    click.echo("               best:<task>  (e.g. best:write SQL)\n")
+    uvicorn.run("best_engine_ai_helper.api:app", host=host, port=port, log_level="info")
+
+
+@cli.group("imagine")
+def imagine_group() -> None:
+    """Text-to-image: the third kind of model this package chooses.
+
+    A diffusion model is three or four networks taking turns — text encoders,
+    a denoiser, a VAE — so its footprint depends on whether they are all
+    resident or handed to diffusers' component offload, and its speed is steps
+    times denoiser passes rather than tokens per second. These commands report
+    both, and `generate` runs one.
+    """
+
+
+@imagine_group.command("plan")
+@click.option(
+    "--size",
+    type=click.Choice(["auto", *sorted(_imagine.OPENAI_SIZES)]),
+    default="auto",
+    show_default=True,
+    help=(
+        "Output size to price. 'auto' uses each model's own native resolution, "
+        "which is the fair comparison: a 512px model is not worse for being "
+        "cheaper, and asking it for 1024x1024 duplicates subjects rather than "
+        "adding detail."
+    ),
+)
+@click.option("--json", "as_json", is_flag=True, default=False, help="Emit JSON.")
+def imagine_plan(size: str, as_json: bool) -> None:
+    """Rank the image models this machine can run, best first."""
+    hw = _detect.available_memory()
+    compute = _detect.compute_profile()
+    budget = _score.effective_budget(hw)
+    width = height = None
+    if size != "auto":
+        width, height = _imagine.OPENAI_SIZES[size]
+
+    plans = _imagine.rank(
+        _catalog.load_catalog(),
+        budget_gb=budget,
+        bandwidth_gbs=compute.get("bandwidth_gbs"),
+        width=width,
+        height=height,
+    )
+    chosen = _imagine.pick(plans)
+
+    if as_json:
+        click.echo(json.dumps({"budget_gb": budget, "chosen": chosen, "plans": plans}, indent=2))
+        return
+
+    click.echo(
+        f"\n=== Image models: {budget:.1f} GB budget, "
+        f"{compute.get('bandwidth_gbs') or '?'} GB/s memory bandwidth ==="
+    )
+    rows = [
+        {
+            "id": plan["catalog_id"],
+            "params": f"{plan['size_b']:.1f}B" if plan["size_b"] else "-",
+            "size": plan["size"],
+            "steps": plan["steps"],
+            "gb": plan["resident_gb"] if plan["resident_gb"] is not None else "-",
+            "offload": "yes" if plan["offload"] else "no",
+            "s/image": plan["seconds_per_image"] if plan["seconds_per_image"] else "-",
+            "runs": "yes" if plan["usable"] else "NO",
+            "notes": (plan["blockers"][0] if plan["blockers"] else "")[:40],
+        }
+        for plan in plans
+    ]
+    click.echo(
+        _fmt_table(
+            rows, ["id", "params", "size", "steps", "gb", "offload", "s/image", "runs", "notes"]
+        )
+    )
+    if chosen:
+        click.echo(
+            f"\n  Pick: {chosen['model']} — {chosen['size']} in "
+            f"{chosen['resident_gb']} GB resident, {chosen['steps']} steps, "
+            f"about {chosen['seconds_per_image']} s an image"
+            + (" (components taking turns)." if chosen["offload"] else ".")
+        )
+    else:
+        click.echo("\n  No image model fits this machine's memory budget.")
+    click.echo()
+
+
+@imagine_group.command("generate")
+@click.option("--prompt", type=str, required=True, help="What to draw.")
+@click.option(
+    "--out",
+    type=str,
+    default="image.png",
+    show_default=True,
+    help="Where to write the PNG.",
+)
+@click.option(
+    "--model",
+    type=str,
+    default=None,
+    help="HuggingFace pipeline id. Default: whatever `imagine plan` would pick here.",
+)
+@click.option("--size", type=str, default=None, help="WxH. Default: the model's native size.")
+@click.option("--steps", type=int, default=None, help="Denoising steps. Default: the model's own.")
+@click.option("--seed", type=int, default=None, help="Seed, for a reproducible image.")
+@click.option("--negative", type=str, default=None, help="What to avoid.")
+def imagine_generate(
+    prompt: str,
+    out: str,
+    model: str | None,
+    size: str | None,
+    steps: int | None,
+    seed: int | None,
+    negative: str | None,
+) -> None:
+    """Generate one image locally and write it to a file."""
+    hw = _detect.available_memory()
+    compute = _detect.compute_profile()
+    width = height = None
+    if size:
+        try:
+            width, height = (int(part) for part in size.lower().split("x", 1))
+        except ValueError:
+            click.echo(f"--size must look like 1024x1024, got {size!r}", err=True)
+            sys.exit(1)
+
+    plan = None
+    if not model:
+        plan = _imagine.pick(
+            _imagine.rank(
+                _catalog.load_catalog(),
+                budget_gb=_score.effective_budget(hw),
+                bandwidth_gbs=compute.get("bandwidth_gbs"),
+                width=width,
+                height=height,
+            )
+        )
+        if plan is None:
+            click.echo(
+                "No image model fits this machine's memory budget; see "
+                "`best-engine-ai-helper imagine plan`.",
+                err=True,
+            )
+            sys.exit(1)
+        model, width, height = plan["model"], plan["width"], plan["height"]
+        click.echo(
+            f"Using {model} at {width}x{height}, about {plan['seconds_per_image']} s an image."
+        )
+
+    try:
+        png = _imagine.generate(
+            prompt,
+            model=str(model),
+            width=width or 1024,
+            height=height or 1024,
+            steps=steps or (plan["steps"] if plan else 28),
+            negative_prompt=negative,
+            seed=seed,
+            offload=bool(plan and plan["offload"]),
+        )
+    except ImportError as exc:
+        click.echo(str(exc), err=True)
+        sys.exit(1)
+    except Exception as exc:  # the pipeline surface is wide; stay readable
+        osh.error(f"image generation failed:\n\t{exc}")
+        click.echo(f"image generation failed: {exc}", err=True)
+        sys.exit(1)
+
+    from pathlib import Path
+
+    Path(out).write_bytes(png)
+    click.echo(f"Wrote {out} ({len(png) / 1000:.0f} kB)")
 
 
 @cli.command("gui")

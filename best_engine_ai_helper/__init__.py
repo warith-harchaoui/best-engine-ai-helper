@@ -10,6 +10,12 @@ Public API (importable without invoking the CLI):
   from best_engine_ai_helper.score import select, rank, effective_budget
   from best_engine_ai_helper import airllm_decide, airllm_plan  # layer streaming
   from best_engine_ai_helper import airllm_compare  # streamed vs native, timed
+  from best_engine_ai_helper import imagine_plan, imagine_generate  # text-to-image
+
+An OpenAI-compatible HTTP surface sits on the same app as the GUI and the MCP
+endpoint (``best-engine-ai-helper serve``): point any OpenAI SDK at
+``/v1`` and ask for the model named ``best``. See
+:mod:`best_engine_ai_helper.openai_api`.
   from best_engine_ai_helper import text_model, vision_model  # cheap tag resolvers
 
 The CLI entry point is ``best-engine-ai-helper`` (see cli.py). Importing this
@@ -64,6 +70,19 @@ from .engine import (
     write_engine,
 )
 from .hardware import load_hardware, lookup_chip
+
+# Text-to-image: the third kind of model this package chooses. Same shape as
+# everything else here — a footprint against this machine's budget, a time
+# estimate in the unit a human waits in, and a catalogue entry rather than a
+# hardcoded name.
+from .imagine import COMFORT_SECONDS_PER_IMAGE, seconds_per_image
+from .imagine import available as imagine_available
+from .imagine import footprint_gb as image_footprint_gb
+from .imagine import generate as imagine_generate
+from .imagine import load as imagine_load
+from .imagine import pick as imagine_pick
+from .imagine import plan as imagine_plan
+from .imagine import rank as imagine_rank
 
 # Layer streaming (airllm): run a model that does NOT fit in memory by reading
 # one layer shard at a time off disk. Exported under `airllm_*` names because
@@ -153,6 +172,16 @@ __all__ = [
     "airllm_generate",
     "streaming_budget_gb",
     "COMFORT_TPS_STREAMING",
+    # text-to-image
+    "imagine_available",
+    "imagine_plan",
+    "imagine_rank",
+    "imagine_pick",
+    "imagine_load",
+    "imagine_generate",
+    "image_footprint_gb",
+    "seconds_per_image",
+    "COMFORT_SECONDS_PER_IMAGE",
     "recommend_engines",
     "parse_task",
     "to_markdown",

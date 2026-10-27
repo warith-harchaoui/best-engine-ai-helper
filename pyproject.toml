@@ -74,6 +74,15 @@ dependencies = [
     # handles streaming and compression is simply unavailable, which
     # `offload.bytes_per_param` sizes honestly either way.
     "bitsandbytes>=0.43; platform_system != 'Darwin'",
+    # Text-to-image (imagine.py), the third kind of model this package chooses.
+    # Core for the same reason airllm is: "what can this machine run" covers
+    # pixels as well as text, and the OpenAI-compatible surface advertises an
+    # image endpoint, which has to work rather than apologise. The incremental
+    # cost is small — torch and transformers are already here for layer
+    # streaming, so this adds a few megabytes of Python plus Pillow — and the
+    # import is lazy, so nothing of it is paid until an image is asked for.
+    # Weights download on first use, like every other model here.
+    "diffusers>=0.31,<1",
 ]
 
 [project.optional-dependencies]
