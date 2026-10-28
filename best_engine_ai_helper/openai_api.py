@@ -862,21 +862,55 @@ def list_models() -> dict[str, Any]:
     from . import score as _score
 
     created = int(time.time())
-    data: list[dict[str, Any]] = [
-        {
+    mode = default_mode()
+    by_id = {str(e.get("id")): e for e in _catalog.load_catalog()}
+
+    def _alias(name: str, description: str, kind: str | None) -> dict[str, Any]:
+        """One virtual name, carrying what it resolves to *right now*.
+
+        ``resolves_to`` exists for the gateway case. A budget in front of this
+        server is counted against one model's tokenizer and one served
+        context, so a name that re-resolves per request is a moving target and
+        the advice has been "ask which model, then pin it by hand". Publishing
+        the answer makes that automatic instead of manual: read it, pin it.
+        Absent when nothing resolves, never guessed.
+        """
+        entry: dict[str, Any] = {
             "id": name,
             "object": "model",
             "created": created,
             "owned_by": "best-engine-ai-helper",
             "description": description,
+            "mode": mode,
         }
-        for name, description in (
-            ("best", "Best model for this machine; a VLM when the request carries images"),
-            ("best-llm", "Best text model for this machine"),
-            ("best-vlm", "Best vision-language model for this machine"),
-            ("best-embed", "Best embedding model for this machine"),
-            ("best-image", "Best text-to-image model for this machine"),
-            ("best:<task>", "Best model for a free-text task, e.g. best:write SQL"),
+        if kind is None:
+            return entry
+        try:
+            descriptor = _engine_for(kind, None, mode)
+        except Exception as exc:  # noqa: BLE001 — listing models must not 500
+            osh.debug(f"Could not resolve {name} for the model list: {exc!r}")
+            return entry
+        section = (descriptor or {}).get(kind) or {}
+        resolved = section.get("model")
+        if resolved:
+            entry["resolves_to"] = resolved
+            context = _context_length(by_id.get(str(section.get("catalog_id") or resolved)))
+            if context:
+                entry["context_length"] = context
+        return entry
+
+    data: list[dict[str, Any]] = [
+        _alias(name, description, kind)
+        for name, description, kind in (
+            ("best", "Best model for this machine; a VLM when the request carries images", "llm"),
+            ("best-llm", "Best text model for this machine", "llm"),
+            ("best-vlm", "Best vision-language model for this machine", "vlm"),
+            ("best-embed", "Best embedding model for this machine", None),
+            ("best-image", "Best text-to-image model for this machine", None),
+            ("best-local-llm", "Best text model that runs on this machine (never paid)", None),
+            ("best-cloud-llm", "Best paid text model from the pricing catalogue", None),
+            ("best-cloud-vlm", "Best paid vision-language model", None),
+            ("best:<task>", "Best model for a free-text task, e.g. best:write SQL", None),
         )
     ]
 
@@ -895,16 +929,52 @@ def list_models() -> dict[str, Any]:
             fits = _score.model_footprint_gb(entry) <= budget
         if not fits:
             continue
-        data.append(
-            {
-                "id": str(entry.get("id")),
-                "object": "model",
-                "created": created,
-                "owned_by": str(entry.get("source") or "catalog"),
-                "description": str(entry.get("notes") or "")[:160],
-            }
-        )
+        published: dict[str, Any] = {
+            "id": str(entry.get("id")),
+            "object": "model",
+            "created": created,
+            "owned_by": str(entry.get("source") or "catalog"),
+            "description": str(entry.get("notes") or "")[:160],
+        }
+        # Published when the catalogue knows it, omitted when it does not --
+        # never a default. A gateway in front of this sizes its budget on this
+        # number, and inventing one would be worse than leaving it out: the
+        # founding incident of the project downstream was a served context
+        # that was hoped for rather than known. `catalog update` is what fills
+        # it in; the hand-maintained seed carries none.
+        context = _context_length(entry)
+        if context:
+            published["context_length"] = context
+        data.append(published)
     return {"object": "list", "data": data}
+
+
+def _context_length(entry: dict[str, Any] | None) -> int | None:
+    """
+    A catalogue entry's context length, when it declares a usable one.
+
+    Examples
+    --------
+    >>> _context_length({"context_length": 32768})
+    32768
+    >>> _context_length({"context_length": "131072"})
+    131072
+    >>> _context_length({}) is None
+    True
+    >>> _context_length({"context_length": 0}) is None
+    True
+    >>> _context_length({"context_length": "lots"}) is None
+    True
+    >>> _context_length(None) is None
+    True
+    """
+    if not entry:
+        return None
+    try:
+        value = int(entry.get("context_length") or 0)
+    except (TypeError, ValueError):
+        return None
+    return value or None
 
 
 def _chat_once(

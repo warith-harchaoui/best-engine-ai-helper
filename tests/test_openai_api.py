@@ -755,3 +755,48 @@ def test_a_paid_embedder_is_refused_instead_of_quietly_served_for_free() -> None
 
     # Without the explicit `cloud`, the local answer is a real answer.
     assert openai_api._refuse_cloud_kind({"mode": None, "kind": "embed"}, "/v1/embeddings") is None
+
+
+def test_the_model_list_publishes_what_a_gateway_needs_to_pin(
+    monkeypatch: pytest.MonkeyPatch, client
+) -> None:
+    """The two things ai-bunker said it could not learn from this endpoint.
+
+    It documented the helper as an upstream in a commented-out block for
+    exactly two reasons: `/v1/models` published no context length, so
+    `served_context` had to be written down and hoped for; and `best`
+    re-resolves per request, which makes a token budget counted against one
+    tokenizer a moving target. Both are now answered by the listing itself.
+    """
+    monkeypatch.setattr(
+        openai_api,
+        "_engine_for",
+        lambda kind, task, mode="local": {
+            "backend": "ollama",
+            "llm": {"model": "qwen3:14b", "catalog_id": "qwen3:14b"},
+            "vlm": {"model": "gemma3:12b", "catalog_id": "gemma3:12b"},
+        },
+    )
+    monkeypatch.setattr(
+        "best_engine_ai_helper.catalog.load_catalog",
+        lambda *a, **k: [
+            {"id": "qwen3:14b", "kind": "llm", "ram_gb": 1.0, "context_length": 131072},
+            # Declares none, so none is published -- not a default.
+            {"id": "gemma3:12b", "kind": "vlm", "ram_gb": 1.0},
+        ],
+    )
+    openai_api.reset_engine_cache()
+
+    rows = {row["id"]: row for row in client.get("/v1/models").json()["data"]}
+
+    # A gateway can read the concrete name instead of asking a human for it.
+    assert rows["best-llm"]["resolves_to"] == "qwen3:14b"
+    assert rows["best-llm"]["context_length"] == 131072
+    assert rows["best-vlm"]["resolves_to"] == "gemma3:12b"
+    # Unknown stays unknown: a served context that is hoped for rather than
+    # known is the founding incident of the project downstream.
+    assert "context_length" not in rows["best-vlm"]
+    assert "context_length" not in rows["gemma3:12b"]
+    assert rows["qwen3:14b"]["context_length"] == 131072
+    # And the listing says which half of the product it is serving.
+    assert rows["best-llm"]["mode"] == "local"
