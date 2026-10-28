@@ -61,12 +61,12 @@ Ce paquet est à la base de la couche de sélection de modèles de la suite AI H
   requis pour `detect`, `recommend` ou `report`)
 - Tout le reste s'installe automatiquement : os-helper (détection matérielle),
   PyYAML, click, requests, langdetect, les surfaces FastAPI/MCP (`fastapi`,
-  `uvicorn`, `fastapi-mcp`), puis **airllm** pour [la lecture des couches en
+  `uvicorn`, `fastapi-mcp`), puis **lightweight** pour [la lecture des couches en
   flux](#trop-gros-pour-tenir-en-mémoire-exécutable-quand-même--le-flux-de-couches).
   La CLI, la GUI, l'API HTTP, le serveur MCP puis le moteur de flux font tous
   partie de l'installation par défaut, rien d'optionnel à activer.
 - **Comptez environ 2 Go pour l'installation puis quelques minutes.** Ce n'est
-  pas ce paquet — il est en Python pur puis minuscule — c'est la pile d'airllm :
+  pas ce paquet — il est en Python pur puis minuscule — c'est la pile d'lightweight :
   torch, transformers, accelerate. L'arbitrage est délibéré : « quel modèle
   cette machine peut-elle exécuter » puis « quel modèle peut-elle exécuter en
   lisant les couches en flux » sont la même question ; une capacité cachée
@@ -203,7 +203,7 @@ best-engine-ai-helper activity
 # Rien de bon ne tient ? Voir ce que cette machine pourrait exécuter en lisant
 # les couches en flux depuis le disque, puis ce que le meilleur modèle coûterait
 # en secondes par jeton
-best-engine-ai-helper airllm compare --tokens 300
+best-engine-ai-helper lightweight compare --tokens 300
 
 # Quel modèle texte-vers-image tourne ici, puis combien de temps prend une image
 best-engine-ai-helper imagine plan
@@ -406,21 +406,72 @@ modèle cesse d'être proportionnelle à son nombre de paramètres : elle devien
 proportionnelle à sa **plus large couche**. Un modèle de 70 milliards de
 paramètres passe ainsi de 141 Go à environ **4 Go résidents**.
 
-Le moteur qui fait cela est [airllm](https://github.com/lyogavin/airllm)
-(Apache-2.0), puis c'est une **dépendance de plein droit** : le flux de couches
-est disponible sur chaque installation, sans rien à activer.
+Le moteur qui fait cela est **celui de ce paquet**
+(`best_engine_ai_helper.streaming`) : le flux de couches est disponible sur
+chaque installation, sans rien à activer.
 
 ```sh
-pip install best-engine-ai-helper     # airllm vient avec
+pip install best-engine-ai-helper     # le streaming vient avec
 ```
 
+C'était `airllm`. Cette dépendance est partie, pour des raisons mesurées
+plutôt que supposées :
+
+- **Elle ne marchait pas du tout sur Apple Silicon.** Sa fabrique de modèles
+  saute la répartition par architecture sur macOS puis rend un transformeur
+  Llama écrit à la main en MLX, quoi qu'on lui demande : Qwen (biais
+  d'attention), Llama 3.2 (embeddings liés, donc pas de tenseur `lm_head`)
+  puis les vieux exports (`rotary_emb.inv_freq` persisté) échouaient chacun
+  différemment.
+- **Elle écrivait une seconde copie du checkpoint sur le disque**, une couche
+  par fichier, avant de rien lancer : 294 Go libres pour diffuser un 70B qui
+  en pèse 140. C'est cela, pas la mémoire, qui faisait refuser la plupart des
+  modèles sur un portable.
+
+Celui-ci lit un tenseur à la fois directement dans les safetensors du
+checkpoint — mémoire-mappés, avec leur propre index — donc **aucun espace de
+travail n'est nécessaire**, et `transformers` garde la passe avant, donc
+l'architecture est celle que `transformers` connaît. Apple Silicon, c'est
+torch sur Metal (MPS), pas un second cadriciel.
+
 C'est ce qu'achètent les ~2 Go de l'installation (torch, transformers,
-accelerate). Ils se paient une fois, à l'installation : l'import est paresseux,
-donc rien de cette pile n'est chargé avant que vous ne diffusiez réellement un
-modèle, puis `detect` / `recommend` / `report` restent instantanés. Si un
-interpréteur n'arrive malgré tout pas à importer airllm — conteneur allégé, roue
-mal construite — chaque surface le dit puis pointe vers une réinstallation,
-parce qu'à ce stade l'installation est incomplète plutôt que non activée.
+accelerate, safetensors). Ils se paient une fois, à l'installation : les
+imports sont paresseux, donc rien de cette pile n'est chargé avant que vous ne
+diffusiez réellement un modèle, puis `detect` / `recommend` / `report` restent
+instantanés.
+
+Comment une passe avant diffusée se déroule réellement :
+
+```mermaid
+flowchart LR
+    subgraph DISQUE["checkpoint sur disque (safetensors, mémoire-mappé)"]
+        L0["couche 0"]:::w
+        L1["couche 1"]:::w
+        LN["couche N"]:::w
+    end
+    subgraph MEM["mémoire résidente"]
+        R["embeddings + norme finale + tête<br/>(chargés une fois)"]:::r
+        CUR["exactement UNE couche de décodeur"]:::cur
+    end
+    L0 -. "le pré-crochet lit" .-> CUR
+    L1 -. "préchargée pendant que N-1 calcule" .-> CUR
+    LN -. "…" .-> CUR
+    CUR -- "le post-crochet la libère" --> FREE(["retour sur meta"]):::f
+    R --> OUT["logits"]:::o
+    CUR --> OUT
+
+    classDef w fill:#CCE3F0,stroke:#0072B2,color:#000
+    classDef r fill:#CCECE3,stroke:#009E73,color:#000
+    classDef cur fill:#FAECCC,stroke:#E69F00,color:#000
+    classDef f fill:#F7DFCC,stroke:#D55E00,color:#000
+    classDef o fill:#F5E4ED,stroke:#CC79A7,color:#000
+```
+
+Ce qui doit être résident, c'est la plus large couche, pas le checkpoint. Si
+un interpréteur n'arrive malgré tout pas à importer la pile — conteneur
+allégé, roue mal construite — chaque surface le dit puis pointe vers une
+réinstallation, parce qu'à ce stade l'installation est incomplète plutôt que
+non activée.
 
 ### Ce que ça coûte : des secondes par jeton, pas des jetons par seconde
 
@@ -492,7 +543,7 @@ résident ≈ (checkpoint ÷ couches) × 1,25 × tranches_résidentes
 - `checkpoint ÷ couches` est la tranche moyenne. La **plus grosse** tranche est
   la matrice d'embedding des jetons plutôt qu'une couche de décodeur — un
   vocabulaire moderne de 128 000 à 152 000 entrées le veut ainsi — d'où le 1,25.
-- `tranches_résidentes` vaut 2 avec le préchargement d'airllm (la tranche
+- `tranches_résidentes` vaut 2 avec le préchargement d'lightweight (la tranche
   suivante est lue pendant que la courante calcule, d'où son gain d'environ
   10 %) puis 1 sans. Couper le préchargement est le seul bouton qui fait tenir un
   70B sur une carte de 4 Go, puis ce paquet l'essaie automatiquement avant de
@@ -524,13 +575,13 @@ dense en prédirait le double — donc une entrée MoE qui ne déclare pas ses
 facteur deux, dans le sens qui promet trop.
 
 Lisez la dernière colonne en premier. **C'est l'espace disque, pas la mémoire,
-qui refuse d'ordinaire un modèle** : airllm écrit les tranches par couche à côté
+qui refuse d'ordinaire un modèle** : lightweight écrit les tranches par couche à côté
 du checkpoint téléchargé, donc le cache contient les deux en même temps puis la
 découpe exige à peu près le double du checkpoint en libre. Un modèle de 405
 milliards de paramètres, c'est 810 Go de téléchargement avant d'être quoi que ce
 soit d'autre. La mémoire est la moitié facile du problème.
 
-Ces chiffres ont été vérifiés contre ceux que publie airllm, puis la
+Ces chiffres ont été vérifiés contre ceux que publie lightweight, puis la
 vérification mérite d'être énoncée précisément, parce que le « 70B sur un GPU de
 4 Go » de l'affiche est vrai à une longueur de contexte que personne ne
 mentionne : le même modèle fait 3,0 Go en série à 1k de contexte — la démo —
@@ -538,7 +589,7 @@ mentionne : le même modèle fait 3,0 Go en série à 1k de contexte — la dém
 identiques dans les trois cas. Ce qui bouge, c'est le cache qui n'est pas
 diffusé.
 
-### Modèle natif ou modèle en flux ? `airllm compare` répond en un écran
+### Modèle natif ou modèle en flux ? `lightweight compare` répond en un écran
 
 C'est la décision que le flux de couches impose vraiment, puis aucun des deux
 classements n'y répond seul. Une machine qui exécute confortablement un modèle
@@ -551,20 +602,20 @@ situent pas sur une échelle dont quiconque raisonne. Des secondes pour la même
 réponse, oui :
 
 ```sh
-best-engine-ai-helper airllm compare --tokens 300
+best-engine-ai-helper lightweight compare --tokens 300
 ```
 
 ```
-=== LLM: ollama vs airllm, for a 300-token answer ===
-  budgets: 11.04 GB resident (ollama) · 22.08 GB per shard (airllm) · disk 4.0 GB/s (declared)
+=== LLM: ollama vs lightweight, for a 300-token answer ===
+  budgets: 11.04 GB resident (ollama) · 22.08 GB per shard (lightweight) · disk 4.0 GB/s (declared)
 model                       backend  score  resident  tok/s  answer  runs
 --------------------------  -------  -----  --------  -----  ------  ----
 qwen3:72b-q8_0              ollama   89     78.0      8.4    36 s    NO
 qwen3:72b-q4_k_m            ollama   87     48.0      13.7   22 s    NO
 qwen3:14b                   ollama   78     10.5      62.4   5 s     yes
 gemma3:12b                  ollama   77     9.2       71.2   4 s     yes
-Qwen/Qwen3-72B-Instruct     airllm   89     6.2       0.024  3.5 h   yes
-Qwen/Qwen3-VL-72B-Instruct  airllm   88     6.2       0.024  3.5 h   yes
+Qwen/Qwen3-72B-Instruct     lightweight   89     6.2       0.024  3.5 h   yes
+Qwen/Qwen3-VL-72B-Instruct  lightweight   88     6.2       0.024  3.5 h   yes
 
   Streaming buys 11 benchmark points (89 vs 78) for 2647x the wait: 3.5 h
   instead of 5 s for a 300-token answer.
@@ -608,16 +659,16 @@ machine pour un genre que votre cahier des charges demande. Le flux de couches
 est alors la différence entre un modèle puis aucun, donc `resolve` le propose
 avec son coût énoncé. Le secours est **par genre** : si votre LLM tient puis
 qu'aucun VLM ne tient, seul le VLM bascule, puis le fichier moteur est
-honnêtement mixte (Ollama pour un genre, `airllm` pour l'autre —
+honnêtement mixte (Ollama pour un genre, `lightweight` pour l'autre —
 `model_for()` lit d'abord le moteur du genre). Le descripteur enregistre la
-décision puis sa raison sous `airllm:`, *y compris quand la réponse est non*,
+décision puis sa raison sous `lightweight:`, *y compris quand la réponse est non*,
 pour qu'une machine qui ne peut pas diffuser dise pourquoi au lieu de rester
 muette.
 
 **Manuelle** — vous le demandez :
 
 ```sh
-best-engine-ai-helper resolve --brief llm.brief.yaml --backend airllm
+best-engine-ai-helper resolve --brief llm.brief.yaml --backend lightweight
 ```
 
 ou dans le cahier des charges versionné :
@@ -625,14 +676,14 @@ ou dans le cahier des charges versionné :
 ```yaml
 kind: llm
 task: juger la qualité de descriptions produit générées
-airllm: always          # auto (défaut) | always | never
-airllm_compression: 4bit
+lightweight: always          # auto (défaut) | always | never
+lightweight_compression: 4bit
 ```
 
 ou dans l'environnement, qui ne surclasse que les valeurs par défaut :
 
 ```sh
-export BEST_ENGINE_AIRLLM=always   # ou never, pour couper toute la voie
+export BEST_ENGINE_LIGHTWEIGHT=always   # ou never, pour couper toute la voie
 ```
 
 `never` gagne sur tout, y compris sur le déclencheur automatique. Qui veut un
@@ -645,17 +696,17 @@ vraiment.
 
 ```sh
 # Cette machine peut-elle diffuser, devrait-elle, puis qu'est-ce qui bloque ?
-best-engine-ai-helper airllm status
-best-engine-ai-helper airllm status --measure      # mesurer le disque au lieu de le supposer
+best-engine-ai-helper lightweight status
+best-engine-ai-helper lightweight status --measure      # mesurer le disque au lieu de le supposer
 
 # Que pourrait-elle diffuser, le plus capable d'abord ?
-best-engine-ai-helper airllm plan --kind llm --compression 4bit --batch 8
+best-engine-ai-helper lightweight plan --kind llm --compression 4bit --batch 8
 
 # Natif ou en flux, même longueur de réponse, les deux prix
-best-engine-ai-helper airllm compare --tokens 300 --batch 8
+best-engine-ai-helper lightweight compare --tokens 300 --batch 8
 
 # Payer le téléchargement puis la découpe maintenant, pas dans le premier appel
-best-engine-ai-helper airllm prepare --model meta-llama/Llama-3.3-70B-Instruct
+best-engine-ai-helper lightweight prepare --model meta-llama/Llama-3.3-70B-Instruct
 ```
 
 `--measure` mérite d'être connu. Le disque fixe toute la vitesse de ce moteur,
@@ -671,7 +722,7 @@ chiffre flatteur, puis chaque surface étiquette la valeur `measured` ou
 
 ### Les limites, énoncées franchement
 
-- **Pas de sortie structurée.** airllm expose une génération brute, sans
+- **Pas de sortie structurée.** lightweight expose une génération brute, sans
   équivalent du `format` contraint par grammaire d'Ollama. Tout modèle en flux
   est donc `structured_output: false` — un fait sur le moteur, pas sur les poids
   — puis les tâches de la suite pilotées par schéma restent sur un modèle
@@ -680,20 +731,20 @@ chiffre flatteur, puis chaque surface étiquette la valeur `measured` ou
 - **Texte uniquement.** L'adaptateur renvoie un modèle de langage causal nu,
   sans le processeur d'images qu'exige un prompt de VLM. Les images lèvent une
   erreur au lieu d'être silencieusement traitées depuis le seul texte.
-- **Pas de serveur.** airllm est une bibliothèque, donc un modèle en flux
+- **Pas de serveur.** lightweight est une bibliothèque, donc un modèle en flux
   s'exécute *dans votre propre processus* ; le `base_url` du fichier moteur est
   vide à dessein, parce qu'inventer un port local enverrait un consommateur
   chercher un démon qui n'existera jamais. `llm.chat` garde le modèle chargé
   entre les appels — découper un checkpoint de 141 Go à chaque appel rendrait le
   transport inutilisable.
-- **Expérimental sur processeur.** La voie CPU d'airllm ne fonctionne que pour
+- **Expérimental sur processeur.** La voie CPU d'lightweight ne fonctionne que pour
   les modèles non découpés, donc une machine sans accélérateur ne reçoit pas le
   flux de couches automatiquement. Elle peut toujours le demander.
 - **La compression 4 bits est indisponible sur macOS.** Elle exige
   `bitsandbytes`, qui ne publie aucune roue macOS, donc la dépendance porte un
   marqueur de plateforme puis Apple Silicon diffuse via MLX sans compression.
   Le dimensionnement le dit au lieu d'annoncer un gain qui n'arrivera pas.
-- **Le contexte vaut 4096 jetons sauf demande contraire.** Le défaut d'airllm
+- **Le contexte vaut 4096 jetons sauf demande contraire.** Le défaut d'lightweight
   est 512 puis il *tronque* au-delà, donc cet adaptateur passe toujours un
   `max_seq_len` explicite — réglé sur les mêmes 4k que ceux auxquels
   l'empreinte ci-dessus est tarifée. Les deux nombres sont délibérément le même
@@ -702,25 +753,25 @@ chiffre flatteur, puis chaque surface étiquette la valeur `measured` ou
   prompt. Montez-le avec `max_seq_len=` puis le terme de cache KV monte
   exactement comme la formule le dit.
 
-### Pourquoi airllm est importé plutôt que recopié ici
+### Pourquoi lightweight est importé plutôt que recopié ici
 
 Question légitime pour un paquet qui redérive l'arithmétique. Quatre raisons :
 
-1. **Le recopier n'aurait pas évité le poids.** airllm exige torch,
+1. **Le recopier n'aurait pas évité le poids.** lightweight exige torch,
    transformers, accelerate, safetensors, scipy puis sentencepiece, puis une
    copie de son code en aurait eu besoin tout autant — le poids, c'est son arbre
    de dépendances, pas ses lignes. Les ~2 Go sont donc le prix de la capacité
    quelle que soit la façon dont elle arrive, puis ils sont payés ici
    délibérément plutôt que cachés derrière un extra que personne ne trouve. Ce
    qu'une copie ajouterait par-dessus, ce sont les trois problèmes suivants.
-2. **C'est une cible mouvante.** La valeur d'airllm est son code de découpe par
+2. **C'est une cible mouvante.** La valeur d'lightweight est son code de découpe par
    famille de modèles (Llama, Qwen, DeepSeek, Mixtral, ChatGLM, Kimi), réécrit à
    chaque nouvelle famille. Recopié, il serait figé au jour de la copie puis
    pourrirait dès la version suivante.
-3. **Hygiène de licence.** airllm est en Apache-2.0 ; ce paquet est en
+3. **Hygiène de licence.** lightweight est en Apache-2.0 ; ce paquet est en
    BSD-3-Clause. L'import garde les deux arbres, puis leurs obligations de
    notice, séparés.
-4. **Le partage du travail est réel, pas une esquive.** airllm décide *comment*
+4. **Le partage du travail est réel, pas une esquive.** lightweight décide *comment*
    diffuser. Rien chez lui ne décide *si* cette machine devrait le faire, *quel*
    modèle diffuser, ni *ce que ça vous coûtera en temps* — et ce sont les trois
    questions que pose réellement l'appelant de ce paquet.
@@ -729,8 +780,8 @@ Le moteur est donc importé puis la **décision** est native : `offload.py` poss
 l'arithmétique d'empreinte, le modèle de temps borné par le disque, la politique
 d'activation, la comparaison natif contre flux puis les métadonnées de catalogue
 dont tout cela a besoin (`layers`, `dtype`, `moe`). Rien de cela n'importe
-airllm : c'est ce qui garde l'import paresseux, puis ce qui fait que `airllm
-status` et `airllm compare` répondent juste même dans un environnement où le
+lightweight : c'est ce qui garde l'import paresseux, puis ce qui fait que `lightweight
+status` et `lightweight compare` répondent juste même dans un environnement où le
 moteur lui-même refuserait de se charger.
 
 ### Depuis Python
@@ -741,7 +792,7 @@ import best_engine_ai_helper as beah
 hw, disk = beah.available_memory(), beah.disk_profile()
 
 # Cette machine devrait-elle diffuser ?
-decision = beah.airllm_decide(conventional_resolved=False)
+decision = beah.lightweight_decide(conventional_resolved=False)
 print(decision["activate"], decision["reason"], decision["blockers"])
 
 # Que coûterait un 70B ici ?
@@ -751,11 +802,11 @@ entry = {
     "layers": 80,
     "hf_id": "meta-llama/Llama-3.3-70B-Instruct",
 }
-print(beah.airllm_footprint_gb(entry))  # 6,1 Go résidents
-print(beah.airllm_generation_time(entry, disk["read_gbs"], new_tokens=300, batch=8))
+print(beah.lightweight_footprint_gb(entry))  # 6,1 Go résidents
+print(beah.lightweight_generation_time(entry, disk["read_gbs"], new_tokens=300, batch=8))
 
 # Natif ou en flux, pour une réponse de 300 jetons ?
-report = beah.airllm_compare(
+report = beah.lightweight_compare(
     beah.load_catalog(),
     hw=hw,
     disk=disk,
@@ -765,13 +816,13 @@ report = beah.airllm_compare(
 print(report["verdict"])
 
 # Puis l'exécuter vraiment
-text = beah.airllm_generate(
+text = beah.lightweight_generate(
     "Juge cette description :…", model="meta-llama/Llama-3.3-70B-Instruct", max_new_tokens=64
 )
 ```
 
 La surface HTTP répond aux mêmes questions en un seul appel —
-`GET /api/airllm?answer_tokens=300&batch=8` renvoie la décision, le profil de
+`GET /api/lightweight?answer_tokens=300&batch=8` renvoie la décision, le profil de
 stockage, les plans classés puis la comparaison — puis elle est accessible comme
 outil MCP, comme tous les autres points d'entrée.
 
@@ -798,10 +849,10 @@ outil MCP, comme tous les autres points d'entrée.
 | `usages list` | Liste les profils d'usage et les familles (besoins uniquement, jamais de modèle) |
 | `usages show <profil>` | Affiche les besoins d'un profil (tâche, *structured output*, planchers) |
 | `usages resolve <profil>` | Résout un profil (ou `--family`) vers le modèle que best-engine choisit ici |
-| `airllm status` | Cette machine peut-elle lire les couches en flux depuis le disque, devrait-elle, puis qu'est-ce qui bloque (`--measure` pour mesurer le disque) |
-| `airllm plan` | Ce qu'un modèle trop gros coûterait ici, classé : tranche résidente, secondes par jeton, disque pour la découpe |
-| `airllm compare` | Modèle natif contre modèle en flux, même longueur de réponse, les deux tarifés en secondes |
-| `airllm prepare` | Télécharger puis découper un checkpoint maintenant, plutôt que dans le premier appel |
+| `lightweight status` | Cette machine peut-elle lire les couches en flux depuis le disque, devrait-elle, puis qu'est-ce qui bloque (`--measure` pour mesurer le disque) |
+| `lightweight plan` | Ce qu'un modèle trop gros coûterait ici, classé : tranche résidente, secondes par jeton, disque pour la découpe |
+| `lightweight compare` | Modèle natif contre modèle en flux, même longueur de réponse, les deux tarifés en secondes |
+| `lightweight prepare` | Télécharger puis découper un checkpoint maintenant, plutôt que dans le premier appel |
 | `imagine plan` | Quel modèle texte-vers-image cette machine peut exécuter, son empreinte puis ses secondes par image |
 | `imagine generate` | Générer une image en local, vers un fichier PNG |
 | `serve` | Servir l'API compatible OpenAI : pointez n'importe quel SDK OpenAI dessus puis demandez `best` |

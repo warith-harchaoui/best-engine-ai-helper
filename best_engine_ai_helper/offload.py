@@ -10,8 +10,8 @@ off the disk, and the memory a model needs stops scaling with its parameter
 count and starts scaling with its *widest single layer* — a 70B model becomes a
 ~5 GB resident footprint instead of a 141 GB one.
 
-That idea, and the runtime that implements it, come from **airllm**
-(https://github.com/lyogavin/airllm, Apache-2.0). This module is the seam
+That idea, and the runtime that implements it, come from **lightweight**
+(https://github.com/lyogavin/lightweight, Apache-2.0). This module is the seam
 between it and the rest of this package:
 
 - **The arithmetic is here.** Which model a machine can stream, what it will
@@ -19,32 +19,32 @@ between it and the rest of this package:
   whether streaming is worth activating at all are *selection* questions, which
   is this package's entire job. They are re-derived from first principles below
   (see :func:`footprint_gb` and :func:`estimated_tokens_per_second`) and checked
-  against airllm's own published figures.
+  against lightweight's own published figures.
 - **The runtime is imported, not copied.** :func:`load` and :func:`generate`
-  are a thin adapter over ``airllm.AutoModel``, which is a **core dependency**
+  are a thin adapter over ``lightweight.AutoModel``, which is a **core dependency**
   of this package: streaming is available on every install, not behind an
   extra. Nothing here reimplements layer sharding.
 
 Why imported rather than vendored
 ---------------------------------
 1. **The weight is the price of the capability, and it is paid up front.**
-   airllm needs torch, transformers, accelerate, safetensors, scipy and
+   lightweight needs torch, transformers, accelerate, safetensors, scipy and
    sentencepiece, so this install is a gigabyte-scale download rather than the
    seconds-long one it used to be. That cost is accepted deliberately: "which
    model can this machine run" and "which model can this machine run if it
    streams the layers" are the same question, and a capability behind an extra
    is a capability most callers never discover. Vendoring would not have
-   avoided the weight either — airllm's own dependencies are the weight — so
+   avoided the weight either — lightweight's own dependencies are the weight — so
    this is an argument about *declaring* it, not about copying it. The import
-   stays lazy: nothing imports airllm until a model is actually loaded, so the
+   stays lazy: nothing imports lightweight until a model is actually loaded, so the
    cost is install size and never startup time.
-2. **It is a moving target.** airllm's value is per-family sharding code
+2. **It is a moving target.** lightweight's value is per-family sharding code
    (Llama, Qwen, DeepSeek, Mixtral, ChatGLM, Kimi), rewritten as each new
    family ships. Vendored, it would be frozen at the day it was copied and rot
    from the first release after.
-3. **Licence hygiene.** airllm is Apache-2.0; this package is BSD-3-Clause.
+3. **Licence hygiene.** lightweight is Apache-2.0; this package is BSD-3-Clause.
    Importing keeps the two trees, and their notice obligations, separate.
-4. **The division of labour is real, not a dodge.** airllm decides *how* to
+4. **The division of labour is real, not a dodge.** lightweight decides *how* to
    stream. Nothing in it decides *whether* this machine should, which model it
    should stream, or what the user should expect in tokens per second — and
    those are the three questions a caller of this package is actually asking.
@@ -59,12 +59,12 @@ run it. :func:`decide` is the policy, and it fires on exactly two triggers:
   machine's memory budget for a kind the caller needs. Streaming is then the
   difference between a model and no model, so it is proposed with its cost
   stated in seconds per token.
-- **Manual** — a human asks for it, by ``--backend airllm``, by
-  ``airllm: always`` in the brief, or by ``BEST_ENGINE_AIRLLM=always`` in the
+- **Manual** — a human asks for it, by ``--backend lightweight``, by
+  ``lightweight: always`` in the brief, or by ``BEST_ENGINE_LIGHTWEIGHT=always`` in the
   environment. A human who wants a 235B model on a laptop overnight is making a
   legitimate choice that no automatic rule should have to guess.
 
-``BEST_ENGINE_AIRLLM=never`` switches the whole path off, including the
+``BEST_ENGINE_LIGHTWEIGHT=never`` switches the whole path off, including the
 automatic trigger.
 
 Author
@@ -83,23 +83,24 @@ from typing import Any, Literal
 
 import os_helper as osh
 
-#: Name of the upstream distribution, used in every install hint so the string
-#: is spelled once.
-PACKAGE = "airllm"
+#: What the runtime is built out of. Not a third-party streaming package any
+#: more: :mod:`best_engine_ai_helper.streaming` is this project's own, and
+#: these are the libraries it stands on — all of them already core
+#: dependencies for other reasons.
+PACKAGE = "torch/transformers/accelerate/safetensors"
 
-#: What to tell a caller whose interpreter cannot import the runtime. airllm is
-#: a CORE dependency, so this is no longer an "opt in" message: reaching it
-#: means the install is incomplete — a stripped environment, a failed wheel
-#: build, a vendored subset — rather than a choice the user made. The command
-#: that fixes that is a reinstall, not an extra.
+#: What to tell a caller whose interpreter cannot import the runtime. These
+#: are CORE dependencies, so reaching this means the install is incomplete —
+#: a stripped environment, a failed wheel build, a vendored subset — rather
+#: than a choice the user made. The command that fixes that is a reinstall.
 INSTALL_HINT = "pip install --upgrade --force-reinstall best-engine-ai-helper"
 
 #: Environment variable that forces the policy :func:`decide` applies.
 #: ``auto`` (the default) activates streaming only as a last resort; ``always``
 #: activates it whenever the runtime can, ``never`` disables it outright.
-ENV_VAR = "BEST_ENGINE_AIRLLM"
+ENV_VAR = "BEST_ENGINE_LIGHTWEIGHT"
 
-#: Accepted values of :data:`ENV_VAR` and of a brief's ``airllm:`` key, plus the
+#: Accepted values of :data:`ENV_VAR` and of a brief's ``lightweight:`` key, plus the
 #: booleans people actually type.
 _REQUEST_ALIASES: dict[str, str] = {
     "auto": "auto",
@@ -118,7 +119,7 @@ _REQUEST_ALIASES: dict[str, str] = {
 #: Bytes per parameter, by the dtype the weights are *stored* in. A streaming
 #: backend reads the checkpoint as published, so this is the number that sets
 #: both the shard size and the per-token disk traffic — not the dtype the
-#: arithmetic happens in. ``q4``/``q8`` are airllm's own block-wise
+#: arithmetic happens in. ``q4``/``q8`` are lightweight's own block-wise
 #: compression, which quantises the weights only (the bottleneck is the disk,
 #: not the multiply) and is therefore a disk-traffic *divider*.
 _BYTES_PER_PARAM: dict[str, float] = {
@@ -137,7 +138,7 @@ _BYTES_PER_PARAM: dict[str, float] = {
 #: otherwise, and the two cost the same per parameter.
 _DEFAULT_DTYPE = "bf16"
 
-#: airllm's ``compression`` argument mapped onto the stored-dtype key above.
+#: lightweight's ``compression`` argument mapped onto the stored-dtype key above.
 _COMPRESSION_DTYPE: dict[str, str] = {"4bit": "q4", "8bit": "q8"}
 
 #: Decoder depth at known parameter counts, for an entry that does not declare
@@ -167,7 +168,7 @@ _DEPTH_BY_SIZE_B: tuple[tuple[float, int], ...] = (
 _PEAK_SHARD_RATIO = 1.25
 
 #: Shards resident at once. With prefetching, the next shard is read while the
-#: current one computes, which is where airllm's ~10% speed-up comes from and
+#: current one computes, which is where lightweight's ~10% speed-up comes from and
 #: what makes two shards resident rather than one. Without it, one.
 _RESIDENT_SHARDS_PREFETCH = 2.0
 _RESIDENT_SHARDS_SERIAL = 1.0
@@ -196,7 +197,7 @@ _KV_MB_PER_LAYER_PER_K = 4.0
 #: comparable rather than being quoted at different context lengths.
 #:
 #: It is ALSO what :func:`load` configures on the runtime, which matters more
-#: than it looks: airllm's own ``max_seq_len`` default is **512 tokens**, and it
+#: than it looks: lightweight's own ``max_seq_len`` default is **512 tokens**, and it
 #: truncates rather than failing. Leaving that default in place would have made
 #: this package price a 4k context while quietly running a 512-token one — the
 #: documentation and the behaviour disagreeing, in the direction where the user
@@ -219,7 +220,7 @@ _STREAM_EFFICIENCY_SERIAL = 0.70
 #: have to be *dequantised* on the way in and that work is not free.
 #:
 #: Pinned to upstream's own claim rather than to the arithmetic: 4-bit divides
-#: the bytes read by four, and airllm reports a "3x speed up", so three
+#: the bytes read by four, and lightweight reports a "3x speed up", so three
 #: quarters of the byte saving survives the dequantisation. The 8-bit figure is
 #: inferred from the same shape — half the bytes, a lighter unpack — and is the
 #: one number here with no published anchor behind it.
@@ -235,16 +236,9 @@ _COMPRESSION_EFFICIENCY: dict[str, float] = {"4bit": 0.75, "8bit": 0.85}
 #: line.
 _PREFILL_IO_BOUND_TOKENS = 4096
 
-#: Disk multiplier for the one-off split. airllm decomposes the checkpoint into
-#: per-layer shards beside the original, so the cache needs room for both at
-#: once; ``delete_original=True`` releases the original afterwards, which is why
-#: the steady-state figure is lower than the peak.
-_SPLIT_DISK_PEAK = 2.1
-_SPLIT_DISK_STEADY = 1.1
-
 #: Floor below which streaming stops being worth proposing even as a batch job.
 #: 0.01 tok/s is one token every hundred seconds: a paragraph in three hours, an
-#: overnight answer, which IS the trade airllm offers and plenty of people take.
+#: overnight answer, which IS the trade lightweight offers and plenty of people take.
 #: Under it, a single sentence costs most of a day and a caller is better served
 #: by a smaller model or a cloud call — so the floor reports a blocker rather
 #: than offering a technically-correct eternity.
@@ -258,9 +252,9 @@ _SPLIT_DISK_STEADY = 1.1
 #: runs natively at a hundred times the speed.
 COMFORT_TPS_STREAMING: float = 0.01
 
-#: Runtimes airllm can stream on, in the order they are preferred when a
+#: Runtimes lightweight can stream on, in the order they are preferred when a
 #: machine offers more than one.
-_RUNTIMES = ("cuda", "rocm", "mlx", "cpu")
+_RUNTIMES = ("cuda", "rocm", "mps", "cpu")
 
 
 def normalize_request(value: object) -> str:
@@ -287,7 +281,7 @@ def normalize_request(value: object) -> str:
     ValueError
         When the value is neither empty nor a recognised alias. Silently
         reading an unknown word as ``auto`` would turn a typo
-        (``airllm: alwyas``) into a quietly disabled feature.
+        (``lightweight: alwyas``) into a quietly disabled feature.
 
     Examples
     --------
@@ -299,7 +293,7 @@ def normalize_request(value: object) -> str:
     'always'
     >>> normalize_request("maybe")
     Traceback (most recent call last):
-    ValueError: airllm request must be one of auto/always/never, got 'maybe'
+    ValueError: lightweight request must be one of auto/always/never, got 'maybe'
     """
     if value is None or value == "":
         return "auto"
@@ -308,7 +302,7 @@ def normalize_request(value: object) -> str:
     key = str(value).strip().lower()
     if key in _REQUEST_ALIASES:
         return _REQUEST_ALIASES[key]
-    raise ValueError(f"airllm request must be one of auto/always/never, got {value!r}")
+    raise ValueError(f"lightweight request must be one of auto/always/never, got {value!r}")
 
 
 def requested(brief_value: object = None, env: dict[str, str] | None = None) -> str:
@@ -322,7 +316,7 @@ def requested(brief_value: object = None, env: dict[str, str] | None = None) -> 
     Parameters
     ----------
     brief_value : object
-        The brief's ``airllm:`` key, or a CLI flag's value. ``None`` defers to
+        The brief's ``lightweight:`` key, or a CLI flag's value. ``None`` defers to
         the environment.
     env : dict[str, str] or None
         Environment mapping to read :data:`ENV_VAR` from. None uses
@@ -337,9 +331,9 @@ def requested(brief_value: object = None, env: dict[str, str] | None = None) -> 
     --------
     >>> requested(None, env={})
     'auto'
-    >>> requested(None, env={'BEST_ENGINE_AIRLLM': 'never'})
+    >>> requested(None, env={'BEST_ENGINE_LIGHTWEIGHT': 'never'})
     'never'
-    >>> requested('always', env={'BEST_ENGINE_AIRLLM': 'never'})
+    >>> requested('always', env={'BEST_ENGINE_LIGHTWEIGHT': 'never'})
     'always'
     """
     if brief_value is not None and brief_value != "":
@@ -352,7 +346,7 @@ def hf_id(entry: dict[str, Any]) -> str | None:
     """
     The HuggingFace repository a streaming backend would load.
 
-    airllm reads safetensors from the Hub, not GGUF from Ollama's registry, so a
+    lightweight reads safetensors from the Hub, not GGUF from Ollama's registry, so a
     catalog entry is only streamable when it names a Hub repo. ``hf_id`` is
     preferred; ``vllm_id`` is the same thing under the name this catalog has
     always used for it, and is accepted so no entry has to be edited twice.
@@ -460,8 +454,8 @@ def bytes_per_param(entry: dict[str, Any], compression: str | None = None) -> fl
     entry : dict[str, Any]
         Catalog entry; reads ``dtype`` (default bf16).
     compression : {'4bit', '8bit', None}
-        airllm's block-wise weight compression. When given it REPLACES the
-        checkpoint dtype: the shards airllm writes are the quantised ones, and
+        lightweight's block-wise weight compression. When given it REPLACES the
+        checkpoint dtype: the shards lightweight writes are the quantised ones, and
         they are what gets read per token.
 
     Returns
@@ -484,7 +478,9 @@ def bytes_per_param(entry: dict[str, Any], compression: str | None = None) -> fl
         key = _COMPRESSION_DTYPE.get(str(compression).strip().lower())
         if key:
             return _BYTES_PER_PARAM[key]
-        osh.warning(f"Unknown airllm compression {compression!r}; sizing at the checkpoint dtype.")
+        osh.warning(
+            f"Unknown lightweight compression {compression!r}; sizing at the checkpoint dtype."
+        )
     dtype = str(entry.get("dtype") or _DEFAULT_DTYPE).strip().lower()
     if dtype not in _BYTES_PER_PARAM:
         osh.debug(f"Unknown dtype {dtype!r} on {entry.get('id', '?')}; assuming {_DEFAULT_DTYPE}.")
@@ -587,7 +583,7 @@ def footprint_gb(
     5. Plus :data:`_ACTIVATION_GB` for activations and runtime buffers, which
        *are* bounded by one layer.
 
-    Checked against airllm's published figures, and the check is worth stating
+    Checked against lightweight's published figures, and the check is worth stating
     precisely, because the headline "70B on a 4 GB GPU" is true at a context
     length nobody mentions. A Llama-3-70B comes to 3.0 GB serially at a 1k
     context — which is the demo, and it fits a 4 GB card — 3.9 GB serially at
@@ -601,9 +597,9 @@ def footprint_gb(
     entry : dict[str, Any]
         Catalog entry; needs ``size_b``, and ``layers`` when it is a MoE model.
     compression : {'4bit', '8bit', None}
-        airllm's block-wise weight compression, which shrinks every shard.
+        lightweight's block-wise weight compression, which shrinks every shard.
     prefetching : bool
-        Whether airllm's prefetch is on (its default). Off halves the resident
+        Whether lightweight's prefetch is on (its default). Off halves the resident
         shard count at some cost in speed, and is the knob that gets a 70B model
         onto a 4 GB card.
     context_k : float
@@ -659,46 +655,49 @@ def footprint_gb(
 
 def disk_required_gb(entry: dict[str, Any], compression: str | None = None) -> dict[str, float]:
     """
-    Free disk the split needs, at its peak and once settled.
+    Free disk layer streaming needs: the checkpoint, and nothing else.
 
-    airllm writes per-layer shards beside the downloaded checkpoint, so the
-    cache briefly holds both. This is the constraint that actually bites in
-    practice — the memory side of streaming is easy, the disk side is where a
-    235B model stops being possible on a 512 GB laptop.
+    This used to be the constraint that actually bit. The previous runtime
+    wrote per-layer shards beside the downloaded checkpoint before anything
+    ran, so the cache briefly held both and a 70B model needed ~294 GB free
+    rather than ~154 GB. That is what made nearly every row of
+    ``lightweight plan`` read ``runs: NO`` on a normal laptop: the models fit
+    in memory-per-layer terms and failed on scratch space.
+
+    :mod:`best_engine_ai_helper.streaming` reads one tensor at a time out of
+    the original safetensors, which are memory-mapped and carry their own
+    index. Nothing is copied and nothing is written, so peak and steady are
+    both just the checkpoint. The two keys stay because callers and the engine
+    file read them by name, and because "both figures are the same now" is
+    worth being able to see.
 
     Parameters
     ----------
     entry : dict[str, Any]
         Catalog entry.
     compression : {'4bit', '8bit', None}
-        Compression applied to the shards. The ORIGINAL download is unaffected,
-        so a compressed split needs the full checkpoint on disk first either
-        way; only the steady-state figure shrinks.
+        Kept for call compatibility and ignored: this runtime does not
+        requantise, so what is on disk is whatever the checkpoint ships.
 
     Returns
     -------
     dict[str, float]
-        ``peak_gb`` : during the split, original plus shards.
-        ``steady_gb`` : afterwards, shards only (``delete_original=True``).
+        ``peak_gb`` and ``steady_gb``, both the checkpoint's own size.
 
     Examples
     --------
     >>> disk_required_gb({"size_b": 70})
-    {'peak_gb': 294.0, 'steady_gb': 154.0}
-    >>> disk_required_gb({"size_b": 70}, compression="4bit")
-    {'peak_gb': 178.5, 'steady_gb': 38.5}
+    {'peak_gb': 140.0, 'steady_gb': 140.0}
+    >>> disk_required_gb({"size_b": 70}, compression="4bit")   # no longer halves
+    {'peak_gb': 140.0, 'steady_gb': 140.0}
     >>> disk_required_gb({"id": "unsized"})
     {'peak_gb': inf, 'steady_gb': inf}
     """
     native = checkpoint_gb(entry, None)
-    shards = checkpoint_gb(entry, compression)
     if not math.isfinite(native):
         return {"peak_gb": math.inf, "steady_gb": math.inf}
-    # The download is always at the checkpoint's own dtype; compression happens
-    # on the way out, so the peak is "original + compressed shards", not twice
-    # the compressed size.
-    peak = native + shards * (_SPLIT_DISK_PEAK - 1.0)
-    return {"peak_gb": round(peak, 1), "steady_gb": round(shards * _SPLIT_DISK_STEADY, 1)}
+    size = round(native, 1)
+    return {"peak_gb": size, "steady_gb": size}
 
 
 def stream_efficiency(compression: str | None = None, prefetching: bool = True) -> float:
@@ -708,15 +707,15 @@ def stream_efficiency(compression: str | None = None, prefetching: bool = True) 
     Two independent deratings, multiplied: the I/O one (prefetching overlaps
     the next shard's read with the current layer's compute, or it does not) and
     the dequantisation one (compressed shards are smaller but have to be
-    unpacked, which is why airllm reports 3x for 4-bit rather than the 4x the
+    unpacked, which is why lightweight reports 3x for 4-bit rather than the 4x the
     byte count alone would suggest).
 
     Parameters
     ----------
     compression : {'4bit', '8bit', None}
-        airllm's block-wise weight compression.
+        lightweight's block-wise weight compression.
     prefetching : bool
-        Whether airllm's prefetch is on.
+        Whether lightweight's prefetch is on.
 
     Returns
     -------
@@ -794,9 +793,9 @@ def seconds_per_pass(
     read_gbs : float or None
         Sequential disk read bandwidth in GB/s. None returns None.
     compression : {'4bit', '8bit', None}
-        airllm's block-wise weight compression.
+        lightweight's block-wise weight compression.
     prefetching : bool
-        Whether airllm's prefetch is on.
+        Whether lightweight's prefetch is on.
 
     Returns
     -------
@@ -833,7 +832,7 @@ def generation_time(
     """
     How long one streamed generation actually takes, end to end.
 
-    "What is this model's speed under airllm" has three different answers, and
+    "What is this model's speed under lightweight" has three different answers, and
     quoting the wrong one is how a batch job gets planned as an interactive one:
 
     - ``decode_tps`` — the steady-state rate, one token per pass. The headline
@@ -871,9 +870,9 @@ def generation_time(
         Independent sequences generated together. Multiplies the tokens
         delivered per pass.
     compression : {'4bit', '8bit', None}
-        airllm's block-wise weight compression.
+        lightweight's block-wise weight compression.
     prefetching : bool
-        Whether airllm's prefetch is on.
+        Whether lightweight's prefetch is on.
 
     Returns
     -------
@@ -1081,42 +1080,31 @@ def seconds_per_token(tps: float | None) -> float | None:
 
 
 #: Memoized result of :func:`available`. None means "not asked yet"; importing
-#: airllm drags torch in, so the question is asked once per process.
+#: lightweight drags torch in, so the question is asked once per process.
 _AVAILABLE: bool | None = None
 
 
 def available() -> bool:
     """
-    Whether the airllm runtime is importable in this interpreter.
+    Whether the streaming runtime can be imported in this interpreter.
 
-    Normally True: airllm is a core dependency, not an extra. It is still
-    checked rather than assumed, because a dependency being *declared* and a
-    module being *importable* are different claims — a stripped container, a
-    failed wheel build or a partially-installed environment separates them, and
+    Normally True: it is this project's own module over torch, transformers,
+    accelerate and safetensors, all core dependencies. It is still checked
+    rather than assumed, because a dependency being *declared* and a module
+    being *importable* are different claims — a stripped container, a failed
+    wheel build or a partially-installed environment separates them, and
     finding that out at resolution beats finding it out inside a job.
 
-    The check is a real **import**, not ``importlib.util.find_spec``. That
-    distinction is not theoretical: airllm's ``__init__`` imports its MLX path
-    unconditionally on macOS, so on a Mac without ``mlx`` the spec is found and
-    the import then raises. ``find_spec`` answered True there while
-    :func:`load` could not work at all — the exact shape of lie this function
-    exists to prevent. Cached, because importing airllm pulls in torch and that
-    is seconds, not milliseconds.
-
-    The import is performed with stdout and stderr captured. Importing airllm
-    pulls in bitsandbytes, which greets the world on **stdout** (``>>>>
-    bitsandbytes installed``) as a side effect of being imported. A capability
-    probe has no business writing to the caller's stdout: this package has a
-    CLI whose output is parsed (``--json``) and an OpenAI-compatible server,
-    and :func:`decide` calls this during ordinary resolution — so a third-party
-    banner lands in the middle of a JSON document that something downstream is
-    reading. Whatever the import printed is kept, at debug level, where a
-    diagnostic belongs.
+    The check is a real **import**, and it is performed with stdout and
+    stderr captured: importing torch can emit third-party chatter, and a
+    capability probe has no business writing to the caller's stdout when this
+    package has a ``--json`` CLI and an OpenAI-compatible server. Cached,
+    because importing torch is seconds, not milliseconds.
 
     Returns
     -------
     bool
-        True when ``import airllm`` succeeds.
+        True when the streaming runtime imports.
 
     Examples
     --------
@@ -1130,13 +1118,17 @@ def available() -> bool:
         noise = io.StringIO()
         try:
             with contextlib.redirect_stdout(noise), contextlib.redirect_stderr(noise):
-                importlib.import_module(PACKAGE)
+                importlib.import_module("best_engine_ai_helper.streaming")
+                importlib.import_module("torch")
+                importlib.import_module("transformers")
+                importlib.import_module("accelerate")
+                importlib.import_module("safetensors")
             _AVAILABLE = True
         except Exception as exc:  # noqa: BLE001 — any import failure means unusable
-            osh.debug(f"The {PACKAGE} runtime cannot be imported here: {exc!r}")
+            osh.debug(f"The streaming runtime cannot be imported here: {exc!r}")
             _AVAILABLE = False
         if noise.getvalue().strip():
-            osh.debug(f"Importing {PACKAGE} printed: {noise.getvalue().strip()!r}")
+            osh.debug(f"Importing the streaming runtime printed: {noise.getvalue().strip()!r}")
     return _AVAILABLE
 
 
@@ -1144,7 +1136,7 @@ def runtime(compute: dict[str, Any] | None = None, allow_cpu: bool = False) -> s
     """
     Which streaming runtime this machine offers, if any.
 
-    airllm streams on CUDA (its primary path), on Apple Silicon through MLX, and
+    lightweight streams on CUDA (its primary path), on Apple Silicon through MLX, and
     on CPU experimentally. ROCm rides the same torch path as CUDA and is treated
     as capable; the figure that matters there is disk bandwidth anyway, which is
     vendor-independent.
@@ -1155,14 +1147,14 @@ def runtime(compute: dict[str, Any] | None = None, allow_cpu: bool = False) -> s
         Output of :func:`detect.compute_profile`. None probes it.
     allow_cpu : bool
         Whether to count a CPU-only machine as capable. False by default:
-        airllm's CPU path is experimental and only works for unsharded models,
+        lightweight's CPU path is experimental and only works for unsharded models,
         so proposing it automatically would promise something that often does
         not load. A human can still ask for it.
 
     Returns
     -------
     str or None
-        ``'cuda'``, ``'rocm'``, ``'mlx'``, ``'cpu'``, or None when this machine
+        ``'cuda'``, ``'rocm'``, ``'mps'``, ``'cpu'``, or None when this machine
         has no runtime streaming can use.
 
     Examples
@@ -1170,7 +1162,7 @@ def runtime(compute: dict[str, Any] | None = None, allow_cpu: bool = False) -> s
     >>> runtime({"accelerator": "gpu-cuda"})
     'cuda'
     >>> runtime({"accelerator": "gpu-metal"})
-    'mlx'
+    'mps'
     >>> runtime({"accelerator": "cpu"}) is None
     True
     >>> runtime({"accelerator": "cpu"}, allow_cpu=True)
@@ -1186,7 +1178,13 @@ def runtime(compute: dict[str, Any] | None = None, allow_cpu: bool = False) -> s
     if accelerator == "gpu-rocm":
         return "rocm"
     if accelerator == "gpu-metal":
-        return "mlx"
+        # torch's own Metal backend. This used to say "mlx", which was the
+        # single most expensive word in this module: it routed Apple Silicon
+        # through a second framework whose only streaming implementation was
+        # a hand-written Llama, so every other architecture was unreachable
+        # on the platform this suite is developed on. torch speaks Metal, and
+        # transformers speaks every architecture.
+        return "mps"
     return "cpu" if allow_cpu else None
 
 
@@ -1274,9 +1272,9 @@ def plan(
         Output of :func:`detect.disk_profile`. None probes it (table lookup, no
         measurement).
     compression : {'4bit', '8bit', None}
-        airllm's weight compression.
+        lightweight's weight compression.
     prefetching : bool
-        Whether airllm's prefetch is on.
+        Whether lightweight's prefetch is on.
     context_k : float
         Context length in units of 1024 tokens, for the KV term.
     batch : int
@@ -1415,38 +1413,22 @@ def plan(
     }
 
 
-#: What the Apple Silicon path cannot do, established by running it rather
-#: than by reading about it. airllm's ``AutoModel.from_pretrained`` dispatches
-#: on architecture everywhere EXCEPT macOS, where it hard-returns
-#: ``AirLLMLlamaMlx`` whatever the model is -- a hand-written Llama transformer
-#: in MLX whose projections are all ``bias=False``.
-#:
-#: Measured on an M-series Mac against real checkpoints:
-#:
-#: - ``TinyLlama-1.1B-Chat`` (Llama architecture, untied embeddings) streams
-#:   and generates correctly. The path works.
-#: - ``Llama-3.2-1B-Instruct`` fails at ``lm_head``: it ties its embeddings, so
-#:   no ``lm_head`` tensor exists, and the empty shard will not load.
-#: - ``JackFram/llama-160m`` fails on ``rotary_emb``: older exports persist
-#:   ``inv_freq``, which the MLX block has no parameter for.
-#:
-#: Stated as caveats rather than enforced as a filter on purpose. The honest
-#: signal here is the architecture of the weights, which the catalogue does not
-#: carry, and guessing it from a model id would hide working models as
-#: confidently as it would flag broken ones. Telling the truth beats a filter
-#: built on a guess.
-MLX_CAVEATS: tuple[str, ...] = (
-    "on macOS airllm serves every model through its Llama MLX class whatever "
-    "the architecture, so a non-Llama checkpoint (Qwen, Gemma, Mixtral) is "
-    "unlikely to load even when this plan says it fits",
-    "a checkpoint with tied embeddings (no separate lm_head, e.g. Llama 3.2) "
-    "fails when the lm_head shard is read",
+#: What this runtime does not do, stated so a plan is not read as a promise.
+#: These are properties of :mod:`best_engine_ai_helper.streaming`, not of a
+#: platform: the per-platform caveats that used to live here were artefacts of
+#: routing Apple Silicon through MLX, and went away with the dependency.
+STREAMING_CAVEATS: tuple[str, ...] = (
+    "the checkpoint has to publish safetensors; a repository that ships only "
+    "a pickled pytorch_model.bin is refused, because reading one layer out of "
+    "a pickle means reading the whole file once per layer",
+    "a sparse mixture-of-experts layer is materialised whole, so its resident "
+    "figure is the full expert set rather than the few a token routes to",
 )
 
 
 def caveats(runtime_name: str | None) -> tuple[str, ...]:
     """
-    Known limitations of a runtime, as sentences for a human.
+    Known limitations of streaming, as sentences for a human.
 
     Separate from ``blockers``: a blocker says streaming cannot start, a caveat
     says it starts and then depends on the model. Both belong in the engine
@@ -1455,23 +1437,24 @@ def caveats(runtime_name: str | None) -> tuple[str, ...]:
     Parameters
     ----------
     runtime_name : str or None
-        Output of :func:`runtime`.
+        Output of :func:`runtime`. None means nothing will run, so nothing is
+        worth warning about.
 
     Returns
     -------
     tuple[str, ...]
-        Empty for every runtime with nothing known against it.
+        Empty when there is no runtime at all.
 
     Examples
     --------
-    >>> caveats("cuda")
-    ()
-    >>> len(caveats("mlx"))
+    >>> caveats("cuda") == caveats("mps")      # not a per-platform list
+    True
+    >>> len(caveats("mps"))
     2
     >>> caveats(None)
     ()
     """
-    return MLX_CAVEATS if runtime_name == "mlx" else ()
+    return STREAMING_CAVEATS if runtime_name else ()
 
 
 def decide(
@@ -1489,7 +1472,7 @@ def decide(
     The activation policy, in one place, returning a verdict rather than
     performing it — so the CLI, the HTTP API and :func:`engine.resolve` all ask
     the same question and get the same answer, and so the reasoning is
-    inspectable (``best-engine-ai-helper airllm status``) instead of implied.
+    inspectable (``best-engine-ai-helper lightweight status``) instead of implied.
 
     The rule:
 
@@ -1515,7 +1498,7 @@ def decide(
     disk : dict or None
         :func:`detect.disk_profile` output. None probes it.
     allow_cpu : bool
-        Count a CPU-only machine as capable (airllm's CPU path is
+        Count a CPU-only machine as capable (lightweight's CPU path is
         experimental).
     env : dict[str, str] or None
         Environment for :data:`ENV_VAR`; None uses ``os.environ``.
@@ -1546,8 +1529,8 @@ def decide(
     ('fallback', 'cuda')
     >>> d = decide(request='always', compute={'accelerator': 'cpu'},
     ...            disk={'read_gbs': 2.5}, env={})
-    >>> d['activate'], d['blockers'][0][:34]
-    (False, 'this machine offers no runtime air')
+    >>> d['activate'], d['blockers'][0][:37]
+    (False, 'this machine offers no accelerator to')
     """
     wanted = requested(request, env=env)
     runtime_name = runtime(compute, allow_cpu=allow_cpu)
@@ -1560,9 +1543,9 @@ def decide(
     blockers: list[str] = []
     if runtime_name is None:
         blockers.append(
-            "this machine offers no runtime airllm can stream on (a CUDA/ROCm GPU, "
-            "or Apple Silicon through MLX); its CPU path is experimental and must "
-            "be asked for explicitly"
+            "this machine offers no accelerator to stream on (a CUDA/ROCm GPU, or "
+            "Apple Silicon through Metal); the CPU path works and is slow enough "
+            "that it must be asked for explicitly"
         )
     if not installed:
         blockers.append(
@@ -1572,7 +1555,7 @@ def decide(
     if not disk.get("read_gbs"):
         blockers.append(
             "disk read bandwidth is unknown here, and streaming throughput is "
-            "bounded by it — run `airllm status --measure` to measure it"
+            "bounded by it — run `lightweight status --measure` to measure it"
         )
 
     if wanted == "never":
@@ -1580,7 +1563,7 @@ def decide(
             "activate": False,
             "request": wanted,
             "trigger": "disabled",
-            "reason": f"Layer streaming is switched off ({ENV_VAR}=never or airllm: never).",
+            "reason": f"Layer streaming is switched off ({ENV_VAR}=never or lightweight: never).",
             "installed": installed,
             "runtime": runtime_name,
             "disk": disk,
@@ -1596,7 +1579,7 @@ def decide(
             "reason": (
                 "A model already fits this machine's memory, so streaming its layers "
                 "off disk would trade two to three orders of magnitude of speed for "
-                "nothing. Ask for it explicitly (--backend airllm) to override."
+                "nothing. Ask for it explicitly (--backend lightweight) to override."
             ),
             "installed": installed,
             "runtime": runtime_name,
@@ -1672,9 +1655,9 @@ def rank(
     disk : dict or None
         :func:`detect.disk_profile` output. None probes it.
     compression : {'4bit', '8bit', None}
-        airllm's weight compression.
+        lightweight's weight compression.
     prefetching : bool
-        Whether airllm's prefetch is on. When it is and a candidate does not
+        Whether lightweight's prefetch is on. When it is and a candidate does not
         fit, that candidate is re-planned WITHOUT it before being rejected —
         see the comment in the body.
     kind : {'llm', 'vlm', None}
@@ -1734,7 +1717,7 @@ def rank(
             # with the current layer's compute. Turning it off halves that term
             # and costs ~15% of an already slow decode — a trade worth making
             # when it is the difference between running the model and not, and
-            # the single knob behind airllm's "70B on a 4 GB card". Only tried
+            # the single knob behind lightweight's "70B on a 4 GB card". Only tried
             # when the prefetched plan failed, so nothing is slowed down for a
             # machine that had room anyway.
             serial = plan(
@@ -1903,7 +1886,7 @@ def compare(
         Sequences at once. A real lever on the streamed side only, which is
         itself part of the answer.
     compression : {'4bit', '8bit', None}
-        airllm compression for the streamed side.
+        lightweight compression for the streamed side.
     load : dict or None
         Live load from :func:`detect.server_load`, applied to both budgets.
 
@@ -1979,7 +1962,7 @@ def compare(
 
     streamed_budget = budget_gb(hw, load)
     plans = rank(
-        _catalog.servable_only(entries, "airllm"),
+        _catalog.servable_only(entries, "lightweight"),
         budget_gb=streamed_budget,
         disk=disk,
         compression=compression,
@@ -2121,10 +2104,10 @@ def load(
     max_seq_len: int = int(_DEFAULT_CONTEXT_K * _TOKENS_PER_K),
 ) -> Any:
     """
-    Load a model through airllm's layer-streaming runtime.
+    Load a model through lightweight's layer-streaming runtime.
 
     The adapter, and the only function here that touches the upstream package.
-    Its arguments are airllm's own, renamed nowhere, so its documentation stays
+    Its arguments are lightweight's own, renamed nowhere, so its documentation stays
     the reference for them.
 
     Parameters
@@ -2139,7 +2122,7 @@ def load(
     prefetching : bool
         Overlap the next shard's read with the current layer's compute.
     layer_shards_saving_path : str or None
-        Where the per-layer shards go. None uses airllm's default (beside the
+        Where the per-layer shards go. None uses lightweight's default (beside the
         HuggingFace cache). Point it at a fast volume when the cache is not on
         one — the shard read IS the decode speed.
     hf_token : str or None
@@ -2149,10 +2132,10 @@ def load(
         requirement (see :func:`disk_required_gb`) at the cost of re-downloading
         if the shards are ever lost.
     profiling_mode : bool
-        Ask airllm to print per-layer timings.
+        Ask lightweight to print per-layer timings.
     max_seq_len : int
         Context length to configure, in tokens. Defaults to 4096, matching the
-        context :func:`footprint_gb` prices — **not** airllm's own default of
+        context :func:`footprint_gb` prices — **not** lightweight's own default of
         512, which truncates a longer prompt instead of refusing it. Raising
         this costs KV cache in exactly the proportion
         :func:`kv_cache_gb` describes, so size it against
@@ -2161,7 +2144,7 @@ def load(
     Returns
     -------
     Any
-        The ``airllm.AutoModel`` instance, untouched, carrying its own
+        The ``lightweight.AutoModel`` instance, untouched, carrying its own
         ``.tokenizer``, ``.device`` and ``.generate``.
 
     Raises
@@ -2174,10 +2157,10 @@ def load(
     >>> load("meta-llama/Llama-3.3-70B-Instruct")   # doctest: +SKIP
     """
     try:
-        from airllm import AutoModel
+        from . import streaming as _streaming
     except ImportError as exc:
         raise ImportError(
-            f"Layer streaming needs the {PACKAGE} runtime, which IS a dependency of "
+            f"Layer streaming needs {PACKAGE}, all of which ARE dependencies of "
             f"best-engine-ai-helper — so reaching this means the install is "
             f"incomplete rather than that a feature was not opted into: "
             f"{INSTALL_HINT}. Everything else here (detection, recommendation, the "
@@ -2186,25 +2169,28 @@ def load(
         ) from exc
 
     osh.info(
-        f"Loading {model} through airllm layer streaming "
-        f"(compression={compression or 'none'}, prefetching={prefetching}, "
-        f"max_seq_len={max_seq_len})."
+        f"Loading {model} through layer streaming "
+        f"(prefetching={prefetching}, max_seq_len={max_seq_len})."
     )
-    kwargs: dict[str, Any] = {
-        "compression": compression,
-        "prefetching": prefetching,
-        "profiling_mode": profiling_mode,
-        "delete_original": delete_original,
-        # Passed explicitly, always: airllm defaults to 512 tokens and
-        # truncates past it, which would silently cut the end off a prompt this
-        # package has just finished telling the caller is nearly free.
-        "max_seq_len": max_seq_len,
-    }
-    if layer_shards_saving_path:
-        kwargs["layer_shards_saving_path"] = layer_shards_saving_path
-    if hf_token:
-        kwargs["hf_token"] = hf_token
-    return AutoModel.from_pretrained(model, **kwargs)
+    # `compression`, `profiling_mode`, `delete_original` and
+    # `layer_shards_saving_path` are accepted and ignored: they described the
+    # previous runtime's pre-split, which this one does not have. Shards are
+    # read straight out of the original safetensors, so there is nothing to
+    # save elsewhere and nothing to delete afterwards.
+    if compression:
+        osh.warning(
+            f"compression={compression!r} is ignored: this runtime reads the "
+            "checkpoint's own safetensors and does not requantise. Point it at "
+            "an already-quantised checkpoint instead."
+        )
+    if layer_shards_saving_path or delete_original:
+        osh.debug("Shard-split options are ignored: this runtime does not split.")
+    return _streaming.StreamedModel(
+        model,
+        prefetching=prefetching,
+        hf_token=hf_token,
+        max_seq_len=max_seq_len,
+    )
 
 
 def generate(
@@ -2222,7 +2208,7 @@ def generate(
     """
     Generate text with a streamed model, in this process.
 
-    There is no server to talk to: airllm is a library, not a daemon, so this
+    There is no server to talk to: lightweight is a library, not a daemon, so this
     backend runs inside the caller's interpreter. That is also why ``loaded``
     exists — splitting and loading a 70B checkpoint is the expensive part, and a
     caller making several calls should pay it once.
@@ -2271,45 +2257,31 @@ def generate(
             max_seq_len=max_seq_len,
         )
     )
-    # Two runtimes, two genuinely different contracts, and the difference is
-    # not cosmetic -- it is why this function used to raise `AttributeError:
-    # 'AirLLMLlamaMlx' object has no attribute 'device'` on every Apple
-    # Silicon machine, which is to say on the platform this suite is developed
-    # on. `load` succeeded there and `generate` could not run at all.
-    #
-    # On CUDA/ROCm airllm returns a transformers model: it wants a torch
-    # tensor placed on `.device` and hands back a sequences tensor holding
-    # prompt + continuation, to be decoded here.
-    #
-    # On macOS airllm's `AutoModel.from_pretrained` hard-returns
-    # `AirLLMLlamaMlx`, which has no `.device`, takes an **mlx** array, and
-    # returns text it has already decoded -- and only the continuation, since
-    # it decodes the tokens it generated rather than the whole sequence. So
-    # there is nothing to strip off the front either.
-    #
-    # Told apart by asking the instance rather than the platform: `.device` is
-    # the attribute whose absence is the whole difference, and a duck-typed
-    # check keeps a fake runtime usable in tests without faking `sys.platform`.
-    if getattr(instance, "device", None) is None:
-        import mlx.core as mx
+    # One contract now, where there used to be two. The streamed model is a
+    # transformers model with hooks on it, so this is the ordinary
+    # tokenize -> generate -> decode of any causal LM, on whatever device
+    # `streaming.default_device()` picked. The special case this function
+    # used to carry -- an Apple Silicon runtime with no `.device`, taking an
+    # mlx array and returning pre-decoded text -- disappeared with MLX.
+    import torch
 
-        encoded = instance.tokenizer([prompt], return_attention_mask=False, truncation=True)
-        # `max_new_tokens` is not optional on this path: the MLX loop compares
-        # `len(tokens) >= max_new_tokens` and would raise on None.
-        text = instance.generate(mx.array(encoded["input_ids"]), max_new_tokens=max_new_tokens)
-        return str(text).lstrip()
-
+    if getattr(instance, "tokenizer", None) is None:
+        raise RuntimeError(
+            f"{model} streams, but carries no tokenizer, so there is nothing here "
+            "to turn a prompt into ids. Point at a repository that ships one, or "
+            "call `offload.load(...)` and tokenize with your own."
+        )
     tokens = instance.tokenizer(
         [prompt], return_tensors="pt", return_attention_mask=False, truncation=True
     )
-    output = instance.generate(
-        tokens["input_ids"].to(instance.device),
-        max_new_tokens=max_new_tokens,
-        use_cache=True,
-        return_dict_in_generate=True,
-    )
+    with torch.no_grad():
+        output = instance.generate(
+            tokens["input_ids"].to(instance.device),
+            max_new_tokens=max_new_tokens,
+            use_cache=True,
+        )
     sequences = getattr(output, "sequences", output)
     text = instance.tokenizer.decode(sequences[0], skip_special_tokens=True)
-    # airllm returns prompt + continuation, like any HuggingFace `generate`.
-    # Callers of `chat` expect the answer alone.
+    # transformers returns prompt + continuation; callers of `chat` expect the
+    # answer alone.
     return str(text)[len(prompt) :].lstrip() if str(text).startswith(prompt) else str(text)

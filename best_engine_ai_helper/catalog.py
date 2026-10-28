@@ -72,10 +72,10 @@ _SLUG_SOURCES: frozenset[str] = frozenset({"apxml"})
 #: entry without a ``vllm_id`` already falls back to the raw tag with a
 #: warning, which is a documented behaviour and a reasonable one. The gate
 #: exists for the cases that are *not* recoverable — a name Ollama cannot pull,
-#: and (for ``airllm``) an entry naming no HuggingFace repository at all, since
+#: and (for ``lightweight``) an entry naming no HuggingFace repository at all, since
 #: layer streaming reads safetensors from the Hub and has no registry to fall
 #: back to.
-_GATED_BACKENDS: frozenset[str] = frozenset({"ollama", "airllm"})
+_GATED_BACKENDS: frozenset[str] = frozenset({"ollama", "lightweight"})
 
 
 def servable(entry: dict[str, Any], backend: str) -> bool:
@@ -87,7 +87,7 @@ def servable(entry: dict[str, Any], backend: str) -> bool:
     entry : dict[str, Any]
         A catalog entry.
     backend : str
-        ``ollama``, ``vllm``, ``airllm``, or anything else (unknown backends are
+        ``ollama``, ``vllm``, ``lightweight``, or anything else (unknown backends are
         trusted: this is a gate against a known mismatch, not a whitelist).
 
     Returns
@@ -114,9 +114,9 @@ def servable(entry: dict[str, Any], backend: str) -> bool:
     False
     >>> servable({"id": "whatever"}, "some-future-backend")
     True
-    >>> servable({"id": "llama3.3:70b", "vllm_id": "meta-llama/x"}, "airllm")
+    >>> servable({"id": "llama3.3:70b", "vllm_id": "meta-llama/x"}, "lightweight")
     True
-    >>> servable({"id": "gemma3:12b"}, "airllm")      # no Hub repo to stream
+    >>> servable({"id": "gemma3:12b"}, "lightweight")      # no Hub repo to stream
     False
     """
     declared = entry.get("backends")
@@ -126,8 +126,8 @@ def servable(entry: dict[str, Any], backend: str) -> bool:
         return True
     if not str(entry.get("id") or "").strip():
         return False
-    if backend == "airllm":
-        # A pull tag is useless to a streaming backend: airllm downloads
+    if backend == "lightweight":
+        # A pull tag is useless to a streaming backend: lightweight downloads
         # safetensors from the Hub and splits them into per-layer shards, so an
         # entry that names no repository names nothing it can load. The slug
         # rule below is the opposite case and does not apply — a slug source
@@ -482,8 +482,8 @@ def normalize_apxml_spec(spec: dict[str, Any], fetched_at: str) -> dict[str, Any
         # This directory is in fact the best source of streaming candidates
         # there is — it catalogues the 200B-and-up open-weight models that no
         # machine here can load and that streaming is the only way to run — so
-        # omitting `airllm` here hid exactly the entries the backend exists for.
-        "backends": ["vllm", "airllm"],
+        # omitting `lightweight` here hid exactly the entries the backend exists for.
+        "backends": ["vllm", "lightweight"],
         # Mixture-of-experts, when the directory says so. Load-bearing for the
         # streaming footprint: without it, a MoE model's decoder depth is
         # interpolated from its parameter count, and that relation does not

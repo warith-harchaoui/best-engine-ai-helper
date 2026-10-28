@@ -496,7 +496,7 @@ def available() -> bool:
     different claims, and a stripped container separates them. A real import
     rather than ``find_spec`` for the same reason too: a package whose
     ``__init__`` raises has a findable spec and is still unusable, which is how
-    airllm behaves on a Mac without ``mlx``.
+    lightweight behaves on a Mac without ``mlx``.
 
     Returns
     -------

@@ -31,11 +31,11 @@ a model, fine-tune, or pick a vector index.
 | Task families / usages | `usages` | `list_usages`, `get_usage`, `resolve_usage`, `list_families` | n/a |
 | Refresh the catalogue (online) | `catalog update`, `update` | — | n/a |
 | Browser GUI (read-only half) | `gui` | — | `GET /gui` |
-| Can this machine stream layers? | `airllm status` | `airllm_decide`, `airllm_runtime`, `disk_profile` | `GET /api/airllm` |
-| What could it stream, and at what price? | `airllm plan` | `airllm_rank`, `airllm_plan`, `airllm_pick` | `GET /api/airllm` |
-| Native model or streamed model? | `airllm compare` | `airllm_compare`, `airllm_generation_time` | `GET /api/airllm` |
-| Split a checkpoint before the first call | `airllm prepare` | `airllm_load` | n/a |
-| Run a streamed model | — | `airllm_generate`, `llm.chat(engine=…)` | n/a |
+| Can this machine stream layers? | `lightweight status` | `lightweight_decide`, `lightweight_runtime`, `disk_profile` | `GET /api/lightweight` |
+| What could it stream, and at what price? | `lightweight plan` | `lightweight_rank`, `lightweight_plan`, `lightweight_pick` | `GET /api/lightweight` |
+| Native model or streamed model? | `lightweight compare` | `lightweight_compare`, `lightweight_generation_time` | `GET /api/lightweight` |
+| Split a checkpoint before the first call | `lightweight prepare` | `lightweight_load` | n/a |
+| Run a streamed model | — | `lightweight_generate`, `llm.chat(engine=…)` | n/a |
 | Which image model runs here | `imagine plan` | `imagine_rank`, `imagine_pick`, `image_footprint_gb` | `GET /v1/models` |
 | Generate an image | `imagine generate` | `imagine_generate` | `POST /v1/images/generations` |
 | Speak OpenAI to it | `serve` | — | `/v1/chat/completions`, `/v1/embeddings`, `/v1/images/generations` |
@@ -65,7 +65,7 @@ do.
   "headroom".
 - **Too large to load**: "can I run a 70B on 8 GB", "run a model bigger than
   my VRAM", "my GPU is too small for this model", "run DeepSeek / a 235B
-  locally", "stream layers off disk", "layer-by-layer inference", "airllm",
+  locally", "stream layers off disk", "layer-by-layer inference", "lightweight",
   "is it worth running the big model slowly", "how long would a 70B take per
   token", "what is the biggest model this machine could possibly run".
 - **Speak OpenAI to it**: "OpenAI-compatible endpoint", "drop-in replacement
@@ -115,7 +115,7 @@ the user never names it:
   lookups, but the package's purpose is local models.
 - Wanting a *fast* answer from a model that does not fit. Layer streaming is
   seconds per token: it is the right answer to "I need a better model than
-  fits" and the wrong one to "I need this quickly". `airllm compare` says
+  fits" and the wrong one to "I need this quickly". `lightweight compare` says
   which case you are in, and usually says "stay native".
 - Picking a Python library, a framework, or a package manager.
 

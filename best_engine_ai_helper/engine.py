@@ -53,10 +53,10 @@ ENGINE_NAME = "llm.engine.yaml"
 _OLLAMA_URL = "http://localhost:11434"
 _VLLM_URL = "http://localhost:8000/v1"
 
-# `airllm` is valid but never automatic: `default_backend` cannot return it,
+# `lightweight` is valid but never automatic: `default_backend` cannot return it,
 # and `_resolve_local` only reaches it when a human asks or when nothing else
 # fits (see offload.decide). Streaming is a rescue, not a preference.
-_VALID_BACKENDS = ("ollama", "vllm", "airllm")
+_VALID_BACKENDS = ("ollama", "vllm", "lightweight")
 
 # Default API roots for cloud providers, used when a cloud brief does not pin
 # its own base_url.
@@ -133,8 +133,8 @@ def _base_url(backend: str, endpoint: str | None) -> str:
     """Resolve the server base URL for a backend, honouring an explicit endpoint."""
     if endpoint:
         return endpoint.rstrip("/")
-    if backend == "airllm":
-        # There is no URL to resolve: airllm is a library that runs inside the
+    if backend == "lightweight":
+        # There is no URL to resolve: lightweight is a library that runs inside the
         # caller's own process. An empty string says so; inventing a localhost
         # port would send `llm.chat` looking for a daemon that will never exist.
         return ""
@@ -145,11 +145,11 @@ def _serve_command(backend: str, model: str, base_url: str) -> str:
     """The shell command that brings ``model`` up on ``backend`` for this machine."""
     if backend == "ollama":
         return f"ollama pull {model}"
-    if backend == "airllm":
+    if backend == "lightweight":
         # Nothing to bring up, but something to do: the first call pays for the
         # download and the layer split, and a caller who discovers that inside a
         # job will think it hung. This command pays it deliberately instead.
-        return f"best-engine-ai-helper airllm prepare --model {model}"
+        return f"best-engine-ai-helper lightweight prepare --model {model}"
     # vLLM: serve the HuggingFace model on the base URL's port (default 8000).
     port = urlparse(base_url).port or 8000
     return f"vllm serve {model} --port {port}"
@@ -195,10 +195,10 @@ def resolve(
     In ``local`` mode there is one escalation: when the conventional backend
     resolves nothing that FITS for a kind the brief needs, resolution consults
     :func:`offload.decide` and, if this machine can stream, rescues that kind
-    alone with a layer-streamed model (``backend: airllm`` inside the kind's
+    alone with a layer-streamed model (``backend: lightweight`` inside the kind's
     own section — see :func:`model_for`). The descriptor records the decision
-    and its reason under ``airllm``, including when the answer was no. Set
-    ``airllm: never`` in the brief, or ``BEST_ENGINE_AIRLLM=never``, to switch
+    and its reason under ``lightweight``, including when the answer was no. Set
+    ``lightweight: never`` in the brief, or ``BEST_ENGINE_LIGHTWEIGHT=never``, to switch
     the escalation off.
 
     Parameters
@@ -211,12 +211,12 @@ def resolve(
         ``provider``, ``model`` (both optional -> auto-pick), ``vlm_model``,
         ``base_url``, ``api_key_env``, ``quality_vs_cost`` (0..1, default
         :data:`cloud_catalog.DEFAULT_QUALITY_VS_COST`, only used when
-        auto-picking); streaming-only: ``airllm``
+        auto-picking); streaming-only: ``lightweight``
         (``auto``/``always``/``never``, default ``auto``) and
         ``airllm_compression`` (``4bit``/``8bit``).
-    backend : {'auto', 'ollama', 'vllm', 'airllm'}
+    backend : {'auto', 'ollama', 'vllm', 'lightweight'}
         ``auto`` picks per :func:`default_backend` — which never returns
-        ``airllm``: layer streaming is reached automatically only as a rescue
+        ``lightweight``: layer streaming is reached automatically only as a rescue
         (see below), and otherwise by naming it here. Local mode only.
     endpoint : str or None
         Override the server base URL (defaults to the local endpoint for the
@@ -284,9 +284,9 @@ def _resolve_local(
     headroom = min(float(spec.get("headroom", MAX_HEADROOM)), MAX_HEADROOM)
     min_tps = float(spec.get("min_tps", COMFORT_TPS))
     # A brief that says nothing about streaming gets `auto`, which only fires
-    # when the conventional backend comes back empty. `--backend airllm` is the
+    # when the conventional backend comes back empty. `--backend lightweight` is the
     # manual door and does not consult this.
-    stream_request = _offload.requested(spec.get("airllm"))
+    stream_request = _offload.requested(spec.get("lightweight"))
     kinds = _kinds_from_brief(spec.get("kind", "both"))
     task = spec.get("task")
     # The brief's own word on whether the job needs schema-constrained output.
@@ -318,7 +318,7 @@ def _resolve_local(
         )
     base_url = _base_url(backend, endpoint)
 
-    if backend == "airllm":
+    if backend == "lightweight":
         # Asked for by name. `decide` is still consulted — not to veto the
         # request, but so an unusable machine is told why here instead of at
         # the first generate() call — and `never` still wins, because an
@@ -440,7 +440,7 @@ def _resolve_local(
             compute=compute,
             disk=disk,
         )
-        engine["airllm"] = {
+        engine["lightweight"] = {
             "activate": decision["activate"],
             "trigger": decision["trigger"],
             "reason": decision["reason"],
@@ -484,7 +484,7 @@ def _resolve_local(
             # fits. `activate: true` with an empty `rescued` is that case,
             # and it has to be visible rather than inferred from the absence
             # of a change.
-            engine["airllm"]["rescued"] = rescued
+            engine["lightweight"]["rescued"] = rescued
             if not rescued:
                 osh.warning(
                     "Layer streaming was activated but rescued nothing: no catalog "
@@ -515,7 +515,7 @@ def _resolve_streaming(
     Resolve a brief against the layer-streaming backend.
 
     Deliberately the SAME pipeline as every other backend —
-    :func:`recommend.recommend` with ``backend='airllm'`` — rather than a second
+    :func:`recommend.recommend` with ``backend='lightweight'`` — rather than a second
     picker. The backend-specific parts (one shard instead of the whole model, a
     disk-bound rate) already live in ``score``/``offload``, so routing through
     the common path keeps one ranking, one report shape, and one place where the
@@ -549,7 +549,7 @@ def _resolve_streaming(
     Returns
     -------
     dict[str, Any]
-        An engine descriptor with ``backend: airllm``, a per-kind section, and
+        An engine descriptor with ``backend: lightweight``, a per-kind section, and
         the streaming facts a caller needs: resident shard size, checkpoint
         size, disk requirement, and seconds per token.
     """
@@ -559,7 +559,7 @@ def _resolve_streaming(
 
     floor = float(min_tps) if min_tps is not None else _offload.COMFORT_TPS_STREAMING
     compression = spec.get("airllm_compression")
-    rows = _catalog.servable_only(catalog, "airllm")
+    rows = _catalog.servable_only(catalog, "lightweight")
     if catalog and not rows:
         osh.warning(
             "No catalog entry can be streamed: layer streaming loads safetensors "
@@ -580,12 +580,12 @@ def _resolve_streaming(
         headroom=headroom,
         compute=compute,
         min_tps=floor,
-        # Streaming has no schema enforcement at all (airllm exposes raw
+        # Streaming has no schema enforcement at all (lightweight exposes raw
         # generation), so requiring structured output would disqualify the
         # whole pool. The brief's own wish is honoured by the warning below
         # rather than by a filter that can only ever return nothing.
         require_structured=False,
-        backend="airllm",
+        backend="lightweight",
         kinds=kinds,
         disk=disk,
     )
@@ -606,13 +606,13 @@ def _resolve_streaming(
             "disk_read_gbs": disk.get("read_gbs"),
             "disk_read_basis": disk.get("basis"),
         },
-        "backend": "airllm",
-        # No URL, on purpose: airllm is a library and runs in the caller's own
+        "backend": "lightweight",
+        # No URL, on purpose: lightweight is a library and runs in the caller's own
         # process. `llm.chat` dispatches on the backend name, not on a port.
         "base_url": "",
         "headroom": headroom,
         "min_tps": floor,
-        "airllm": {
+        "lightweight": {
             "activate": decision["activate"],
             "trigger": decision["trigger"],
             "reason": decision["reason"],
@@ -657,7 +657,7 @@ def _resolve_streaming(
             "catalog_id": plan["catalog_id"],
             # Named `backend` per kind so a MIXED descriptor is readable: the
             # automatic trigger rescues one kind and leaves the other alone.
-            "backend": "airllm",
+            "backend": "lightweight",
             "base_url": "",
             "streaming": True,
             "ram_gb": plan["resident_gb"],
@@ -670,7 +670,7 @@ def _resolve_streaming(
             "est_tokens_per_s": plan["est_tokens_per_s"],
             "seconds_per_token": plan["seconds_per_token"],
             "tps_basis": "estimated",
-            # A fact about the backend, not about the weights: airllm has no
+            # A fact about the backend, not about the weights: lightweight has no
             # equivalent of Ollama's `format=<schema>`.
             "structured_output": False,
             "score": plan.get("score"),
@@ -686,7 +686,7 @@ def _resolve_streaming(
                 "streamed model, which cannot honour one. Schema-driven calls must "
                 "stay on an Ollama model."
             )
-        cmd = _serve_command("airllm", plan["model"], "")
+        cmd = _serve_command("lightweight", plan["model"], "")
         if cmd not in serve:
             serve.append(cmd)
 
@@ -998,9 +998,9 @@ def model_for(engine: dict[str, Any], kind: str) -> tuple[str, str, str]:
     >>> model_for(engine, "llm")
     ('ollama', 'http://localhost:11434', 'qwen3:14b')
     >>> # A kind that fell back to streaming carries its own backend.
-    >>> engine["vlm"] = {"model": "Qwen/Qwen2.5-VL-72B-Instruct", "backend": "airllm"}
+    >>> engine["vlm"] = {"model": "Qwen/Qwen2.5-VL-72B-Instruct", "backend": "lightweight"}
     >>> model_for(engine, "vlm")
-    ('airllm', '', 'Qwen/Qwen2.5-VL-72B-Instruct')
+    ('lightweight', '', 'Qwen/Qwen2.5-VL-72B-Instruct')
     """
     section = engine.get(kind)
     if not section or not section.get("model"):
@@ -1010,7 +1010,7 @@ def model_for(engine: dict[str, Any], kind: str) -> tuple[str, str, str]:
         )
     # A kind may override the descriptor's backend. That happens when nothing
     # fit this machine for THAT kind and resolution fell back to layer
-    # streaming for it alone — a mixed descriptor (Ollama for the LLM, airllm
+    # streaming for it alone — a mixed descriptor (Ollama for the LLM, lightweight
     # for the VLM) is the honest outcome, and a consumer reading the top-level
     # backend for every kind would send a streaming model to an Ollama URL.
     backend = str(section.get("backend") or engine["backend"])

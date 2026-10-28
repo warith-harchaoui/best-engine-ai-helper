@@ -25,9 +25,9 @@ Commands:
   gui             Launch the minimal browser GUI.
   env             Print the env block for ~/.zshrc or sourcing.
   activity        Summarize the local activity/cost ledger.
-  airllm status   Can this machine stream layers, and should it?
-  airllm plan     What a too-large model would cost here, ranked.
-  airllm prepare  Download and split a checkpoint before the first call.
+  lightweight status   Can this machine stream layers, and should it?
+  lightweight plan     What a too-large model would cost here, ranked.
+  lightweight prepare  Download and split a checkpoint before the first call.
   imagine plan    Which text-to-image model this machine can run, and how fast.
   imagine generate  Generate one image locally, to a PNG file.
   serve           Serve the OpenAI-compatible API (point any OpenAI SDK at it).
@@ -341,12 +341,12 @@ _VALID_APPLICATIONS = ["code", "math", "ocr", "vision", "chat", "generalist"]
 )
 @click.option(
     "--backend",
-    type=click.Choice(["ollama", "vllm", "airllm"]),
+    type=click.Choice(["ollama", "vllm", "lightweight"]),
     default="ollama",
     show_default=True,
     help=(
         "Size and rank for this backend. 'vllm' loads heavier FP16 weights; "
-        "'airllm' streams layers off disk, so the footprint becomes one shard "
+        "'lightweight' streams layers off disk, so the footprint becomes one shard "
         "and the rate becomes disk-bound (seconds per token). Candidates the "
         "backend cannot serve are left out."
     ),
@@ -368,7 +368,7 @@ def recommend_cmd(
     # `resolve` has always filtered, and this view had not.
     entries = _catalog.servable_only(_catalog.load_catalog(), backend)
     load = _detect.server_load() if live else None
-    streaming = backend == "airllm"
+    streaming = backend == "lightweight"
     disk = _detect.disk_profile() if streaming else {}
     if streaming:
         # The interactive floor describes a resident model. Judging a streamed
@@ -465,15 +465,15 @@ def recommend_cmd(
 )
 @click.option(
     "--backend",
-    type=click.Choice(["auto", "ollama", "vllm", "airllm"]),
+    type=click.Choice(["auto", "ollama", "vllm", "lightweight"]),
     default="auto",
     show_default=True,
     help=(
         "Serving backend. 'auto' = vLLM on Linux with a discrete GPU (NVIDIA/AMD), "
         "else Ollama — and, when nothing fits this machine's memory, an automatic "
-        "fallback to 'airllm' layer streaming for the kinds that found nothing "
-        "(set BEST_ENGINE_AIRLLM=never, or `airllm: never` in the brief, to switch "
-        "that off). 'airllm' here asks for streaming outright."
+        "fallback to 'lightweight' layer streaming for the kinds that found nothing "
+        "(set BEST_ENGINE_LIGHTWEIGHT=never, or `lightweight: never` in the brief, to switch "
+        "that off). 'lightweight' here asks for streaming outright."
     ),
 )
 @click.option(
@@ -1313,14 +1313,14 @@ def validate_cmd() -> None:
         sys.exit(1)
 
 
-@cli.group("airllm")
+@cli.group("lightweight")
 def airllm_group() -> None:
     """Layer streaming: run a model that does NOT fit in this machine's memory.
 
     A transformer never needs every layer resident at once. Keep one layer
     shard in memory, stream the rest off disk, and the memory a model needs
     stops scaling with its parameter count — a 70B model runs in about 4 GB
-    instead of 141. The runtime is airllm (github.com/lyogavin/airllm,
+    instead of 141. The runtime is lightweight (github.com/lyogavin/lightweight,
     Apache-2.0), a core dependency here rather than an extra; the arithmetic
     deciding whether it is worth it is this package's own.
 
@@ -1383,9 +1383,9 @@ def airllm_status(measure: bool, as_json: bool, request: str | None) -> None:
         )
         return
 
-    click.echo("\n=== Layer streaming (airllm) ===")
+    click.echo("\n=== Layer streaming (lightweight) ===")
     click.echo(f"  runtime here    : {decision['runtime'] or 'none'}")
-    # "import", not "installed": airllm is a core dependency, so the question
+    # "import", not "installed": lightweight is a core dependency, so the question
     # worth answering is whether this interpreter can actually load it.
     ok = "ok" if decision["installed"] else "FAILS (install incomplete)"
     click.echo(f"  runtime import  : {ok}")
@@ -1424,7 +1424,7 @@ def airllm_status(measure: bool, as_json: bool, request: str | None) -> None:
     type=click.Choice(["4bit", "8bit"]),
     default=None,
     help=(
-        "airllm's block-wise weight compression. Divides the bytes read per "
+        "lightweight's block-wise weight compression. Divides the bytes read per "
         "token, so it is the single biggest lever on speed (~3x at 4-bit) and "
         "shrinks the shards too. Needs bitsandbytes, which the extra installs."
     ),
@@ -1480,7 +1480,7 @@ def airllm_plan(
     """Rank what this machine could stream, biggest runnable model first."""
     hw = _detect.available_memory()
     disk = _detect.disk_profile(measure=measure)
-    entries = _catalog.servable_only(_catalog.load_catalog(), "airllm")
+    entries = _catalog.servable_only(_catalog.load_catalog(), "lightweight")
     budget = _offload.budget_gb(hw)
     kinds = ["llm", "vlm"] if kind == "both" else [kind]
 
@@ -1591,8 +1591,8 @@ def airllm_prepare(
         click.echo(str(exc), err=True)
         sys.exit(1)
     except Exception as exc:  # the download/split surface is wide; stay readable
-        osh.error(f"airllm prepare failed:\n\t{exc}")
-        click.echo(f"airllm prepare failed: {exc}", err=True)
+        osh.error(f"lightweight prepare failed:\n\t{exc}")
+        click.echo(f"lightweight prepare failed: {exc}", err=True)
         sys.exit(1)
     click.echo(
         f"Prepared {model}: layer shards are on disk and the first call will not "
@@ -1648,7 +1648,7 @@ def airllm_prepare(
     "--compression",
     type=click.Choice(["4bit", "8bit"]),
     default=None,
-    help="airllm weight compression for the streamed side (~3x at 4-bit).",
+    help="lightweight weight compression for the streamed side (~3x at 4-bit).",
 )
 @click.option(
     "--native-backend",
@@ -1703,11 +1703,12 @@ def airllm_compare(
     native = report["native"]
     streamed = report["streamed"]
     click.echo(
-        f"\n=== {kind.upper()}: {native['backend']} vs airllm, for a {new_tokens}-token answer ==="
+        f"\n=== {kind.upper()}: {native['backend']} vs lightweight, "
+        f"for a {new_tokens}-token answer ==="
     )
     click.echo(
         f"  budgets: {native['budget_gb']} GB resident ({native['backend']}) · "
-        f"{streamed['budget_gb']} GB per shard (airllm) · "
+        f"{streamed['budget_gb']} GB per shard (lightweight) · "
         f"disk {disk['read_gbs']} GB/s ({disk['basis']})"
     )
     if batch > 1:
@@ -1730,7 +1731,7 @@ def airllm_compare(
         rows.append(
             {
                 "model": (row["model"] or "")[:40],
-                "backend": "airllm",
+                "backend": "lightweight",
                 "score": f"{row['score']:.0f}" if row.get("score") else "-",
                 "resident": f"{row['resident_gb']:.1f}" if row["resident_gb"] else "-",
                 "tok/s": f"{row['effective_tps']:.3f}" if row.get("effective_tps") else "-",

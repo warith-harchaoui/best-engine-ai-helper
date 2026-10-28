@@ -58,18 +58,18 @@ A model that fits exactly is the wrong choice; that is the point of the gap.
 ## Layer streaming — when nothing good fits
 
 ```bash
-best-engine-ai-helper airllm status [--measure] [--json] [--request auto|always|never]
-best-engine-ai-helper airllm plan [--kind llm|vlm|both] [--compression 4bit|8bit] [--context K] [--batch B] [--tokens N]
-best-engine-ai-helper airllm compare [--tokens N] [--batch B] [--prompt-tokens P] [--application AXIS]
-best-engine-ai-helper airllm prepare --model REPO [--compression 4bit] [--shards-path DIR] [--delete-original]
-best-engine-ai-helper recommend --backend airllm
-best-engine-ai-helper resolve --brief llm.brief.yaml --backend airllm
+best-engine-ai-helper lightweight status [--measure] [--json] [--request auto|always|never]
+best-engine-ai-helper lightweight plan [--kind llm|vlm|both] [--compression 4bit|8bit] [--context K] [--batch B] [--tokens N]
+best-engine-ai-helper lightweight compare [--tokens N] [--batch B] [--prompt-tokens P] [--application AXIS]
+best-engine-ai-helper lightweight prepare --model REPO [--compression 4bit] [--shards-path DIR] [--delete-original]
+best-engine-ai-helper recommend --backend lightweight
+best-engine-ai-helper resolve --brief llm.brief.yaml --backend lightweight
 ```
 
-The airllm runtime is a core dependency, so nothing has to be installed first
+The lightweight runtime is a core dependency, so nothing has to be installed first
 (it is most of why this package's install is ~2 GB). The three read-only
 commands never import it, so they answer correctly even where it would fail to
-load — and `airllm status` reports that failure as an incomplete install, since
+load — and `lightweight status` reports that failure as an incomplete install, since
 at that point it is one.
 
 **The model, in four numbers.** Resident memory is one layer shard — the
@@ -90,13 +90,13 @@ the same pass as a 10-token one, which no other backend can say.
 
 **Activation.** Never automatic unless the conventional backend found nothing
 that fits, and then per *kind* (a mixed engine file is the honest outcome).
-Manual via `--backend airllm`, `airllm: always` in the brief, or
-`BEST_ENGINE_AIRLLM=always`; `never` disables the whole path.
+Manual via `--backend lightweight`, `lightweight: always` in the brief, or
+`BEST_ENGINE_LIGHTWEIGHT=always`; `never` disables the whole path.
 
-Relevant library calls: `airllm_decide`, `airllm_plan`, `airllm_rank`,
-`airllm_pick`, `airllm_footprint_gb`, `airllm_generation_time`,
-`airllm_seconds_per_pass`, `airllm_compare`, `streaming_budget_gb`,
-`disk_profile`, `airllm_load`, `airllm_generate`.
+Relevant library calls: `lightweight_decide`, `lightweight_plan`, `lightweight_rank`,
+`lightweight_pick`, `lightweight_footprint_gb`, `lightweight_generation_time`,
+`lightweight_seconds_per_pass`, `lightweight_compare`, `streaming_budget_gb`,
+`disk_profile`, `lightweight_load`, `lightweight_generate`.
 
 ## Text-to-image — the third kind
 

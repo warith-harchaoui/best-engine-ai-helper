@@ -50,10 +50,10 @@ EXPECTED_COMMANDS = {
     "gui",
     "env",
     "activity",
-    "airllm status",
-    "airllm plan",
-    "airllm compare",
-    "airllm prepare",
+    "lightweight status",
+    "lightweight plan",
+    "lightweight compare",
+    "lightweight prepare",
     "imagine plan",
     "imagine generate",
     "serve",
@@ -85,7 +85,8 @@ def test_the_command_inventory_and_every_help_screen(runner: CliRunner) -> None:
 
     # A --help that raises is invisible from every other test in this file,
     # since none of them asks for one.
-    for path in sorted(EXPECTED_COMMANDS | {"catalog", "hardware", "usages", "airllm", "imagine"}):
+    groups = {"catalog", "hardware", "usages", "lightweight", "imagine"}
+    for path in sorted(EXPECTED_COMMANDS | groups):
         res = runner.invoke(cli, [*path.split(), "--help"])
         assert res.exit_code == 0, f"{path} --help -> {res.exit_code}\n{res.output}"
         assert res.output.strip()
@@ -687,10 +688,10 @@ def test_airllm_status_reports_the_decision_and_how_to_act_on_it(
 
     monkeypatch.setattr(_offload, "available", lambda: False)
 
-    res = runner.invoke(cli, ["airllm", "status"])
+    res = runner.invoke(cli, ["lightweight", "status"])
     assert res.exit_code == 0, res.output
-    assert "Layer streaming (airllm)" in res.output
-    # airllm is a core dependency, so an import that fails is a broken install
+    assert "Layer streaming (lightweight)" in res.output
+    # lightweight is a core dependency, so an import that fails is a broken install
     # rather than a feature nobody opted into — and the wording has to say the
     # difference, or it sends the reader to install what they already have.
     assert "runtime import  : FAILS" in res.output
@@ -703,7 +704,7 @@ def test_airllm_status_reports_the_decision_and_how_to_act_on_it(
     # `--request always` asks the policy a different question, and the answer
     # must change with it rather than being a fixed capability dump.
     monkeypatch.setattr(_offload, "available", lambda: True)
-    forced = runner.invoke(cli, ["airllm", "status", "--request", "always", "--json"])
+    forced = runner.invoke(cli, ["lightweight", "status", "--request", "always", "--json"])
     assert forced.exit_code == 0, forced.output
     payload = json.loads(forced.output)
     assert payload["decision"]["request"] == "always"
@@ -713,7 +714,7 @@ def test_airllm_status_reports_the_decision_and_how_to_act_on_it(
 
 def test_airllm_plan_ranks_candidates_in_seconds_per_token(runner: CliRunner) -> None:
     """Biggest runnable first, and priced in the unit that is honest here."""
-    res = runner.invoke(cli, ["airllm", "plan", "--kind", "llm"])
+    res = runner.invoke(cli, ["lightweight", "plan", "--kind", "llm"])
     assert res.exit_code == 0, res.output
     assert "s/token" in res.output
     assert "shard_gb" in res.output
@@ -728,22 +729,24 @@ def test_airllm_prepare_fails_readably_without_the_runtime(
     from best_engine_ai_helper import offload as _offload
 
     def _no_runtime(*_a: object, **_k: object) -> None:
-        raise ImportError(f"needs the airllm runtime: {_offload.INSTALL_HINT}")
+        raise ImportError(f"needs the lightweight runtime: {_offload.INSTALL_HINT}")
 
     monkeypatch.setattr(_offload, "load", _no_runtime)
 
-    res = runner.invoke(cli, ["airllm", "prepare", "--model", "meta-llama/Llama-3.3-70B-Instruct"])
+    res = runner.invoke(
+        cli, ["lightweight", "prepare", "--model", "meta-llama/Llama-3.3-70B-Instruct"]
+    )
     assert res.exit_code == 1
-    assert "airllm" in res.output
+    assert "lightweight" in res.output
 
 
 def test_recommend_backend_airllm_switches_the_table_and_the_floor(runner: CliRunner) -> None:
     """Streaming candidates are a different table, not the same one relabelled."""
     plain = runner.invoke(cli, ["recommend", "--kind", "llm"])
-    streamed = runner.invoke(cli, ["recommend", "--kind", "llm", "--backend", "airllm"])
+    streamed = runner.invoke(cli, ["recommend", "--kind", "llm", "--backend", "lightweight"])
 
     assert plain.exit_code == 0 and streamed.exit_code == 0, streamed.output
-    assert "(ollama)" in plain.output and "(airllm)" in streamed.output
+    assert "(ollama)" in plain.output and "(lightweight)" in streamed.output
     # The interactive comfort floor describes a resident model; judging a
     # streamed one by it would mark every row uncomfortable and say nothing.
     assert "Batch floor: 0.01 tok/s" in streamed.output
@@ -777,12 +780,12 @@ def test_resolve_accepts_the_streaming_backend(
     brief = tmp_path / "llm.brief.yaml"
     brief.write_text("kind: llm\ntask: general assistant\nstructured_output: false\n")
 
-    res = runner.invoke(cli, ["resolve", "--brief", str(brief), "--backend", "airllm"])
+    res = runner.invoke(cli, ["resolve", "--brief", str(brief), "--backend", "lightweight"])
     assert res.exit_code == 0, res.output
-    assert "backend: airllm" in res.output
+    assert "backend: lightweight" in res.output
 
     written = yaml.safe_load((tmp_path / "llm.engine.yaml").read_text())
-    assert written["backend"] == "airllm"
+    assert written["backend"] == "lightweight"
     assert written["llm"]["streaming"] is True
     assert written["llm"]["seconds_per_token"] > 0
 
@@ -794,12 +797,12 @@ def test_airllm_compare_prices_both_backends_for_the_same_answer(runner: CliRunn
     not sit on a scale a person reasons about. Seconds for the same answer do,
     and the verdict line says which side wins on this machine.
     """
-    res = runner.invoke(cli, ["airllm", "compare", "--tokens", "300"])
+    res = runner.invoke(cli, ["lightweight", "compare", "--tokens", "300"])
     assert res.exit_code == 0, res.output
-    assert "vs airllm, for a 300-token answer" in res.output
+    assert "vs lightweight, for a 300-token answer" in res.output
     assert "answer" in res.output  # the shared unit
     # Both sides are present, each ranked by its own backend's rules.
-    assert "ollama" in res.output and "airllm" in res.output
+    assert "ollama" in res.output and "lightweight" in res.output
     # And a verdict a human can act on, whichever way it goes.
     assert any(
         phrase in res.output
@@ -809,7 +812,7 @@ def test_airllm_compare_prices_both_backends_for_the_same_answer(runner: CliRunn
 
 def test_airllm_compare_json_carries_the_timings_behind_the_verdict(runner: CliRunner) -> None:
     """A consumer must be able to re-derive the conclusion, not just read it."""
-    res = runner.invoke(cli, ["airllm", "compare", "--tokens", "120", "--json"])
+    res = runner.invoke(cli, ["lightweight", "compare", "--tokens", "120", "--json"])
     assert res.exit_code == 0, res.output
 
     report = json.loads(res.output)
@@ -846,9 +849,9 @@ def test_airllm_plan_shows_the_batch_trade_on_both_sides(
             "free_gb": 4000.0,
         },
     )
-    single = runner.invoke(cli, ["airllm", "plan", "--kind", "llm", "--tokens", "300"])
+    single = runner.invoke(cli, ["lightweight", "plan", "--kind", "llm", "--tokens", "300"])
     batched = runner.invoke(
-        cli, ["airllm", "plan", "--kind", "llm", "--tokens", "300", "--batch", "8"]
+        cli, ["lightweight", "plan", "--kind", "llm", "--tokens", "300", "--batch", "8"]
     )
 
     assert single.exit_code == 0 and batched.exit_code == 0, batched.output

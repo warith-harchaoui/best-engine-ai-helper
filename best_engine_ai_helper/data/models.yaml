@@ -33,7 +33,7 @@
 #                      recommender treats a false here as disqualifying for auto-
 #                      selection. Default (absent) is treated as true.
 #   vllm_id     HuggingFace model ID for vLLM, null if unavailable. The SAME id
-#               the airllm (layer-streaming) backend downloads and splits, so
+#               the lightweight (layer-streaming) backend downloads and splits, so
 #               `hf_id` is accepted as an alias where that reads better.
 #   fetched_at  ISO 8601 date of last external refresh; null = bundled seed
 #
@@ -47,11 +47,11 @@
 #   dtype       Dtype the HF checkpoint is STORED in: bf16 (default), fp16, fp8,
 #               int8. Sets bytes-per-parameter, and so both the shard size and
 #               the per-token disk traffic. Distinct from `quant`, which names a
-#               GGUF quantisation of an Ollama tag -- a file airllm never reads.
+#               GGUF quantisation of an Ollama tag -- a file lightweight never reads.
 #   moe         true for a mixture-of-experts checkpoint. Only effect: without a
 #               declared `layers`, depth is refused rather than guessed.
 #   backends    Which backends this entry is OFFERED to (default: all of them).
-#               `[airllm]` marks a streaming-only candidate: curated for layer
+#               `[lightweight]` marks a streaming-only candidate: curated for layer
 #               streaming, and deliberately kept out of the Ollama/vLLM pools so
 #               a 141 GB checkpoint can never become a last-resort pick on a
 #               machine with 16 GB of RAM.
@@ -336,24 +336,24 @@
   vllm_id: Qwen/Qwen3-72B-Instruct
   fetched_at: null
 
-# --- Streaming-only giants (backends: [airllm]) ---------------------------
+# --- Streaming-only giants (backends: [lightweight]) ---------------------------
 # Models no machine in this package's target range can LOAD, and every one of
 # which it can nonetheless RUN by streaming the layers off disk one at a time
-# (see offload.py and `best-engine-ai-helper airllm`).
+# (see offload.py and `best-engine-ai-helper lightweight`).
 #
 # Three things to know before reaching for one:
 #
 # 1. The cost is time, and the honest unit is seconds per token. Each token
 #    re-reads the whole checkpoint from storage, so a 70B at bf16 on a 4 GB/s
 #    NVMe drive decodes at about 0.024 tok/s -- roughly forty seconds a token.
-#    airllm's 4-bit compression divides that by four. These are batch jobs:
+#    lightweight's 4-bit compression divides that by four. These are batch jobs:
 #    an overnight evaluation, one hard question, a quality reference to compare
 #    a small local model against. Not a chat window.
 # 2. The binding constraint is DISK, not memory. `disk_gb` below is the
 #    download; the split needs about twice that free at once (offload
 #    .disk_required_gb). A 405B model is a 810 GB download before it is
 #    anything else.
-# 3. No structured output. airllm exposes raw `generate`, with none of
+# 3. No structured output. lightweight exposes raw `generate`, with none of
 #    Ollama's JSON-schema enforcement, so `structured_output: false` is a fact
 #    about the backend rather than about the weights. Every schema-driven task
 #    in the suite needs an Ollama model; these answer prose.
@@ -362,7 +362,7 @@
 # resident -- deliberately truthful, so a direct `score.rank()` call reports
 # these as not fitting instead of being surprised by them. The streaming
 # footprint is computed from `layers`, and runs from 4.9 GB (the 70B) to 28 GB
-# (DeepSeek-V3) with airllm's prefetch on. Turning prefetch off roughly halves
+# (DeepSeek-V3) with lightweight's prefetch on. Turning prefetch off roughly halves
 # each figure, at some cost in an already slow decode.
 #
 # Benchmark figures are seed estimates from each model's own release notes and
@@ -377,7 +377,7 @@
   quant: BF16
   disk_gb: 141
   ram_gb: 155
-  backends: [airllm]
+  backends: [lightweight]
   benchmarks:
     general: 86
     vision: null
@@ -397,7 +397,7 @@
   quant: BF16
   disk_gb: 146
   ram_gb: 161
-  backends: [airllm]
+  backends: [lightweight]
   benchmarks:
     general: 86
     vision: 91
@@ -418,7 +418,7 @@
   disk_gb: 282
   ram_gb: 310
   moe: true
-  backends: [airllm]
+  backends: [lightweight]
   benchmarks:
     general: 84
     vision: null
@@ -439,7 +439,7 @@
   disk_gb: 470
   ram_gb: 517
   moe: true
-  backends: [airllm]
+  backends: [lightweight]
   benchmarks:
     general: 90
     vision: null
@@ -460,7 +460,7 @@
   disk_gb: 671
   ram_gb: 738
   moe: true
-  backends: [airllm]
+  backends: [lightweight]
   benchmarks:
     general: 91
     vision: null
@@ -480,7 +480,7 @@
   quant: BF16
   disk_gb: 810
   ram_gb: 891
-  backends: [airllm]
+  backends: [lightweight]
   benchmarks:
     general: 88
     vision: null

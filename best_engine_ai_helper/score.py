@@ -168,9 +168,9 @@ def model_footprint_gb(entry: dict[str, Any], backend: str = "ollama") -> float:
     ----------
     entry : dict[str, Any]
         Catalog entry; uses ``ram_gb`` (Ollama) or ``size_b`` (vLLM).
-    backend : {'ollama', 'vllm', 'airllm'}
+    backend : {'ollama', 'vllm', 'lightweight'}
         Serving backend the footprint is estimated for. Unknown values are
-        treated as ``'ollama'`` (the conservative catalog figure). ``'airllm'``
+        treated as ``'ollama'`` (the conservative catalog figure). ``'lightweight'``
         streams layers off disk and so reports the resident size of ONE shard
         rather than of the model — see :func:`offload.footprint_gb`.
 
@@ -186,10 +186,10 @@ def model_footprint_gb(entry: dict[str, Any], backend: str = "ollama") -> float:
     >>> model_footprint_gb({'id': 'a', 'ram_gb': 9.9, 'size_b': 14}, 'vllm')
     32.2
     >>> # Streaming sizes one shard, not the model: a 70B becomes laptop-sized.
-    >>> model_footprint_gb({'id': 'b', 'size_b': 70, 'layers': 80}, 'airllm')
+    >>> model_footprint_gb({'id': 'b', 'size_b': 70, 'layers': 80}, 'lightweight')
     6.1
     """
-    if backend == "airllm":
+    if backend == "lightweight":
         # Layer streaming breaks the premise every other branch rests on: the
         # model is never resident, one shard is. The arithmetic lives in
         # `offload` with the rest of the streaming reasoning, so there is one
@@ -449,8 +449,8 @@ def estimated_tokens_per_second(
         Memory bandwidth in GB/s from :func:`detect.compute_profile`. When None
         (unknown hardware, e.g. an unrecognised discrete-GPU model) the
         estimate is not computable and None is returned.
-    backend : {'ollama', 'vllm', 'airllm'}
-        Serving backend. ``'airllm'`` switches the whole model: throughput is
+    backend : {'ollama', 'vllm', 'lightweight'}
+        Serving backend. ``'lightweight'`` switches the whole model: throughput is
         bounded by disk read bandwidth rather than memory bandwidth, and
         ``disk_read_gbs`` is the input that matters (see
         :func:`offload.estimated_tokens_per_second`). For the other two it
@@ -468,19 +468,19 @@ def estimated_tokens_per_second(
         strictly better than one that has not. Pass False to see the raw
         bandwidth model, which is what the calibration itself is derived
         against -- leaving it True there would feed the correction back into
-        its own input. Ignored under ``backend='airllm'``: the calibration was
+        its own input. Ignored under ``backend='lightweight'``: the calibration was
         measured against a memory-bound decode and does not describe a
         disk-bound one.
     disk_read_gbs : float or None
         Sequential disk read bandwidth in GB/s, from
-        :func:`detect.disk_profile`. Only read under ``backend='airllm'``;
+        :func:`detect.disk_profile`. Only read under ``backend='lightweight'``;
         None lets that branch look it up from the storage class.
 
     Returns
     -------
     float or None
         Estimated tokens/s, rounded to one decimal, or None when bandwidth or
-        model size is unavailable. Under ``backend='airllm'`` the figure is
+        model size is unavailable. Under ``backend='lightweight'`` the figure is
         rounded to three decimals instead, because the honest answer there is
         usually a fraction of a token per second.
 
@@ -492,10 +492,10 @@ def estimated_tokens_per_second(
     >>> estimated_tokens_per_second(entry, None) is None
     True
     >>> # Same model, streamed off a 4 GB/s drive: a thousand times slower.
-    >>> estimated_tokens_per_second(entry, 400.0, 'airllm', disk_read_gbs=4.0)
+    >>> estimated_tokens_per_second(entry, 400.0, 'lightweight', disk_read_gbs=4.0)
     0.121
     """
-    if backend == "airllm":
+    if backend == "lightweight":
         # A streamed model is bounded by the DISK, not the memory bus: the
         # weights are not resident, so every token re-reads the checkpoint.
         # Handing this branch `bandwidth_gbs` would report a rate three orders
@@ -508,7 +508,7 @@ def estimated_tokens_per_second(
 
             read_gbs = _detect.disk_profile().get("read_gbs")
             osh.debug(
-                f"No disk bandwidth supplied for the airllm estimate of "
+                f"No disk bandwidth supplied for the lightweight estimate of "
                 f"{entry.get('id', '?')}; read {read_gbs} GB/s from the storage class."
             )
         # Deliberately NOT calibrated: `throughput.calibration_factor` is
@@ -770,7 +770,7 @@ def rank(
         throughput annotations unpopulated unless a measurement exists.
     disk_read_gbs : float or None
         Sequential disk read bandwidth from :func:`detect.disk_profile`, used
-        only under ``backend='airllm'``, where throughput is bounded by the
+        only under ``backend='lightweight'``, where throughput is bounded by the
         drive rather than the memory bus.
     min_tps : float or None
         Throughput floor in tokens/s. A candidate **measured** below it on this
@@ -843,7 +843,7 @@ def rank(
         # that streams at 0.03.
         measured = (
             None
-            if backend == "airllm"
+            if backend == "lightweight"
             else _throughput.measured_tps(str(copy.get("id") or ""), trusted_only=True)
         )
         if measured is not None:

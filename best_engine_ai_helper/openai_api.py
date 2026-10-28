@@ -709,7 +709,7 @@ class ChatCompletionRequest(BaseModel):
     tools: list[dict[str, Any]] | None = None
     tool_choice: Any | None = None
     # Not forwarded: every backend here has its own stop handling, and the one
-    # that does not (airllm) would silently ignore it.
+    # that does not (lightweight) would silently ignore it.
     stop: str | list[str] | None = None
 
 

@@ -84,26 +84,32 @@ from .imagine import pick as imagine_pick
 from .imagine import plan as imagine_plan
 from .imagine import rank as imagine_rank
 
-# Layer streaming (airllm): run a model that does NOT fit in memory by reading
-# one layer shard at a time off disk. Exported under `airllm_*` names because
-# that is the word a caller is looking for; the module is `offload` because the
-# idea is bigger than the one package implementing it.
+# Layer streaming, spelled `lightweight` here: run a model that does NOT fit in
+# memory by reading one layer at a time off disk, so what has to be resident is
+# the widest single layer rather than the whole checkpoint. The module is
+# `offload` because the idea is bigger than any one implementation of it, and
+# the runtime is `streaming` because that implementation is now ours.
+#
+# These used to be `airllm_*`, after the dependency that used to provide them.
+# The dependency is gone and the name was never the point -- what a caller is
+# looking for is "run this big model on a small machine". The old spellings
+# stay below as aliases so the rename does not break a working import.
 from .offload import COMFORT_TPS_STREAMING
-from .offload import available as airllm_available
+from .offload import available as lightweight_available
 from .offload import budget_gb as streaming_budget_gb
-from .offload import compare as airllm_compare
-from .offload import decide as airllm_decide
-from .offload import disk_required_gb as airllm_disk_required_gb
-from .offload import estimated_tokens_per_second as airllm_tokens_per_second
-from .offload import footprint_gb as airllm_footprint_gb
-from .offload import generate as airllm_generate
-from .offload import generation_time as airllm_generation_time
-from .offload import load as airllm_load
-from .offload import pick as airllm_pick
-from .offload import plan as airllm_plan
-from .offload import rank as airllm_rank
-from .offload import runtime as airllm_runtime
-from .offload import seconds_per_pass as airllm_seconds_per_pass
+from .offload import compare as lightweight_compare
+from .offload import decide as lightweight_decide
+from .offload import disk_required_gb as lightweight_disk_required_gb
+from .offload import estimated_tokens_per_second as lightweight_tokens_per_second
+from .offload import footprint_gb as lightweight_footprint_gb
+from .offload import generate as lightweight_generate
+from .offload import generation_time as lightweight_generation_time
+from .offload import load as lightweight_load
+from .offload import pick as lightweight_pick
+from .offload import plan as lightweight_plan
+from .offload import rank as lightweight_rank
+from .offload import runtime as lightweight_runtime
+from .offload import seconds_per_pass as lightweight_seconds_per_pass
 
 # Export the engine-recommendation function under a distinct name so it does
 # not shadow the ``recommend`` submodule on attribute access.
@@ -135,6 +141,24 @@ from .usages import (
     usage_brief,
 )
 
+# The previous spelling of the layer-streaming surface, kept working. An alias
+# costs one line; a rename that breaks somebody's script costs them an
+# afternoon, and the feature did not change -- only what it is called.
+airllm_available = lightweight_available
+airllm_compare = lightweight_compare
+airllm_decide = lightweight_decide
+airllm_disk_required_gb = lightweight_disk_required_gb
+airllm_footprint_gb = lightweight_footprint_gb
+airllm_generate = lightweight_generate
+airllm_generation_time = lightweight_generation_time
+airllm_load = lightweight_load
+airllm_pick = lightweight_pick
+airllm_plan = lightweight_plan
+airllm_rank = lightweight_rank
+airllm_runtime = lightweight_runtime
+airllm_seconds_per_pass = lightweight_seconds_per_pass
+airllm_tokens_per_second = lightweight_tokens_per_second
+
 __all__ = [
     "platform_name",
     "chip_vendor",
@@ -155,21 +179,21 @@ __all__ = [
     "estimated_tokens_per_second",
     "model_footprint_gb",
     "MAX_HEADROOM",
-    # layer streaming (airllm)
-    "airllm_available",
-    "airllm_runtime",
-    "airllm_decide",
-    "airllm_footprint_gb",
-    "airllm_tokens_per_second",
-    "airllm_seconds_per_pass",
-    "airllm_generation_time",
-    "airllm_compare",
-    "airllm_disk_required_gb",
-    "airllm_plan",
-    "airllm_rank",
-    "airllm_pick",
-    "airllm_load",
-    "airllm_generate",
+    # layer streaming (lightweight)
+    "lightweight_available",
+    "lightweight_runtime",
+    "lightweight_decide",
+    "lightweight_footprint_gb",
+    "lightweight_tokens_per_second",
+    "lightweight_seconds_per_pass",
+    "lightweight_generation_time",
+    "lightweight_compare",
+    "lightweight_disk_required_gb",
+    "lightweight_plan",
+    "lightweight_rank",
+    "lightweight_pick",
+    "lightweight_load",
+    "lightweight_generate",
     "streaming_budget_gb",
     "COMFORT_TPS_STREAMING",
     # text-to-image

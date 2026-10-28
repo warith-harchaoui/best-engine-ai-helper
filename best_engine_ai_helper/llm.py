@@ -25,7 +25,7 @@ gemini
 langchain
     Thin wrapper over ``ChatOllama`` or ``ChatOpenAI`` from LangChain.
     Only useful if you need LangChain retrievers or agent abstractions.
-airllm
+lightweight
     Layer streaming, for a model too large to fit in memory: no server at all,
     the model runs **in this process** and reads one layer shard at a time off
     disk (see :mod:`best_engine_ai_helper.offload`). Text only, no JSON schema,
@@ -588,7 +588,7 @@ def _chat_airllm(
     """
     Generate with a layer-streamed model, in this process.
 
-    The odd transport out: there is no server and no socket. airllm is a
+    The odd transport out: there is no server and no socket. lightweight is a
     library, so this runs the model inside the caller's interpreter, reading one
     layer shard at a time off disk (see
     :mod:`best_engine_ai_helper.offload`). Expect seconds per token.
@@ -599,13 +599,13 @@ def _chat_airllm(
         User prompt.
     system : str or None
         Prepended to the prompt as a plain preamble. There is no chat template
-        here: airllm hands back a bare causal LM, so a role-structured message
+        here: lightweight hands back a bare causal LM, so a role-structured message
         list has nowhere to go.
     images : list[bytes] or None
         Not supported. Raises rather than silently answering a vision question
         from the text alone — the failure mode that would be hardest to notice.
     json_schema : dict or None
-        Not supported, for the same reason: airllm exposes raw generation with
+        Not supported, for the same reason: lightweight exposes raw generation with
         no equivalent of Ollama's grammar-constrained ``format``, so a schema
         here could only be a suggestion the caller would read as a guarantee.
     model : str
@@ -613,16 +613,16 @@ def _chat_airllm(
     temperature : float
         Accepted for signature compatibility and ignored: the adapter uses the
         runtime's own greedy default, the only setting whose behaviour is the
-        same across every model family airllm supports.
+        same across every model family lightweight supports.
     max_new_tokens : int
         Token budget for one call. Small on purpose — every token is seconds.
     compression : {'4bit', '8bit', None}
-        airllm's block-wise weight compression.
+        lightweight's block-wise weight compression.
 
     Returns
     -------
     tuple[str, dict]
-        The generated text and a usage dict. Token counts are None: airllm
+        The generated text and a usage dict. Token counts are None: lightweight
         reports none, and a character estimate dressed as a count would be
         worse than an honest absence.
 
@@ -631,20 +631,20 @@ def _chat_airllm(
     NotImplementedError
         For images or a JSON schema.
     ImportError
-        When the airllm runtime cannot be imported (it is a core dependency,
+        When the lightweight runtime cannot be imported (it is a core dependency,
         so that means an incomplete install).
     """
     from . import offload as _offload
 
     if images:
         raise NotImplementedError(
-            "The layer-streaming backend has no vision path: airllm returns a bare "
+            "The layer-streaming backend has no vision path: lightweight returns a bare "
             "causal language model, without the image processor a VLM prompt needs. "
             "Send images to an Ollama VLM instead."
         )
     if json_schema:
         raise NotImplementedError(
-            "The layer-streaming backend cannot honour a JSON schema: airllm exposes "
+            "The layer-streaming backend cannot honour a JSON schema: lightweight exposes "
             "raw generation, with no equivalent of Ollama's grammar-constrained "
             "`format`. Route schema-driven calls to an Ollama model -- an engine "
             "descriptor whose streamed section says `structured_output: false` is "
@@ -1293,7 +1293,7 @@ def _dispatch(
             base_url=base_url,
             api_key=api_key,
         )
-    if transport == "airllm":
+    if transport == "lightweight":
         # No base_url and no api_key: this one runs in-process. Passing them
         # would imply a server that does not exist.
         return _chat_airllm(
@@ -1315,7 +1315,7 @@ def _dispatch(
         )
     raise ValueError(
         f"Unknown backend: {transport!r}. "
-        "Valid values: 'ollama', 'openai', 'anthropic', 'gemini', 'langchain', 'airllm'."
+        "Valid values: 'ollama', 'openai', 'anthropic', 'gemini', 'langchain', 'lightweight'."
     )
 
 

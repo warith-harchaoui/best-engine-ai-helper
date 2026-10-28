@@ -4,6 +4,67 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **Layer streaming is this package's own now, and `airllm` is gone.** The
+  feature is spelled **`lightweight`** everywhere a human meets it — the CLI
+  group (`best-engine-ai-helper lightweight status|plan|prepare|compare`), the
+  brief key (`lightweight: true|false|auto`), `BEST_ENGINE_LIGHTWEIGHT`, the
+  backend name and the descriptor section. The runtime lives in
+  `best_engine_ai_helper.streaming`.
+
+  Three measured reasons for writing it rather than importing it:
+
+  1. **It did not work on Apple Silicon at all.** airllm's
+     `AutoModel.from_pretrained` dispatches on architecture everywhere except
+     macOS, where it hard-returns a hand-written Llama transformer in MLX
+     whose projections are all `bias=False`. Qwen carries attention biases;
+     Llama 3.2 ties its embeddings so there is no `lm_head` tensor; older
+     exports persist `rotary_emb.inv_freq`. Three different crashes, on the
+     platform this suite is developed on — and `offload.generate()` never got
+     that far anyway, raising `AttributeError: 'AirLLMLlamaMlx' object has no
+     attribute 'device'` at the first call on every Mac. 551 tests and 92 %
+     coverage never touched it, because the branch did not exist to cover.
+  2. **It wrote a second copy of every checkpoint to disk** as per-layer
+     shards before running, so streaming a 70B needed ~294 GB free rather
+     than ~140. That, not memory, is what made nearly every row of the plan
+     read `runs: NO` on a normal laptop. `disk_required_gb` now reports the
+     checkpoint and nothing else, and `peak_gb == steady_gb`.
+  3. It pulled MLX and bitsandbytes with it. Both leave with it.
+
+  What replaces it: build the model on the `meta` device, hang a forward
+  pre-hook on each decoder layer that materialises its weights from the
+  checkpoint's own memory-mapped safetensors, and a post-hook that frees
+  exactly those again. **transformers owns the forward pass**, so the
+  architecture is whatever transformers knows — Qwen, Gemma and GPT-NeoX work
+  with no per-family code. Apple Silicon is torch on Metal (MPS). The decoder
+  stack is found by shape (the `ModuleList` whose length matches the config)
+  rather than by a table of module paths that has to be kept current.
+
+  Verified against an ordinary load, token for token, on Llama, Qwen2.5 and
+  GPT-NeoX. That comparison is the test, because all four bugs found while
+  writing this produced fluent, confident, wrong text and never an exception:
+  a rotary table left on the CPU while the rest ran on the accelerator; a
+  `generation_config.json` that `from_config` never reads (Qwen ships
+  `repetition_penalty: 1.1`, which applies to greedy decoding); a post-hook
+  that evicted computed buffers along with loaded ones; and an output head
+  whose checkpoint name had changed (`embed_out` → `lm_head`), silently
+  skipped, leaving every hidden state bit-identical and only the final
+  projection garbage. The last one is why any non-streamed weight still on
+  `meta` after loading is now a hard error naming itself, after one
+  unambiguous shape-based recovery attempt.
+
+  Known limits, stated rather than discovered: the checkpoint must publish
+  safetensors (a pickled `pytorch_model.bin` is refused, because reading one
+  layer out of a pickle means reading all of it per layer), and a sparse
+  mixture-of-experts layer is materialised whole.
+
+  **Compatibility.** The `airllm_*` exports still work as aliases of the
+  `lightweight_*` ones, and both `[airllm]` and `[lightweight]` resolve as
+  empty extras. `compression`, `layer_shards_saving_path` and
+  `delete_original` are accepted and ignored — they described a pre-split that
+  no longer exists.
+
 ### Added
 
 - **An OpenAI-compatible surface: from the outside, this package is an OpenAI

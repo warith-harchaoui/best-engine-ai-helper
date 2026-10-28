@@ -175,13 +175,13 @@ def test_the_airllm_endpoint_answers_the_status_and_plan_questions_at_once(
 ) -> None:
     """One call, because a capability without candidates is not actionable.
 
-    This is the read-only half of the `airllm` command group, so the GUI (and
+    This is the read-only half of the `lightweight` command group, so the GUI (and
     any other consumer) never has to shell out to learn whether this machine
     can stream a model it cannot load.
     """
     from best_engine_ai_helper import offload
 
-    res = client.get("/api/airllm")
+    res = client.get("/api/lightweight")
     assert res.status_code == 200
     data = res.json()
     assert set(data) == {
@@ -217,7 +217,7 @@ def test_the_airllm_endpoint_answers_the_status_and_plan_questions_at_once(
         "best_engine_ai_helper.detect.measure_disk_read_gbs",
         lambda **_: called.append(True) or 2.0,
     )
-    assert client.get("/api/airllm").status_code == 200
+    assert client.get("/api/lightweight").status_code == 200
     assert called == []
-    assert client.get("/api/airllm?measure=true").status_code == 200
+    assert client.get("/api/lightweight?measure=true").status_code == 200
     assert called == [True]

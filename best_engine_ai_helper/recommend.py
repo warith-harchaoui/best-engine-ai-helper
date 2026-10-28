@@ -201,7 +201,7 @@ def _candidate_row(
 
     ``ram_gb``, ``fits`` and ``est_tokens_per_s`` are computed for ``backend``:
     an Ollama pick sizes against the Q4 ``ram_gb``, a vLLM pick against the
-    heavier FP16 footprint, and an airllm pick against ONE layer shard with a
+    heavier FP16 footprint, and an lightweight pick against ONE layer shard with a
     disk-bound rate (see :func:`score.model_footprint_gb`).
     """
     from .score import _benchmark_score, model_footprint_gb  # local: internal
@@ -319,15 +319,15 @@ def recommend(
     min_tps : float
         Comfort throughput floor; a fitting model below it is only picked when no
         comfortable one exists (and the choice is warned about).
-    backend : {'ollama', 'vllm', 'airllm'}
+    backend : {'ollama', 'vllm', 'lightweight'}
         Serving backend, so memory fit and throughput reflect what actually
         loads. Threaded to :func:`score.rank` and :func:`_candidate_row`.
-        ``'airllm'`` ranks layer-streaming candidates: ``ram_gb`` becomes one
+        ``'lightweight'`` ranks layer-streaming candidates: ``ram_gb`` becomes one
         resident shard and the rate becomes disk-bound, which is why ``disk``
         matters there and nowhere else.
     disk : dict or None
         Storage profile from :func:`detect.disk_profile`. Read only under
-        ``backend='airllm'``, where it bounds throughput; also echoed into the
+        ``backend='lightweight'``, where it bounds throughput; also echoed into the
         report so a streaming recommendation states the drive it assumed.
     require_structured : bool
         Whether the job needs schema-constrained output. True (the default)
@@ -364,8 +364,8 @@ def recommend(
     bandwidth = compute.get("bandwidth_gbs")
     # Only the streaming backend reads this, and only it should: a disk figure
     # has no bearing on a model that sits in memory.
-    disk_read_gbs = (disk or {}).get("read_gbs") if backend == "airllm" else None
-    if backend == "airllm":
+    disk_read_gbs = (disk or {}).get("read_gbs") if backend == "lightweight" else None
+    if backend == "lightweight":
         # Streaming sizes against the whole usable pool, not the
         # headroom-reduced budget: what the headroom reserves is already
         # counted inside the streaming footprint. See offload.budget_gb for the
@@ -494,13 +494,13 @@ def recommend(
         # not say so invites its `ram_gb` column to be read as Ollama's, which
         # is wrong by 3x under vLLM and by 30x under streaming.
         "backend": backend,
-        **({"disk": disk} if disk and backend == "airllm" else {}),
+        **({"disk": disk} if disk and backend == "lightweight" else {}),
         "memory_budget_gb": budget,
         "headroom": headroom,
         "comfort_tps": min_tps,
         "recommendations": picks,
-        "method": _STREAMING_METHOD_NOTE if backend == "airllm" else _METHOD_NOTE,
-        "sources": _SOURCES + (_STREAMING_SOURCES if backend == "airllm" else []),
+        "method": _STREAMING_METHOD_NOTE if backend == "lightweight" else _METHOD_NOTE,
+        "sources": _SOURCES + (_STREAMING_SOURCES if backend == "lightweight" else []),
     }
 
 
@@ -521,7 +521,7 @@ _METHOD_NOTE = (
 )
 
 _STREAMING_METHOD_NOTE = (
-    "Layer streaming (airllm) changes which resource binds, so it is judged on "
+    "Layer streaming (lightweight) changes which resource binds, so it is judged on "
     "different factors from the other backends. Memory fit is computed against ONE "
     "resident layer shard rather than the whole model -- the checkpoint divided by "
     "its decoder depth, times a margin for the larger embedding shard, times the two "
@@ -533,12 +533,12 @@ _STREAMING_METHOD_NOTE = (
     "interactive floor -- judging a streamed model by the interactive floor would "
     "reject every candidate and hide the capability. Disk SPACE is the constraint "
     "that bites first: the layer split needs about twice the checkpoint free at once. "
-    "And no streamed model honours a JSON schema: airllm exposes raw generation, so "
+    "And no streamed model honours a JSON schema: lightweight exposes raw generation, so "
     "schema-driven tasks still need an Ollama model."
 )
 
 _STREAMING_SOURCES = [
-    "Layer-by-layer streaming inference: airllm (github.com/lyogavin/airllm, "
+    "Layer-by-layer streaming inference: lightweight (github.com/lyogavin/lightweight, "
     "Apache-2.0) -- resident memory tracks the widest layer, not the model.",
     "Streaming decode is disk-bandwidth bound: each token re-reads the whole "
     "checkpoint, so tokens/s ~= disk read GB/s / checkpoint GB.",

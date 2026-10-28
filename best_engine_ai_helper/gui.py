@@ -300,7 +300,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
       <div class="mx-auto max-w-4xl px-5 py-10">
         <h2 class="text-2xl font-bold tracking-tight">{{_("Too large to load, still runnable")}}</h2>
         <p class="mt-2 max-w-3xl text-neutral-600 dark:text-neutral-300">{{_("A transformer never needs all of its layers in memory at once. Keeping one layer shard resident and streaming the rest off the disk, this machine can run models far beyond its memory — at seconds per token rather than tokens per second. Batch work only: one hard question, an overnight evaluation, a quality reference for the smaller model you run every day.")}}</p>
-        <div id="airllm-panel"
+        <div id="lightweight-panel"
              class="mt-4 grid gap-2 rounded-xl border border-neutral-200 bg-white p-5 text-sm shadow-sm
                     dark:border-neutral-800 dark:bg-neutral-950">
           <p class="text-neutral-500 dark:text-neutral-400">{{_("Detecting…")}}</p>
@@ -519,7 +519,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
     }
 
     // --- 1ter) Layer streaming ---------------------------------------------
-    // Rendered from /api/airllm, which answers the capability question and the
+    // Rendered from /api/lightweight, which answers the capability question and the
     // "what would it run" question in one call, so the page never has to
     // decide either for itself.
     function renderStreaming(data) {
@@ -563,16 +563,16 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
         ? ""
         : `<p class="text-xs"><code class="font-mono text-neutral-600 dark:text-neutral-400">${esc(data.install)}</code></p>`;
 
-      $("airllm-panel").innerHTML = facts + pick + runs + why + install;
+      $("lightweight-panel").innerHTML = facts + pick + runs + why + install;
     }
 
     async function loadStreaming() {
       try {
-        const res = await fetch("/api/airllm");
+        const res = await fetch("/api/lightweight");
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         renderStreaming(await res.json());
       } catch (err) {
-        $("airllm-panel").innerHTML =
+        $("lightweight-panel").innerHTML =
           `<p class="text-red-600 dark:text-red-400">${T.detectFail}${err}</p>`;
       }
     }

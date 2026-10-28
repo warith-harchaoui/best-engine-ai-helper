@@ -6,12 +6,12 @@ description: >-
   NVIDIA VRAM, or RAM), ranks a bundled catalogue inside a safety headroom,
   pulls the winner through Ollama, gates it on quality, and writes the
   environment file downstream projects read. Also sizes models that do NOT
-  fit (layer streaming, airllm) and serves an OpenAI-compatible /v1 endpoint
+  fit (lightweight streaming) and serves an OpenAI-compatible /v1 endpoint
   where model="best" resolves per request. Use when the user asks "which model
   should I run on this machine", "what LLM fits in my RAM / VRAM", "can I run a
   70B on 8 GB", "pull a local model", "which vision model", "generate an image
   locally", "OpenAI-compatible local server", "how many tokens per second", or
-  names `best-engine-ai-helper`, `model_for`, `airllm`, `recommend_engines`.
+  names `best-engine-ai-helper`, `model_for`, `lightweight`, `recommend_engines`.
   **Any suite package that needs an LLM or VLM must route through this one
   rather than hardcode a model name.** Do NOT use to fine-tune or quantise
   weights, or to pick a vector index (ann-router).
@@ -85,10 +85,10 @@ for `detect`, `recommend` or `report`.
 | What is running right now | `activity` | — |
 | Task families and usages | `usages` | `list_usages`, `resolve_usage` |
 | Browser version of the read-only half | `gui` | — |
-| Could this machine stream a too-large model | `airllm status` | `airllm_decide`, `disk_profile` |
-| What it could stream, and at what price | `airllm plan` | `airllm_rank`, `airllm_pick` |
-| Native model or streamed model | `airllm compare` | `airllm_compare`, `airllm_generation_time` |
-| Split a checkpoint before the first call | `airllm prepare` | `airllm_load` |
+| Could this machine stream a too-large model | `lightweight status` | `lightweight_decide`, `disk_profile` |
+| What it could stream, and at what price | `lightweight plan` | `lightweight_rank`, `lightweight_pick` |
+| Native model or streamed model | `lightweight compare` | `lightweight_compare`, `lightweight_generation_time` |
+| Split a checkpoint before the first call | `lightweight prepare` | `lightweight_load` |
 | Which image model runs here, how fast | `imagine plan` | `imagine_rank`, `imagine_pick` |
 | Generate an image locally | `imagine generate` | `imagine_generate` |
 | Serve an OpenAI-compatible endpoint | `serve` | — |
@@ -100,7 +100,7 @@ best-engine-ai-helper detect
 best-engine-ai-helper recommend "summarise long French meeting transcripts"
 best-engine-ai-helper pull && best-engine-ai-helper validate
 best-engine-ai-helper env                 # writes the file downstream reads
-best-engine-ai-helper airllm compare --tokens 300   # when nothing good fits
+best-engine-ai-helper lightweight compare --tokens 300   # when nothing good fits
 ```
 
 For the full command and flag matrix, the catalogue schema and the headroom
@@ -126,12 +126,12 @@ read `references/triggers.md`.
 - **Offline after the download.** `pull` and `catalog update` are the only
   online operations, and the bundled catalogue is enough for everyday use.
 - **"Nothing fits" has two answers, and the second one is slow.** A model too
-  large to load can still be run by streaming its layers off disk — the airllm
+  large to load can still be run by streaming its layers off disk — the lightweight
   runtime ships with the package, so there is nothing to install first.
   Resident memory becomes one layer shard — a 70B in about 4 GB instead of 141
   — and the price is **seconds per token**, because every
   token re-reads the whole checkpoint. Reach for it when the user needs a
-  better model than fits, never when they need a quick answer. `airllm
+  better model than fits, never when they need a quick answer. `lightweight
   compare` prices both sides for the same answer length and usually says "stay
   native"; quote its verdict rather than guessing.
 - **Under streaming, the prompt is nearly free and batching is the big
@@ -140,9 +140,9 @@ read `references/triggers.md`.
   backend), and eight prompts answered together arrive in the time of one.
   4-bit compression is worth ~3x; a batch of 8 is worth 8x.
 - **Disk, not memory, is what refuses a streamed model.** The layer split needs
-  roughly twice the checkpoint free at once. Check `airllm status` for free
+  roughly twice the checkpoint free at once. Check `lightweight status` for free
   space before promising anything.
-- **No streamed model honours a JSON schema.** airllm exposes raw generation,
+- **No streamed model honours a JSON schema.** lightweight exposes raw generation,
   so schema-driven tasks stay on an Ollama model. The engine file says
   `structured_output: false` and `llm.chat` raises rather than pretending.
 - **If the user already has OpenAI client code, point it here rather than

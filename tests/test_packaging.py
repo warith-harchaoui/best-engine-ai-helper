@@ -107,30 +107,41 @@ def test_the_catalogue_is_not_empty_from_its_bundled_seed_alone() -> None:
 
 
 def test_the_streaming_runtime_is_a_core_dependency_not_an_extra() -> None:
-    """airllm installs with the package, so streaming works on every install.
+    """Layer streaming installs with the package, on every install.
 
-    Pinned because the opposite is the tempting refactor: airllm pulls torch,
-    transformers and accelerate, so someone reading the install size will reach
-    for an extra. The decision is that "which model can this machine run" and
-    "which model can this machine run if it streams the layers" are the same
-    question, and a capability behind an extra is one most callers never
-    discover. If that is ever revisited it should be revisited on purpose, with
-    this test as the place the reasoning is written down.
+    The runtime is no longer a third-party package: it is
+    ``best_engine_ai_helper.streaming``, over torch, transformers, accelerate
+    and safetensors. What has to stay true is the *decision* this test was
+    written to pin -- that "which model can this machine run" and "which model
+    can this machine run if it streams the layers" are the same question, so a
+    capability behind an extra is one most callers never discover.
+
+    The tempting refactor is still the same one (these libraries are large, and
+    someone reading the install size will reach for an extra). If that is ever
+    revisited it should be revisited on purpose, with this test as the place
+    the reasoning is written down.
     """
     manifest = (_REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     config = tomllib.loads(manifest)
     core = config["project"]["dependencies"]
     extras = config["project"]["optional-dependencies"]
 
-    assert any(dep.startswith("airllm") for dep in core), core
-    # The extra name survives as an empty alias: it is published in release
-    # notes and sits in lockfiles, and an unknown extra is a hard resolution
+    for required in ("torch", "transformers", "accelerate", "safetensors"):
+        assert any(dep.startswith(required) for dep in core), (required, core)
+    # And the dependency that used to provide this is gone, not merely unused:
+    # it did not work on Apple Silicon and it wrote a second copy of every
+    # checkpoint to disk before running.
+    assert not any(dep.startswith(("airllm", "mlx", "bitsandbytes")) for dep in core), core
+    # Both extra names survive as empty aliases: they are published in release
+    # notes and sit in lockfiles, and an unknown extra is a hard resolution
     # error rather than a warning.
     assert extras["airllm"] == []
+    assert extras["lightweight"] == []
     # requirements.txt is the runtime mirror of the core list, so it has to
     # agree or a pip-based install diverges from a pyproject-based one.
     runtime = (_REPO_ROOT / "requirements.txt").read_text(encoding="utf-8")
-    assert "airllm" in runtime
+    assert "transformers" in runtime
+    assert "airllm" not in runtime
 
 
 def test_importing_the_package_does_not_import_torch() -> None:

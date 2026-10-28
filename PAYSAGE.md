@@ -159,14 +159,14 @@ Autant le dire clairement, rien de tout cela n'a été inventé ici.
   situent les économies de routage entre 60 % puis 85 % sur des charges mixtes. C'est la
   raison pour laquelle `pricing.yaml` porte des tarifs publics et que le sélecteur expose
   un poids qualité-contre-coût plutôt que de classer sur la seule qualité.
-- **airllm : « est-ce que ça tient ? » est la mauvaise question pour un transformeur
+- **lightweight : « est-ce que ça tient ? » est la mauvaise question pour un transformeur
   séquentiel.** Tous les outils de cette carte, celui-ci compris, répondaient à *quel
-  modèle tient dans la mémoire que j'ai*. airllm fait remarquer qu'un décodeur lit ses
+  modèle tient dans la mémoire que j'ai*. lightweight fait remarquer qu'un décodeur lit ses
   couches dans l'ordre, donc que seule la couche en cours de calcul doit être résidente
   — puis la mémoire qu'exige un modèle s'effondre de son nombre de paramètres à sa plus
   large couche. C'est une idée réellement différente plutôt qu'une meilleure estimation,
-  puis c'est désormais le moteur `airllm` ici (voir LISEZMOI). Ce que ce projet ajoute
-  par-dessus est la part qu'airllm n'a aucune raison de posséder : si *cette* machine
+  puis c'est désormais le moteur `lightweight` ici (voir LISEZMOI). Ce que ce projet ajoute
+  par-dessus est la part qu'lightweight n'a aucune raison de posséder : si *cette* machine
   devrait prendre le marché, quel modèle diffuser, puis ce que le meilleur modèle coûtera
   en secondes par jeton face à celui qui tient déjà. Le moteur est importé, pas recopié —
   l'arithmétique puis la décision sont natives.
@@ -209,7 +209,7 @@ projet par l'intention, l'opposé par la posture : la décision se prend sur les
 quelqu'un d'autre, contre un catalogue qu'on ne peut pas lire et les modèles locaux n'y
 sont pas.
 
-### airllm
+### lightweight
 
 Pas un sélecteur du tout, puis sans chercher à l'être : un *moteur* de lecture des couches
 en flux. Il découpe un checkpoint en tranches par couche puis les relit une à une, donc un
@@ -220,7 +220,7 @@ des jetons par seconde.
 
 L'entrée la plus intéressante de cette carte, parce qu'elle ne concurrence rien d'autre
 dessus : elle change le sens du mot « tient ». Là où elle s'arrête est exactement là où ce
-projet commence — airllm diffusera volontiers un modèle de 671 milliards de paramètres
+projet commence — lightweight diffusera volontiers un modèle de 671 milliards de paramètres
 vers un disque qui n'a pas la place pour la découpe, à deux minutes par jeton, puis il n'a
 aucun avis sur l'opportunité de le faire. Ces jugements (empreinte résidente, disque exigé
 par la découpe, secondes par jeton, puis natif contre flux tarifés dans la même unité)
@@ -274,7 +274,7 @@ versions là où un classifieur est un modèle.
 que vous voulez simplement le servir. C'est le cas la plupart du temps, puis c'est la
 raison pour laquelle ce projet résout *vers* Ollama au lieu de le remplacer.
 
-**Choisissez airllm directement** quand vous savez déjà que vous voulez la lecture des
+**Choisissez lightweight directement** quand vous savez déjà que vous voulez la lecture des
 couches en flux puis que vous n'avez besoin de rien pour la dimensionner, la refuser ou la
 tarifer face au modèle qui tient.
 
@@ -302,9 +302,14 @@ de chaque projet, pas une page datée : aucun numéro de version n'est cité dan
 cette page, délibérément, parce que la version est la part d'une affirmation qui
 se périme le plus vite puis qu'aucune lecture faite ici n'en dépendait.
 
-- **airllm** — [github.com/lyogavin/airllm](https://github.com/lyogavin/airllm),
-  Apache-2.0. Le chiffre « 70 milliards de paramètres dans environ 4 Go résidents » est
-  l'annonce du projet lui-même, pas une mesure indépendante.
+- **streaming de couches** — implémenté dans ce paquet (`streaming.py`) sur
+  torch, transformers, accelerate puis safetensors. C'était `airllm` ; cette
+  dépendance est partie parce qu'elle ne savait pas faire tourner une
+  architecture autre que Llama sur Apple Silicon puis écrivait une seconde
+  copie de chaque checkpoint sur le disque avant de rien lancer. Le chiffre
+  « 70 milliards de paramètres dans environ 4 Go résidents » venait de
+  l'annonce de ce projet-là ; ici il est calculé par `lightweight plan`, qui
+  dit aussi ce que ça coûte en secondes par jeton.
 - **LiteLLM** — [github.com/BerriAI/litellm](https://github.com/BerriAI/litellm).
 - **RouteLLM** — [github.com/lm-sys/RouteLLM](https://github.com/lm-sys/RouteLLM), LMSYS
   puis UC Berkeley. Le chiffre « jusqu'à 85 % d'économies à environ 95 % de la qualité de

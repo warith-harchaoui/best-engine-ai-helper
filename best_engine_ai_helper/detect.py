@@ -474,7 +474,7 @@ def server_load() -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Storage bandwidth — the ceiling on layer-streaming (airllm) decode
+# Storage bandwidth — the ceiling on layer-streaming (lightweight) decode
 # ---------------------------------------------------------------------------
 
 #: Sequential-read bandwidth (GB/s) assumed per storage class, used when no
@@ -746,7 +746,7 @@ def disk_profile(measure: bool = False, directory: str | None = None) -> dict[st
 
     The counterpart of :func:`compute_profile` for a disk-bound backend. Where
     memory bandwidth bounds an in-memory decode, *disk* bandwidth bounds a
-    layer-streaming one (``offload``/airllm), which reads every layer back per
+    layer-streaming one (``offload``/lightweight), which reads every layer back per
     token.
 
     Parameters
@@ -774,7 +774,7 @@ def disk_profile(measure: bool = False, directory: str | None = None) -> dict[st
             lookup, nor the reverse.
         ``free_gb`` : float or None
             Free space on the volume holding the home directory, where both the
-            HuggingFace cache and airllm's layer shards land.
+            HuggingFace cache and lightweight's layer shards land.
 
     Examples
     --------

@@ -176,8 +176,8 @@ def test_servable_only_filters_in_order() -> None:
 def test_a_slug_only_catalog_warns_rather_than_raises() -> None:
     """Unresolved is a warning here, by the same rule as an empty catalog.
 
-    ``airllm: never`` because the subject is the conventional path. Leaving it
-    out made the outcome depend on whether airllm happened to import on the
+    ``lightweight: never`` because the subject is the conventional path. Leaving it
+    out made the outcome depend on whether lightweight happened to import on the
     host: it does not on a Mac without mlx, so this passed locally, and it does
     on a Linux runner, where the streaming rescue fired and handed back a model
     rather than the None this asserts. The rescue has its own tests.
@@ -185,7 +185,7 @@ def test_a_slug_only_catalog_warns_rather_than_raises() -> None:
     from best_engine_ai_helper import engine
 
     resolved = engine.resolve(
-        {"kind": "llm", "task": "write copy", "airllm": "never"},
+        {"kind": "llm", "task": "write copy", "lightweight": "never"},
         backend="ollama",
         catalog=[{"id": "llama-3-70b", "kind": "llm", "ram_gb": 36.7, "source": "apxml"}],
         hw={"unified_gb": 64.0, "vram_gb": None, "ram_gb": 64.0},
@@ -278,13 +278,13 @@ def test_apxml_entries_declare_their_backends_explicitly() -> None:
 
     Both Hub-loading backends, not just vLLM: this directory catalogues the
     200B-and-up open-weight models that only layer streaming can run here, so
-    leaving `airllm` out hid the entries that backend exists for.
+    leaving `lightweight` out hid the entries that backend exists for.
     """
     entry = catalog.normalize_apxml_spec({"slug": "qwen36-35b-a3b", "ram_gb": 20.0}, "2026-10-19")
 
     assert entry is not None
-    assert entry["backends"] == ["vllm", "airllm"]
-    assert catalog.servable(entry, "airllm") is True
+    assert entry["backends"] == ["vllm", "lightweight"]
+    assert catalog.servable(entry, "lightweight") is True
     assert catalog.servable(entry, "ollama") is False
 
 

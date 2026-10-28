@@ -4,7 +4,7 @@ api — FastAPI HTTP surface for best-engine-ai-helper.
 Exposes the two calls the GUI needs:
 
 - ``GET /api/system``    — detected hardware + compute profile + memory budget.
-- ``GET /api/airllm``    — whether layer streaming is available/warranted here,
+- ``GET /api/lightweight``    — whether layer streaming is available/warranted here,
   and which too-large models it would unlock (see
   :mod:`best_engine_ai_helper.offload`).
 
@@ -213,8 +213,8 @@ def recommend(body: RecommendRequest) -> dict[str, Any]:
     return rep
 
 
-@app.get("/api/airllm")
-def airllm(
+@app.get("/api/lightweight")
+def lightweight(
     measure: bool = False,
     kind: str = "llm",
     compression: str | None = None,
@@ -224,7 +224,7 @@ def airllm(
     """
     Layer streaming: can this machine do it, should it, and what would it run?
 
-    The read-only half of the ``airllm`` command group (``status`` plus
+    The read-only half of the ``lightweight`` command group (``status`` plus
     ``plan``) in one call, so the GUI and any other consumer can show the
     capability without shelling out.
 
@@ -237,7 +237,7 @@ def airllm(
     kind : str
         ``llm`` or ``vlm``.
     compression : str or None
-        ``4bit`` / ``8bit``, airllm's block-wise weight compression.
+        ``4bit`` / ``8bit``, lightweight's block-wise weight compression.
     answer_tokens : int
         Answer length every timing is computed for. The per-token rate alone
         does not tell a caller whether a job finishes before lunch.
@@ -260,7 +260,7 @@ def airllm(
     compute = _detect.compute_profile()
     disk = _detect.disk_profile(measure=measure)
     budget = _offload.budget_gb(hw)
-    entries = _catalog.servable_only(_catalog.load_catalog(), "airllm")
+    entries = _catalog.servable_only(_catalog.load_catalog(), "lightweight")
     plans = _offload.rank(
         entries,
         budget_gb=budget,

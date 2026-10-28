@@ -55,7 +55,7 @@ from best_engine_ai_helper import llm  # le seul appel qui exécute un modèle
 [section 10](#10-lappeler-depuis-votre-propre-paquet). Tout ce qui se contente
 de *décider* (`detect`, `recommend`, `report`, `resolve`, `usages`, `storage`,
 `providers`, `catalog show`, `hardware show`, toutes les sous-commandes de
-dimensionnement d'`airllm`, la GUI, l'API HTTP) fonctionne sans démon ni réseau.
+dimensionnement d'`lightweight`, la GUI, l'API HTTP) fonctionne sans démon ni réseau.
 
 **D'où viennent les sorties.** Chaque tableau puis chaque panneau ci-dessous a
 été produit sur un Apple M2 Max de 96 Go de mémoire unifiée, sous macOS, avec un
@@ -74,7 +74,7 @@ se remplissait entre-temps : c'est un relevé en direct, pas une incohérence.
 Cinq commandes ne sont **pas** exécutées ici, leur effet est décrit plutôt que
 collé : `pull` puis `validate` (elles téléchargent des poids puis font tourner
 deux gardes de génération), `catalog update` puis `hardware update` (la première
-atteint le réseau), `airllm prepare` (elle télécharge un checkpoint puis le
+atteint le réseau), `lightweight prepare` (elle télécharge un checkpoint puis le
 découpe) puis `imagine generate` (elle télécharge un pipeline diffusers). Rien
 dans ce fichier n'est une sortie inventée.
 
@@ -711,7 +711,7 @@ au lieu de 140. La facture arrive en temps : chaque jeton relit tout le
 checkpoint, ce qui place l'affaire à des **secondes par jeton** plutôt qu'à des
 jetons par seconde.
 
-Le moteur est [airllm](https://github.com/lyogavin/airllm), une dépendance de
+Le moteur est `best_engine_ai_helper.streaming`, une dépendance de
 plein droit, ce qui explique l'essentiel des quelque 2 Go d'installation de ce
 paquet. Trois des quatre sous-commandes sont de l'arithmétique pure sur le
 matériel puis le catalogue, puis ne l'importent jamais : elles répondent donc
@@ -721,11 +721,11 @@ charger.
 ### Cette machine peut-elle lire en flux, le lui demanderait-on ?
 
 ```sh
-best-engine-ai-helper airllm status
+best-engine-ai-helper lightweight status
 ```
 
 ```
-=== Layer streaming (airllm) ===
+=== Layer streaming (lightweight) ===
   runtime here    : mlx
   runtime import  : FAILS (install incomplete)
   storage         : apple-internal (declared)
@@ -736,17 +736,17 @@ best-engine-ai-helper airllm status
   would activate  : no
   trigger         : not-needed
 
-  A model already fits this machine's memory, so streaming its layers off disk would trade two to three orders of magnitude of speed for nothing. Ask for it explicitly (--backend airllm) to override.
-  - the airllm runtime cannot be imported, though it is a dependency of this package — the install looks incomplete: pip install --upgrade --force-reinstall best-engine-ai-helper
+  A model already fits this machine's memory, so streaming its layers off disk would trade two to three orders of magnitude of speed for nothing. Ask for it explicitly (--backend lightweight) to override.
+  - the lightweight runtime cannot be imported, though it is a dependency of this package — the install looks incomplete: pip install --upgrade --force-reinstall best-engine-ai-helper
 
   Repair the install:  pip install --upgrade --force-reinstall best-engine-ai-helper
 ```
 
 Cette sortie est réelle, puis elle montre une **installation cassée** :
 l'environnement où ces exemples ont tourné avait le paquet sans sa dépendance
-airllm. Le panneau n'en est que plus instructif. `runtime import` est la version
+lightweight. Le panneau n'en est que plus instructif. `runtime import` est la version
 honnête d'une question qui demandait avant « est-ce que l'extra est installé » —
-airllm est livré avec le paquet, donc toute valeur autre qu'`ok` signale une
+lightweight est livré avec le paquet, donc toute valeur autre qu'`ok` signale une
 installation incomplète, puis la ligne le dit et imprime la commande de
 réparation au lieu d'un échec plus vague plus tard. `runtime here : mlx` est un
 fait distinct, toujours vrai : ce matériel *saurait* lire en flux, sur MLX.
@@ -764,7 +764,7 @@ backend.
 l'endpoint HTTP :
 
 ```sh
-best-engine-ai-helper airllm status --json --request always
+best-engine-ai-helper lightweight status --json --request always
 ```
 
 ```json
@@ -773,11 +773,11 @@ best-engine-ai-helper airllm status --json --request always
     "activate": false,
     "request": "always",
     "trigger": "manual",
-    "reason": "Layer streaming cannot run here: the airllm runtime cannot be imported, though it is a dependency of this package — the install looks incomplete: pip install --upgrade --force-reinstall best-engine-ai-helper",
+    "reason": "Layer streaming cannot run here: the lightweight runtime cannot be imported, though it is a dependency of this package — the install looks incomplete: pip install --upgrade --force-reinstall best-engine-ai-helper",
     "installed": false,
     "runtime": "mlx",
     "blockers": [
-      "the airllm runtime cannot be imported, though it is a dependency of this package — the install looks incomplete: pip install --upgrade --force-reinstall best-engine-ai-helper"
+      "the lightweight runtime cannot be imported, though it is a dependency of this package — the install looks incomplete: pip install --upgrade --force-reinstall best-engine-ai-helper"
     ]
   },
   "compute": {"accelerator": "gpu-metal", "chip": "Apple M2 Max", "bandwidth_gbs": 400.0},
@@ -795,7 +795,7 @@ revient à faux.
 ### Que pourrait-elle lire en flux, à quel prix ?
 
 ```sh
-best-engine-ai-helper airllm plan --kind llm --compression 4bit
+best-engine-ai-helper lightweight plan --kind llm --compression 4bit
 ```
 
 ```
@@ -847,12 +847,12 @@ C'est la décision que le backend impose réellement, puis la commande tarife le
 deux côtés dans la même unité.
 
 ```sh
-best-engine-ai-helper airllm compare --tokens 300
+best-engine-ai-helper lightweight compare --tokens 300
 ```
 
 ```
-=== LLM: ollama vs airllm, for a 300-token answer ===
-  budgets: 36.0 GB resident (ollama) · 72.0 GB per shard (airllm) · disk 4.0 GB/s (declared)
+=== LLM: ollama vs lightweight, for a 300-token answer ===
+  budgets: 36.0 GB resident (ollama) · 72.0 GB per shard (lightweight) · disk 4.0 GB/s (declared)
 model                               backend  score  resident  tok/s  answer  runs
 ----------------------------------  -------  -----  --------  -----  ------  ----
 qwen3:72b-q8_0                      ollama   89     78.0      3.3    2 min   NO
@@ -861,12 +861,12 @@ qwen3:32b-q8_0                      ollama   85     36.0      7.2    42 s    NO
 qwen3:32b-q4_k_m                    ollama   83     22.0      11.8   25 s    NO
 qwen3:14b                           ollama   78     10.5      24.8   12 s    yes
 gemma3:12b                          ollama   77     9.2       28.3   11 s    yes
-Qwen/Qwen3-VL-4B-Instruct           airllm   66     1.6       0.425  12 min  yes
-Qwen/Qwen2.5-3B-Instruct            airllm   62     1.5       0.567  9 min   yes
-deepseek-ai/DeepSeek-V3             airllm   91     29.0      0.005  16.4 h  NO
-Qwen/Qwen3-235B-A22B-Instruct-2507  airllm   90     14.5      0.007  11.5 h  NO
-Qwen/Qwen3-72B-Instruct             airllm   89     6.2       0.024  3.5 h   NO
-meta-llama/Llama-3.1-405B-Instruct  airllm   88     18.5      0.004  19.9 h  NO
+Qwen/Qwen3-VL-4B-Instruct           lightweight   66     1.6       0.425  12 min  yes
+Qwen/Qwen2.5-3B-Instruct            lightweight   62     1.5       0.567  9 min   yes
+deepseek-ai/DeepSeek-V3             lightweight   91     29.0      0.005  16.4 h  NO
+Qwen/Qwen3-235B-A22B-Instruct-2507  lightweight   90     14.5      0.007  11.5 h  NO
+Qwen/Qwen3-72B-Instruct             lightweight   89     6.2       0.024  3.5 h   NO
+meta-llama/Llama-3.1-405B-Instruct  lightweight   88     18.5      0.004  19.9 h  NO
 
   Streaming buys nothing here: Qwen/Qwen3-VL-4B-Instruct scores no higher than qwen3-vl:14b, which already fits and answers in 13 s. Stay native.
 ```
@@ -889,10 +889,10 @@ couche, ce qui pour un grand modèle représente des dizaines de minutes de disq
 puis ressemble exactement à un blocage. Payez-le exprès à la place :
 
 ```sh
-best-engine-ai-helper airllm prepare \
+best-engine-ai-helper lightweight prepare \
   --model meta-llama/Llama-3.3-70B-Instruct \
   --compression 4bit \
-  --shards-path /Volumes/fast/airllm-shards
+  --shards-path /Volumes/fast/lightweight-shards
 ```
 
 Non lancée pour ce fichier : elle télécharge un checkpoint de 70 milliards de
@@ -905,28 +905,28 @@ perdues. `--compression` accepte `4bit` ou `8bit`.
 ### Le même brief, résolu pour le flux
 
 ```sh
-best-engine-ai-helper resolve --brief llm.brief.yaml --backend airllm
+best-engine-ai-helper resolve --brief llm.brief.yaml --backend lightweight
 ```
 
 ```
 WARNING | The brief wants schema-constrained output and llm resolved to a streamed model, which cannot honour one. Schema-driven calls must stay on an Ollama model.
 Wrote llm.engine.yaml
-  backend: airllm  (llm=Qwen/Qwen3-VL-4B-Instruct, vlm=Qwen/Qwen3-VL-4B-Instruct)
+  backend: lightweight  (llm=Qwen/Qwen3-VL-4B-Instruct, vlm=Qwen/Qwen3-VL-4B-Instruct)
   NOTE: hardware-specific — add 'llm.engine.yaml' to .gitignore, do not commit.
-  bring it up:  best-engine-ai-helper airllm prepare --model Qwen/Qwen3-VL-4B-Instruct
+  bring it up:  best-engine-ai-helper lightweight prepare --model Qwen/Qwen3-VL-4B-Instruct
 ```
 
 L'avertissement est le point important. Le brief de la
 [section 3](#3-un-brief-par-dépôt-un-moteur-par-machine) demande
-`structured_output: true`, puis airllm n'a aucune génération contrainte par
+`structured_output: true`, puis lightweight n'a aucune génération contrainte par
 schéma : forcer ce backend contredit donc le brief, puis la commande le dit au
 lieu de produire en silence quelque chose qui échouerait au premier appel avec
 `json_schema=`. Le fichier moteur le consigne honnêtement :
 
 ```yaml
-backend: airllm
+backend: lightweight
 base_url: ''              # une bibliothèque, pas un serveur : ça tourne dans votre processus
-airllm:
+lightweight:
   activate: false
   trigger: manual
   runtime: mlx
@@ -935,7 +935,7 @@ airllm:
 llm:
   model: Qwen/Qwen3-VL-4B-Instruct
   catalog_id: qwen3-vl:4b
-  backend: airllm         # par type, pour qu'un descripteur mixte reste lisible
+  backend: lightweight         # par type, pour qu'un descripteur mixte reste lisible
   streaming: true
   ram_gb: 1.6             # une tranche résidente
   checkpoint_gb: 8.0      # ce que chaque jeton relit
@@ -946,14 +946,14 @@ llm:
   disk_fits: true
   est_tokens_per_s: 0.425
   seconds_per_token: 2.4
-  structured_output: false  # airllm n'a pas de génération contrainte par schéma
+  structured_output: false  # lightweight n'a pas de génération contrainte par schéma
 serve:
-- best-engine-ai-helper airllm prepare --model Qwen/Qwen3-VL-4B-Instruct
+- best-engine-ai-helper lightweight prepare --model Qwen/Qwen3-VL-4B-Instruct
 ```
 
 Sans `--backend`, un type pour lequel rien ne tient monte de lui-même vers le
-flux, puis ce type-là seulement. Mettez `airllm: never` dans le brief, ou
-`BEST_ENGINE_AIRLLM=never`, pour couper cette escalade entièrement.
+flux, puis ce type-là seulement. Mettez `lightweight: never` dans le brief, ou
+`BEST_ENGINE_LIGHTWEIGHT=never`, pour couper cette escalade entièrement.
 
 ### Depuis Python
 
@@ -968,17 +968,17 @@ entry = {
 }
 
 # Trois réponses différentes à « c'est rapide comment », toutes vraies
-timing = beah.airllm_generation_time(entry, disk["read_gbs"], new_tokens=300, batch=8)
+timing = beah.lightweight_generation_time(entry, disk["read_gbs"], new_tokens=300, batch=8)
 print(timing["decode_tps"])  # 0.024  — régime établi, une séquence
 print(timing["time_to_first_token_s"])  # 41.176 — une passe, prompt compris
 print(timing["effective_tps"])  # 0.194  — huit réponses partagent chaque passe
 
 # Cette machine devrait-elle lire en flux du tout ?
-print(beah.airllm_decide(conventional_resolved=False)["reason"])
+print(beah.lightweight_decide(conventional_resolved=False)["reason"])
 
 # Natif ou en flux, pour une réponse de 300 jetons ?
 print(
-    beah.airllm_compare(
+    beah.lightweight_compare(
         beah.load_catalog(),
         hw=hw,
         disk=disk,
@@ -995,7 +995,7 @@ est ce que le même matériel devient quand huit prompts sont groupés.
 `disk_profile(measure=True)` prend une seconde ou deux puis remplace la bande
 passante de lecture déclarée par une bande passante mesurée.
 
-`beah.airllm_generate(prompt, model=..., max_new_tokens=64)` exécute un modèle en
+`beah.lightweight_generate(prompt, model=..., max_new_tokens=64)` exécute un modèle en
 flux dans ce processus, sans aucun serveur. C'est la seule fonction ici qui
 exige le moteur importable : elle n'est donc pas exécutée dans ce fichier.
 
@@ -1286,7 +1286,7 @@ curl -s -X POST http://127.0.0.1:8000/api/recommend \
 ```
 
 ```sh
-curl -s 'http://127.0.0.1:8000/api/airllm?answer_tokens=300&batch=8' \
+curl -s 'http://127.0.0.1:8000/api/lightweight?answer_tokens=300&batch=8' \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["comparison"]["verdict"])'
 ```
 
@@ -1436,10 +1436,10 @@ qu'un seul nom, c'est celui-ci.
 | `catalog update` | rafraîchit le cache du catalogue ; `--limit`, `--timeout`, `--ollama`, `--arena` | réseau |
 | `hardware show` | la table des puces fusionnée | — |
 | `hardware update` | consigne la puce puis la mémoire de cette machine | — |
-| `airllm status` | cette machine peut-elle lire les couches en flux, le lui demanderait-on ; `--measure`, `--json`, `--request` | — |
-| `airllm plan` | ce qu'elle pourrait lire en flux, à quel prix ; `--kind`, `--compression`, `--context`, `--batch`, `--json` | — |
-| `airllm compare` | natif face au flux, même réponse, les deux prix ; `--tokens`, `--batch`, `--compression`, `--measure`, `--json` | — |
-| `airllm prepare` | télécharge puis découpe un checkpoint maintenant ; `--model`, `--compression`, `--shards-path`, `--delete-original` | réseau, moteur |
+| `lightweight status` | cette machine peut-elle lire les couches en flux, le lui demanderait-on ; `--measure`, `--json`, `--request` | — |
+| `lightweight plan` | ce qu'elle pourrait lire en flux, à quel prix ; `--kind`, `--compression`, `--context`, `--batch`, `--json` | — |
+| `lightweight compare` | natif face au flux, même réponse, les deux prix ; `--tokens`, `--batch`, `--compression`, `--measure`, `--json` | — |
+| `lightweight prepare` | télécharge puis découpe un checkpoint maintenant ; `--model`, `--compression`, `--shards-path`, `--delete-original` | réseau, moteur |
 | `pull` | tire le meilleur modèle puis passe les deux gardes Ralph ; `--keep-failed`, `--vllm`, `--application`, `--min-tps` | Ollama, réseau |
 | `validate` | repasse les gardes Ralph sur le modèle configuré | Ollama |
 | `env` | affiche le bloc d'environnement pour `~/.zshrc` | `pull` d'abord |
@@ -1546,22 +1546,22 @@ plafond.
 débit confortable, pas au test mémoire. Regardez la colonne `comfy`, puis
 `min_tps` dans le brief.
 
-**`airllm status` dit `runtime import : FAILS (install incomplete)`.** airllm est
+**`lightweight status` dit `runtime import : FAILS (install incomplete)`.** lightweight est
 une dépendance de plein droit : c'est donc une installation cassée plutôt qu'un
 extra manquant : un conteneur allégé, une roue qui n'a pas pu se construire.
 Le panneau imprime la commande de réparation. `status`, `plan` puis `compare`
 continuent de fonctionner de toute façon ; seule la génération réelle exige le
 moteur.
 
-**`airllm plan` refuse presque tout sur `disk_gb`.** Cette colonne est la place
+**`lightweight plan` refuse presque tout sur `disk_gb`.** Cette colonne est la place
 nécessaire *pendant la découpe des couches*, soit à peu près deux fois le
 checkpoint, puis c'est le bloqueur habituel — bien plus souvent que la mémoire.
 Libérez de la place ; sinon visez un autre volume avec `--shards-path`.
 
 **Un appel à sortie structurée revient vide.** Soit le modèle ne sait pas honorer
 un schéma JSON — `catalog show` puis la colonne `notes` disent lesquels, la
-famille Qwen3-VL étant la surprise courante — soit le backend est airllm, qui n'a
-aucune génération contrainte par schéma. `resolve --backend airllm` avertit
+famille Qwen3-VL étant la surprise courante — soit le backend est lightweight, qui n'a
+aucune génération contrainte par schéma. `resolve --backend lightweight` avertit
 exactement de cela.
 
 **`providers` dit `0 of 4 usable` alors qu'une clé est exportée.** L'ordre de

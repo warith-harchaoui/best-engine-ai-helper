@@ -48,13 +48,14 @@ This package sits at the base of the AI Helpers suite's model-selection layer, a
 - [Ollama](https://ollama.com) (needed for `pull`, `validate`, `env`; not for `detect`, `recommend`, or `report`)
 - Everything else installs automatically: os-helper (hardware detection),
   PyYAML, click, requests, langdetect, the FastAPI/MCP surfaces (`fastapi`,
-  `uvicorn`, `fastapi-mcp`), and **airllm** for [layer
+  `uvicorn`, `fastapi-mcp`), and torch/transformers/accelerate/safetensors for
+  [**lightweight** layer
   streaming](#too-large-to-load-still-runnable-layer-streaming). The CLI, GUI,
   HTTP API, MCP server and the streaming backend are all part of the default
   install, nothing extra to opt into.
 - **Budget around 2 GB for the install and a few minutes for it.** That is not
-  this package — it is pure Python and tiny — it is airllm's stack: torch,
-  transformers and accelerate. The trade is deliberate: "which model can this
+  this package — it is pure Python and tiny — it is the streaming stack: torch,
+  transformers, accelerate and safetensors. The trade is deliberate: "which model can this
   machine run" and "which model can it run if it streams the layers" are the
   same question, and a capability behind an optional extra is one most people
   never find. The import stays lazy, so none of that weight is paid at
@@ -183,7 +184,7 @@ best-engine-ai-helper activity
 
 # Nothing good fits? See what this machine could run by streaming layers off
 # disk, and what the better model would cost you in seconds per token
-best-engine-ai-helper airllm compare --tokens 300
+best-engine-ai-helper lightweight compare --tokens 300
 
 # Which text-to-image model runs here, and how long an image takes
 best-engine-ai-helper imagine plan
@@ -392,21 +393,68 @@ memory a model needs stops scaling with its parameter count and starts scaling
 with its *widest single layer*. A 70B model becomes about **4 GB resident
 instead of 141 GB**.
 
-The runtime that does this is [airllm](https://github.com/lyogavin/airllm)
-(Apache-2.0), and it is a **core dependency**: streaming is available on every
+The runtime that does this is **this package's own**
+(`best_engine_ai_helper.streaming`), and streaming is available on every
 install, with nothing to opt into.
 
 ```sh
-pip install best-engine-ai-helper     # airllm comes with it
+pip install best-engine-ai-helper     # layer streaming comes with it
 ```
 
-That is what the ~2 GB of the install buys (torch, transformers, accelerate).
-It is paid once, at install time: the import is lazy, so nothing of that stack
-is loaded until you actually stream a model, and `detect` / `recommend` /
-`report` stay instant. If an interpreter cannot import airllm anyway — a
-stripped container, a failed wheel build — every surface says so and points at
-a reinstall, because at that point the install is incomplete rather than
-un-opted-into.
+It used to be the third-party `airllm`. That dependency is gone, for reasons
+that were measured rather than assumed:
+
+- **It did not work on Apple Silicon at all.** Its model factory skips
+  architecture dispatch on macOS and returns a hand-written Llama transformer
+  in MLX whatever you asked for, so Qwen (attention biases), Llama 3.2 (tied
+  embeddings, no `lm_head` tensor) and older exports (persisted
+  `rotary_emb.inv_freq`) each failed differently.
+- **It wrote a second copy of the checkpoint to disk** as per-layer shards
+  before running, so streaming a 70B needed ~294 GB free rather than ~140.
+  That, not memory, is what used to make most models refuse on a laptop.
+
+This one reads one tensor at a time straight out of the checkpoint's own
+safetensors — memory-mapped, with a tensor-level index — so **no scratch space
+is needed at all**, and `transformers` owns the forward pass, so the
+architecture is whatever `transformers` knows. Apple Silicon is torch on
+Metal (MPS), not a second framework.
+
+That is what the ~2 GB of the install buys (torch, transformers, accelerate,
+safetensors). It is paid once, at install time: the imports are lazy, so
+nothing of that stack is loaded until you actually stream a model, and
+`detect` / `recommend` / `report` stay instant.
+
+How a streamed forward pass actually runs:
+
+```mermaid
+flowchart LR
+    subgraph DISK["checkpoint on disk (safetensors, memory-mapped)"]
+        L0["layer 0"]:::w
+        L1["layer 1"]:::w
+        LN["layer N"]:::w
+    end
+    subgraph MEM["resident memory"]
+        R["embeddings + final norm + head<br/>(loaded once)"]:::r
+        CUR["exactly ONE decoder layer"]:::cur
+    end
+    L0 -. "pre-hook reads" .-> CUR
+    L1 -. "prefetched while N-1 computes" .-> CUR
+    LN -. "…" .-> CUR
+    CUR -- "post-hook frees it again" --> FREE(["back to meta"]):::f
+    R --> OUT["logits"]:::o
+    CUR --> OUT
+
+    classDef w fill:#CCE3F0,stroke:#0072B2,color:#000
+    classDef r fill:#CCECE3,stroke:#009E73,color:#000
+    classDef cur fill:#FAECCC,stroke:#E69F00,color:#000
+    classDef f fill:#F7DFCC,stroke:#D55E00,color:#000
+    classDef o fill:#F5E4ED,stroke:#CC79A7,color:#000
+```
+
+What has to be resident is the widest single layer, not the checkpoint. If an
+interpreter cannot import the stack — a stripped container, a failed wheel
+build — every surface says so and points at a reinstall, because at that point
+the install is incomplete rather than un-opted-into.
 
 ### What it costs: seconds per token, not tokens per second
 
@@ -470,7 +518,7 @@ resident ≈ (checkpoint ÷ layers) × 1.25 × shards_resident
 - `checkpoint ÷ layers` is the average shard. The **biggest** shard is the
   token-embedding matrix rather than a decoder layer — a modern 128k–152k
   vocabulary makes it so — hence the 1.25.
-- `shards_resident` is 2 with airllm's prefetch on (the next shard is read while
+- `shards_resident` is 2 with lightweight's prefetch on (the next shard is read while
   the current one computes, which is where its ~10% speed-up comes from) and 1
   without. Turning prefetch off is the single knob that gets a 70B model onto a
   4 GB card, and this package tries it automatically before rejecting a
@@ -500,19 +548,19 @@ declare its `layers` is **refused** rather than guessed at — a guess there is
 wrong by a factor of two, in the direction that over-promises.
 
 Read that last column first. **Disk space, not memory, is what usually refuses
-a model**: airllm writes per-layer shards beside the downloaded checkpoint, so
+a model**: lightweight writes per-layer shards beside the downloaded checkpoint, so
 the cache holds both at once and the split needs roughly twice the checkpoint
 free. A 405B model is an 810 GB download before it is anything else. Memory is
 the easy half of streaming.
 
-These figures were checked against airllm's own published numbers, and the check
+These figures were checked against lightweight's own published numbers, and the check
 is worth stating precisely because the headline "70B on a 4 GB GPU" is true at a
 context length nobody mentions: the same model is 3.0 GB serially at a 1k
 context — the demo — 3.9 GB serially at 4k, and 6.1 GB at 4k with prefetch on.
 The weights are identical in all three. What moves is the cache that is not
 streamed.
 
-### Native model or streamed model? `airllm compare` answers in one screen
+### Native model or streamed model? `lightweight compare` answers in one screen
 
 This is the decision streaming actually forces, and neither ranking answers it
 alone. A machine that runs a 14B model comfortably can also stream a 70B one:
@@ -523,20 +571,20 @@ A tokens-per-second column cannot settle it — 26 and 0.024 do not sit on a sca
 anybody reasons about. Seconds for the same answer do:
 
 ```sh
-best-engine-ai-helper airllm compare --tokens 300
+best-engine-ai-helper lightweight compare --tokens 300
 ```
 
 ```
-=== LLM: ollama vs airllm, for a 300-token answer ===
-  budgets: 11.04 GB resident (ollama) · 22.08 GB per shard (airllm) · disk 4.0 GB/s (declared)
+=== LLM: ollama vs lightweight, for a 300-token answer ===
+  budgets: 11.04 GB resident (ollama) · 22.08 GB per shard (lightweight) · disk 4.0 GB/s (declared)
 model                       backend  score  resident  tok/s  answer  runs
 --------------------------  -------  -----  --------  -----  ------  ----
 qwen3:72b-q8_0              ollama   89     78.0      8.4    36 s    NO
 qwen3:72b-q4_k_m            ollama   87     48.0      13.7   22 s    NO
 qwen3:14b                   ollama   78     10.5      62.4   5 s     yes
 gemma3:12b                  ollama   77     9.2       71.2   4 s     yes
-Qwen/Qwen3-72B-Instruct     airllm   89     6.2       0.024  3.5 h   yes
-Qwen/Qwen3-VL-72B-Instruct  airllm   88     6.2       0.024  3.5 h   yes
+Qwen/Qwen3-72B-Instruct     lightweight   89     6.2       0.024  3.5 h   yes
+Qwen/Qwen3-VL-72B-Instruct  lightweight   88     6.2       0.024  3.5 h   yes
 
   Streaming buys 11 benchmark points (89 vs 78) for 2647x the wait: 3.5 h
   instead of 5 s for a 300-token answer.
@@ -576,15 +624,15 @@ Never by default. Two triggers, and nothing else:
 machine for a kind your brief needs. Streaming is then the difference between a
 model and no model, so `resolve` proposes it with its cost stated. The rescue is
 **per kind**: if your LLM fits and no VLM does, only the VLM falls back, and the
-engine file is honestly mixed (Ollama for one kind, `airllm` for the other —
+engine file is honestly mixed (Ollama for one kind, `lightweight` for the other —
 `model_for()` reads the per-kind backend first). The descriptor records the
-decision and its reason under `airllm:`, *including when the answer was no*, so
+decision and its reason under `lightweight:`, *including when the answer was no*, so
 a machine that cannot stream says why instead of staying silent.
 
 **Manual** — you ask:
 
 ```sh
-best-engine-ai-helper resolve --brief llm.brief.yaml --backend airllm
+best-engine-ai-helper resolve --brief llm.brief.yaml --backend lightweight
 ```
 
 or in the committed brief:
@@ -592,14 +640,14 @@ or in the committed brief:
 ```yaml
 kind: llm
 task: judge the quality of generated product descriptions
-airllm: always          # auto (default) | always | never
-airllm_compression: 4bit
+lightweight: always          # auto (default) | always | never
+lightweight_compression: 4bit
 ```
 
 or in the environment, which outranks nothing but defaults:
 
 ```sh
-export BEST_ENGINE_AIRLLM=always   # or never, to switch the whole path off
+export BEST_ENGINE_LIGHTWEIGHT=always   # or never, to switch the whole path off
 ```
 
 `never` wins over everything, including the automatic trigger. A human who
@@ -611,17 +659,17 @@ thrashed deserves one switch that means it.
 
 ```sh
 # Can this machine stream, should it, and what is in the way?
-best-engine-ai-helper airllm status
-best-engine-ai-helper airllm status --measure      # measure the disk, don't assume it
+best-engine-ai-helper lightweight status
+best-engine-ai-helper lightweight status --measure      # measure the disk, don't assume it
 
 # What could it stream, biggest runnable first?
-best-engine-ai-helper airllm plan --kind llm --compression 4bit --batch 8
+best-engine-ai-helper lightweight plan --kind llm --compression 4bit --batch 8
 
 # Native or streamed, same answer length, both prices
-best-engine-ai-helper airllm compare --tokens 300 --batch 8
+best-engine-ai-helper lightweight compare --tokens 300 --batch 8
 
 # Pay the download and the layer split now, not inside your first call
-best-engine-ai-helper airllm prepare --model meta-llama/Llama-3.3-70B-Instruct
+best-engine-ai-helper lightweight prepare --model meta-llama/Llama-3.3-70B-Instruct
 ```
 
 `--measure` is worth knowing about. The drive sets the entire speed of this
@@ -636,7 +684,7 @@ figure `measured` or `declared`.
 
 ### Limits, stated plainly
 
-- **No structured output.** airllm exposes raw generation, with no equivalent of
+- **No structured output.** lightweight exposes raw generation, with no equivalent of
   Ollama's grammar-constrained `format`. Every streamed model is therefore
   `structured_output: false` — a fact about the backend, not about the weights —
   and the suite's schema-driven tasks stay on an Ollama model. `llm.chat` raises
@@ -644,19 +692,19 @@ figure `measured` or `declared`.
 - **Text only.** The adapter returns a bare causal language model, without the
   image processor a VLM prompt needs. Images raise instead of being silently
   answered from the text alone.
-- **No server.** airllm is a library, so a streamed model runs *in your own
+- **No server.** lightweight is a library, so a streamed model runs *in your own
   process*; the engine file's `base_url` is empty on purpose, because inventing
   a localhost port would send a consumer looking for a daemon that will never
   exist. `llm.chat` keeps the loaded model between calls — splitting a 141 GB
   checkpoint per call would make the transport unusable.
-- **Experimental on CPU.** airllm's CPU path only works for unsharded models, so
+- **Experimental on CPU.** lightweight's CPU path only works for unsharded models, so
   a CPU-only machine is not offered streaming automatically. It can still be
   asked for.
 - **4-bit compression is unavailable on macOS.** It needs `bitsandbytes`, which
   publishes no macOS wheel, so the dependency carries a platform marker and
   Apple Silicon streams through MLX uncompressed. The sizing says so rather
   than quoting a speed-up that will not happen.
-- **The context is 4096 tokens unless you ask for more.** airllm's own default
+- **The context is 4096 tokens unless you ask for more.** lightweight's own default
   is 512 and it *truncates* past it, so this adapter always passes an explicit
   `max_seq_len` — set to the same 4k the footprint above is priced at. The two
   numbers are deliberately the same one: a tool that quotes memory for a 4k
@@ -664,23 +712,23 @@ figure `measured` or `declared`.
   where you lose the end of your prompt. Raise it with `max_seq_len=` and the
   KV term rises exactly as the formula says.
 
-### Why airllm is imported rather than copied in
+### Why lightweight is imported rather than copied in
 
 A fair question for a package that re-derives the arithmetic. Four reasons:
 
-1. **Vendoring would not have avoided the weight.** airllm needs torch,
+1. **Vendoring would not have avoided the weight.** lightweight needs torch,
    transformers, accelerate, safetensors, scipy and sentencepiece, and a copy of
    its source would need all of them too — the weight *is* its dependency tree,
    not its code. So the ~2 GB is the price of the capability however it arrives,
    and it is paid here deliberately rather than hidden behind an extra nobody
    finds. What a copy would add on top is the next three problems.
-2. **It is a moving target.** airllm's value is per-family sharding code (Llama,
+2. **It is a moving target.** lightweight's value is per-family sharding code (Llama,
    Qwen, DeepSeek, Mixtral, ChatGLM, Kimi), rewritten as each new family ships.
    Vendored, it would be frozen at the day it was copied and rot from the first
    release after.
-3. **Licence hygiene.** airllm is Apache-2.0; this package is BSD-3-Clause.
+3. **Licence hygiene.** lightweight is Apache-2.0; this package is BSD-3-Clause.
    Importing keeps the two trees, and their notice obligations, separate.
-4. **The division of labour is real, not a dodge.** airllm decides *how* to
+4. **The division of labour is real, not a dodge.** lightweight decides *how* to
    stream. Nothing in it decides *whether* this machine should, *which* model it
    should stream, or *what it will cost you in time* — and those are the three
    questions a caller of this package is actually asking.
@@ -688,19 +736,19 @@ A fair question for a package that re-derives the arithmetic. Four reasons:
 So the runtime is imported and the **decision** is native: `offload.py` owns the
 footprint arithmetic, the disk-bound timing model, the activation policy, the
 native-versus-streamed comparison, and the catalog metadata all of it needs
-(`layers`, `dtype`, `moe`). None of that imports airllm — which is what keeps
-the import lazy, and what makes `airllm status` and `airllm compare` answer
+(`layers`, `dtype`, `moe`). None of that imports lightweight — which is what keeps
+the import lazy, and what makes `lightweight status` and `lightweight compare` answer
 correctly even in an environment where the runtime itself will not load.
 
 ### From Python
 
 ```python
-import best_engine_ai_helper as beah  # airllm is a dependency, nothing to install
+import best_engine_ai_helper as beah  # lightweight is a dependency, nothing to install
 
 hw, disk = beah.available_memory(), beah.disk_profile()
 
 # Should this machine stream at all?
-decision = beah.airllm_decide(conventional_resolved=False)
+decision = beah.lightweight_decide(conventional_resolved=False)
 print(decision["activate"], decision["reason"], decision["blockers"])
 
 # What would a 70B cost here?
@@ -710,11 +758,11 @@ entry = {
     "layers": 80,
     "hf_id": "meta-llama/Llama-3.3-70B-Instruct",
 }
-print(beah.airllm_footprint_gb(entry))  # 6.1 GB resident
-print(beah.airllm_generation_time(entry, disk["read_gbs"], new_tokens=300, batch=8))
+print(beah.lightweight_footprint_gb(entry))  # 6.1 GB resident
+print(beah.lightweight_generation_time(entry, disk["read_gbs"], new_tokens=300, batch=8))
 
 # Native or streamed, for a 300-token answer?
-report = beah.airllm_compare(
+report = beah.lightweight_compare(
     beah.load_catalog(),
     hw=hw,
     disk=disk,
@@ -724,13 +772,13 @@ report = beah.airllm_compare(
 print(report["verdict"])
 
 # And actually run it
-text = beah.airllm_generate(
+text = beah.lightweight_generate(
     "Judge this description:…", model="meta-llama/Llama-3.3-70B-Instruct", max_new_tokens=64
 )
 ```
 
 The HTTP surface answers the same questions in one call —
-`GET /api/airllm?answer_tokens=300&batch=8` returns the decision, the storage
+`GET /api/lightweight?answer_tokens=300&batch=8` returns the decision, the storage
 profile, the ranked plans and the comparison — and it is reachable as an MCP
 tool like every other endpoint.
 
@@ -757,10 +805,10 @@ tool like every other endpoint.
 | `usages list` | List usage profiles and families (needs only, never a model) |
 | `usages show <profile>` | Show one profile's needs (task, structured output, floors) |
 | `usages resolve <profile>` | Resolve a profile (or `--family`) to the model best-engine picks here |
-| `airllm status` | Can this machine stream layers off disk, should it, and what is in the way (`--measure` to measure the drive) |
-| `airllm plan` | What a too-large model would cost here, ranked: resident shard, seconds per token, disk to split |
-| `airllm compare` | Native model vs streamed model, same answer length, both priced in seconds |
-| `airllm prepare` | Download and split a checkpoint now, instead of inside the first call |
+| `lightweight status` | Can this machine stream layers off disk, should it, and what is in the way (`--measure` to measure the drive) |
+| `lightweight plan` | What a too-large model would cost here, ranked: resident shard, seconds per token, disk to split |
+| `lightweight compare` | Native model vs streamed model, same answer length, both priced in seconds |
+| `lightweight prepare` | Download and split a checkpoint now, instead of inside the first call |
 | `imagine plan` | Which text-to-image model this machine can run, its footprint and its seconds per image |
 | `imagine generate` | Generate one image locally, to a PNG file |
 | `serve` | Serve the OpenAI-compatible API: point any OpenAI SDK at it and ask for `best` |

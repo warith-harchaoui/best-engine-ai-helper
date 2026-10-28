@@ -54,7 +54,7 @@ from best_engine_ai_helper import llm  # the one call that runs a model
 `validate`, `env` and for the `llm.chat` snippet in
 [§10](#10-call-it-from-your-own-package). Everything that only *decides*
 (`detect`, `recommend`, `report`, `resolve`, `usages`, `storage`, `providers`,
-`catalog show`, `hardware show`, every `airllm` sizing subcommand, the GUI, the
+`catalog show`, `hardware show`, every `lightweight` sizing subcommand, the GUI, the
 HTTP API) works with no daemon and no network at all.
 
 **Where the outputs came from.** Every table and panel below was produced on an
@@ -73,7 +73,7 @@ filling between them — that is a live reading, not an inconsistency.
 Five commands are **not** executed anywhere below, and their effect is described
 rather than pasted: `pull` and `validate` (they download model weights and run
 two generation gates), `catalog update` and `hardware update` (the first reaches
-the network), `airllm prepare` (it downloads a checkpoint and splits it) and
+the network), `lightweight prepare` (it downloads a checkpoint and splits it) and
 `imagine generate` (it downloads a diffusers pipeline). Nothing in this file is
 invented output.
 
@@ -691,7 +691,7 @@ of gigabytes instead of 140. The bill arrives in time: every token re-reads the
 whole checkpoint, which puts this at **seconds per token** rather than tokens
 per second.
 
-The runtime is [airllm](https://github.com/lyogavin/airllm), a core dependency,
+The runtime is `best_engine_ai_helper.streaming`, a core dependency,
 which is most of why this package's install is around 2 GB. Three of the four
 subcommands are pure arithmetic over the hardware and the catalogue and never
 import it, so they answer correctly, and instantly, even in an environment
@@ -700,11 +700,11 @@ where it would fail to load.
 ### Can this machine stream, and would it be asked to?
 
 ```sh
-best-engine-ai-helper airllm status
+best-engine-ai-helper lightweight status
 ```
 
 ```
-=== Layer streaming (airllm) ===
+=== Layer streaming (lightweight) ===
   runtime here    : mlx
   runtime import  : FAILS (install incomplete)
   storage         : apple-internal (declared)
@@ -715,16 +715,16 @@ best-engine-ai-helper airllm status
   would activate  : no
   trigger         : not-needed
 
-  A model already fits this machine's memory, so streaming its layers off disk would trade two to three orders of magnitude of speed for nothing. Ask for it explicitly (--backend airllm) to override.
-  - the airllm runtime cannot be imported, though it is a dependency of this package — the install looks incomplete: pip install --upgrade --force-reinstall best-engine-ai-helper
+  A model already fits this machine's memory, so streaming its layers off disk would trade two to three orders of magnitude of speed for nothing. Ask for it explicitly (--backend lightweight) to override.
+  - the lightweight runtime cannot be imported, though it is a dependency of this package — the install looks incomplete: pip install --upgrade --force-reinstall best-engine-ai-helper
 
   Repair the install:  pip install --upgrade --force-reinstall best-engine-ai-helper
 ```
 
 That output is real, and it is showing a **broken install**: the environment
-these examples ran in had the package without its airllm dependency. It is the
+these examples ran in had the package without its lightweight dependency. It is the
 more instructive panel for it. `runtime import` is the honest version of a
-question that used to read "is the extra installed" — airllm ships with the
+question that used to read "is the extra installed" — lightweight ships with the
 package, so anything other than `ok` means an incomplete install, and the line
 says so and prints the repair command instead of a vaguer failure later.
 `runtime here : mlx` is a separate fact and still true: this hardware *would*
@@ -741,7 +741,7 @@ seconds, because the drive sets this backend's entire speed.
 returns:
 
 ```sh
-best-engine-ai-helper airllm status --json --request always
+best-engine-ai-helper lightweight status --json --request always
 ```
 
 ```json
@@ -750,11 +750,11 @@ best-engine-ai-helper airllm status --json --request always
     "activate": false,
     "request": "always",
     "trigger": "manual",
-    "reason": "Layer streaming cannot run here: the airllm runtime cannot be imported, though it is a dependency of this package — the install looks incomplete: pip install --upgrade --force-reinstall best-engine-ai-helper",
+    "reason": "Layer streaming cannot run here: the lightweight runtime cannot be imported, though it is a dependency of this package — the install looks incomplete: pip install --upgrade --force-reinstall best-engine-ai-helper",
     "installed": false,
     "runtime": "mlx",
     "blockers": [
-      "the airllm runtime cannot be imported, though it is a dependency of this package — the install looks incomplete: pip install --upgrade --force-reinstall best-engine-ai-helper"
+      "the lightweight runtime cannot be imported, though it is a dependency of this package — the install looks incomplete: pip install --upgrade --force-reinstall best-engine-ai-helper"
     ]
   },
   "compute": {"accelerator": "gpu-metal", "chip": "Apple M2 Max", "bandwidth_gbs": 400.0},
@@ -771,7 +771,7 @@ what to run when `installed` comes back false.
 ### What could it stream, and at what price?
 
 ```sh
-best-engine-ai-helper airllm plan --kind llm --compression 4bit
+best-engine-ai-helper lightweight plan --kind llm --compression 4bit
 ```
 
 ```
@@ -820,12 +820,12 @@ This is the decision the backend actually forces, and the command prices both
 sides in the same unit.
 
 ```sh
-best-engine-ai-helper airllm compare --tokens 300
+best-engine-ai-helper lightweight compare --tokens 300
 ```
 
 ```
-=== LLM: ollama vs airllm, for a 300-token answer ===
-  budgets: 36.0 GB resident (ollama) · 72.0 GB per shard (airllm) · disk 4.0 GB/s (declared)
+=== LLM: ollama vs lightweight, for a 300-token answer ===
+  budgets: 36.0 GB resident (ollama) · 72.0 GB per shard (lightweight) · disk 4.0 GB/s (declared)
 model                               backend  score  resident  tok/s  answer  runs
 ----------------------------------  -------  -----  --------  -----  ------  ----
 qwen3:72b-q8_0                      ollama   89     78.0      3.3    2 min   NO
@@ -834,12 +834,12 @@ qwen3:32b-q8_0                      ollama   85     36.0      7.2    42 s    NO
 qwen3:32b-q4_k_m                    ollama   83     22.0      11.8   25 s    NO
 qwen3:14b                           ollama   78     10.5      24.8   12 s    yes
 gemma3:12b                          ollama   77     9.2       28.3   11 s    yes
-Qwen/Qwen3-VL-4B-Instruct           airllm   66     1.6       0.425  12 min  yes
-Qwen/Qwen2.5-3B-Instruct            airllm   62     1.5       0.567  9 min   yes
-deepseek-ai/DeepSeek-V3             airllm   91     29.0      0.005  16.4 h  NO
-Qwen/Qwen3-235B-A22B-Instruct-2507  airllm   90     14.5      0.007  11.5 h  NO
-Qwen/Qwen3-72B-Instruct             airllm   89     6.2       0.024  3.5 h   NO
-meta-llama/Llama-3.1-405B-Instruct  airllm   88     18.5      0.004  19.9 h  NO
+Qwen/Qwen3-VL-4B-Instruct           lightweight   66     1.6       0.425  12 min  yes
+Qwen/Qwen2.5-3B-Instruct            lightweight   62     1.5       0.567  9 min   yes
+deepseek-ai/DeepSeek-V3             lightweight   91     29.0      0.005  16.4 h  NO
+Qwen/Qwen3-235B-A22B-Instruct-2507  lightweight   90     14.5      0.007  11.5 h  NO
+Qwen/Qwen3-72B-Instruct             lightweight   89     6.2       0.024  3.5 h   NO
+meta-llama/Llama-3.1-405B-Instruct  lightweight   88     18.5      0.004  19.9 h  NO
 
   Streaming buys nothing here: Qwen/Qwen3-VL-4B-Instruct scores no higher than qwen3-vl:14b, which already fits and answers in 13 s. Stay native.
 ```
@@ -862,10 +862,10 @@ shards, which for a large model is tens of minutes of disk and reads exactly
 like a hang. Pay it on purpose instead:
 
 ```sh
-best-engine-ai-helper airllm prepare \
+best-engine-ai-helper lightweight prepare \
   --model meta-llama/Llama-3.3-70B-Instruct \
   --compression 4bit \
-  --shards-path /Volumes/fast/airllm-shards
+  --shards-path /Volumes/fast/lightweight-shards
 ```
 
 Not run for this file: it downloads a 70B checkpoint. `--shards-path` is worth
@@ -877,28 +877,28 @@ ever lost. `--compression` takes `4bit` or `8bit`.
 ### The same brief, resolved for streaming
 
 ```sh
-best-engine-ai-helper resolve --brief llm.brief.yaml --backend airllm
+best-engine-ai-helper resolve --brief llm.brief.yaml --backend lightweight
 ```
 
 ```
 WARNING | The brief wants schema-constrained output and llm resolved to a streamed model, which cannot honour one. Schema-driven calls must stay on an Ollama model.
 Wrote llm.engine.yaml
-  backend: airllm  (llm=Qwen/Qwen3-VL-4B-Instruct, vlm=Qwen/Qwen3-VL-4B-Instruct)
+  backend: lightweight  (llm=Qwen/Qwen3-VL-4B-Instruct, vlm=Qwen/Qwen3-VL-4B-Instruct)
   NOTE: hardware-specific — add 'llm.engine.yaml' to .gitignore, do not commit.
-  bring it up:  best-engine-ai-helper airllm prepare --model Qwen/Qwen3-VL-4B-Instruct
+  bring it up:  best-engine-ai-helper lightweight prepare --model Qwen/Qwen3-VL-4B-Instruct
 ```
 
 The warning is the point. The brief in
 [§3](#3-one-brief-per-repo-one-engine-per-machine) asks for
-`structured_output: true`, and airllm has no schema-constrained generation, so
+`structured_output: true`, and lightweight has no schema-constrained generation, so
 forcing this backend contradicts the brief and the command says so rather than
 quietly producing something that would fail at the first `json_schema=` call.
 The engine file records it honestly:
 
 ```yaml
-backend: airllm
+backend: lightweight
 base_url: ''              # a library, not a server: it runs in your process
-airllm:
+lightweight:
   activate: false
   trigger: manual
   runtime: mlx
@@ -907,7 +907,7 @@ airllm:
 llm:
   model: Qwen/Qwen3-VL-4B-Instruct
   catalog_id: qwen3-vl:4b
-  backend: airllm         # per-kind, so a mixed descriptor stays readable
+  backend: lightweight         # per-kind, so a mixed descriptor stays readable
   streaming: true
   ram_gb: 1.6             # one resident shard
   checkpoint_gb: 8.0      # what every token re-reads
@@ -918,14 +918,14 @@ llm:
   disk_fits: true
   est_tokens_per_s: 0.425
   seconds_per_token: 2.4
-  structured_output: false  # airllm has no schema-constrained generation
+  structured_output: false  # lightweight has no schema-constrained generation
 serve:
-- best-engine-ai-helper airllm prepare --model Qwen/Qwen3-VL-4B-Instruct
+- best-engine-ai-helper lightweight prepare --model Qwen/Qwen3-VL-4B-Instruct
 ```
 
 With no `--backend`, a kind for which nothing fits escalates to streaming on
-its own, and only that kind does. Set `airllm: never` in the brief, or
-`BEST_ENGINE_AIRLLM=never`, to switch the escalation off entirely.
+its own, and only that kind does. Set `lightweight: never` in the brief, or
+`BEST_ENGINE_LIGHTWEIGHT=never`, to switch the escalation off entirely.
 
 ### From Python
 
@@ -940,17 +940,17 @@ entry = {
 }
 
 # Three different answers to "how fast is it", all of them true
-timing = beah.airllm_generation_time(entry, disk["read_gbs"], new_tokens=300, batch=8)
+timing = beah.lightweight_generation_time(entry, disk["read_gbs"], new_tokens=300, batch=8)
 print(timing["decode_tps"])  # 0.024  — steady state, one sequence
 print(timing["time_to_first_token_s"])  # 41.176 — one pass, prompt included
 print(timing["effective_tps"])  # 0.194  — eight answers share each pass
 
 # Should this machine stream at all?
-print(beah.airllm_decide(conventional_resolved=False)["reason"])
+print(beah.lightweight_decide(conventional_resolved=False)["reason"])
 
 # Native or streamed, for a 300-token answer?
 print(
-    beah.airllm_compare(
+    beah.lightweight_compare(
         beah.load_catalog(),
         hw=hw,
         disk=disk,
@@ -966,7 +966,7 @@ sequence, 41.176 s is a single forward pass, and 0.194 tok/s is what batching
 eight prompts turns the same hardware into. `disk_profile(measure=True)` takes
 a second or two and replaces the declared read bandwidth with a measured one.
 
-`beah.airllm_generate(prompt, model=..., max_new_tokens=64)` runs a streamed
+`beah.lightweight_generate(prompt, model=..., max_new_tokens=64)` runs a streamed
 model in this process, with no server involved. It is the one function here
 that needs the runtime importable, so it is not executed in this file.
 
@@ -1250,7 +1250,7 @@ curl -s -X POST http://127.0.0.1:8000/api/recommend \
 ```
 
 ```sh
-curl -s 'http://127.0.0.1:8000/api/airllm?answer_tokens=300&batch=8' \
+curl -s 'http://127.0.0.1:8000/api/lightweight?answer_tokens=300&batch=8' \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["comparison"]["verdict"])'
 ```
 
@@ -1391,10 +1391,10 @@ command; there is one name now, and this is it.
 | `catalog update` | refresh the catalogue cache; `--limit`, `--timeout`, `--ollama`, `--arena` | network |
 | `hardware show` | the merged chip table | — |
 | `hardware update` | record this machine's chip and memory | — |
-| `airllm status` | can this machine stream layers, and would it; `--measure`, `--json`, `--request` | — |
-| `airllm plan` | what it could stream, and at what price; `--kind`, `--compression`, `--context`, `--batch`, `--json` | — |
-| `airllm compare` | native against streamed, same answer, both prices; `--tokens`, `--batch`, `--compression`, `--measure`, `--json` | — |
-| `airllm prepare` | download and split a checkpoint now; `--model`, `--compression`, `--shards-path`, `--delete-original` | network, runtime |
+| `lightweight status` | can this machine stream layers, and would it; `--measure`, `--json`, `--request` | — |
+| `lightweight plan` | what it could stream, and at what price; `--kind`, `--compression`, `--context`, `--batch`, `--json` | — |
+| `lightweight compare` | native against streamed, same answer, both prices; `--tokens`, `--batch`, `--compression`, `--measure`, `--json` | — |
+| `lightweight prepare` | download and split a checkpoint now; `--model`, `--compression`, `--shards-path`, `--delete-original` | network, runtime |
 | `pull` | pull the best model, then run both Ralph gates; `--keep-failed`, `--vllm`, `--application`, `--min-tps` | Ollama, network |
 | `validate` | re-run the Ralph gates on the configured model | Ollama |
 | `env` | print the env block for `~/.zshrc` | `pull` first |
@@ -1496,21 +1496,21 @@ the number. `--headroom` only ever tightens it; values above 0.5 are clamped.
 floor, not the memory test. Look at the `comfy` column, and at `min_tps` in the
 brief.
 
-**`airllm status` says `runtime import : FAILS (install incomplete)`.** airllm
+**`lightweight status` says `runtime import : FAILS (install incomplete)`.** lightweight
 is a core dependency, so this is a broken install rather than a missing extra —
 a stripped container, or a wheel that failed to build. The panel prints the
 repair command. `status`, `plan` and `compare` keep working regardless; only
 actually generating needs the runtime.
 
-**`airllm plan` refuses almost everything on `disk_gb`.** That column is the
+**`lightweight plan` refuses almost everything on `disk_gb`.** That column is the
 space needed *during the layer split*, which is roughly twice the checkpoint,
 and it is the usual blocker — far more often than memory. Free space, or point
 `--shards-path` at another volume.
 
 **A structured-output call comes back empty.** Either the model cannot honour a
 JSON schema — `catalog show` and the `notes` column say which ones cannot, and
-the Qwen3-VL family is the common surprise — or the backend is airllm, which
-has no schema-constrained generation at all. `resolve --backend airllm` warns
+the Qwen3-VL family is the common surprise — or the backend is lightweight, which
+has no schema-constrained generation at all. `resolve --backend lightweight` warns
 about exactly this.
 
 **`providers` says `0 of 4 usable` when a key is exported.** The lookup order is

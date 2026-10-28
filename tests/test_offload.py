@@ -4,10 +4,10 @@ Tests for best_engine_ai_helper.offload — the layer-streaming backend.
 Streaming is the one backend whose arithmetic cannot be checked against a
 running server here, so these tests pin it against two outside anchors instead:
 the published configuration of real checkpoints (decoder depth, stored dtype)
-and airllm's own published memory figures. Where the two disagree, the comment
+and lightweight's own published memory figures. Where the two disagree, the comment
 says which way and by how much.
 
-Everything is synthetic and offline. No test imports airllm, and the three that
+Everything is synthetic and offline. No test imports lightweight, and the three that
 exercise the adapter inject a fake runtime through ``sys.modules`` — the point
 being that the whole decision layer has to work on a machine where the extra
 was never installed, which is most machines.
@@ -15,7 +15,6 @@ was never installed, which is most machines.
 
 from __future__ import annotations
 
-import sys
 import types
 from typing import Any
 
@@ -79,15 +78,15 @@ CPU_ONLY = {"accelerator": "cpu", "chip": None, "bandwidth_gbs": None}
 
 
 # ---------------------------------------------------------------------------
-# The footprint, against airllm's own published figures
+# The footprint, against lightweight's own published figures
 # ---------------------------------------------------------------------------
 
 
 def test_the_footprint_brackets_airllms_published_figure_for_a_70b() -> None:
-    """A 70B must land near airllm's "~4 GB", not near its 141 GB checkpoint.
+    """A 70B must land near lightweight's "~4 GB", not near its 141 GB checkpoint.
 
     This is the claim the whole backend rests on, so it is pinned from both
-    sides: the serial figure is what fits on the 4 GB card airllm advertises,
+    sides: the serial figure is what fits on the 4 GB card lightweight advertises,
     and the prefetched one is the price of its ~10% speed-up.
     """
     serial = offload.footprint_gb(LLAMA_70B, prefetching=False)
@@ -190,14 +189,14 @@ def test_score_routes_the_streaming_backend_to_the_disk_bound_estimate() -> None
     # describe the same job rather than two different ones.
     memory_bound = score.estimated_tokens_per_second(SMALL, 400.0, "ollama", calibrated=False)
     disk_bound = score.estimated_tokens_per_second(
-        SMALL, 400.0, "airllm", calibrated=False, disk_read_gbs=4.0
+        SMALL, 400.0, "lightweight", calibrated=False, disk_read_gbs=4.0
     )
 
     assert disk_bound is not None and memory_bound is not None
     assert disk_bound < memory_bound / 100
     assert disk_bound == offload.estimated_tokens_per_second(SMALL, 4.0)
     # And the footprint switches with it.
-    assert score.model_footprint_gb(LLAMA_70B, "airllm") == offload.footprint_gb(LLAMA_70B)
+    assert score.model_footprint_gb(LLAMA_70B, "lightweight") == offload.footprint_gb(LLAMA_70B)
 
 
 def test_a_measured_ollama_rate_is_never_reused_as_a_streaming_rate(
@@ -210,7 +209,7 @@ def test_a_measured_ollama_rate_is_never_reused_as_a_streaming_rate(
 
     [ollama_row] = score.rank(GPU_24GB, [SMALL], "llm", bandwidth_gbs=400.0)
     [stream_row] = score.rank(
-        GPU_24GB, [SMALL], "llm", backend="airllm", bandwidth_gbs=400.0, disk_read_gbs=4.0
+        GPU_24GB, [SMALL], "llm", backend="lightweight", bandwidth_gbs=400.0, disk_read_gbs=4.0
     )
 
     assert ollama_row["_tps"] == 30.0 and ollama_row["_tps_basis"] == "measured"
@@ -223,17 +222,26 @@ def test_a_measured_ollama_rate_is_never_reused_as_a_streaming_rate(
 # ---------------------------------------------------------------------------
 
 
-def test_the_split_needs_room_for_the_original_and_the_shards_at_once() -> None:
-    """Memory is the easy half of streaming; the layer split is the hard one."""
+def test_streaming_needs_the_checkpoint_and_no_scratch_space() -> None:
+    """The hard half of streaming used to be the disk, and no longer is.
+
+    The previous runtime decomposed the checkpoint into per-layer shards
+    beside the original before anything ran, so the cache held both at once:
+    ~294 GB free to stream a 70B that only weighs ~140. That is what made
+    nearly every row of `lightweight plan` read `runs: NO` on a normal
+    laptop -- the models fit in memory-per-layer terms and failed on scratch.
+
+    `streaming.py` reads one tensor at a time out of the original
+    safetensors, which are memory-mapped and carry their own index. Nothing
+    is copied, so peak and steady are both just the checkpoint.
+    """
     space = offload.disk_required_gb(LLAMA_70B)
 
-    assert space["peak_gb"] > offload.checkpoint_gb(LLAMA_70B)
-    assert space["steady_gb"] < space["peak_gb"]
-    # Compression shrinks the shards but not the download that precedes them,
-    # so the peak falls by much less than the steady state does.
-    compressed = offload.disk_required_gb(LLAMA_70B, "4bit")
-    assert compressed["steady_gb"] < space["steady_gb"] / 3
-    assert compressed["peak_gb"] > space["peak_gb"] / 2
+    assert space["peak_gb"] == offload.checkpoint_gb(LLAMA_70B)
+    assert space["steady_gb"] == space["peak_gb"]
+    # Compression is accepted and ignored: this runtime does not requantise,
+    # so what is on disk is whatever the checkpoint ships.
+    assert offload.disk_required_gb(LLAMA_70B, "4bit") == space
 
 
 def test_a_nearly_full_drive_blocks_a_model_that_fits_memory_easily() -> None:
@@ -257,12 +265,12 @@ def test_streaming_sizes_against_the_whole_usable_pool() -> None:
     """A transient shard must not be discounted by a margin held for a resident model.
 
     With the headroom applied, a 4 GB card's budget is 1.84 GB and a 70B model
-    -- airllm's own headline claim -- is rejected on the very hardware it was
+    -- lightweight's own headline claim -- is rejected on the very hardware it was
     demonstrated on.
     """
     assert offload.budget_gb(GPU_4GB) == pytest.approx(score.usable_pool_gb(GPU_4GB))
     assert offload.budget_gb(GPU_4GB) > score.effective_budget(GPU_4GB)
-    # airllm's headline claim, stated exactly: a 70B fits a 4 GB card at the
+    # lightweight's headline claim, stated exactly: a 70B fits a 4 GB card at the
     # short context its demo uses, and the KV cache is what takes it over at 4k.
     short_ctx = offload.footprint_gb(LLAMA_70B, prefetching=False, context_k=1)
     assert short_ctx < offload.budget_gb(GPU_4GB)
@@ -388,7 +396,7 @@ def test_a_human_can_ask_for_streaming_on_a_machine_that_does_not_need_it(
 
     assert decision["activate"] is True
     assert decision["trigger"] == "manual"
-    assert decision["runtime"] == "mlx"
+    assert decision["runtime"] == "mps"
 
 
 def test_never_wins_over_everything_including_the_automatic_trigger() -> None:
@@ -405,20 +413,20 @@ def test_never_wins_over_everything_including_the_automatic_trigger() -> None:
         conventional_resolved=False,
         compute=CUDA,
         disk=FAST_DISK,
-        env={"BEST_ENGINE_AIRLLM": "never"},
+        env={"BEST_ENGINE_LIGHTWEIGHT": "never"},
     )
     assert env_off["activate"] is False
 
 
 def test_the_brief_outranks_the_environment() -> None:
     """Same precedence as every other setting here: explicit beats ambient."""
-    assert offload.requested("always", env={"BEST_ENGINE_AIRLLM": "never"}) == "always"
-    assert offload.requested(None, env={"BEST_ENGINE_AIRLLM": "never"}) == "never"
+    assert offload.requested("always", env={"BEST_ENGINE_LIGHTWEIGHT": "never"}) == "always"
+    assert offload.requested(None, env={"BEST_ENGINE_LIGHTWEIGHT": "never"}) == "never"
     assert offload.requested(None, env={}) == "auto"
 
 
 def test_a_typo_in_the_request_is_an_error_not_a_silent_default() -> None:
-    """`airllm: alwyas` must not read as "streaming quietly disabled"."""
+    """`lightweight: alwyas` must not read as "streaming quietly disabled"."""
     with pytest.raises(ValueError, match="auto/always/never"):
         offload.normalize_request("alwyas")
 
@@ -432,7 +440,7 @@ def test_a_machine_with_no_streaming_runtime_says_so_before_the_first_call(
 
     assert decision["activate"] is False
     assert decision["runtime"] is None
-    assert any("no runtime airllm can stream on" in b for b in decision["blockers"])
+    assert any("no accelerator to stream on" in b for b in decision["blockers"])
     # Experimental, so it has to be asked for by name rather than assumed.
     assert offload.runtime(CPU_ONLY, allow_cpu=True) == "cpu"
 
@@ -455,18 +463,18 @@ def test_an_unimportable_runtime_is_reported_with_the_command_that_fixes_it(
 
 
 def test_only_entries_naming_a_hub_repository_can_be_streamed() -> None:
-    """airllm downloads safetensors; a pull tag names nothing it can read."""
-    assert catalog.servable(LLAMA_70B, "airllm") is True
-    assert catalog.servable({"id": "gemma3:12b"}, "airllm") is False
+    """lightweight downloads safetensors; a pull tag names nothing it can read."""
+    assert catalog.servable(LLAMA_70B, "lightweight") is True
+    assert catalog.servable({"id": "gemma3:12b"}, "lightweight") is False
     # `vllm_id` is the same repository under the name this catalogue has
     # always used, so no entry has to be edited twice.
-    assert catalog.servable({"id": "x", "vllm_id": "a/b"}, "airllm") is True
+    assert catalog.servable({"id": "x", "vllm_id": "a/b"}, "lightweight") is True
 
 
 def test_the_bundled_catalogue_carries_models_only_streaming_can_run() -> None:
     """Otherwise the backend is a capability with nothing to point it at."""
     entries = catalog.load_catalog()
-    streaming_only = [e for e in entries if e.get("backends") == ["airllm"]]
+    streaming_only = [e for e in entries if e.get("backends") == ["lightweight"]]
 
     assert len(streaming_only) >= 5
     for entry in streaming_only:
@@ -498,15 +506,15 @@ def test_resolving_for_streaming_writes_the_facts_a_caller_needs(
     monkeypatch.setattr(offload, "available", lambda: True)
     descriptor = engine.resolve(
         {"kind": "llm", "task": "general assistant", "structured_output": False},
-        backend="airllm",
+        backend="lightweight",
         catalog=_streamable_catalog(),
         hw=GPU_24GB,
         compute=CUDA,
         disk=FAST_DISK,
     )
 
-    assert descriptor["backend"] == "airllm"
-    # No URL: airllm is a library, and a localhost port would send a consumer
+    assert descriptor["backend"] == "lightweight"
+    # No URL: lightweight is a library, and a localhost port would send a consumer
     # looking for a daemon that will never exist.
     assert descriptor["base_url"] == ""
     section = descriptor["llm"]
@@ -514,10 +522,11 @@ def test_resolving_for_streaming_writes_the_facts_a_caller_needs(
     assert section["streaming"] is True
     assert section["structured_output"] is False
     assert section["seconds_per_token"] > 1
-    assert section["disk_peak_gb"] > section["checkpoint_gb"]
+    # Equal, not greater: there is no split copy to make room for any more.
+    assert section["disk_peak_gb"] == section["checkpoint_gb"]
     assert descriptor["min_tps"] == offload.COMFORT_TPS_STREAMING
     assert descriptor["serve"] == [
-        "best-engine-ai-helper airllm prepare --model meta-llama/Llama-3.3-70B-Instruct"
+        "best-engine-ai-helper lightweight prepare --model meta-llama/Llama-3.3-70B-Instruct"
     ]
 
 
@@ -562,13 +571,13 @@ def test_a_kind_with_nothing_fitting_is_rescued_and_the_rest_left_alone(
     )
 
     assert descriptor["backend"] == "ollama"
-    assert descriptor["airllm"]["activate"] is True
-    assert descriptor["airllm"]["trigger"] == "fallback"
-    assert descriptor["airllm"]["rescued"] == ["vlm"]
+    assert descriptor["lightweight"]["activate"] is True
+    assert descriptor["lightweight"]["trigger"] == "fallback"
+    assert descriptor["lightweight"]["rescued"] == ["vlm"]
 
     # The rescued kind carries its own backend...
     assert engine.model_for(descriptor, "vlm") == (
-        "airllm",
+        "lightweight",
         "",
         "Qwen/Qwen2.5-VL-72B-Instruct",
     )
@@ -597,8 +606,8 @@ def test_an_activated_rescue_that_rescues_nothing_says_so(
         disk=FULL_DISK,
     )
 
-    assert descriptor["airllm"]["activate"] is True
-    assert descriptor["airllm"]["rescued"] == []
+    assert descriptor["lightweight"]["activate"] is True
+    assert descriptor["lightweight"]["rescued"] == []
 
 
 def test_a_machine_with_room_never_hears_about_streaming() -> None:
@@ -612,14 +621,14 @@ def test_a_machine_with_room_never_hears_about_streaming() -> None:
         disk=FAST_DISK,
     )
 
-    assert "airllm" not in descriptor
+    assert "lightweight" not in descriptor
     assert descriptor["backend"] == "ollama"
 
 
 def test_never_in_the_brief_suppresses_the_rescue_entirely() -> None:
     """Even on a machine where nothing fits, which is where it would fire."""
     descriptor = engine.resolve(
-        {"kind": "llm", "task": "general assistant", "airllm": "never"},
+        {"kind": "llm", "task": "general assistant", "lightweight": "never"},
         backend="ollama",
         catalog=catalog.load_catalog(),
         hw={"unified_gb": None, "vram_gb": None, "ram_gb": 2.0},
@@ -627,7 +636,7 @@ def test_never_in_the_brief_suppresses_the_rescue_entirely() -> None:
         disk=FAST_DISK,
     )
 
-    assert "airllm" not in descriptor
+    assert "lightweight" not in descriptor
 
 
 def test_an_unusable_machine_records_why_instead_of_staying_silent(
@@ -644,15 +653,15 @@ def test_an_unusable_machine_records_why_instead_of_staying_silent(
         disk=FAST_DISK,
     )
 
-    assert descriptor["airllm"]["activate"] is False
-    assert any(offload.INSTALL_HINT in b for b in descriptor["airllm"]["blockers"])
+    assert descriptor["lightweight"]["activate"] is False
+    assert any(offload.INSTALL_HINT in b for b in descriptor["lightweight"]["blockers"])
     # The conventional pick is untouched: a failed rescue must not break what
     # already worked.
     assert descriptor["llm"]["model"]
 
 
 # ---------------------------------------------------------------------------
-# The adapter, with a fake runtime standing in for airllm
+# The adapter, with a fake runtime standing in for lightweight
 # ---------------------------------------------------------------------------
 
 
@@ -664,8 +673,14 @@ class _FakeTokens(dict[Any, Any]):
 
 
 @pytest.fixture()
-def fake_airllm(monkeypatch: pytest.MonkeyPatch) -> types.ModuleType:
-    """Install a module named ``airllm`` that answers the adapter's calls."""
+def fake_runtime(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    """Stand in for :class:`streaming.StreamedModel`, which `load` now builds.
+
+    The adapter used to be tested by injecting a module named ``airllm`` into
+    ``sys.modules``, because that is what it imported. It imports this
+    project's own runtime now, so the seam moved from "a third-party package"
+    to "a class we own" -- which is the whole point of the change.
+    """
 
     class _Tokenizer:
         """Echoes the prompt back from `decode`, as every causal LM does."""
@@ -679,67 +694,76 @@ def fake_airllm(monkeypatch: pytest.MonkeyPatch) -> types.ModuleType:
         def decode(self, sequence: Any, **_: Any) -> str:
             return f"{_Tokenizer.last} the streamed answer"
 
-    class _Model:
+    built: list[tuple[str, dict[str, Any]]] = []
+    generated: list[dict[str, Any]] = []
+
+    class _Streamed:
         device = "cpu"
-        tokenizer = _Tokenizer()
-        calls: list[dict[str, Any]] = []
+
+        def __init__(self, model: str, **kwargs: Any) -> None:
+            self.tokenizer = _Tokenizer()
+            built.append((model, kwargs))
 
         def generate(self, _ids: Any, **kwargs: Any) -> Any:
-            _Model.calls.append(kwargs)
+            generated.append(kwargs)
             return types.SimpleNamespace(sequences=[[1, 2, 3]])
 
-    class _AutoModel:
-        loads: list[tuple[str, dict[str, Any]]] = []
-
-        @staticmethod
-        def from_pretrained(model: str, **kwargs: Any) -> _Model:
-            _AutoModel.loads.append((model, kwargs))
-            return _Model()
-
-    module = types.ModuleType("airllm")
-    module.AutoModel = _AutoModel  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "airllm", module)
-    return module
+    monkeypatch.setattr("best_engine_ai_helper.streaming.StreamedModel", _Streamed, raising=True)
+    return {"built": built, "generated": generated}
 
 
-def test_the_adapter_passes_airllms_own_arguments_through_unrenamed(
-    fake_airllm: types.ModuleType,
+def test_the_adapter_passes_the_runtimes_arguments_through_unrenamed(
+    fake_runtime: dict[str, Any],
 ) -> None:
-    """So airllm's documentation stays the reference for them."""
+    """The streaming runtime's own vocabulary stays the reference for them."""
     offload.load(
         "meta-llama/Llama-3.3-70B-Instruct",
-        compression="4bit",
         prefetching=False,
-        layer_shards_saving_path="/fast/shards",
-        delete_original=True,
+        hf_token="hf_xxx",
     )
 
-    model, kwargs = fake_airllm.AutoModel.loads[-1]
+    model, kwargs = fake_runtime["built"][-1]
     assert model == "meta-llama/Llama-3.3-70B-Instruct"
-    assert kwargs["compression"] == "4bit"
     assert kwargs["prefetching"] is False
-    assert kwargs["layer_shards_saving_path"] == "/fast/shards"
-    assert kwargs["delete_original"] is True
+    assert kwargs["hf_token"] == "hf_xxx"
+
+
+def test_the_split_options_are_accepted_and_ignored(
+    fake_runtime: dict[str, Any],
+) -> None:
+    """They described a pre-split this runtime does not have.
+
+    airllm wrote a second copy of the checkpoint, one file per layer, before
+    anything ran -- which is why `compare` used to refuse 70B models on a
+    laptop for want of ~294 GB of scratch. Reading per-tensor out of the
+    original safetensors needs none of it, so `layer_shards_saving_path` and
+    `delete_original` have nothing left to mean. Accepted rather than removed,
+    because a caller passing them should not get a TypeError for asking for
+    something that is now simply free.
+    """
+    offload.load("x/y", layer_shards_saving_path="/fast/shards", delete_original=True)
+
+    _, kwargs = fake_runtime["built"][-1]
+    assert "layer_shards_saving_path" not in kwargs
+    assert "delete_original" not in kwargs
 
 
 def test_the_context_length_configured_is_the_one_that_was_priced(
-    fake_airllm: types.ModuleType,
+    fake_runtime: dict[str, Any],
 ) -> None:
-    """airllm defaults to 512 tokens and truncates past it, silently.
+    """The footprint is quoted for a 4k context, so 4k is what is configured.
 
-    Left alone, this package would quote a footprint for a 4k context and then
-    run a 512-token one — the documentation and the behaviour disagreeing in the
-    direction where a user loses the end of their prompt without being told. So
-    `max_seq_len` is passed explicitly, and its default is the same 4k the
-    footprint is priced at.
+    Left implicit, this package would quote a footprint for one context and
+    run another -- the documentation and the behaviour disagreeing in the
+    direction where a user loses the end of their prompt without being told.
     """
     offload.load("x/y")
-    _, kwargs = fake_airllm.AutoModel.loads[-1]
+    _, kwargs = fake_runtime["built"][-1]
     assert kwargs["max_seq_len"] == 4096
 
     # And a caller who wants more says so, in the same unit the footprint uses.
     offload.load("x/y", max_seq_len=32768)
-    _, longer = fake_airllm.AutoModel.loads[-1]
+    _, longer = fake_runtime["built"][-1]
     assert longer["max_seq_len"] == 32768
     # The KV term is what that costs, and it is already priced.
     assert offload.footprint_gb({"size_b": 70, "layers": 80}, context_k=32) > offload.footprint_gb(
@@ -747,109 +771,47 @@ def test_the_context_length_configured_is_the_one_that_was_priced(
     )
 
 
-def test_generate_strips_the_echoed_prompt(fake_airllm: types.ModuleType) -> None:
-    """Callers of `chat` expect the answer, not the prompt plus the answer."""
-    answer = offload.generate("Hello", model="x/y", max_new_tokens=8)
-
-    assert answer == "the streamed answer"
+def test_generate_strips_the_echoed_prompt(fake_runtime: dict[str, Any]) -> None:
+    """transformers returns prompt + continuation; `chat` wants the answer."""
+    assert offload.generate("Hello", model="x/y") == "the streamed answer"
 
 
-@pytest.fixture()
-def fake_airllm_mlx(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
-    """airllm as it really behaves on macOS, plus a stand-in for ``mlx.core``.
-
-    Both halves are faked on purpose. mlx has no Linux wheel, so a test that
-    imported the real one would pass on a Mac and be skipped-or-broken on the
-    CI runner -- the exact host dependence that let the streaming path stay
-    dead on macOS without any test noticing.
-    """
-
-    class _Tokenizer:
-        def __call__(self, prompts: list[str], **_: Any) -> dict[str, Any]:
-            return {"input_ids": [[7, 8, 9]]}
-
-    class _MlxModel:
-        """`AirLLMLlamaMlx`: no `.device`, and `generate` returns decoded text."""
-
-        tokenizer = _Tokenizer()
-        calls: list[dict[str, Any]] = []
-
-        def generate(self, x: Any, **kwargs: Any) -> str:
-            _MlxModel.calls.append({"x": x, **kwargs})
-            return "  the streamed answer"
-
-    class _AutoModel:
-        @staticmethod
-        def from_pretrained(model: str, **kwargs: Any) -> _MlxModel:
-            return _MlxModel()
-
-    airllm_module = types.ModuleType("airllm")
-    airllm_module.AutoModel = _AutoModel  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "airllm", airllm_module)
-
-    seen: dict[str, Any] = {}
-    core = types.ModuleType("mlx.core")
-
-    def _array(value: Any) -> str:
-        seen["array"] = value
-        return f"mlx:{value}"
-
-    core.array = _array  # type: ignore[attr-defined]
-    mlx_module = types.ModuleType("mlx")
-    mlx_module.core = core  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "mlx", mlx_module)
-    monkeypatch.setitem(sys.modules, "mlx.core", core)
-    return {"calls": _MlxModel.calls, "seen": seen}
-
-
-def test_generate_runs_on_the_mlx_runtime_which_has_no_device(
-    fake_airllm_mlx: dict[str, Any],
+def test_generate_uses_one_contract_for_every_runtime(
+    fake_runtime: dict[str, Any],
 ) -> None:
-    """The Apple Silicon path, which used to raise before reaching the model.
+    """There used to be two, and the second one was broken everywhere it ran.
 
-    `generate` placed its tokens with `tokens["input_ids"].to(instance.device)`,
-    and airllm's macOS class — which `AutoModel.from_pretrained` hard-returns
-    there, whatever the architecture — has no `.device`. So every Apple Silicon
-    machine got `AttributeError: 'AirLLMLlamaMlx' object has no attribute
-    'device'`, on the platform this suite is developed on. `load` succeeded,
-    which is what made it look fine.
-
-    Found by running it against a real checkpoint rather than by reading, and
-    pinned here so the two runtimes' genuinely different contracts stay
-    covered: mlx array in, decoded continuation out, nothing to strip.
+    airllm returned a transformers model on CUDA and, on macOS, a different
+    class with no ``.device`` that took an mlx array and returned pre-decoded
+    text. `generate` assumed the first for both, so every Apple Silicon
+    machine raised ``AttributeError: 'AirLLMLlamaMlx' object has no attribute
+    'device'`` at the first call. Owning the runtime collapses that into one
+    contract: a transformers model with hooks on it, wherever it runs.
     """
-    answer = offload.generate("Hello", model="x/y", max_new_tokens=8)
+    offload.generate("Hello", model="x/y", max_new_tokens=8)
 
-    # Already decoded by airllm, and only the continuation — so the adapter
-    # must not try to slice a prompt off the front of it.
-    assert answer == "the streamed answer"
-
-    call = fake_airllm_mlx["calls"][-1]
-    # The ids went through `mlx.core.array`, not through torch's `.to(device)`.
-    assert call["x"] == "mlx:[[7, 8, 9]]"
-    assert fake_airllm_mlx["seen"]["array"] == [[7, 8, 9]]
-    # Not optional on this path: airllm's MLX loop compares `len(tokens) >=
-    # max_new_tokens` and raises on None.
+    call = fake_runtime["generated"][-1]
     assert call["max_new_tokens"] == 8
+    assert call["use_cache"] is True
 
 
 def test_an_unimportable_runtime_raises_the_repair_command() -> None:
-    """airllm is a core dependency, so this path means a broken install.
+    """lightweight is a core dependency, so this path means a broken install.
 
     Which changes what the error has to say: not "opt into the extra" — there is
     no extra — but "your install is incomplete, here is the command". A message
     that tells someone to install what they already depend on sends them in a
     circle.
     """
-    if offload.available():  # pragma: no cover - the normal case, airllm is a dep
-        pytest.skip("airllm imports here, so the broken-install path cannot run")
+    if offload.available():  # pragma: no cover - the normal case, lightweight is a dep
+        pytest.skip("lightweight imports here, so the broken-install path cannot run")
 
     with pytest.raises(ImportError, match="install is incomplete"):
         offload.load("meta-llama/Llama-3.3-70B-Instruct")
 
 
 def test_the_chat_transport_refuses_images_and_schemas_rather_than_faking_them(
-    fake_airllm: types.ModuleType,
+    fake_runtime: dict[str, Any],
 ) -> None:
     """Both would be answered wrongly in a way nobody would notice.
 
@@ -882,18 +844,18 @@ def test_the_chat_transport_refuses_images_and_schemas_rather_than_faking_them(
     assert usage == {"in_tokens": None, "out_tokens": None}
 
 
-def test_the_loaded_model_is_reused_across_calls(fake_airllm: types.ModuleType) -> None:
+def test_the_loaded_model_is_reused_across_calls(fake_runtime: dict[str, Any]) -> None:
     """Splitting a 141 GB checkpoint per call would make the transport unusable."""
     from best_engine_ai_helper import llm
 
     llm._STREAMED.clear()
-    before = len(fake_airllm.AutoModel.loads)
+    before = len(fake_runtime["built"])
     for _ in range(3):
         llm._chat_airllm(
             "Hello", system=None, images=None, json_schema=None, model="x/y", temperature=0.0
         )
 
-    assert len(fake_airllm.AutoModel.loads) - before == 1
+    assert len(fake_runtime["built"]) - before == 1
     llm._STREAMED.clear()
 
 
@@ -1012,7 +974,7 @@ def test_batching_multiplies_throughput_in_time_and_costs_kv_in_memory() -> None
 
 
 def test_compression_is_three_times_faster_not_four() -> None:
-    """Pinned to airllm's published claim, because dequantisation is not free.
+    """Pinned to lightweight's published claim, because dequantisation is not free.
 
     4-bit divides the bytes read by four; upstream reports a 3x speed-up. The
     missing quarter is the unpack, and modelling it as a clean 4x would promise
@@ -1165,9 +1127,9 @@ def test_the_comparison_is_reachable_from_the_package_root() -> None:
     """Downstream packages import from the root, not from submodules."""
     import best_engine_ai_helper as root
 
-    assert root.airllm_compare is offload.compare
-    assert root.airllm_generation_time is offload.generation_time
-    assert root.airllm_seconds_per_pass is offload.seconds_per_pass
+    assert root.lightweight_compare is offload.compare
+    assert root.lightweight_generation_time is offload.generation_time
+    assert root.lightweight_seconds_per_pass is offload.seconds_per_pass
 
 
 def test_a_bigger_slower_weaker_candidate_never_wins() -> None:
