@@ -95,6 +95,20 @@ _VIRTUAL_KINDS: dict[str, str] = {
 #: Names meaning "you choose, based on what I sent".
 _AUTO_NAMES = frozenset({"best", "auto", "default", "best-auto"})
 
+#: Which mode a virtual name pins, as an infix after ``best-``:
+#: ``best-cloud-llm``, ``best-local-vlm``, ``best-cloud:write SQL``. A name
+#: that says nothing takes the server default (:func:`default_mode`), so one
+#: deployment can serve both halves of the product at once: a gateway can keep
+#: a free route on ``best-local-llm`` and a paid one on ``best-cloud-llm``
+#: against the SAME server, which is what makes "all modes" a deployment fact
+#: rather than a restart.
+_MODE_NAMES = frozenset({"local", "cloud"})
+
+#: Environment switch for the default mode of a ``best*`` name that does not
+#: pin one. ``local`` (free, this machine) unless set to ``cloud`` (paid
+#: provider, with the local fallback the cloud descriptor already carries).
+MODE_ENV = "BEST_OPENAI_MODE"
+
 #: Environment switch for fetching ``http(s)`` image URLs. Off by default: a
 #: server that fetches a caller-supplied address on request is an SSRF
 #: primitive, and this one usually runs on a developer's machine with access to
@@ -172,9 +186,63 @@ def _fail(status: int, message: str, *, kind: str = "invalid_request_error") -> 
     )
 
 
+def default_mode(env: dict[str, str] | None = None) -> str:
+    """
+    The mode a ``best*`` name takes when it does not pin one.
+
+    Read from :data:`MODE_ENV` rather than baked in, so the same build serves a
+    free deployment and a paid one. Anything unrecognised is ``local``, with a
+    warning: the failure direction matters here, because the other one bills
+    somebody.
+
+    Parameters
+    ----------
+    env : dict[str, str] or None
+        Environment to read; None uses ``os.environ``. Injectable so this stays
+        a pure function under test — the thing it reports on is exactly the
+        kind of ambient state a test must not inherit from the host.
+
+    Returns
+    -------
+    str
+        ``'local'`` or ``'cloud'``.
+
+    Examples
+    --------
+    >>> default_mode({})
+    'local'
+    >>> default_mode({"BEST_OPENAI_MODE": "cloud"})
+    'cloud'
+    >>> default_mode({"BEST_OPENAI_MODE": "CLOUD"})
+    'cloud'
+    >>> default_mode({"BEST_OPENAI_MODE": "nonsense"})   # unrecognised -> free
+    'local'
+    """
+    source = os.environ if env is None else env
+    raw = str(source.get(MODE_ENV, "") or "").strip().lower()
+    if not raw:
+        return "local"
+    if raw in _MODE_NAMES:
+        return raw
+    osh.warning(
+        f"{MODE_ENV}={raw!r} is not one of {sorted(_MODE_NAMES)}; serving local. "
+        "The unrecognised value is not treated as 'cloud' on purpose: that "
+        "direction spends money on a typo."
+    )
+    return "local"
+
+
 def parse_model(name: str | None, *, has_images: bool = False) -> dict[str, Any]:
     """
     Resolve a requested model name into what to actually run.
+
+    The name may pin a **mode** as an infix after ``best-``: ``best-cloud-llm``
+    is the best paid text model, ``best-local-vlm`` the best free one that fits
+    this machine. A name that pins nothing reports ``mode: None``, meaning "the
+    server decides" — :func:`default_mode` does, at call time. The mode is
+    deliberately NOT resolved here: this function is pure, and a resolution
+    that silently read the environment would make its own doctests depend on
+    the host that happened to run them.
 
     Parameters
     ----------
@@ -190,13 +258,15 @@ def parse_model(name: str | None, *, has_images: bool = False) -> dict[str, Any]
     -------
     dict[str, Any]
         ``virtual`` (bool), ``kind`` (``llm``/``vlm``/``embed``/``image``),
-        ``task`` (free text or None) and ``literal`` (the model name to pass
-        through, or None when the choice is ours).
+        ``task`` (free text or None), ``literal`` (the model name to pass
+        through, or None when the choice is ours) and ``mode``
+        (``'local'``/``'cloud'``, or None when the name did not say).
 
     Examples
     --------
-    >>> parse_model("best")
-    {'virtual': True, 'kind': 'llm', 'task': None, 'literal': None}
+    >>> parse_model("best") == {
+    ...     'virtual': True, 'kind': 'llm', 'task': None, 'literal': None, 'mode': None}
+    True
     >>> parse_model("best", has_images=True)["kind"]
     'vlm'
     >>> parse_model("best-image")["kind"]
@@ -204,10 +274,31 @@ def parse_model(name: str | None, *, has_images: bool = False) -> dict[str, Any]
     >>> parse_model("best:write SQL for a warehouse")["task"]
     'write SQL for a warehouse'
     >>> parse_model("best-vlm:read screenshots") == {
-    ...     'virtual': True, 'kind': 'vlm', 'task': 'read screenshots', 'literal': None}
+    ...     'virtual': True, 'kind': 'vlm', 'task': 'read screenshots',
+    ...     'literal': None, 'mode': None}
     True
-    >>> parse_model("qwen3:14b")
-    {'virtual': False, 'kind': 'llm', 'task': None, 'literal': 'qwen3:14b'}
+
+    The mode infix, on a pinned kind and on an auto name alike:
+
+    >>> parse_model("best-cloud-llm")["mode"]
+    'cloud'
+    >>> parse_model("best-cloud-llm")["kind"]
+    'llm'
+    >>> parse_model("best-local-vlm") == {
+    ...     'virtual': True, 'kind': 'vlm', 'task': None,
+    ...     'literal': None, 'mode': 'local'}
+    True
+    >>> parse_model("best-cloud", has_images=True)["kind"]
+    'vlm'
+    >>> parse_model("best-cloud:write SQL")["task"]
+    'write SQL'
+
+    A concrete name still passes through untouched, colon and all:
+
+    >>> parse_model("qwen3:14b") == {
+    ...     'virtual': False, 'kind': 'llm', 'task': None,
+    ...     'literal': 'qwen3:14b', 'mode': None}
+    True
     >>> parse_model(None)["virtual"]
     True
     """
@@ -216,26 +307,66 @@ def parse_model(name: str | None, *, has_images: bool = False) -> dict[str, Any]
     head = head.strip().lower()
     task: str | None = tail.strip() or None
 
+    head, mode = _split_mode(head)
+
     if head in _AUTO_NAMES:
         return {
             "virtual": True,
             "kind": "vlm" if has_images else "llm",
             "task": task,
             "literal": None,
+            "mode": mode,
         }
     if head in _VIRTUAL_KINDS:
-        return {"virtual": True, "kind": _VIRTUAL_KINDS[head], "task": task, "literal": None}
+        return {
+            "virtual": True,
+            "kind": _VIRTUAL_KINDS[head],
+            "task": task,
+            "literal": None,
+            "mode": mode,
+        }
     # Not a virtual name: the colon belongs to the tag (`qwen3:14b`), so the
-    # whole string is the model and nothing was a task.
+    # whole string is the model and nothing was a task. A mode infix cannot
+    # apply either -- the caller named a model, which IS the choice.
     return {
         "virtual": False,
         "kind": "vlm" if has_images else "llm",
         "task": None,
         "literal": raw,
+        "mode": None,
     }
 
 
-def _engine_for(kind: str, task: str | None) -> dict[str, Any] | None:
+def _split_mode(head: str) -> tuple[str, str | None]:
+    """
+    Pull a ``local``/``cloud`` infix out of a ``best-…`` name.
+
+    Returns the name with the infix removed (so the existing tables can be
+    looked up unchanged) and the mode, or None when there was none.
+
+    Examples
+    --------
+    >>> _split_mode("best-cloud-llm")
+    ('best-llm', 'cloud')
+    >>> _split_mode("best-cloud")
+    ('best', 'cloud')
+    >>> _split_mode("best-llm")
+    ('best-llm', None)
+    >>> _split_mode("qwen3-cloud-7b")          # not a `best-` name, untouched
+    ('qwen3-cloud-7b', None)
+    """
+    if not head.startswith("best-"):
+        return head, None
+    rest = head[len("best-") :]
+    for mode in _MODE_NAMES:
+        if rest == mode:
+            return "best", mode
+        if rest.startswith(f"{mode}-"):
+            return f"best-{rest[len(mode) + 1 :]}", mode
+    return head, None
+
+
+def _engine_for(kind: str, task: str | None, mode: str = "local") -> dict[str, Any] | None:
     """
     Resolve an engine descriptor for a kind, the way ``resolve`` would.
 
@@ -250,6 +381,13 @@ def _engine_for(kind: str, task: str | None) -> dict[str, Any] | None:
     task : str or None
         Free-text task, selecting the benchmark axis.
 
+    mode : {'local', 'cloud'}
+        Which half of the product answers. ``cloud`` returns a paid-provider
+        descriptor that already embeds a local ``fallback``, so a failed paid
+        call degrades to the free model instead of to an error — the direction
+        ``engine._resolve_cloud`` chose, and the reason this surface can offer
+        the paid route without becoming less reliable than the free one.
+
     Returns
     -------
     dict[str, Any] or None
@@ -261,30 +399,30 @@ def _engine_for(kind: str, task: str | None) -> dict[str, Any] | None:
     >>> _engine_for("llm", None) is None or "backend" in _engine_for("llm", None)
     True
     """
-    key = (kind, task or "")
+    key = (kind, task or "", mode)
     if key in _ENGINE_CACHE:
         return _ENGINE_CACHE[key]
 
     from . import engine as _engine
 
-    brief: dict[str, Any] = {"kind": kind, "structured_output": False}
+    brief: dict[str, Any] = {"kind": kind, "structured_output": False, "mode": mode}
     if task:
         brief["task"] = task
     try:
         descriptor = _engine.resolve(brief)
     except Exception as exc:  # noqa: BLE001 — a failed resolution is a 503, not a crash
-        osh.warning(f"OpenAI surface could not resolve a {kind} engine: {exc!r}")
+        osh.warning(f"OpenAI surface could not resolve a {kind} {mode} engine: {exc!r}")
         _ENGINE_CACHE[key] = None
         return None
     _ENGINE_CACHE[key] = descriptor
     return descriptor
 
 
-#: Resolved descriptors, keyed by (kind, task). Cleared by
+#: Resolved descriptors, keyed by (kind, task, mode). Cleared by
 #: :func:`reset_engine_cache`, which the tests and a long-running server both
 #: need: hardware does not change under a process, but a freshly pulled model
 #: does.
-_ENGINE_CACHE: dict[tuple[str, str], dict[str, Any] | None] = {}
+_ENGINE_CACHE: dict[tuple[str, str, str], dict[str, Any] | None] = {}
 
 
 def reset_engine_cache() -> None:
@@ -611,6 +749,48 @@ class ImageRequest(BaseModel):
     seed: int | None = None
 
 
+def _refuse_cloud_kind(parsed: dict[str, Any], endpoint: str) -> None:
+    """
+    Refuse ``best-cloud-embed`` / ``best-cloud-image`` instead of serving local.
+
+    The paid catalogue (``data/pricing.yaml``) carries ``llm`` and ``vlm`` and
+    nothing else, and ``engine._kinds_from_brief`` answers an unknown kind by
+    warning and resolving BOTH — so a cloud request for an embedder would come
+    back with a chat model, or silently with the free local one. Either is the
+    failure this module's docstring singles out as the worst kind: the caller
+    believes they got what they asked for.
+
+    Only an EXPLICIT ``cloud`` in the name is refused. A server whose default
+    mode is cloud still serves ``best-embed`` locally, because that name asked
+    for an embedder rather than for a paid one, and the free answer is a real
+    answer.
+
+    Raises
+    ------
+    HTTPException
+        400, naming the kind and the reason.
+
+    Examples
+    --------
+    >>> _refuse_cloud_kind({"mode": None, "kind": "embed"}, "/v1/embeddings") is None
+    True
+    >>> try:
+    ...     _refuse_cloud_kind({"mode": "cloud", "kind": "embed"}, "/v1/embeddings")
+    ... except Exception as exc:
+    ...     print(exc.status_code, "no paid embed" in str(exc.detail))
+    400 True
+    """
+    if parsed.get("mode") != "cloud":
+        return
+    raise _fail(
+        400,
+        f"{endpoint} has no paid route: the cloud catalogue prices text and "
+        f"vision models only, so there is no paid {parsed['kind']} model to "
+        f"pick. Drop the `cloud` from the name to use the local one, which is "
+        f"a real answer rather than a degraded one.",
+    )
+
+
 def _target(parsed: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
     """
     Turn a parsed model name into ``(engine, literal_model)`` for ``llm.chat``.
@@ -619,6 +799,10 @@ def _target(parsed: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
     ----------
     parsed : dict[str, Any]
         Output of :func:`parse_model`.
+
+    This is where the server default is applied: :func:`parse_model` reports
+    the mode the *name* asked for, which is None whenever the name did not say,
+    and :func:`default_mode` turns that into a concrete one.
 
     Returns
     -------
@@ -633,17 +817,24 @@ def _target(parsed: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
 
     Examples
     --------
-    >>> _target({"virtual": False, "kind": "llm", "task": None, "literal": "qwen3:8b"})
+    >>> _target({"virtual": False, "kind": "llm", "task": None,
+    ...          "literal": "qwen3:8b", "mode": None})
     (None, 'qwen3:8b')
     """
     if not parsed["virtual"]:
         return None, parsed["literal"]
 
-    descriptor = _engine_for(parsed["kind"], parsed["task"])
+    mode = parsed.get("mode") or default_mode()
+    descriptor = _engine_for(parsed["kind"], parsed["task"], mode)
     if descriptor is None or not descriptor.get(parsed["kind"]):
+        where = (
+            "for this machine"
+            if mode == "local"
+            else "from the paid catalogue (`catalog show --cloud` lists it)"
+        )
         raise _fail(
             503,
-            f"No {parsed['kind']} model could be resolved for this machine. Run "
+            f"No {mode} {parsed['kind']} model could be resolved {where}. Run "
             "`best-engine-ai-helper recommend` to see why, or name a model "
             "explicitly instead of a `best*` alias.",
             kind="server_error",
@@ -931,6 +1122,7 @@ def embeddings(request: EmbeddingRequest) -> dict[str, Any]:
         raise _fail(400, "input must not be empty")
 
     parsed = parse_model(request.model)
+    _refuse_cloud_kind(parsed, "/v1/embeddings")
     model: str | None = parsed["literal"]
     if parsed["virtual"]:
         try:
@@ -998,6 +1190,7 @@ def images_generations(request: ImageRequest) -> dict[str, Any]:
         )
 
     parsed = parse_model(request.model)
+    _refuse_cloud_kind(parsed, "/v1/images/generations")
     width: int | None = None
     height: int | None = None
     if request.size and request.size != "auto":

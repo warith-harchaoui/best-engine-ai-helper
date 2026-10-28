@@ -41,7 +41,7 @@ def canned_engine(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         "llm": {"model": "qwen3:14b", "structured_output": True},
         "vlm": {"model": "gemma3:12b", "structured_output": True},
     }
-    monkeypatch.setattr(openai_api, "_engine_for", lambda kind, task: descriptor)
+    monkeypatch.setattr(openai_api, "_engine_for", lambda kind, task, mode="local": descriptor)
     return descriptor
 
 
@@ -415,7 +415,7 @@ def test_an_unresolvable_virtual_name_is_a_503_that_explains_itself(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """ "No model fits this machine" is a server condition, with a next step."""
-    monkeypatch.setattr(openai_api, "_engine_for", lambda kind, task: None)
+    monkeypatch.setattr(openai_api, "_engine_for", lambda kind, task, mode="local": None)
     response = client.post(
         "/v1/chat/completions",
         json={"model": "best", "messages": [{"role": "user", "content": "hi"}]},
@@ -578,7 +578,7 @@ def test_naming_a_concrete_model_bypasses_the_chooser(
     monkeypatch.setattr(
         openai_api,
         "_engine_for",
-        lambda kind, task: pytest.fail("a literal model must not resolve an engine"),
+        lambda kind, task, mode="local": pytest.fail("a literal model must not resolve an engine"),
     )
     response = client.post(
         "/v1/chat/completions",
@@ -673,3 +673,85 @@ def test_the_response_names_the_model_that_actually_ran(
 
     assert body["model"] == "qwen3:14b"
     assert body["model"] not in ("best", "llm")
+
+
+# ---------------------------------------------------------------------------
+# Mode: the free half and the paid half, on one server
+# ---------------------------------------------------------------------------
+
+
+def test_the_name_can_pin_a_mode_and_silence_means_the_server_default() -> None:
+    """One deployment serves both halves, which is what makes "all modes" real.
+
+    A gateway in front of this can keep a free route on `best-local-llm` and a
+    paid one on `best-cloud-llm` against the SAME process, instead of running
+    two servers or restarting to change its mind.
+    """
+    assert openai_api.parse_model("best-cloud-llm")["mode"] == "cloud"
+    assert openai_api.parse_model("best-cloud-llm")["kind"] == "llm"
+    assert openai_api.parse_model("best-local-vlm")["mode"] == "local"
+    assert openai_api.parse_model("best-local-vlm")["kind"] == "vlm"
+    # The bare alias says nothing, so the server decides rather than the name.
+    assert openai_api.parse_model("best")["mode"] is None
+    assert openai_api.parse_model("best-llm")["mode"] is None
+    # The infix composes with both the auto name and the free-text task.
+    assert openai_api.parse_model("best-cloud", has_images=True)["kind"] == "vlm"
+    assert openai_api.parse_model("best-cloud:write SQL")["task"] == "write SQL"
+    assert openai_api.parse_model("best-cloud:write SQL")["mode"] == "cloud"
+    # A concrete name is the caller's own choice; a mode cannot apply to it.
+    assert openai_api.parse_model("qwen3:14b")["mode"] is None
+
+
+def test_an_unrecognised_default_mode_serves_local_rather_than_spending() -> None:
+    """The failure direction matters when one of the two bills somebody."""
+    assert openai_api.default_mode({}) == "local"
+    assert openai_api.default_mode({"BEST_OPENAI_MODE": "cloud"}) == "cloud"
+    assert openai_api.default_mode({"BEST_OPENAI_MODE": " CLOUD "}) == "cloud"
+    assert openai_api.default_mode({"BEST_OPENAI_MODE": "typo"}) == "local"
+
+
+def test_the_mode_reaches_resolution_and_is_cached_apart(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A cloud answer must never be served from a local cache entry, or back.
+
+    The cache key used to be (kind, task). With two modes behind one server
+    that would hand a paid caller the free model — the kind of mix-up that is
+    invisible until the bill or the quality says so.
+    """
+    seen: list[dict] = []
+
+    def _resolve(brief, **_kwargs):
+        seen.append(dict(brief))
+        return {"backend": "ollama", "llm": {"model": f"model-for-{brief['mode']}"}}
+
+    monkeypatch.setattr("best_engine_ai_helper.engine.resolve", _resolve)
+    openai_api.reset_engine_cache()
+
+    local = openai_api._engine_for("llm", None, "local")
+    cloud = openai_api._engine_for("llm", None, "cloud")
+
+    assert [b["mode"] for b in seen] == ["local", "cloud"]
+    assert local["llm"]["model"] == "model-for-local"
+    assert cloud["llm"]["model"] == "model-for-cloud"
+    # Asking again is served from the cache, per mode, not re-resolved.
+    assert openai_api._engine_for("llm", None, "cloud")["llm"]["model"] == "model-for-cloud"
+    assert len(seen) == 2
+
+
+def test_a_paid_embedder_is_refused_instead_of_quietly_served_for_free() -> None:
+    """The cloud catalogue prices text and vision only.
+
+    `engine._kinds_from_brief` answers an unknown kind by warning and resolving
+    BOTH, so a paid embedding request would come back with a chat model — or
+    silently with the local embedder the caller did not ask for. Refusing is
+    the behaviour this module's docstring commits to.
+    """
+    for endpoint in ("/v1/embeddings", "/v1/images/generations"):
+        with pytest.raises(Exception) as excinfo:
+            openai_api._refuse_cloud_kind({"mode": "cloud", "kind": "embed"}, endpoint)
+        assert excinfo.value.status_code == 400
+        assert "no paid route" in str(excinfo.value.detail)
+
+    # Without the explicit `cloud`, the local answer is a real answer.
+    assert openai_api._refuse_cloud_kind({"mode": None, "kind": "embed"}, "/v1/embeddings") is None

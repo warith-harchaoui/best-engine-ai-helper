@@ -37,7 +37,7 @@ def sdk(monkeypatch: pytest.MonkeyPatch) -> Any:
     monkeypatch.setattr(
         openai_api,
         "_engine_for",
-        lambda kind, task: {
+        lambda kind, task, mode="local": {
             "backend": "ollama",
             "base_url": "http://localhost:11434",
             "llm": {"model": "qwen3:14b"},
