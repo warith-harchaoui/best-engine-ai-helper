@@ -89,6 +89,10 @@ Ce paquet est à la base de la couche de sélection de modèles de la suite AI H
   heuristique par mots-clés ou un verdict « indisponible ») en leur
   absence, jamais un échec brutal.
 
+## Comment ça marche
+
+![Comment best-engine-ai-helper fonctionne : cette machine en entrée, le plus gros modèle qui tienne vraiment en sortie](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/comment-ca-marche.png)
+
 ## Installation
 
 Python 3.10+. Le code de ce paquet est en Python pur ; son arbre de

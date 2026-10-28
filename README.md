@@ -71,6 +71,10 @@ This package sits at the base of the AI Helpers suite's model-selection layer, a
   for the full story; both degrade gracefully (a keyword heuristic, or an
   "unavailable" verdict) when absent, never a hard failure.
 
+## How it works
+
+![How best-engine-ai-helper works: this machine in, the largest model that actually fits out](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/how-it-works.png)
+
 ## Installation
 
 Python 3.10+. This package's own code is pure Python; its dependency tree is
