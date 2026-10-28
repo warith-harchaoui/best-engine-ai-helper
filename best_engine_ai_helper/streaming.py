@@ -347,6 +347,7 @@ class StreamedModel:
         # the model over it would be refusing the wrong thing; `generate`
         # below is where the absence actually bites, so that is where it is
         # reported.
+        self.tokenizer: Any | None = None
         try:
             self.tokenizer = AutoTokenizer.from_pretrained(
                 self.checkpoint, trust_remote_code=trust_remote_code
@@ -361,7 +362,7 @@ class StreamedModel:
         # and then fails at the first attention. This is the same trap that
         # made airllm's macOS path die on `rotary_emb` for older exports.
         with init_empty_weights(include_buffers=False):
-            self.model = AutoModelForCausalLM.from_config(
+            self.model = AutoModelForCausalLM.from_config(  # type: ignore[no-untyped-call]
                 self.config, trust_remote_code=trust_remote_code
             )
         self.model.eval()
@@ -379,7 +380,7 @@ class StreamedModel:
         self._by_module = _names_by_layer(self.index, self.layers, self._prefixes)
         self._streamed = {id(layer) for layer in self.layers}
         self._executor = ThreadPoolExecutor(max_workers=1) if prefetching else None
-        self._pending: Future | None = None
+        self._pending: Future[dict[str, Any]] | None = None
         self._pending_for: int | None = None
 
         self._adopt_generation_config(trust_remote_code=trust_remote_code)
@@ -528,7 +529,7 @@ class StreamedModel:
     def _install_hooks(self) -> None:
         """Hang the load/free pair on every streamed decoder layer."""
         for position, layer in enumerate(self.layers):
-            layer._stream_position = position  # type: ignore[attr-defined]
+            layer._stream_position = position
             layer.register_forward_pre_hook(self._pre_hook)
             layer.register_forward_hook(self._post_hook)
 
@@ -671,49 +672,6 @@ def _place(model: Any, name: str, value: Any, device: str, dtype: Any) -> bool:
         osh.debug(f"Checkpoint tensor {name!r} has no place in this model, skipped: {exc!r}")
         return False
     return True
-
-
-def _decoder_layers(model: Any, config: Any) -> list[Any]:
-    """
-    Find the decoder stack by shape rather than by a table of names.
-
-    Every causal LM has one ``ModuleList`` whose length is the config's hidden
-    layer count; which attribute holds it (``model.layers``, ``transformer.h``,
-    ``gpt_neox.layers``) is a per-family detail that a table has to chase and
-    this does not.
-
-    Parameters
-    ----------
-    model : torch.nn.Module
-    config : transformers.PretrainedConfig
-
-    Returns
-    -------
-    list
-        The decoder layers in order, or an empty list when none matches.
-
-    Examples
-    --------
-    >>> import types
-    >>> _decoder_layers(types.SimpleNamespace(named_modules=lambda: []),
-    ...                 types.SimpleNamespace(num_hidden_layers=3))
-    []
-    """
-    import torch.nn as nn
-
-    expected = None
-    for attribute in ("num_hidden_layers", "n_layer", "num_layers"):
-        value = getattr(config, attribute, None)
-        if isinstance(value, int) and value > 0:
-            expected = value
-            break
-    if expected is None:
-        return []
-
-    for _name, module in model.named_modules():
-        if isinstance(module, nn.ModuleList) and len(module) == expected:
-            return list(module)
-    return []
 
 
 def _layer_prefixes(model: Any, layers: list[Any]) -> dict[int, str]:
