@@ -295,6 +295,48 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Fixed
 
+- **The unconstrained cloud auto-pick ignored which keys you actually hold.**
+  `engine._auto_pick_cloud` ranked the whole paid catalogue on score and price
+  and never asked whether the winner's provider had a usable key. On a machine
+  holding one Mistral key, `mode: cloud` with no `model` resolved to
+  `gemini-1.5-pro` with `api_key_env: GEMINI_API_KEY` unset — passing over the
+  only provider that could have run. Both the README and
+  `cloud_catalog.provider_status`'s own docstring claimed "a provider whose key
+  cannot be found is not even a candidate"; only the *pinned* path enforced it.
+
+  The rule is now narrow on purpose: it applies **only when the brief pins no
+  provider**. `api_key_env` stores a variable NAME so a descriptor can be
+  written on a build machine and executed where the secret lives, so a pinned
+  provider is still honoured without a key — which is also how `report` prices
+  a paid model it never calls. Descriptors gained `api_key_present: true|false`
+  to tell the two apart; it is a boolean about *this* machine and never the key.
+
+- **Five of the nine `/v1/models` aliases never attempted to resolve.**
+  `resolves_to` exists so a gateway can pin automatically instead of asking a
+  human which model `best` meant. It was wired for `best`, `best-llm` and
+  `best-vlm`; `best-embed`, `best-image`, `best-local-llm`, `best-cloud-llm`
+  and `best-cloud-vlm` were declared with no resolver and returned early, while
+  the docstring's "absent when nothing resolves" made the omission read as a
+  deliberate refusal. Each now resolves through the same path its own endpoint
+  uses — `best-embed` through the `embeddings` usage profile, `best-image`
+  through `imagine.rank`/`pick` — and each alias reports the mode it actually
+  names, so `best-cloud-llm` is no longer labelled `mode: local`. A cloud alias
+  whose key is missing publishes no `resolves_to` at all: telling a gateway
+  nothing beats telling it something uncallable.
+
+- **`api_key_env` was derived two different ways.** `provider_status` falls
+  back to the conventional `<PROVIDER>_API_KEY` and tells the user to set it;
+  `_resolve_cloud` had no fallback and left the field `None`. A provider added
+  to `pricing.yaml` but absent from the seven-entry table was therefore
+  advertised as wanting `ACME_API_KEY` while the descriptor read no variable at
+  all, so the key could never be found however it was set. Unified on the
+  convention — a name is not a secret, the brief still overrides it, and
+  presence is reported separately.
+
+- **`imagine.pick` printed `at about None s`** when no model cleared the
+  comfort mark and the machine's memory bandwidth was unknown, which reads as a
+  measurement. It now says the rate cannot be estimated.
+
 - **The `lightweight` rename was done by substitution, so the documentation
   came out arguing for a decision that had been reversed.** Every place that
   explained *why airllm was imported rather than vendored* now explained it

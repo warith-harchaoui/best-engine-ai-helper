@@ -69,7 +69,7 @@ import json
 import os
 import secrets
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Any, Literal
 
 import os_helper as osh
@@ -865,7 +865,41 @@ def list_models() -> dict[str, Any]:
     mode = default_mode()
     by_id = {str(e.get("id")): e for e in _catalog.load_catalog()}
 
-    def _alias(name: str, description: str, kind: str | None) -> dict[str, Any]:
+    def _section(kind: str, alias_mode: str) -> dict[str, Any]:
+        """What a chat/vision request for *kind* would resolve to, right now.
+
+        A cloud descriptor whose ``api_key_present`` is False answers nothing
+        useful: the pick is advisory, and publishing it as ``resolves_to``
+        would hand a gateway a model this server cannot call. Empty, so the
+        alias is listed without a resolution rather than with a wrong one.
+        """
+        descriptor = _engine_for(kind, None, alias_mode) or {}
+        if alias_mode == "cloud" and not descriptor.get("api_key_present"):
+            return {}
+        return descriptor.get(kind) or {}
+
+    def _embed_section() -> dict[str, Any]:
+        """What ``/v1/embeddings`` would pick, through the same usage profile."""
+        from . import usages as _usages
+
+        resolved = _usages.resolve_usage("embeddings")
+        return resolved.get("embed") or resolved.get("llm") or {}
+
+    def _image_section() -> dict[str, Any]:
+        """What ``/v1/images/generations`` would pick, through the same ranking."""
+        from . import imagine as _imagine
+
+        plan = _imagine.pick(
+            _imagine.rank(_catalog.load_catalog(), budget_gb=_score.effective_budget(hw))
+        )
+        return {"model": (plan or {}).get("model"), "catalog_id": (plan or {}).get("id")}
+
+    def _alias(
+        name: str,
+        description: str,
+        resolve: Callable[[], dict[str, Any]] | None,
+        alias_mode: str,
+    ) -> dict[str, Any]:
         """One virtual name, carrying what it resolves to *right now*.
 
         ``resolves_to`` exists for the gateway case. A budget in front of this
@@ -873,7 +907,14 @@ def list_models() -> dict[str, Any]:
         context, so a name that re-resolves per request is a moving target and
         the advice has been "ask which model, then pin it by hand". Publishing
         the answer makes that automatic instead of manual: read it, pin it.
-        Absent when nothing resolves, never guessed.
+
+        Every alias that *can* be resolved is resolved here, through the same
+        path the matching endpoint uses — including ``best-embed`` and
+        ``best-image``, whose per-request pick is the most opaque of the lot,
+        and the mode-prefixed names, which a caller cannot otherwise predict
+        without knowing ``BEST_OPENAI_MODE``. Absent only when the resolution
+        genuinely fails — a cloud alias with no usable provider key, say —
+        and never guessed.
         """
         entry: dict[str, Any] = {
             "id": name,
@@ -881,16 +922,15 @@ def list_models() -> dict[str, Any]:
             "created": created,
             "owned_by": "best-engine-ai-helper",
             "description": description,
-            "mode": mode,
+            "mode": alias_mode,
         }
-        if kind is None:
+        if resolve is None:
             return entry
         try:
-            descriptor = _engine_for(kind, None, mode)
+            section = resolve()
         except Exception as exc:  # noqa: BLE001 — listing models must not 500
             osh.debug(f"Could not resolve {name} for the model list: {exc!r}")
             return entry
-        section = (descriptor or {}).get(kind) or {}
         resolved = section.get("model")
         if resolved:
             entry["resolves_to"] = resolved
@@ -899,22 +939,68 @@ def list_models() -> dict[str, Any]:
                 entry["context_length"] = context
         return entry
 
+    hw = _detect.available_memory()
+
     data: list[dict[str, Any]] = [
-        _alias(name, description, kind)
-        for name, description, kind in (
-            ("best", "Best model for this machine; a VLM when the request carries images", "llm"),
-            ("best-llm", "Best text model for this machine", "llm"),
-            ("best-vlm", "Best vision-language model for this machine", "vlm"),
-            ("best-embed", "Best embedding model for this machine", None),
-            ("best-image", "Best text-to-image model for this machine", None),
-            ("best-local-llm", "Best text model that runs on this machine (never paid)", None),
-            ("best-cloud-llm", "Best paid text model from the pricing catalogue", None),
-            ("best-cloud-vlm", "Best paid vision-language model", None),
-            ("best:<task>", "Best model for a free-text task, e.g. best:write SQL", None),
+        _alias(name, description, resolve, alias_mode)
+        for name, description, resolve, alias_mode in (
+            (
+                "best",
+                "Best model for this machine; a VLM when the request carries images",
+                lambda: _section("llm", mode),
+                mode,
+            ),
+            (
+                "best-llm",
+                "Best text model for this machine",
+                lambda: _section("llm", mode),
+                mode,
+            ),
+            (
+                "best-vlm",
+                "Best vision-language model for this machine",
+                lambda: _section("vlm", mode),
+                mode,
+            ),
+            (
+                "best-embed",
+                "Best embedding model for this machine",
+                _embed_section,
+                "local",
+            ),
+            (
+                "best-image",
+                "Best text-to-image model for this machine",
+                _image_section,
+                "local",
+            ),
+            (
+                "best-local-llm",
+                "Best text model that runs on this machine (never paid)",
+                lambda: _section("llm", "local"),
+                "local",
+            ),
+            (
+                "best-cloud-llm",
+                "Best paid text model from the pricing catalogue",
+                lambda: _section("llm", "cloud"),
+                "cloud",
+            ),
+            (
+                "best-cloud-vlm",
+                "Best paid vision-language model",
+                lambda: _section("vlm", "cloud"),
+                "cloud",
+            ),
+            (
+                "best:<task>",
+                "Best model for a free-text task, e.g. best:write SQL",
+                None,
+                mode,
+            ),
         )
     ]
 
-    hw = _detect.available_memory()
     budget = _score.effective_budget(hw)
     for entry in _catalog.load_catalog():
         kind = str(entry.get("kind") or "llm")

@@ -757,6 +757,87 @@ def test_a_paid_embedder_is_refused_instead_of_quietly_served_for_free() -> None
     assert openai_api._refuse_cloud_kind({"mode": None, "kind": "embed"}, "/v1/embeddings") is None
 
 
+def test_every_alias_that_can_resolve_does(monkeypatch: pytest.MonkeyPatch, client) -> None:
+    """`resolves_to` was published for three aliases out of nine.
+
+    The feature exists so a gateway can pin automatically instead of asking a
+    human which model `best` meant. It was wired for `best`, `best-llm` and
+    `best-vlm` only: `best-embed`, `best-image` and the three mode-prefixed
+    names were declared with no resolver at all, so they silently returned
+    early. The docstring said "absent when nothing resolves", which read as a
+    deliberate refusal rather than what it was -- never having tried.
+
+    `best-embed` and `best-image` are the two whose per-request pick is least
+    guessable from outside, which made them the worst two to omit.
+    """
+    monkeypatch.setattr(
+        openai_api,
+        "_engine_for",
+        lambda kind, task, mode="local": {
+            "backend": "ollama" if mode == "local" else "mistral",
+            "api_key_present": True,
+            "llm": {"model": f"{mode}-llm-pick"},
+            "vlm": {"model": f"{mode}-vlm-pick"},
+        },
+    )
+    monkeypatch.setattr(
+        "best_engine_ai_helper.usages.resolve_usage",
+        lambda name: {"embed": {"model": "bge-m3"}},
+    )
+    monkeypatch.setattr("best_engine_ai_helper.imagine.rank", lambda *a, **k: [])
+    monkeypatch.setattr(
+        "best_engine_ai_helper.imagine.pick",
+        lambda plans: {"model": "black-forest-labs/FLUX.1-schnell", "id": "flux1-schnell"},
+    )
+    openai_api.reset_engine_cache()
+
+    rows = {row["id"]: row for row in client.get("/v1/models").json()["data"]}
+
+    assert rows["best-embed"]["resolves_to"] == "bge-m3"
+    assert rows["best-image"]["resolves_to"] == "black-forest-labs/FLUX.1-schnell"
+    assert rows["best-local-llm"]["resolves_to"] == "local-llm-pick"
+    assert rows["best-cloud-llm"]["resolves_to"] == "cloud-llm-pick"
+    assert rows["best-cloud-vlm"]["resolves_to"] == "cloud-vlm-pick"
+    # And each alias reports the mode it actually names, not the server default:
+    # `best-cloud-llm` labelled `mode: local` would be its own small lie.
+    assert rows["best-cloud-llm"]["mode"] == "cloud"
+    assert rows["best-local-llm"]["mode"] == "local"
+    # A template, not a name: nothing to resolve.
+    assert "resolves_to" not in rows["best:<task>"]
+
+
+def test_a_cloud_alias_without_a_key_advertises_nothing(
+    monkeypatch: pytest.MonkeyPatch, client
+) -> None:
+    """Telling a gateway nothing beats telling it something uncallable.
+
+    `api_key_present` is a statement about *this* machine, not about the
+    descriptor -- a brief pinning a provider is still legitimate on a build
+    machine that holds no secret. But a gateway reads `resolves_to` in order to
+    pin, and pinning a model this server cannot call is worse than being told
+    to ask.
+    """
+    monkeypatch.setattr(
+        openai_api,
+        "_engine_for",
+        lambda kind, task, mode="local": {
+            "backend": "ollama" if mode == "local" else "gemini",
+            "api_key_present": mode != "cloud",
+            "llm": {"model": f"{mode}-llm-pick"},
+            "vlm": {"model": f"{mode}-vlm-pick"},
+        },
+    )
+    openai_api.reset_engine_cache()
+
+    rows = {row["id"]: row for row in client.get("/v1/models").json()["data"]}
+
+    assert rows["best-local-llm"]["resolves_to"] == "local-llm-pick"
+    assert "resolves_to" not in rows["best-cloud-llm"]
+    assert "resolves_to" not in rows["best-cloud-vlm"]
+    # Still listed, with its mode, so a caller knows the name exists.
+    assert rows["best-cloud-llm"]["mode"] == "cloud"
+
+
 def test_the_model_list_publishes_what_a_gateway_needs_to_pin(
     monkeypatch: pytest.MonkeyPatch, client
 ) -> None:

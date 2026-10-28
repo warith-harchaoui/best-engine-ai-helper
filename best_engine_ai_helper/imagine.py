@@ -753,10 +753,18 @@ def pick(plans: list[dict[str, Any]]) -> dict[str, Any] | None:
     fastest = min(
         fitting, key=lambda p: p["seconds_per_image"] if p["seconds_per_image"] else math.inf
     )
+    # `seconds_per_image` is None whenever the machine's memory bandwidth is
+    # unknown (a chip absent from the table), and "at about None s" is worse
+    # than saying nothing: it reads as a measurement.
+    rate = fastest["seconds_per_image"]
+    pace = (
+        f"at about {rate:.0f} s an image"
+        if rate
+        else "at a rate this machine's memory bandwidth is not known well enough to estimate"
+    )
     osh.warning(
-        "No image model on this machine clears the "
-        f"{COMFORT_SECONDS_PER_IMAGE:.0f} s per image mark; offering the quickest, "
-        f"{fastest['model']} at about {fastest['seconds_per_image']} s."
+        f"No image model on this machine clears the {COMFORT_SECONDS_PER_IMAGE:.0f} s "
+        f"per image mark; offering the quickest, {fastest['model']} {pace}."
     )
     return fastest
 

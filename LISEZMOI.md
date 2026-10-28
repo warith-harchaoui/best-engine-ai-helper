@@ -1177,9 +1177,15 @@ de quelqu'un d'autre ».
 Un appel payant n'arrive jamais par accident. Il exige un brief qui dit `mode: cloud`
 **puis** un `api_key_env` nommant une variable d'environnement réellement renseignée :
 `api_key_env` porte le NOM de la variable, jamais la clé elle-même, puis la clé n'est jamais
-écrite dans le fichier moteur. Un fournisseur dont la clé est introuvable n'est même pas
-candidat : `best-engine-ai-helper providers` liste exactement lesquels sont utilisables à
-l'instant puis pourquoi les autres ne le sont pas. Rien dans ce paquet ne passe du local au
+écrite dans le fichier moteur. Quand le brief n'épingle aucun fournisseur, le choix
+automatique ne considère que ceux dont la clé se résout **à l'instant** — avec une clé
+Mistral puis aucune clé Gemini, vous obtenez Mistral, même là où Gemini marque plus haut —
+puis `best-engine-ai-helper providers` liste exactement lesquels sont utilisables puis
+pourquoi les autres ne le sont pas. Un fournisseur *épinglé* reste honoré sans clé, parce
+qu'`api_key_env` porte un nom de variable : un descripteur s'écrit là où le secret est
+absent puis s'exécute là où il est présent. Le fichier moteur consigne
+`api_key_present: true|false` pour distinguer les deux cas ; c'est aussi ainsi que `report`
+tarife un modèle payant qu'il n'appelle jamais. Rien dans ce paquet ne passe du local au
 payant de lui-même ; la seule direction automatique est la direction sûre, payant → local,
 quand un appel payant échoue.
 

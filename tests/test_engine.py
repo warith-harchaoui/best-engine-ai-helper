@@ -316,6 +316,59 @@ def test_resolve_cloud_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     assert no_fallback_eng["mode"] == "cloud" and no_fallback_eng["fallback"] is None
 
 
+def test_the_unpinned_cloud_pick_prefers_a_provider_whose_key_resolves(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Choosing an unusable provider over a usable one in the same catalogue.
+
+    `textonly-flagship` (textco, 90) outscores `cheap-text` (acme, 85) on the
+    general axis, so an unconstrained quality-first pick takes textco. With
+    only ACME_API_KEY set, that passes over the one provider this machine could
+    actually call -- which is exactly what happened in production, where a
+    machine holding one Mistral key was handed `gemini-1.5-pro`, and
+    `/v1/models` then published it as `resolves_to` for a gateway to pin.
+
+    The rule is narrow on purpose: it applies only when the brief pins no
+    provider. `api_key_env` stores a variable NAME so a descriptor can be
+    written where the secret is absent and executed where it is present, so a
+    pinned provider stays honoured either way -- which is also how `report`
+    prices a paid model it never calls.
+    """
+    monkeypatch.setattr(
+        "best_engine_ai_helper.llm._cloud_api_key",
+        lambda spec: "k" if spec.get("api_key_env") == "ACME_API_KEY" else None,
+    )
+
+    unpinned = engine.resolve(
+        {"mode": "cloud", "kind": "llm", "quality_vs_cost": 1.0, "task": "summarize a report"},
+        catalog=_CATALOG,
+        hw=_HW,
+        compute=_COMPUTE,
+        cloud_catalog=_CLOUD_CATALOG,
+    )
+    assert unpinned["backend"] == "acme"
+    assert unpinned["llm"]["model"] == "cheap-text"
+    assert unpinned["api_key_present"] is True
+
+    # Pinned, with no key: still resolved, and honest about where it stands.
+    pinned = engine.resolve(
+        {
+            "mode": "cloud",
+            "kind": "llm",
+            "provider": "textco",
+            "quality_vs_cost": 1.0,
+            "task": "summarize a report",
+        },
+        catalog=_CATALOG,
+        hw=_HW,
+        compute=_COMPUTE,
+        cloud_catalog=_CLOUD_CATALOG,
+    )
+    assert pinned["backend"] == "textco"
+    assert pinned["llm"]["model"] == "textonly-flagship"
+    assert pinned["api_key_present"] is False
+
+
 def test_resolve_cloud_auto_pick() -> None:
     """mode: cloud with no 'model' auto-picks provider + model(s) from a catalog."""
     # Both kinds, no provider pin, pure quality (quality_vs_cost=1.0): "vlm" is
@@ -333,9 +386,17 @@ def test_resolve_cloud_auto_pick() -> None:
     assert both["mode"] == "cloud" and both["backend"] == "acme"
     assert both["vlm"]["model"] == "acme-vision" and both["vlm"]["cloud"] is True
     assert both["llm"]["model"] == "cheap-text"
-    # 'acme' has no entry in engine._DEFAULT_API_KEY_ENV -- no key-value is
-    # fabricated, api_key_env is simply left unset.
-    assert both["api_key_env"] is None
+    # 'acme' has no entry in engine._DEFAULT_API_KEY_ENV, so the conventional
+    # <PROVIDER>_API_KEY name is derived. This used to be left None on the
+    # argument that nothing should be fabricated -- but a NAME is not a key,
+    # and `cloud_catalog.provider_status` was already advertising exactly this
+    # name to the user ("Set ACME_API_KEY ..."). The two disagreed, so a
+    # provider added to pricing.yaml produced a descriptor that could not
+    # authenticate however the user set the variable they had been told to set.
+    # Nothing is invented that matters: the key's presence is reported
+    # separately, and `api_key_env` in the brief still overrides.
+    assert both["api_key_env"] == "ACME_API_KEY"
+    assert both["api_key_present"] is False
     # The local fallback is still resolved from the same brief either way.
     assert both["fallback"] is not None
 

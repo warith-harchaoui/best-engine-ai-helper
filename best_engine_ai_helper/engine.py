@@ -740,6 +740,38 @@ def _auto_pick_cloud(
             "pricing.yaml, or pin 'provider' and 'model' explicitly instead."
         )
 
+    # Prefer providers whose key actually resolves, but only when the brief did
+    # not pin one.
+    #
+    # The distinction matters because a descriptor is declarative: it stores
+    # `api_key_env`, the NAME of a variable, precisely so it can be resolved on
+    # a machine that holds the secret and written on one that does not. Pinning
+    # `provider: openai` without a key is therefore legitimate — it is also what
+    # `report`'s cloud section does to price a paid model it never calls.
+    #
+    # An *unconstrained* pick is different. Searching every provider and
+    # choosing one whose key is missing, while another in the same catalogue is
+    # usable right now, passes over the only option that could run. That is what
+    # happened here: a machine holding one Mistral key was handed
+    # `gemini-1.5-pro`, and `/v1/models` published it as `resolves_to` for a
+    # gateway to pin.
+    if provider_pin is None:
+        usable = {
+            str(row["provider"]).strip().lower()
+            for row in _cc.provider_status(cc)
+            if row.get("available")
+        }
+        affordable = [e for e in cc if str(e.get("provider", "")).strip().lower() in usable]
+        if affordable:
+            cc = affordable
+        else:
+            osh.warning(
+                "mode: cloud auto-pick found no provider with a usable API key, so "
+                "the pick below is advisory: the descriptor names the variable to "
+                "set rather than a model this machine can call today. "
+                "`best-engine-ai-helper providers` lists every key it looked for."
+            )
+
     parsed = parse_task(spec.get("task"))
     weight = float(spec.get("quality_vs_cost", _cc.DEFAULT_QUALITY_VS_COST))
 
@@ -773,6 +805,39 @@ def _auto_pick_cloud(
         + ", ".join(f"{k}={v['id']}" for k, v in picks.items())
     )
     return provider, picks
+
+
+def _api_key_resolves(api_key_env: str | None) -> bool:
+    """Whether *api_key_env* names a variable that resolves here, right now.
+
+    Returns a boolean and nothing else. The key's value never leaves
+    :func:`llm._cloud_api_key`, which is the whole reason descriptors store a
+    variable name instead of a secret.
+
+    Parameters
+    ----------
+    api_key_env : str or None
+        Name of the environment variable to look for.
+
+    Returns
+    -------
+    bool
+        True when a key was found, False when it was not or the lookup failed.
+
+    Examples
+    --------
+    >>> _api_key_resolves(None)
+    False
+    """
+    if not api_key_env:
+        return False
+    from .llm import _cloud_api_key
+
+    try:
+        return bool(_cloud_api_key({"api_key_env": api_key_env}))
+    except Exception as exc:  # noqa: BLE001 — a probe must not break resolution
+        osh.debug(f"Could not check {api_key_env}: {exc!r}")
+        return False
 
 
 def _resolve_cloud(
@@ -842,7 +907,14 @@ def _resolve_cloud(
         log_model = model
 
     base_url = endpoint or spec.get("base_url") or _CLOUD_BASE_URLS.get(provider, "")
-    api_key_env = spec.get("api_key_env") or _DEFAULT_API_KEY_ENV.get(provider)
+    # Same derivation `cloud_catalog.provider_status` uses, including the
+    # `<PROVIDER>_API_KEY` fallback. They disagreed: a provider added to
+    # pricing.yaml but absent from the table above was reported by `providers`
+    # as wanting `ACME_API_KEY` while the descriptor named no variable at all,
+    # so the key could never be found however the user set it.
+    api_key_env = spec.get("api_key_env") or _DEFAULT_API_KEY_ENV.get(
+        provider, f"{provider.upper()}_API_KEY"
+    )
 
     engine: dict[str, Any] = {
         "generated_by": "best-engine-ai-helper — machine-specific, do not commit",
@@ -851,6 +923,14 @@ def _resolve_cloud(
         "base_url": base_url,
         # NAME of the env var holding the key — never the key value itself.
         "api_key_env": api_key_env,
+        # Whether that variable resolves *on this machine, right now*. A
+        # boolean, never the key: a descriptor written on a build machine is
+        # meant to be executed on one that holds the secret, so False is a
+        # statement about here rather than about the descriptor. `/v1/models`
+        # reads it to decide whether a cloud alias may advertise what it
+        # resolves to, since a gateway that pins an uncallable model is worse
+        # off than one that was told nothing.
+        "api_key_present": _api_key_resolves(api_key_env),
     }
     for kind in kinds:
         if structured_override is not None:
