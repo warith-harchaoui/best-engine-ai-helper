@@ -310,6 +310,30 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Documentation
 
+- **Five figures, where the prose was carrying a mechanism on its own.** Each
+  one is drawn in the Okabe-Ito academic palette
+  (<https://deraison.ai/colors/academic>), which is the colour-vision-safe
+  scientific standard rather than a taste, and each sits in both `README.md`
+  and `LISEZMOI.md`.
+
+  Four are Mermaid, so they render on the repository page and stay diffable:
+  **the selection funnel** (two gates reject, two rankings order, and the only
+  thing the machine contributes is one number); **when `lightweight` switches
+  on** (`never` beats everything, `always` is a human's call, `auto` asks one
+  question per kind — which is why a fitting LLM beside a streamed VLM is an
+  honest engine file); **where the model runs** (three destinations, one call
+  site downstream, and the paid one gated on a key that is actually set);
+  **how `best` resolves per request** (the whole name grammar, ranked against
+  this machine, with the response naming what actually ran).
+
+  The fifth is quantitative, so it is a real chart rather than a diagram: a
+  waterfall of **the memory budget**, 96 GB of unified memory falling to the
+  36 GB a model may actually weigh. Its numbers are read back out of
+  `score.py` by `scripts/make_memory_budget_figure.py` rather than typed in,
+  so the figure cannot drift from the arithmetic the selector runs — change
+  `MAX_HEADROOM` or `_APPLE_GPU_FRACTION_LARGE` and re-run it, and the bars
+  move.
+
 - **The six spine documents brought onto the suite's shared shape (CODING.md
   rules 16-18).** A reader arriving at any of the seventeen members should meet
   the same load-bearing sections in the same order, in both languages, while the

@@ -246,6 +246,53 @@ recommendation is reproducible and can be argued with. (One backend is judged on
 different ones, because a different resource binds it: see [layer
 streaming](#too-large-to-load-still-runnable-layer-streaming) below.)
 
+The whole of it, before the detail:
+
+```mermaid
+flowchart LR
+    CAT["the catalogue<br/>every LLM, VLM, embedder"]:::src
+    G1{"1 · can a schema<br/>drive it?"}:::gate
+    G2{"2 · does it fit<br/>the budget?"}:::gate
+    G3["3 · best benchmark on<br/>the task's axis"]:::rank
+    G4["4 · tokens/s · and a<br/>lighter near-equal<br/>when there is one"]:::rank
+    PICK(["the pick<br/>every number printed"]):::out
+
+    subgraph MACHINE["this machine, measured"]
+        direction TB
+        HW["unified · VRAM · RAM<br/>bandwidth · chip"]:::hw
+        BUD["usable budget"]:::hw
+        LIVE["--live: what runs<br/>on it right now"]:::opt
+        HW --> BUD
+        LIVE -. derates .-> BUD
+    end
+
+    ASIDE["ranked lower,<br/>never auto-picked<br/>still findable on request"]:::aside
+    BIG["too large"]:::aside
+    STREAM["lightweight:<br/>layers streamed off disk<br/>at seconds per token"]:::stream
+
+    CAT --> G1
+    G1 -- no --> ASIDE
+    G1 -- yes --> G2
+    BUD --> G2
+    G2 -- no --> BIG
+    G2 -- yes --> G3 --> G4 --> PICK
+    BIG -. "nothing at all fits" .-> STREAM
+
+    classDef hw fill:#CCE3F0,stroke:#0072B2,color:#000
+    classDef opt fill:#DDF0FB,stroke:#56B4E9,color:#000
+    classDef src fill:#FCFAD9,stroke:#E69F00,color:#000
+    classDef gate fill:#FAECCC,stroke:#E69F00,color:#000
+    classDef rank fill:#CCECE3,stroke:#009E73,color:#000
+    classDef out fill:#CCECE3,stroke:#009E73,color:#000,stroke-width:3px
+    classDef aside fill:#F5E4ED,stroke:#CC79A7,color:#000
+    classDef stream fill:#F7DFCC,stroke:#D55E00,color:#000
+    style MACHINE fill:#F8F8F8,stroke:#808080,color:#000
+```
+
+Two gates reject, two rankings order, and the only thing the machine
+itself contributes is one number: the budget a candidate's `ram_gb` has to
+land under.
+
 ### 1. Structured-output capability (can it be driven by a schema?)
 
 The AI-Helpers suite routes every task through a JSON schema (intent parsing,
@@ -275,6 +322,14 @@ fills. A catalog entry's `ram_gb` is already a peak-inference estimate
 (weights plus a moderate KV cache; roughly weights ÷ 0.7, since weights are only
 about 70% of runtime memory and can approach 2× at long context). A model fits
 when that `ram_gb` is at most the budget.
+
+On the machine this was written on, that arithmetic comes out like this:
+
+![What 96 GB of unified memory is actually worth to a model: the pool, minus the 24 GB Metal will not hand to the GPU, minus 36 GB of headroom for the OS and a growing KV cache, leaving a 36 GB budget](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/memory-budget.png)
+
+96 GB on the box, 36 GB a model may weigh. The gap is not pessimism: one
+half is a driver limit you cannot argue with, the other is a margin you
+can (`--headroom`, up to the 0.5 ceiling it is clamped to).
 
 ### 3. Task fit (is it good at the job?)
 
@@ -620,6 +675,35 @@ backend has to be willing to say that about itself.
 
 Never by default. Two triggers, and nothing else:
 
+```mermaid
+flowchart TB
+    ASK["the brief · --backend ·<br/>BEST_ENGINE_LIGHTWEIGHT"]:::src
+    SW{"lightweight"}:::gate
+    AUTO{"does a conventional<br/>backend fit this kind?"}:::gate
+    USUAL["Ollama or vLLM,<br/>as usual"]:::ok
+    STREAM["stream the layers off disk,<br/>priced in seconds per token"]:::stream
+    REC(["recorded in the descriptor,<br/>per kind, with its reason —<br/>including when it was no"]):::out
+    MIX["so Ollama for the LLM and<br/>streaming for the VLM is<br/>an honest engine file"]:::opt
+
+    ASK --> SW
+    SW -- "never · wins over all" --> USUAL
+    SW -- "auto · the default" --> AUTO
+    SW -- "always · a human asked" --> STREAM
+    AUTO -- yes --> USUAL
+    AUTO -- no --> STREAM
+    USUAL --> REC
+    STREAM --> REC
+    REC -.- MIX
+    classDef src fill:#FCFAD9,stroke:#E69F00,color:#000
+    classDef gate fill:#FAECCC,stroke:#E69F00,color:#000
+    classDef hw fill:#CCE3F0,stroke:#0072B2,color:#000
+    classDef opt fill:#DDF0FB,stroke:#56B4E9,color:#000
+    classDef ok fill:#CCECE3,stroke:#009E73,color:#000
+    classDef out fill:#CCECE3,stroke:#009E73,color:#000,stroke-width:3px
+    classDef aside fill:#F5E4ED,stroke:#CC79A7,color:#000
+    classDef stream fill:#F7DFCC,stroke:#D55E00,color:#000
+```
+
 **Automatic** — the conventional backend resolved nothing that *fits* this
 machine for a kind your brief needs. Streaming is then the difference between a
 model and no model, so `resolve` proposes it with its cost stated. The rescue is
@@ -923,6 +1007,39 @@ This is the one package in the AI Helpers suite that can reach a paid third-part
 
 Every brief picks one of two modes with `mode: local` (the default) or `mode: cloud`. Both resolve to the same shape of engine file and the same `llm.chat(engine=..., kind=...)` call site downstream: only the transport and the cost change.
 
+Which of the three a brief lands on, and what it costs:
+
+```mermaid
+flowchart LR
+    BRIEF["the brief"]:::src
+    MODE{"mode:"}:::gate
+    KEY{"is the variable named by<br/>api_key_env actually set?"}:::gate
+    HERE["this machine<br/>Ollama · vLLM · lightweight<br/>$0.0 a call"]:::hw
+    MINE["your own server<br/>--endpoint / base_url<br/>$0.0 a call"]:::hw
+    PAID["a paid provider<br/>OpenAI · Mistral · Anthropic<br/>· Gemini · OpenRouter…<br/>priced per token"]:::stream
+    NOPE["not even a candidate<br/>providers says which<br/>are usable, and why"]:::aside
+    CALL(["llm.chat(engine=…, kind=…)<br/>the same call site downstream,<br/>whichever one it was"]):::out
+
+    BRIEF --> MODE
+    MODE -- "local · the default" --> HERE
+    MODE -- "local + an endpoint" --> MINE
+    MODE -- cloud --> KEY
+    KEY -- no --> NOPE
+    KEY -- yes --> PAID
+    HERE --> CALL
+    MINE --> CALL
+    PAID --> CALL
+    PAID -. "a failed paid call falls back" .-> HERE
+    classDef src fill:#FCFAD9,stroke:#E69F00,color:#000
+    classDef gate fill:#FAECCC,stroke:#E69F00,color:#000
+    classDef hw fill:#CCE3F0,stroke:#0072B2,color:#000
+    classDef opt fill:#DDF0FB,stroke:#56B4E9,color:#000
+    classDef ok fill:#CCECE3,stroke:#009E73,color:#000
+    classDef out fill:#CCECE3,stroke:#009E73,color:#000,stroke-width:3px
+    classDef aside fill:#F5E4ED,stroke:#CC79A7,color:#000
+    classDef stream fill:#F7DFCC,stroke:#D55E00,color:#000
+```
+
 ### On this machine (free, and the default)
 
 `mode: local`, or no `mode` field at all, is [the promise](#the-promise): hardware detection, model selection, and every quality gate run on this machine against a model already pulled via Ollama or served via vLLM. Every call costs **$0.0**, always, with no paid API call to price (see [Activity ledger](#activity-ledger)).
@@ -1022,6 +1139,51 @@ differently depending on what is in the request. The grammar is small:
 
 The response reports the model that actually ran (`"model": "qwen3:14b"`), which
 is what a virtual name buys back: you gave up naming it, so the answer tells you.
+
+The whole grammar, and where each name ends up:
+
+```mermaid
+flowchart LR
+    REQ["any OpenAI SDK<br/>model: 'best'"]:::src
+    NAME{"the name"}:::gate
+    MODE["a mode may prefix it:<br/>best-cloud-llm,<br/>best-local-vlm"]:::opt
+    IMG{"does the request<br/>carry an image?"}:::gate
+    FIT["ranked against this<br/>machine — only what<br/>fits is offered"]:::hw
+    LLM["the best LLM"]:::ok
+    VLM["the best VLM"]:::ok
+    EMB["the best embedder,<br/>ranked on MTEB"]:::ok
+    IMA["the best text-to-image<br/>model"]:::ok
+    AXIS["the task picks the<br/>benchmark axis"]:::ok
+    THRU["passed through verbatim:<br/>qwen3:14b still means<br/>qwen3:14b"]:::aside
+    ANS(["'model': 'qwen3:14b'<br/>the answer names what ran"]):::out
+
+    REQ --> NAME
+    NAME -.- MODE
+    NAME -- "best · auto" --> IMG
+    IMG -- yes --> VLM
+    IMG -- no --> LLM
+    NAME -- "best-llm · image refused" --> LLM
+    NAME -- "best-vlm" --> VLM
+    NAME -- "best-embed" --> EMB
+    NAME -- "best-image" --> IMA
+    NAME -- "best:write SQL" --> AXIS
+    NAME -- "anything else" --> THRU
+    LLM --> FIT
+    VLM --> FIT
+    EMB --> FIT
+    IMA --> FIT
+    AXIS --> FIT
+    FIT --> ANS
+    THRU --> ANS
+    classDef src fill:#FCFAD9,stroke:#E69F00,color:#000
+    classDef gate fill:#FAECCC,stroke:#E69F00,color:#000
+    classDef hw fill:#CCE3F0,stroke:#0072B2,color:#000
+    classDef opt fill:#DDF0FB,stroke:#56B4E9,color:#000
+    classDef ok fill:#CCECE3,stroke:#009E73,color:#000
+    classDef out fill:#CCECE3,stroke:#009E73,color:#000,stroke-width:3px
+    classDef aside fill:#F5E4ED,stroke:#CC79A7,color:#000
+    classDef stream fill:#F7DFCC,stroke:#D55E00,color:#000
+```
 
 ### What it serves
 

@@ -269,6 +269,53 @@ d'autres facteurs, parce qu'une autre ressource le borne : voir [le flux de
 couches](#trop-gros-pour-tenir-en-mémoire-exécutable-quand-même--le-flux-de-couches)
 plus bas.)
 
+L'ensemble, avant le détail :
+
+```mermaid
+flowchart LR
+    CAT["le catalogue<br/>LLM, VLM, embeddings"]:::src
+    G1{"1 · un schéma peut-il<br/>le piloter ?"}:::gate
+    G2{"2 · tient-il dans<br/>le budget ?"}:::gate
+    G3["3 · meilleur score sur<br/>l'axe de la tâche"]:::rank
+    G4["4 · jetons/s · puis un<br/>plus léger presque égal<br/>s'il en existe un"]:::rank
+    PICK(["le choix<br/>tous les nombres imprimés"]):::out
+
+    subgraph MACHINE["cette machine, mesurée"]
+        direction TB
+        HW["unifiée · VRAM · RAM<br/>bande passante · puce"]:::hw
+        BUD["budget utilisable"]:::hw
+        LIVE["--live : ce qui tourne<br/>dessus à l'instant"]:::opt
+        HW --> BUD
+        LIVE -. "le rabote" .-> BUD
+    end
+
+    ASIDE["classé plus bas, jamais<br/>choisi seul — trouvable<br/>sur demande explicite"]:::aside
+    BIG["trop gros"]:::aside
+    STREAM["lightweight : couches<br/>diffusées depuis le disque,<br/>en secondes par jeton"]:::stream
+
+    CAT --> G1
+    G1 -- non --> ASIDE
+    G1 -- oui --> G2
+    BUD --> G2
+    G2 -- non --> BIG
+    G2 -- oui --> G3 --> G4 --> PICK
+    BIG -. "rien ne tient du tout" .-> STREAM
+
+    classDef hw fill:#CCE3F0,stroke:#0072B2,color:#000
+    classDef opt fill:#DDF0FB,stroke:#56B4E9,color:#000
+    classDef src fill:#FCFAD9,stroke:#E69F00,color:#000
+    classDef gate fill:#FAECCC,stroke:#E69F00,color:#000
+    classDef rank fill:#CCECE3,stroke:#009E73,color:#000
+    classDef out fill:#CCECE3,stroke:#009E73,color:#000,stroke-width:3px
+    classDef aside fill:#F5E4ED,stroke:#CC79A7,color:#000
+    classDef stream fill:#F7DFCC,stroke:#D55E00,color:#000
+    style MACHINE fill:#F8F8F8,stroke:#808080,color:#000
+```
+
+Deux portes rejettent, deux classements ordonnent, puis la seule chose
+que la machine apporte est un nombre : le budget sous lequel le `ram_gb`
+d'un candidat doit atterrir.
+
 ### 1. Capacité de sortie structurée
 
 La suite AI-Helpers fait passer chaque tâche par un schéma JSON (analyse d'intention,
@@ -289,6 +336,15 @@ de la mémoire unifiée jusqu'à 36 Go et environ 75 % au-delà (`recommendedMax
 puis une marge de sécurité `headroom` (par défaut 0,5, le plafond dur : une valeur plus
 grande est ramenée à ce plafond) s'applique par-dessus. Un modèle
 tient quand son `ram_gb` (pic d'inférence estimé) reste au plus égal à ce budget.
+
+Sur la machine où ceci s'écrit, cette arithmétique donne ceci :
+
+![Ce que 96 Go de mémoire unifiée valent réellement pour un modèle : le pool, moins les 24 Go que Metal ne confiera pas au GPU, moins 36 Go de marge pour le système puis pour un cache KV qui grandit, laissant un budget de 36 Go](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/memory-budget.png)
+
+96 Go sur la boîte, 36 Go pour un modèle. L'écart n'est pas du pessimisme :
+une moitié est une limite de pilote qui ne se discute pas, l'autre est une
+marge qui se discute (`--headroom`, jusqu'au plafond de 0,5 où elle est
+ramenée).
 
 ### 3. Adéquation à la tâche
 
@@ -654,6 +710,35 @@ souvent « restez en natif » ; ce moteur doit être prêt à le dire de lui-mê
 
 Jamais par défaut. Deux déclencheurs, rien d'autre :
 
+```mermaid
+flowchart TB
+    ASK["le brief · --backend ·<br/>BEST_ENGINE_LIGHTWEIGHT"]:::src
+    SW{"lightweight"}:::gate
+    AUTO{"un moteur classique<br/>convient-il pour ce genre ?"}:::gate
+    USUAL["Ollama ou vLLM,<br/>comme d'habitude"]:::ok
+    STREAM["diffuser les couches,<br/>tarifé en secondes par jeton"]:::stream
+    REC(["inscrit dans le descripteur,<br/>par genre, avec sa raison —<br/>y compris quand c'était non"]):::out
+    MIX["donc Ollama pour le LLM puis<br/>la diffusion pour le VLM fait<br/>un fichier moteur honnête"]:::opt
+
+    ASK --> SW
+    SW -- "never · l'emporte sur tout" --> USUAL
+    SW -- "auto · le défaut" --> AUTO
+    SW -- "always · un humain l'a voulu" --> STREAM
+    AUTO -- oui --> USUAL
+    AUTO -- non --> STREAM
+    USUAL --> REC
+    STREAM --> REC
+    REC -.- MIX
+    classDef src fill:#FCFAD9,stroke:#E69F00,color:#000
+    classDef gate fill:#FAECCC,stroke:#E69F00,color:#000
+    classDef hw fill:#CCE3F0,stroke:#0072B2,color:#000
+    classDef opt fill:#DDF0FB,stroke:#56B4E9,color:#000
+    classDef ok fill:#CCECE3,stroke:#009E73,color:#000
+    classDef out fill:#CCECE3,stroke:#009E73,color:#000,stroke-width:3px
+    classDef aside fill:#F5E4ED,stroke:#CC79A7,color:#000
+    classDef stream fill:#F7DFCC,stroke:#D55E00,color:#000
+```
+
 **Automatique** — le moteur conventionnel n'a rien résolu qui *tienne* sur cette
 machine pour un genre que votre cahier des charges demande. Le flux de couches
 est alors la différence entre un modèle puis aucun, donc `resolve` le propose
@@ -1007,6 +1092,39 @@ Chaque brief choisit un des deux modes avec `mode: local` (le défaut) ou `mode:
 deux se résolvent vers le même type de fichier moteur et le même point d'appel
 `llm.chat(engine=..., kind=...)` en aval : seuls le transport et le coût changent.
 
+Sur lequel des trois un brief atterrit, puis ce que ça coûte :
+
+```mermaid
+flowchart LR
+    BRIEF["le brief"]:::src
+    MODE{"mode:"}:::gate
+    KEY{"la variable nommée par<br/>api_key_env est-elle posée ?"}:::gate
+    HERE["cette machine<br/>Ollama · vLLM · lightweight<br/>0,0 $ l'appel"]:::hw
+    MINE["votre propre serveur<br/>--endpoint / base_url<br/>0,0 $ l'appel"]:::hw
+    PAID["un fournisseur payant<br/>OpenAI · Mistral · Anthropic<br/>· Gemini · OpenRouter…<br/>tarifé au jeton"]:::stream
+    NOPE["même pas candidat<br/>providers dit lesquels sont<br/>utilisables, puis pourquoi"]:::aside
+    CALL(["llm.chat(engine=…, kind=…)<br/>le même site d'appel en aval,<br/>quel qu'ait été le choix"]):::out
+
+    BRIEF --> MODE
+    MODE -- "local · le défaut" --> HERE
+    MODE -- "local + un endpoint" --> MINE
+    MODE -- cloud --> KEY
+    KEY -- non --> NOPE
+    KEY -- oui --> PAID
+    HERE --> CALL
+    MINE --> CALL
+    PAID --> CALL
+    PAID -. "un appel payant qui échoue retombe ici" .-> HERE
+    classDef src fill:#FCFAD9,stroke:#E69F00,color:#000
+    classDef gate fill:#FAECCC,stroke:#E69F00,color:#000
+    classDef hw fill:#CCE3F0,stroke:#0072B2,color:#000
+    classDef opt fill:#DDF0FB,stroke:#56B4E9,color:#000
+    classDef ok fill:#CCECE3,stroke:#009E73,color:#000
+    classDef out fill:#CCECE3,stroke:#009E73,color:#000,stroke-width:3px
+    classDef aside fill:#F5E4ED,stroke:#CC79A7,color:#000
+    classDef stream fill:#F7DFCC,stroke:#D55E00,color:#000
+```
+
 ### Sur cette machine (gratuit, par défaut)
 
 `mode: local` — ou l'absence de champ `mode` — correspond à [la promesse](#la-promesse) : la
@@ -1145,6 +1263,51 @@ nom se résout différemment selon ce qu'elle contient. La grammaire est petite 
 La réponse annonce le modèle qui a réellement tourné (`"model": "qwen3:14b"`),
 ce qu'un nom virtuel vous rend : vous avez renoncé à le nommer, donc la réponse
 vous le dit.
+
+Toute la grammaire, puis où chaque nom aboutit :
+
+```mermaid
+flowchart LR
+    REQ["n'importe quel SDK OpenAI<br/>model: 'best'"]:::src
+    NAME{"le nom"}:::gate
+    MODE["un mode peut le préfixer :<br/>best-cloud-llm,<br/>best-local-vlm"]:::opt
+    IMG{"la requête porte-t-elle<br/>une image ?"}:::gate
+    FIT["classé face à cette<br/>machine — seul ce qui<br/>tient est proposé"]:::hw
+    LLM["le meilleur LLM"]:::ok
+    VLM["le meilleur VLM"]:::ok
+    EMB["le meilleur modèle<br/>d'embedding, sur MTEB"]:::ok
+    IMA["le meilleur modèle<br/>texte-vers-image"]:::ok
+    AXIS["la tâche choisit<br/>l'axe de benchmark"]:::ok
+    THRU["transmis tel quel :<br/>qwen3:14b veut toujours<br/>dire qwen3:14b"]:::aside
+    ANS(["'model': 'qwen3:14b'<br/>la réponse nomme<br/>ce qui a tourné"]):::out
+
+    REQ --> NAME
+    NAME -.- MODE
+    NAME -- "best · auto" --> IMG
+    IMG -- oui --> VLM
+    IMG -- non --> LLM
+    NAME -- "best-llm · image refusée" --> LLM
+    NAME -- "best-vlm" --> VLM
+    NAME -- "best-embed" --> EMB
+    NAME -- "best-image" --> IMA
+    NAME -- "best:écrire du SQL" --> AXIS
+    NAME -- "tout le reste" --> THRU
+    LLM --> FIT
+    VLM --> FIT
+    EMB --> FIT
+    IMA --> FIT
+    AXIS --> FIT
+    FIT --> ANS
+    THRU --> ANS
+    classDef src fill:#FCFAD9,stroke:#E69F00,color:#000
+    classDef gate fill:#FAECCC,stroke:#E69F00,color:#000
+    classDef hw fill:#CCE3F0,stroke:#0072B2,color:#000
+    classDef opt fill:#DDF0FB,stroke:#56B4E9,color:#000
+    classDef ok fill:#CCECE3,stroke:#009E73,color:#000
+    classDef out fill:#CCECE3,stroke:#009E73,color:#000,stroke-width:3px
+    classDef aside fill:#F5E4ED,stroke:#CC79A7,color:#000
+    classDef stream fill:#F7DFCC,stroke:#D55E00,color:#000
+```
 
 ### Ce qu'il sert
 
