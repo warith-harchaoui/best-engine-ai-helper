@@ -338,11 +338,17 @@ def staleness_note(today: str | None = None, path: Path | None = None) -> str | 
     str or None
         The note, or None when the table is within :data:`STALE_AFTER_DAYS`.
 
-    Examples
-    --------
-    >>> note = staleness_note(today="2000-01-01")   # long before any stamp
-    >>> note is None
-    True
+    Notes
+    -----
+    This has deliberately no doctest. The answer depends on machine-local
+    state outside the repository -- `catalog_as_of` reads the user's price
+    cache first, and that file exists only where somebody has run `catalog
+    update --cloud`. A doctest asserting ``None`` therefore passed on the
+    author's machine, where a cache supplies a stamp, and failed in CI, where
+    the shipped seed carries none on purpose (see the test below for why).
+    Both branches are pinned in `tests/test_cloud_prices.py`, which
+    monkeypatches `_CLOUD_CACHE_PATH` away and writes its own seed, so the
+    assertion reads the same on every machine.
     """
     from datetime import date
 
