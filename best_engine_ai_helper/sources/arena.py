@@ -66,6 +66,13 @@ HISTORY_URL = "https://raw.githubusercontent.com/nakasyou/lmarena-history/main/o
 SNAPSHOT_INDEX_URL = (
     "https://raw.githubusercontent.com/oolong-tea-2026/arena-ai-leaderboards/main/data/latest.json"
 )
+#: Directory listing for the dated snapshots. The mirror runs daily and keeps
+#: every day it has ever produced, so the newest date is not necessarily the
+#: newest date *with data* — see :func:`_from_snapshots`.
+SNAPSHOT_DIR_URL = (
+    "https://api.github.com/repos/oolong-tea-2026/arena-ai-leaderboards/contents/data"
+)
+
 SNAPSHOT_BOARD_URL = (
     "https://raw.githubusercontent.com/oolong-tea-2026/arena-ai-leaderboards"
     "/main/data/{date}/{board}.json"
@@ -76,9 +83,20 @@ _USER_AGENT = "Mozilla/5.0 (compatible; best-engine-ai-helper/0.3)"
 #: Board name in a mirror -> the axis it informs. Only boards whose meaning is
 #: unambiguous are mapped; "overall with style control" and friends are left
 #: out because what they measure is a research question, not a catalog fact.
+#: Board name as the mirror publishes it -> the axis this catalogue stores.
+#:
+#: Read against a real snapshot rather than guessed. The mirror's own
+#: ``_index.json`` lists ``agent, code, document, image-edit, image-to-video,
+#: search, text, text-to-image, text-to-video, video-edit, vision`` — so the
+#: two entries this table used to carry for ``overall`` and ``coding`` could
+#: never match anything: there is no ``overall`` board, and the code one is
+#: spelled ``code``. The synonyms stay mapped because the history mirror and
+#: the snapshot mirror do not agree on spelling, and a board we cannot name is
+#: a score we silently drop.
 _BOARD_AXES = {
     "overall": "arena",
     "text": "arena",
+    "code": "arena_code",
     "coding": "arena_code",
     "vision": "arena_vision",
 }
@@ -211,48 +229,116 @@ def _from_history(
     return (newest, boards) if boards else None
 
 
+def _snapshot_dates(session: requests.Session | None, timeout: float) -> list[str]:
+    """Dated snapshot directories the mirror holds, newest first.
+
+    One listing request rather than guessing dates: the mirror produces a
+    directory most days but not every day, so walking back a day at a time
+    would spend most of its requests on 404s.
+
+    Parameters
+    ----------
+    session : requests.Session or None
+        Session to reuse, or None for a bare request.
+    timeout : float
+        Per-request network timeout, in seconds.
+
+    Returns
+    -------
+    list[str]
+        ISO dates, newest first; empty when the listing cannot be read.
+    """
+    try:
+        listing = _fetch_json(SNAPSHOT_DIR_URL, session, timeout)
+    except (requests.RequestException, ValueError):
+        return []
+    if not isinstance(listing, list):
+        return []
+    dates = [
+        str(item.get("name"))
+        for item in listing
+        if isinstance(item, dict)
+        and item.get("type") == "dir"
+        and _DATE_RE.match(str(item.get("name") or ""))
+    ]
+    return sorted(dates, reverse=True)
+
+
 def _from_snapshots(
     session: requests.Session | None, timeout: float
 ) -> tuple[str, dict[str, dict[str, float]]] | None:
     """Read the structured daily-snapshot mirror.
 
-    Shaped better than the history mirror and, at the time of writing, empty:
-    its index points at a date whose ``_index.json`` lists no leaderboards at
-    all. Kept because the shape is right and it costs one request to find out.
-    """
-    try:
-        index = _fetch_json(SNAPSHOT_INDEX_URL, session, timeout)
-        date = str((index or {}).get("date") or "")
-    except (requests.RequestException, ValueError):
-        return None
-    if not date:
-        return None
+    Two things this used to get wrong, both of which left the axis empty while
+    the mirror was serving perfectly good data:
 
-    boards: dict[str, dict[str, float]] = {}
-    for board, axis in _BOARD_AXES.items():
+    1. **It trusted ``latest.json``.** That file names the newest *directory*,
+       and the mirror keeps producing a directory every day even when its own
+       scrape returns nothing — ``_index.json`` then lists no leaderboards and
+       every board is a 404. The newest date with data can be weeks older than
+       the newest date. This walks back to the first one that has any, bounded
+       by :data:`MAX_SNAPSHOT_AGE_DAYS` so a long-dead mirror still reports as
+       dead rather than quietly serving ancient ratings.
+    2. **It guessed the board names.** The index lists them, so they are read
+       rather than assumed — which is how ``coding`` went unnoticed against a
+       mirror that spells it ``code``.
+    """
+    dates = _snapshot_dates(session, timeout)
+    if not dates:
+        # No listing: fall back to whatever the index names, which is still
+        # better than nothing on a machine behind a proxy that blocks the API.
         try:
-            payload = _fetch_json(
-                SNAPSHOT_BOARD_URL.format(date=date, board=board), session, timeout
+            index = _fetch_json(SNAPSHOT_INDEX_URL, session, timeout)
+            named = str((index or {}).get("date") or "")
+        except (requests.RequestException, ValueError):
+            return None
+        dates = [named] if named else []
+
+    for date in dates:
+        age = snapshot_age_days(date)
+        if age is not None and age > MAX_SNAPSHOT_AGE_DAYS:
+            break
+        try:
+            index = _fetch_json(
+                SNAPSHOT_BOARD_URL.format(date=date, board="_index"), session, timeout
             )
         except (requests.RequestException, ValueError):
             continue
-        rows = payload.get("models") if isinstance(payload, dict) else payload
-        if not isinstance(rows, list):
+        published = (index or {}).get("leaderboards") if isinstance(index, dict) else None
+        names = sorted(published) if isinstance(published, dict) and published else []
+        if not names:
             continue
-        ratings: dict[str, float] = {}
-        for row in rows:
-            if not isinstance(row, dict):
+
+        boards: dict[str, dict[str, float]] = {}
+        for board in names:
+            axis = _BOARD_AXES.get(board)
+            if axis is None or axis in boards:
                 continue
-            name = row.get("model") or row.get("name") or row.get("key")
-            value = row.get("score", row.get("elo", row.get("rating")))
-            if name and value is not None:
-                try:
-                    ratings[str(name)] = float(value)
-                except (TypeError, ValueError):
+            try:
+                payload = _fetch_json(
+                    SNAPSHOT_BOARD_URL.format(date=date, board=board), session, timeout
+                )
+            except (requests.RequestException, ValueError):
+                continue
+            rows = payload.get("models") if isinstance(payload, dict) else payload
+            if not isinstance(rows, list):
+                continue
+            ratings: dict[str, float] = {}
+            for row in rows:
+                if not isinstance(row, dict):
                     continue
-        if ratings:
-            boards[axis] = ratings
-    return (date, boards) if boards else None
+                name = row.get("model") or row.get("name") or row.get("key")
+                value = row.get("score", row.get("elo", row.get("rating")))
+                if name and value is not None:
+                    try:
+                        ratings[str(name)] = float(value)
+                    except (TypeError, ValueError):
+                        continue
+            if ratings:
+                boards[axis] = ratings
+        if boards:
+            return date, boards
+    return None
 
 
 #: Mirrors in preference order. The structured one first because its shape is

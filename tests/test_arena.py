@@ -17,6 +17,7 @@ from __future__ import annotations
 import datetime as dt
 
 import pytest
+import requests
 
 from best_engine_ai_helper.score import _APP_BENCH_PRIORITY, _benchmark_score
 from best_engine_ai_helper.sources import arena
@@ -369,3 +370,96 @@ def test_a_malformed_board_is_skipped_not_fatal() -> None:
 
     assert snapshot == "20250522"
     assert set(boards) == {"arena"}
+
+
+# ---------------------------------------------------------------------------
+# The snapshot mirror: reading the index instead of guessing it
+# ---------------------------------------------------------------------------
+
+
+def _snapshot_server(pages: dict[str, object]):
+    """Return a `_fetch_json` stand-in serving *pages*, 404ing on anything else."""
+
+    def fetch(url, session, timeout):  # noqa: ANN001, ARG001
+        for suffix, payload in pages.items():
+            if url.endswith(suffix):
+                return payload
+        raise requests.RequestException(f"404 {url}")
+
+    return fetch
+
+
+def test_the_board_names_come_from_the_index_not_from_a_guess(monkeypatch):
+    """Two of the four names this table carried could never have matched.
+
+    The mirror's own `_index.json` lists `code`, `text` and `vision` (among
+    others). The adapter asked for `overall`, which does not exist, and
+    `coding`, which is spelled `code` there -- so the code axis, the one this
+    project's SQL and review profiles care about most, was silently empty
+    against a mirror that was publishing it.
+    """
+    assert arena._BOARD_AXES["code"] == "arena_code"
+    assert arena._BOARD_AXES["text"] == "arena"
+    assert arena._BOARD_AXES["vision"] == "arena_vision"
+
+
+def test_a_dated_but_empty_snapshot_is_walked_past(monkeypatch):
+    """The newest directory is not the newest directory *with data*.
+
+    The mirror runs daily and keeps producing a directory even when its own
+    scrape returns nothing: `_index.json` then lists no leaderboards and every
+    board 404s. Trusting `latest.json` meant reporting "no usable data" while
+    a perfectly good snapshot sat three weeks back.
+    """
+    today, older = "2026-10-28", "2026-10-07"
+    monkeypatch.setattr(
+        arena,
+        "_fetch_json",
+        _snapshot_server(
+            {
+                "/contents/data": [
+                    {"name": today, "type": "dir"},
+                    {"name": older, "type": "dir"},
+                    {"name": "not-a-date", "type": "dir"},
+                    {"name": "README.md", "type": "file"},
+                ],
+                f"{today}/_index.json": {"date": today, "leaderboards": {}},
+                f"{older}/_index.json": {
+                    "date": older,
+                    "leaderboards": {"text": {}, "code": {}, "document": {}},
+                },
+                f"{older}/text.json": {"models": [{"model": "a-model", "score": 1400}]},
+                f"{older}/code.json": {"models": [{"model": "a-model", "score": 1500}]},
+            }
+        ),
+    )
+
+    result = arena._from_snapshots(None, 5.0)
+
+    assert result is not None
+    date, boards = result
+    assert date == older
+    # `document` is published and deliberately unmapped; `code` now is.
+    assert set(boards) == {"arena", "arena_code"}
+    assert boards["arena_code"]["a-model"] == 1500.0
+
+
+def test_the_walk_back_stops_at_the_staleness_limit(monkeypatch):
+    """A long-dead mirror still reports dead rather than serving old ratings."""
+    monkeypatch.setattr(
+        arena,
+        "_fetch_json",
+        _snapshot_server(
+            {
+                "/contents/data": [
+                    {"name": "2026-10-28", "type": "dir"},
+                    {"name": "2020-01-01", "type": "dir"},
+                ],
+                "2026-10-28/_index.json": {"leaderboards": {}},
+                "2020-01-01/_index.json": {"leaderboards": {"text": {}}},
+                "2020-01-01/text.json": {"models": [{"model": "ancient", "score": 1400}]},
+            }
+        ),
+    )
+
+    assert arena._from_snapshots(None, 5.0) is None
