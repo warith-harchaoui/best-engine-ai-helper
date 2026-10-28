@@ -94,14 +94,14 @@ _JS_NAME_TO_SOURCE: dict[str, str] = {
     "score": "score",
     "serverLoad": "Server load:",
     "strBiggest": "Biggest model this machine could stream:",
-    "strNoRuntime": "This machine offers no runtime for layer streaming (a CUDA/ROCm GPU, or Apple Silicon through MLX).",
-    "strNothing": "Nothing can be streamed here: no model fits both one resident layer shard and the free disk the split needs.",
+    "strNoRuntime": "This machine offers no runtime for layer streaming (a CUDA/ROCm GPU, or Apple Silicon through Metal).",
+    "strNothing": "Nothing can be streamed here: no model fits both one resident layer and the disk its checkpoint needs.",
     "strPackageMissing": "runtime not installed",
     "strPackageOk": "runtime installed",
     "strResident": "GB resident",
     "strSecToken": "s/token",
-    "strShardBudget": "resident shard budget",
-    "strSplitDisk": "GB free disk for the layer split",
+    "strShardBudget": "resident layer budget",
+    "strSplitDisk": "GB free disk for the checkpoint",
     "strStorage": "storage",
     "strWouldRun": "would run here",
     "task": "Task:",
@@ -541,7 +541,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
         </div>`;
 
       // The pick, with the two figures that decide whether the job is feasible
-      // at all: how long a token takes, and how much disk the split needs.
+      // at all: how long a token takes, and how much disk the checkpoint needs.
       const chosen = data.chosen;
       const pick = chosen
         ? `<p class="mt-2"><span class="text-neutral-500 dark:text-neutral-400">${T.strBiggest}</span>

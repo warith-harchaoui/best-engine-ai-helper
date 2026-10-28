@@ -128,7 +128,7 @@ def servable(entry: dict[str, Any], backend: str) -> bool:
         return False
     if backend == "lightweight":
         # A pull tag is useless to a streaming backend: lightweight downloads
-        # safetensors from the Hub and splits them into per-layer shards, so an
+        # safetensors straight out of the Hub repository, so an
         # entry that names no repository names nothing it can load. The slug
         # rule below is the opposite case and does not apply — a slug source
         # like ApXML carries exactly the `vllm_id` this needs.

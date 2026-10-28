@@ -27,7 +27,7 @@ langchain
     Only useful if you need LangChain retrievers or agent abstractions.
 lightweight
     Layer streaming, for a model too large to fit in memory: no server at all,
-    the model runs **in this process** and reads one layer shard at a time off
+    the model runs **in this process** and reads one layer at a time off
     disk (see :mod:`best_engine_ai_helper.offload`). Text only, no JSON schema,
     and seconds per token rather than tokens per second. Reached when an engine
     descriptor names it — never from the ``BEST_LLM_BACKEND`` env path, because
@@ -566,12 +566,12 @@ def _chat_ollama(
 # ---------------------------------------------------------------------------
 
 
-#: Streamed models loaded in this process, keyed by (repository, compression).
-#: Splitting and loading a 141 GB checkpoint is minutes of disk; a transport
+#: Streamed models loaded in this process, keyed by repository.
+#: Loading a 141 GB checkpoint is minutes of disk; a transport
 #: that paid it per call would be unusable, and there is no daemon holding the
 #: model between calls the way Ollama does. Bounded in practice by how many
 #: giant models one process can hold, which is one.
-_STREAMED: dict[tuple[str, str | None], Any] = {}
+_STREAMED: dict[str, Any] = {}
 
 
 def _chat_airllm(
@@ -583,14 +583,13 @@ def _chat_airllm(
     model: str,
     temperature: float,
     max_new_tokens: int = 256,
-    compression: str | None = None,
 ) -> tuple[str, dict[str, float | None]]:
     """
     Generate with a layer-streamed model, in this process.
 
     The odd transport out: there is no server and no socket. lightweight is a
     library, so this runs the model inside the caller's interpreter, reading one
-    layer shard at a time off disk (see
+    layer at a time off disk (see
     :mod:`best_engine_ai_helper.offload`). Expect seconds per token.
 
     Parameters
@@ -605,7 +604,7 @@ def _chat_airllm(
         Not supported. Raises rather than silently answering a vision question
         from the text alone — the failure mode that would be hardest to notice.
     json_schema : dict or None
-        Not supported, for the same reason: lightweight exposes raw generation with
+        Not supported, for the same reason: the runtime exposes raw generation with
         no equivalent of Ollama's grammar-constrained ``format``, so a schema
         here could only be a suggestion the caller would read as a guarantee.
     model : str
@@ -616,8 +615,6 @@ def _chat_airllm(
         same across every model family lightweight supports.
     max_new_tokens : int
         Token budget for one call. Small on purpose — every token is seconds.
-    compression : {'4bit', '8bit', None}
-        lightweight's block-wise weight compression.
 
     Returns
     -------
@@ -644,17 +641,17 @@ def _chat_airllm(
         )
     if json_schema:
         raise NotImplementedError(
-            "The layer-streaming backend cannot honour a JSON schema: lightweight exposes "
+            "The layer-streaming backend cannot honour a JSON schema: it exposes "
             "raw generation, with no equivalent of Ollama's grammar-constrained "
             "`format`. Route schema-driven calls to an Ollama model -- an engine "
             "descriptor whose streamed section says `structured_output: false` is "
             "already skipped for them (see _engine_capable)."
         )
 
-    key = (model, compression)
+    key = model
     if key not in _STREAMED:
         osh.info(f"First streaming call for {model}: loading and splitting layers.")
-        _STREAMED[key] = _offload.load(model, compression=compression)
+        _STREAMED[key] = _offload.load(model)
     text = _offload.generate(
         f"{system}\n\n{prompt}" if system else prompt,
         model=model,

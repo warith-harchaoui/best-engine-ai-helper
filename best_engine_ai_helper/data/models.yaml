@@ -346,14 +346,17 @@
 # 1. The cost is time, and the honest unit is seconds per token. Each token
 #    re-reads the whole checkpoint from storage, so a 70B at bf16 on a 4 GB/s
 #    NVMe drive decodes at about 0.024 tok/s -- roughly forty seconds a token.
-#    lightweight's 4-bit compression divides that by four. These are batch jobs:
+#    A checkpoint published at 4 bits reads a quarter of the bytes and so runs
+#    about four times faster -- a property of the repository, not a conversion
+#    this package performs. These are batch jobs:
 #    an overnight evaluation, one hard question, a quality reference to compare
 #    a small local model against. Not a chat window.
-# 2. The binding constraint is DISK, not memory. `disk_gb` below is the
-#    download; the split needs about twice that free at once (offload
-#    .disk_required_gb). A 405B model is a 810 GB download before it is
-#    anything else.
-# 3. No structured output. lightweight exposes raw `generate`, with none of
+# 2. The binding constraint is DISK, not memory -- but only the checkpoint's
+#    own size. Layers are read out of the original safetensors, so nothing is
+#    copied and there is no scratch space on top (offload.disk_required_gb
+#    returns peak == steady). A 405B model is an 810 GB download, and then it
+#    is ready.
+# 3. No structured output. The runtime exposes raw `generate`, with none of
 #    Ollama's JSON-schema enforcement, so `structured_output: false` is a fact
 #    about the backend rather than about the weights. Every schema-driven task
 #    in the suite needs an Ollama model; these answer prose.
@@ -362,7 +365,7 @@
 # resident -- deliberately truthful, so a direct `score.rank()` call reports
 # these as not fitting instead of being surprised by them. The streaming
 # footprint is computed from `layers`, and runs from 4.9 GB (the 70B) to 28 GB
-# (DeepSeek-V3) with lightweight's prefetch on. Turning prefetch off roughly halves
+# (DeepSeek-V3) with prefetching on. Turning prefetching off roughly halves
 # each figure, at some cost in an already slow decode.
 #
 # Benchmark figures are seed estimates from each model's own release notes and

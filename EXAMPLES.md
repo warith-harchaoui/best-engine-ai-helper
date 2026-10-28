@@ -73,7 +73,7 @@ filling between them — that is a live reading, not an inconsistency.
 Five commands are **not** executed anywhere below, and their effect is described
 rather than pasted: `pull` and `validate` (they download model weights and run
 two generation gates), `catalog update` and `hardware update` (the first reaches
-the network), `lightweight prepare` (it downloads a checkpoint and splits it) and
+the network), `lightweight prepare` (it downloads a checkpoint) and
 `imagine generate` (it downloads a diffusers pipeline). Nothing in this file is
 invented output.
 
@@ -705,18 +705,21 @@ best-engine-ai-helper lightweight status
 
 ```
 === Layer streaming (lightweight) ===
-  runtime here    : mlx
-  runtime import  : FAILS (install incomplete)
+  runtime here    : mps
+  runtime import  : ok
   storage         : apple-internal (declared)
   read bandwidth  : 4.0 GB/s
-  free disk       : 22.1 GB
-  shard budget    : 72.0 GB of resident memory
+  free disk       : 31.1 GB
+  layer budget    : 72.0 GB of resident memory
   request         : auto
   would activate  : no
   trigger         : not-needed
 
   A model already fits this machine's memory, so streaming its layers off disk would trade two to three orders of magnitude of speed for nothing. Ask for it explicitly (--backend lightweight) to override.
-  - the lightweight runtime cannot be imported, though it is a dependency of this package — the install looks incomplete: pip install --upgrade --force-reinstall best-engine-ai-helper
+
+  Known limits of this runtime:
+  - the checkpoint has to publish safetensors; a repository that ships only a pickled pytorch_model.bin is refused, because reading one layer out of a pickle means reading the whole file once per layer
+  - a sparse mixture-of-experts layer is materialised whole, so its resident figure is the full expert set rather than the few a token routes to
 
   Repair the install:  pip install --upgrade --force-reinstall best-engine-ai-helper
 ```
@@ -771,48 +774,53 @@ what to run when `installed` comes back false.
 ### What could it stream, and at what price?
 
 ```sh
-best-engine-ai-helper lightweight plan --kind llm --compression 4bit
+best-engine-ai-helper lightweight plan --kind llm
 ```
 
 ```
-=== LLM: streamable off apple-internal at 4.0 GB/s, 72.0 GB shard budget ===
-id                 params  shard_gb  ckpt_gb  s/token  disk_gb  runs  notes
------------------  ------  --------  -------  -------  -------  ----  ----------------------------------------------------
-qwen3:8b           8B      1.3       4.0      1.6      20.4     yes   32 layers
-qwen3-vl:8b        8B      1.3       4.0      1.6      20.4     yes   32 layers
-qwen2.5-coder:7b   7B      1.3       3.5      1.4      17.9     yes   32 layers
-qwen3-vl:4b        4B      1.1       2.0      0.8      10.2     yes   29 layers
-qwen2.5:3b         3B      1.1       1.5      0.6      7.7      yes   28 layers
-deepseek-v3:671b   671B    15.2      335.5    125.0    1040.0   NO    the split needs 1040 GB free during the layer split
-qwen3:235b-a22b    235B    5.1       117.5    45.5     599.2    NO    the split needs 599 GB free during the layer split (
-llama3.1:405b      405B    6.5       202.5    76.9     1032.8   NO    the split needs 1033 GB free during the layer split
-qwen2.5-vl:72b     73B     2.9       36.5     14.3     186.2    NO    the split needs 186 GB free during the layer split (
-llama3.3:70b       70B     2.8       35.0     13.7     178.5    NO    the split needs 178 GB free during the layer split (
-mixtral:8x22b      141B    4.5       70.5     27.8     359.6    NO    the split needs 360 GB free during the layer split (
-qwen3:32b-q8_0     32B     2.1       16.0     6.3      81.6     NO    the split needs 82 GB free during the layer split (1
-gemma3:12b         12B     1.5       6.0      2.4      30.6     NO    the split needs 31 GB free during the layer split (7
+=== LLM: streamable off apple-internal at 4.0 GB/s, 72.0 GB layer budget ===
+id                        params  layer_gb  ckpt_gb  s/token  disk_gb  runs  notes
+------------------------  ------  --------  -------  -------  -------  ----  -----------------------------------------------
+qwen3-vl:14b              14B     2.7       28.0     8.3      28.0     yes   48 layers
+qwen3:14b                 14B     2.7       28.0     8.3      28.0     yes   48 layers
+gemma3:12b                12B     2.6       24.0     7.0      24.0     yes   39 layers
+qwen3:8b                  8B      2.2       16.0     4.7      16.0     yes   32 layers
+qwen2.5-coder:7b          7B      2.1       14.0     4.1      14.0     yes   32 layers
+qwen2.5:3b                3B      1.5       6.0      1.8      6.0      yes   28 layers
+deepseek-v3:671b          671B    29.0      671.0    200.0    671.0    NO    the checkpoint is 671 GB and only 31 GB is free
+llama3.1:405b             405B    18.5      810.0    250.0    810.0    NO    the checkpoint is 810 GB and only 31 GB is free
+qwen3:235b-a22b           235B    14.5      470.0    142.9    470.0    NO    the checkpoint is 470 GB and only 31 GB is free
+mixtral:8x22b             141B    14.0      282.0    83.3     282.0    NO    the checkpoint is 282 GB and only 31 GB is free
+llama3.3:70b              70B     6.1       140.0    41.7     140.0    NO    the checkpoint is 140 GB and only 31 GB is free
+qwen3:32b-q8_0            32B     4.0       64.0     18.9     64.0     NO    the checkpoint is 64 GB and only 31 GB is free
 
-  Pick: Qwen/Qwen3-8B-Instruct — 8B in 1.3 GB resident, 1.6 s/token, 20 GB free disk to split (4 GB after).
-  A 300-token answer: 8 min.
+  Pick: Qwen/Qwen3-VL-14B-Instruct — 14B in 2.7 GB resident, 8.3 s/token, 28 GB of checkpoint on disk.
+  A 300-token answer: 41 min.
 ```
 
-Read three columns, in that order, and the order is the lesson. `shard_gb` is
-what has to fit in **memory** — one layer shard, not the model — and it is tiny
-everywhere, even for 671B. `disk_gb` is what has to be free **during the
-split**, and on this 98%-full drive it is what refuses almost everything: a 12B
-model is turned away for want of 31 GB while its resident cost would have been
-1.5 GB. `s/token` is what you then wait.
+Read three columns, in that order, and the order is the lesson. `layer_gb` is
+what has to fit in **memory** — one decoder layer, not the model — and it is
+tiny everywhere, even for 671B. `disk_gb` is what has to be free on the
+**drive**, and on this 97%-full one it is what refuses everything large: a 70B
+is turned away for want of 140 GB while its resident cost would have been
+6.1 GB. `s/token` is what you then wait.
 
-Depth, not size, decides the shard: `llama3.1:405b` streams in a 6.5 GB shard
-across 126 layers, where `mixtral:8x22b` at 141B needs 4.5 GB across 56 — the
-parameter counts alone would have predicted the opposite ordering.
+That disk column is the checkpoint and nothing more. It used to be roughly
+double, because the previous runtime wrote a second per-layer copy before
+running anything; reading out of the original safetensors removed the scratch
+space entirely, and with it the reason almost every row once said `NO`.
 
-`--context 32` re-prices the shard for a 32k context, which is not free: the KV
-cache is the one thing streaming does not shrink. `--batch 8` pulls the big
-lever on both sides at once — the wall clock for a 300-token answer does not
-move, but it buys eight answers instead of one, and the shard grows by the
-seven extra KV caches that bought them. `--compression 4bit`, used above,
-divides the bytes read per token and is worth roughly 3x.
+Depth, not size, decides the layer: `llama3.1:405b` streams in an 18.5 GB layer
+across 126 layers, where `mixtral:8x22b` at 141B needs 14.0 GB across 56 — the
+parameter counts alone would have predicted a far wider gap.
+
+`--context 32` re-prices the layer for a 32k context, which is not free: the KV
+cache is the one thing streaming does not shrink. `--batch 8` pulls the only
+big lever the backend has — the wall clock for a 300-token answer does not
+move, but it buys eight answers instead of one, and the layer figure grows by
+the seven extra KV caches that bought them. There is no compression flag: the
+runtime reads the checkpoint at the dtype it ships in, so fewer bits means
+pointing at a repository already published that way.
 
 ### Native model or streamed model? One screen.
 
@@ -825,7 +833,7 @@ best-engine-ai-helper lightweight compare --tokens 300
 
 ```
 === LLM: ollama vs lightweight, for a 300-token answer ===
-  budgets: 36.0 GB resident (ollama) · 72.0 GB per shard (lightweight) · disk 4.0 GB/s (declared)
+  budgets: 36.0 GB resident (ollama) · 72.0 GB per layer (lightweight) · disk 4.0 GB/s (declared)
 model                               backend  score  resident  tok/s  answer  runs
 ----------------------------------  -------  -----  --------  -----  ------  ----
 qwen3:72b-q8_0                      ollama   89     78.0      3.3    2 min   NO
@@ -851,28 +859,26 @@ natively, and the big ones that would score higher cannot be split on a
 given. That is the behaviour to want here: a tool that always found streaming
 attractive would be useless.
 
-`--batch 8` is the lever to try before concluding something is too slow (eight
-prompts ride through each layer pass together), and `--compression 4bit` is the
-other. They compose.
+`--batch 8` is the lever to try before concluding something is too slow: eight
+prompts ride through each layer pass together, so eight answers arrive in the
+time of one. It is the only one the backend has.
 
 ### Paying the download deliberately
 
-The first streaming call downloads the checkpoint and splits it into per-layer
-shards, which for a large model is tens of minutes of disk and reads exactly
-like a hang. Pay it on purpose instead:
+The first streaming call downloads the checkpoint, which for a large model is
+tens of minutes of disk and reads exactly like a hang. Pay it on purpose
+instead:
 
 ```sh
 best-engine-ai-helper lightweight prepare \
-  --model meta-llama/Llama-3.3-70B-Instruct \
-  --compression 4bit \
-  --shards-path /Volumes/fast/lightweight-shards
+  --model meta-llama/Llama-3.3-70B-Instruct
 ```
 
-Not run for this file: it downloads a 70B checkpoint. `--shards-path` is worth
-pointing at your fastest volume, because the shard read *is* the decode speed.
-`--delete-original` drops the downloaded checkpoint once the shards exist,
-halving the disk requirement — at the cost of re-downloading if the shards are
-ever lost. `--compression` takes `4bit` or `8bit`.
+Not run for this file: it downloads a 70B checkpoint. There is nothing else to
+prepare, and that is the whole change from the previous runtime — layers are
+read out of the checkpoint's own memory-mapped safetensors, so no second copy
+is written, there is no conversion step, and the only thing this command buys
+is paying the download at a moment you chose.
 
 ### The same brief, resolved for streaming
 
@@ -901,15 +907,14 @@ base_url: ''              # a library, not a server: it runs in your process
 lightweight:
   activate: false
   trigger: manual
-  runtime: mlx
-  installed: false
-  compression: null
+  runtime: mps
+  installed: true
 llm:
   model: Qwen/Qwen3-VL-4B-Instruct
   catalog_id: qwen3-vl:4b
   backend: lightweight         # per-kind, so a mixed descriptor stays readable
   streaming: true
-  ram_gb: 1.6             # one resident shard
+  ram_gb: 2.7             # one resident layer
   checkpoint_gb: 8.0      # what every token re-reads
   layers: 29
   layers_estimated: true
@@ -1392,9 +1397,9 @@ command; there is one name now, and this is it.
 | `hardware show` | the merged chip table | — |
 | `hardware update` | record this machine's chip and memory | — |
 | `lightweight status` | can this machine stream layers, and would it; `--measure`, `--json`, `--request` | — |
-| `lightweight plan` | what it could stream, and at what price; `--kind`, `--compression`, `--context`, `--batch`, `--json` | — |
-| `lightweight compare` | native against streamed, same answer, both prices; `--tokens`, `--batch`, `--compression`, `--measure`, `--json` | — |
-| `lightweight prepare` | download and split a checkpoint now; `--model`, `--compression`, `--shards-path`, `--delete-original` | network, runtime |
+| `lightweight plan` | what it could stream, and at what price; `--kind`, `--context`, `--batch`, `--json` | — |
+| `lightweight compare` | native against streamed, same answer, both prices; `--tokens`, `--batch`, `--measure`, `--json` | — |
+| `lightweight prepare` | download a checkpoint now rather than inside the first call; `--model` | network, runtime |
 | `pull` | pull the best model, then run both Ralph gates; `--keep-failed`, `--vllm`, `--application`, `--min-tps` | Ollama, network |
 | `validate` | re-run the Ralph gates on the configured model | Ollama |
 | `env` | print the env block for `~/.zshrc` | `pull` first |
@@ -1502,10 +1507,10 @@ a stripped container, or a wheel that failed to build. The panel prints the
 repair command. `status`, `plan` and `compare` keep working regardless; only
 actually generating needs the runtime.
 
-**`lightweight plan` refuses almost everything on `disk_gb`.** That column is the
-space needed *during the layer split*, which is roughly twice the checkpoint,
-and it is the usual blocker — far more often than memory. Free space, or point
-`--shards-path` at another volume.
+**`lightweight plan` refuses almost everything on `disk_gb`.** That column is
+the checkpoint's own size — nothing is copied, so there is no scratch space on
+top — and it is still the usual blocker, far more often than memory. A 70B is
+140 GB before it is anything else. Free space, or pick a smaller checkpoint.
 
 **A structured-output call comes back empty.** Either the model cannot honour a
 JSON schema — `catalog show` and the `notes` column say which ones cannot, and

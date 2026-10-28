@@ -217,7 +217,6 @@ def recommend(body: RecommendRequest) -> dict[str, Any]:
 def lightweight(
     measure: bool = False,
     kind: str = "llm",
-    compression: str | None = None,
     answer_tokens: int = 300,
     batch: int = 1,
 ) -> dict[str, Any]:
@@ -236,8 +235,6 @@ def lightweight(
         a page load should do unasked.
     kind : str
         ``llm`` or ``vlm``.
-    compression : str or None
-        ``4bit`` / ``8bit``, lightweight's block-wise weight compression.
     answer_tokens : int
         Answer length every timing is computed for. The per-token rate alone
         does not tell a caller whether a job finishes before lunch.
@@ -265,7 +262,6 @@ def lightweight(
         entries,
         budget_gb=budget,
         disk=disk,
-        compression=compression,
         kind="vlm" if kind == "vlm" else "llm",
         batch=batch,
         new_tokens=answer_tokens,
@@ -279,7 +275,6 @@ def lightweight(
         native_backend=_default_backend(),
         new_tokens=answer_tokens,
         batch=batch,
-        compression=compression,
     )
     return {
         "decision": _offload.decide(compute=compute, disk=disk),

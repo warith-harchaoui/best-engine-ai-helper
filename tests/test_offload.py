@@ -100,16 +100,23 @@ def test_the_footprint_brackets_airllms_published_figure_for_a_70b() -> None:
     assert prefetched < offload.checkpoint_gb(LLAMA_70B) / 20
 
 
-def test_compression_shrinks_the_shard_and_the_traffic_together() -> None:
-    """4-bit quantises the weights, so it divides both terms by four."""
-    plain = offload.footprint_gb(LLAMA_70B)
-    compressed = offload.footprint_gb(LLAMA_70B, compression="4bit")
+def test_a_smaller_checkpoint_dtype_shrinks_the_layer_and_the_traffic() -> None:
+    """The dtype is the checkpoint's, not a knob: nothing here requantises.
 
-    assert offload.checkpoint_gb(LLAMA_70B, "4bit") == 35.0
-    assert compressed < plain
-    # The KV cache and the activation allowance do not compress, so the saving
-    # is on the shard term only -- which is why this is not a flat 4x.
-    assert compressed > plain / 4
+    This used to be a `compression="4bit"` argument, and it was a lie -- the
+    planner divided the bytes while the runtime read the repository exactly as
+    published, so a 4-bit plan quoted a third of a run it would never deliver.
+    The honest version is that a smaller dtype is a property of the repository
+    you point at, which is why it arrives through the catalog entry.
+    """
+    plain = offload.footprint_gb(LLAMA_70B)
+    small = offload.footprint_gb({**LLAMA_70B, "dtype": "q4"})
+
+    assert offload.checkpoint_gb({**LLAMA_70B, "dtype": "q4"}) == 35.0
+    assert small < plain
+    # The KV cache and the activation allowance do not shrink with the weights,
+    # so the saving is on the layer term only -- which is why it is not 4x.
+    assert small > plain / 4
 
 
 def test_the_kv_cache_is_not_streamed_and_a_long_context_shows_it() -> None:
@@ -239,9 +246,12 @@ def test_streaming_needs_the_checkpoint_and_no_scratch_space() -> None:
 
     assert space["peak_gb"] == offload.checkpoint_gb(LLAMA_70B)
     assert space["steady_gb"] == space["peak_gb"]
-    # Compression is accepted and ignored: this runtime does not requantise,
-    # so what is on disk is whatever the checkpoint ships.
-    assert offload.disk_required_gb(LLAMA_70B, "4bit") == space
+    # What is on disk is whatever the checkpoint ships: this runtime does not
+    # requantise, so the only way to need less disk is a smaller repository.
+    assert offload.disk_required_gb({**LLAMA_70B, "dtype": "q4"}) == {
+        "peak_gb": space["peak_gb"] / 4,
+        "steady_gb": space["steady_gb"] / 4,
+    }
 
 
 def test_a_nearly_full_drive_blocks_a_model_that_fits_memory_easily() -> None:
@@ -253,7 +263,11 @@ def test_a_nearly_full_drive_blocks_a_model_that_fits_memory_easily() -> None:
     assert cramped["fits"] is True  # memory was never the problem
     assert cramped["disk_fits"] is False
     assert cramped["usable"] is False
-    assert any("free during the layer split" in b for b in cramped["blockers"])
+    # The reason has to name the real constraint. It used to say "free during
+    # the layer split", describing a step that no longer happens -- and quoting
+    # the same number twice as though one were a transient peak.
+    assert any("the checkpoint is" in b and "is free" in b for b in cramped["blockers"])
+    assert not any("split" in b for b in cramped["blockers"])
 
 
 # ---------------------------------------------------------------------------
@@ -728,7 +742,7 @@ def test_the_adapter_passes_the_runtimes_arguments_through_unrenamed(
     assert kwargs["hf_token"] == "hf_xxx"
 
 
-def test_the_split_options_are_accepted_and_ignored(
+def test_the_split_options_are_gone_rather_than_silently_ignored(
     fake_runtime: dict[str, Any],
 ) -> None:
     """They described a pre-split this runtime does not have.
@@ -736,16 +750,15 @@ def test_the_split_options_are_accepted_and_ignored(
     airllm wrote a second copy of the checkpoint, one file per layer, before
     anything ran -- which is why `compare` used to refuse 70B models on a
     laptop for want of ~294 GB of scratch. Reading per-tensor out of the
-    original safetensors needs none of it, so `layer_shards_saving_path` and
-    `delete_original` have nothing left to mean. Accepted rather than removed,
-    because a caller passing them should not get a TypeError for asking for
-    something that is now simply free.
+    original safetensors needs none of it, so `layer_shards_saving_path`,
+    `delete_original` and `compression` have nothing left to mean. They are
+    removed rather than accepted-and-ignored: a silent no-op lets a caller go
+    on believing the option did something, and the only honest answer to
+    "write the shards to my fast volume" is that there are no shards to write.
     """
-    offload.load("x/y", layer_shards_saving_path="/fast/shards", delete_original=True)
-
-    _, kwargs = fake_runtime["built"][-1]
-    assert "layer_shards_saving_path" not in kwargs
-    assert "delete_original" not in kwargs
+    for dead in ("layer_shards_saving_path", "delete_original", "compression"):
+        with pytest.raises(TypeError):
+            offload.load("x/y", **{dead: "whatever"})
 
 
 def test_the_context_length_configured_is_the_one_that_was_priced(
@@ -953,9 +966,9 @@ def test_batching_multiplies_throughput_in_time_and_costs_kv_in_memory() -> None
     """The biggest lever the backend has, and it has to be priced on both sides.
 
     Eight prompts ride through each pass together, so eight answers arrive in
-    the time of one — bigger than the ~3x compression buys, and orthogonal to
-    it. The cost is eight KV caches, which `footprint_gb` has to charge or a
-    batch job plans itself into an OOM.
+    the time of one. It is the only speed lever the backend actually has, now
+    that on-the-fly quantisation is gone. The cost is eight KV caches, which
+    `footprint_gb` has to charge or a batch job plans itself into an OOM.
     """
     single = offload.generation_time(LLAMA_70B, 4.0, new_tokens=50, batch=1)
     eight = offload.generation_time(LLAMA_70B, 4.0, new_tokens=50, batch=8)
@@ -973,19 +986,19 @@ def test_batching_multiplies_throughput_in_time_and_costs_kv_in_memory() -> None
     )
 
 
-def test_compression_is_three_times_faster_not_four() -> None:
-    """Pinned to lightweight's published claim, because dequantisation is not free.
+def test_a_quarter_of_the_bytes_is_four_times_the_rate() -> None:
+    """Disk traffic is the whole timing model, so the ratio is exactly the bytes.
 
-    4-bit divides the bytes read by four; upstream reports a 3x speed-up. The
-    missing quarter is the unpack, and modelling it as a clean 4x would promise
-    a third more speed than the runtime delivers.
+    There is no dequantisation derate any more, and that is not an omission:
+    the old 0.75 factor was calibrated on airllm *doing* the quantisation on
+    the way in. This runtime reads a repository already published at that
+    dtype, so what it pays is the read and nothing else.
     """
     plain = offload.estimated_tokens_per_second(LLAMA_70B, 4.0)
-    four_bit = offload.estimated_tokens_per_second(LLAMA_70B, 4.0, compression="4bit")
+    small = offload.estimated_tokens_per_second({**LLAMA_70B, "dtype": "q4"}, 4.0)
 
-    assert plain is not None and four_bit is not None
-    assert four_bit / plain == pytest.approx(3.0, abs=0.1)
-    assert offload.stream_efficiency("4bit") < offload.stream_efficiency()
+    assert plain is not None and small is not None
+    assert small / plain == pytest.approx(4.0, abs=0.1)
 
 
 def test_durations_are_rendered_the_way_a_person_would_say_them() -> None:

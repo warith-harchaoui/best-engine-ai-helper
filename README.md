@@ -570,13 +570,13 @@ resident ≈ (checkpoint ÷ layers) × 1.25 × shards_resident
            + activations and runtime buffers
 ```
 
-- `checkpoint ÷ layers` is the average shard. The **biggest** shard is the
+- `checkpoint ÷ layers` is the average layer. The **widest** one is the
   token-embedding matrix rather than a decoder layer — a modern 128k–152k
   vocabulary makes it so — hence the 1.25.
-- `shards_resident` is 2 with lightweight's prefetch on (the next shard is read while
-  the current one computes, which is where its ~10% speed-up comes from) and 1
-  without. Turning prefetch off is the single knob that gets a 70B model onto a
-  4 GB card, and this package tries it automatically before rejecting a
+- `layers_resident` is 2 with prefetching on (the next layer is read while the
+  current one computes, which is where its ~10% speed-up comes from) and 1
+  without. Turning prefetching off is the single knob that gets a 70B model onto
+  a 4 GB card, and this package tries it automatically before rejecting a
   candidate for memory.
 - The **KV cache is not streamed**: autoregressive decoding cannot recompute
   earlier keys and values, so every layer's slice stays resident for the whole
@@ -586,29 +586,32 @@ resident ≈ (checkpoint ÷ layers) × 1.25 × shards_resident
 
 Worked, on a 4 GB/s NVMe drive at a 4k context:
 
-| Model | Checkpoint | Layers | Resident (prefetch / serial) | s/token | Free disk to split |
-|---|---|---|---|---|---|
-| Llama-3.3-70B | 140 GB | 80 | 6.1 GB / 3.9 GB | 41 s | 294 GB |
-| Qwen2.5-VL-72B | 146 GB | 80 | 6.3 GB / 4.0 GB | 43 s | 307 GB |
-| Mixtral-8x22B (141B, MoE) | 282 GB | 56 | 14.0 GB / 7.7 GB | 83 s | 592 GB |
-| Qwen3-235B-A22B (MoE) | 470 GB | 94 | 14.5 GB / 8.2 GB | 138 s | 987 GB |
-| DeepSeek-V3 (671B, fp8, MoE) | 671 GB | 61 | 29.0 GB / 15.2 GB | 197 s | 1409 GB |
-| Llama-3.1-405B | 810 GB | 126 | 18.5 GB / 10.5 GB | 238 s | 1701 GB |
+| Model | Checkpoint (= free disk needed) | Layers | Resident (prefetch / serial) | s/token |
+|---|---|---|---|---|
+| Llama-3.3-70B | 140 GB | 80 | 6.1 GB / 3.9 GB | 41 s |
+| Qwen2.5-VL-72B | 146 GB | 80 | 6.3 GB / 4.0 GB | 43 s |
+| Mixtral-8x22B (141B, MoE) | 282 GB | 56 | 14.0 GB / 7.7 GB | 83 s |
+| Qwen3-235B-A22B (MoE) | 470 GB | 94 | 14.5 GB / 8.2 GB | 138 s |
+| DeepSeek-V3 (671B, fp8, MoE) | 671 GB | 61 | 29.0 GB / 15.2 GB | 197 s |
+| Llama-3.1-405B | 810 GB | 126 | 18.5 GB / 10.5 GB | 238 s |
 
 Depth is what makes the last row possible: 405B parameters over 126 layers is a
-*leaner shard* than 141B over 56. A mixture-of-experts breaks the usual
+*leaner layer* than 141B over 56. A mixture-of-experts breaks the usual
 relation between size and depth (DeepSeek-V3 is 671B across 61 layers, where
 the dense trend would predict twice as many), so a MoE entry that does not
 declare its `layers` is **refused** rather than guessed at — a guess there is
 wrong by a factor of two, in the direction that over-promises.
 
-Read that last column first. **Disk space, not memory, is what usually refuses
-a model**: lightweight writes per-layer shards beside the downloaded checkpoint, so
-the cache holds both at once and the split needs roughly twice the checkpoint
-free. A 405B model is an 810 GB download before it is anything else. Memory is
-the easy half of streaming.
+Read the second column first. **Disk space, not memory, is what usually refuses
+a model** — but only the checkpoint's own size. Layers are read out of the
+original safetensors, memory-mapped and tensor-indexed, so nothing is copied and
+there is no scratch space to find: a 405B model is an 810 GB download, and then
+it is ready. (The previous runtime wrote a second per-layer copy beside the
+first, which is why this column used to read 1701 GB and why almost every row of
+`lightweight plan` used to say `runs: NO`.) Memory is the easy half of
+streaming.
 
-These figures were checked against lightweight's own published numbers, and the check
+These figures were checked against airllm's published numbers, and the check
 is worth stating precisely because the headline "70B on a 4 GB GPU" is true at a
 context length nobody mentions: the same model is 3.0 GB serially at a 1k
 context — the demo — 3.9 GB serially at 4k, and 6.1 GB at 4k with prefetch on.
@@ -631,7 +634,7 @@ best-engine-ai-helper lightweight compare --tokens 300
 
 ```
 === LLM: ollama vs lightweight, for a 300-token answer ===
-  budgets: 11.04 GB resident (ollama) · 22.08 GB per shard (lightweight) · disk 4.0 GB/s (declared)
+  budgets: 11.04 GB resident (ollama) · 22.08 GB per layer (lightweight) · disk 4.0 GB/s (declared)
 model                       backend  score  resident  tok/s  answer  runs
 --------------------------  -------  -----  --------  -----  ------  ----
 qwen3:72b-q8_0              ollama   89     78.0      8.4    36 s    NO
@@ -725,7 +728,6 @@ or in the committed brief:
 kind: llm
 task: judge the quality of generated product descriptions
 lightweight: always          # auto (default) | always | never
-lightweight_compression: 4bit
 ```
 
 or in the environment, which outranks nothing but defaults:
@@ -752,7 +754,7 @@ best-engine-ai-helper lightweight plan --kind llm --compression 4bit --batch 8
 # Native or streamed, same answer length, both prices
 best-engine-ai-helper lightweight compare --tokens 300 --batch 8
 
-# Pay the download and the layer split now, not inside your first call
+# Pay the download now, not inside your first call
 best-engine-ai-helper lightweight prepare --model meta-llama/Llama-3.3-70B-Instruct
 ```
 
@@ -768,7 +770,7 @@ figure `measured` or `declared`.
 
 ### Limits, stated plainly
 
-- **No structured output.** lightweight exposes raw generation, with no equivalent of
+- **No structured output.** The runtime exposes raw generation, with no equivalent of
   Ollama's grammar-constrained `format`. Every streamed model is therefore
   `structured_output: false` — a fact about the backend, not about the weights —
   and the suite's schema-driven tasks stay on an Ollama model. `llm.chat` raises
@@ -776,53 +778,76 @@ figure `measured` or `declared`.
 - **Text only.** The adapter returns a bare causal language model, without the
   image processor a VLM prompt needs. Images raise instead of being silently
   answered from the text alone.
-- **No server.** lightweight is a library, so a streamed model runs *in your own
+- **No server.** The runtime is a library, so a streamed model runs *in your own
   process*; the engine file's `base_url` is empty on purpose, because inventing
   a localhost port would send a consumer looking for a daemon that will never
-  exist. `llm.chat` keeps the loaded model between calls — splitting a 141 GB
-  checkpoint per call would make the transport unusable.
-- **Experimental on CPU.** lightweight's CPU path only works for unsharded models, so
-  a CPU-only machine is not offered streaming automatically. It can still be
-  asked for.
-- **4-bit compression is unavailable on macOS.** It needs `bitsandbytes`, which
-  publishes no macOS wheel, so the dependency carries a platform marker and
-  Apple Silicon streams through MLX uncompressed. The sizing says so rather
-  than quoting a speed-up that will not happen.
-- **The context is 4096 tokens unless you ask for more.** lightweight's own default
-  is 512 and it *truncates* past it, so this adapter always passes an explicit
-  `max_seq_len` — set to the same 4k the footprint above is priced at. The two
+  exist. `llm.chat` keeps the loaded model between calls — re-reading a 141 GB
+  checkpoint's index per call would make the transport unusable.
+- **safetensors only.** A checkpoint published only as `pytorch_model.bin` is
+  refused by name. Pickle carries no tensor-level index, so "read one layer"
+  would mean reading the whole file once per layer — which is the one thing
+  this backend exists not to do.
+- **No per-expert MoE streaming.** A sparse mixture-of-experts layer is
+  materialised whole, so its resident figure is the full expert set rather than
+  the handful a token actually routes to. The sizing charges for the whole set,
+  which is why a MoE row looks expensive next to a dense model of the same
+  depth.
+- **No quantisation on the fly.** The checkpoint runs at the dtype it ships in.
+  There is no `--compression` knob, because there is nothing here that could
+  honour one: to stream in fewer bits, point at a repository already published
+  that way, and the catalog's `dtype` prices it. (An earlier version accepted
+  such a flag and quoted a 3× speed-up the runtime never delivered.)
+- **CPU works, slowly.** `cuda`, `mps` and `cpu` are all real paths — the device
+  is named explicitly rather than guessed. A CPU-only machine is still not
+  *offered* streaming automatically, because the rate it would get is below the
+  batch floor; it can be asked for.
+- **The context is 4096 tokens unless you ask for more.** A tokenizer left at
+  its own default *truncates* past it, so the runtime always configures
+  `max_seq_len` explicitly — set to the same 4k the footprint above is priced
+  at. The two
   numbers are deliberately the same one: a tool that quotes memory for a 4k
   context and then quietly runs a 512-token one would be lying in the direction
   where you lose the end of your prompt. Raise it with `max_seq_len=` and the
   KV term rises exactly as the formula says.
 
-### Why lightweight is imported rather than copied in
+### Why this runtime is our own rather than an import
 
-A fair question for a package that re-derives the arithmetic. Four reasons:
+A fair question, and the answer changed. The technique was demonstrated by
+[airllm](https://github.com/lyogavin/airllm) (Apache-2.0), which this package
+imported at first. Three measurements moved it in-house:
 
-1. **Vendoring would not have avoided the weight.** lightweight needs torch,
-   transformers, accelerate, safetensors, scipy and sentencepiece, and a copy of
-   its source would need all of them too — the weight *is* its dependency tree,
-   not its code. So the ~2 GB is the price of the capability however it arrives,
-   and it is paid here deliberately rather than hidden behind an extra nobody
-   finds. What a copy would add on top is the next three problems.
-2. **It is a moving target.** lightweight's value is per-family sharding code (Llama,
-   Qwen, DeepSeek, Mixtral, ChatGLM, Kimi), rewritten as each new family ships.
-   Vendored, it would be frozen at the day it was copied and rot from the first
-   release after.
-3. **Licence hygiene.** lightweight is Apache-2.0; this package is BSD-3-Clause.
-   Importing keeps the two trees, and their notice obligations, separate.
-4. **The division of labour is real, not a dodge.** lightweight decides *how* to
-   stream. Nothing in it decides *whether* this machine should, *which* model it
-   should stream, or *what it will cost you in time* — and those are the three
-   questions a caller of this package is actually asking.
+1. **It did not work on Apple Silicon at all.** airllm's `AutoModel` dispatches
+   on architecture everywhere except macOS, where it hard-returns a hand-written
+   Llama transformer in MLX with `bias=False` throughout. Qwen carries attention
+   biases; Llama 3.2 ties its embeddings, so there is no `lm_head` tensor; older
+   exports persist `rotary_emb.inv_freq`. Three different crashes, on the
+   platform this suite is developed on — and `generate()` never got that far
+   anyway, raising `AttributeError: 'AirLLMLlamaMlx' object has no attribute
+   'device'` on the first call on every Mac.
+2. **It wrote a second copy of every checkpoint to disk.** Per-layer shards,
+   written before anything ran, so a 70B needed ~294 GB free rather than ~140.
+   That is what made almost every row of `lightweight plan` read `runs: NO` on a
+   normal laptop: the models fit in memory-per-layer terms and failed on scratch
+   space that no longer has to exist.
+3. **It carried MLX, bitsandbytes and a subclass per model family** — Llama,
+   Qwen, DeepSeek, Mixtral, ChatGLM, Kimi — each rewritten as the family shipped.
+   All of that left with it.
 
-So the runtime is imported and the **decision** is native: `offload.py` owns the
-footprint arithmetic, the disk-bound timing model, the activation policy, the
+What replaces it is smaller, not larger: build the model on the `meta` device,
+hang a forward pre-hook on each decoder layer that materialises its weights from
+the checkpoint's own memory-mapped safetensors, and a post-hook that frees
+exactly those again. **`transformers` owns the forward pass**, so the
+architecture is whatever `transformers` knows, and the decoder stack is
+*discovered* — the `ModuleList` whose length matches the config's layer count —
+rather than named in a per-family table somebody has to maintain.
+
+The division of labour inside this package is unchanged: `streaming.py` owns the
+forward pass, and `offload.py` owns every *selection* question — the footprint
+arithmetic, the disk-bound timing model, the activation policy, the
 native-versus-streamed comparison, and the catalog metadata all of it needs
-(`layers`, `dtype`, `moe`). None of that imports lightweight — which is what keeps
-the import lazy, and what makes `lightweight status` and `lightweight compare` answer
-correctly even in an environment where the runtime itself will not load.
+(`layers`, `dtype`, `moe`). None of `offload.py` imports torch, which is what
+makes `lightweight status` and `lightweight compare` answer correctly and
+instantly even where the runtime itself would not load.
 
 ### From Python
 

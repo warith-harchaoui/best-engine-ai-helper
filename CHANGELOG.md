@@ -295,6 +295,65 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Fixed
 
+- **The `lightweight` rename was done by substitution, so the documentation
+  came out arguing for a decision that had been reversed.** Every place that
+  explained *why airllm was imported rather than vendored* now explained it
+  about a package that had just been removed — `offload.py`'s module docstring,
+  a whole section of `README.md` and `LISEZMOI.md`, the method note `report`
+  prints, and the `Sources` block under it. The same pass turned the upstream
+  project's own URL into `github.com/lyogavin/lightweight`, which does not
+  exist, and printed it to users while attributing this BSD-3-Clause runtime to
+  an Apache-2.0 project. All of it is rewritten to say what is true: the
+  technique is airllm's and is credited as such, the runtime is ours, and the
+  three measurements that moved it in-house are stated.
+
+- **`--compression 4bit` quoted a speed-up the runtime could not deliver.** The
+  planner divided the bytes read by four and applied a dequantisation derate,
+  so `lightweight compare --compression 4bit` promised 14 minutes for a
+  300-token answer that would really take 41 — while `offload.load()` ignored
+  the argument entirely, because this runtime reads the checkpoint's own
+  safetensors and does not requantise. The knob is **removed** rather than
+  warned about: bytes per parameter now come from the catalog entry's `dtype`,
+  which is where that fact actually lives. To stream in fewer bits, point at a
+  repository published that way. Gone with it: `lightweight_compression` as a
+  brief key (documented, but read under its old name `airllm_compression`, so
+  it had never worked), `--compression` on `plan` and `compare`, and the
+  `compression=` parameter throughout `offload`, `llm`, `engine` and `api`.
+
+- **Three `lightweight prepare` flags described a step that no longer runs.**
+  `--shards-path` ("point this at your fastest volume — the shard read IS the
+  decode speed"), `--delete-original` ("halving the disk requirement") and
+  `--compression` were silent no-ops after the rewrite. Removed, along with
+  `layer_shards_saving_path`, `delete_original` and `profiling_mode` on
+  `offload.load`/`generate`. A caller who passes one now gets a `TypeError`
+  instead of a no-op, which is the honest answer when there are no shards to
+  write. The command's real job — pay the download deliberately — is what it
+  now says.
+
+- **Every `runs: NO` row explained itself with a disk split that was gone.**
+  The blocker read `the split needs 671 GB free during the layer split (671 GB
+  after)`, quoting the same number twice as though one were a transient peak.
+  It now reads `the checkpoint is 671 GB and only 31 GB is free`. The method
+  note's "the layer split needs about twice the checkpoint free at once" and
+  the worked table's `Free disk to split` column (294 GB for a 140 GB
+  checkpoint) are corrected the same way, in both languages.
+
+- **The printed throughput floor was not the one the selector uses.** The
+  method note said `0.2 tok/s`; `COMFORT_TPS_STREAMING` has been `0.01` since
+  the floor was corrected. It is now interpolated from the constant, so the two
+  cannot drift again.
+
+- **`shard` meant two different things, and one of them no longer existed.** In
+  `streaming.py` it correctly names a safetensors shard; everywhere else it
+  named airllm's per-layer file. The latter is now `layer` throughout the user
+  surface — the `plan` column is `layer_gb`, `status` prints a `layer budget`,
+  `compare` prices `per layer` — with the French GUI catalogue and `.po`
+  updated to match.
+
+- **The French documents had drifted behind the English**, including
+  ungrammatical `d'lightweight` elisions left by the substitution and an
+  install note still naming a dependency that had been dropped.
+
 - **Two mistakes of my own, both found by running the thing rather than reading
   it, and both worth recording because each was a plausible-looking number that
   made the feature useless in opposite directions.** The streaming comfort floor

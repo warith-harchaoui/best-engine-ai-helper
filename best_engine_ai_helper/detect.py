@@ -774,7 +774,7 @@ def disk_profile(measure: bool = False, directory: str | None = None) -> dict[st
             lookup, nor the reverse.
         ``free_gb`` : float or None
             Free space on the volume holding the home directory, where both the
-            HuggingFace cache and lightweight's layer shards land.
+            HuggingFace cache lands.
 
     Examples
     --------

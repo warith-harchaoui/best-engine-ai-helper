@@ -171,7 +171,7 @@ def model_footprint_gb(entry: dict[str, Any], backend: str = "ollama") -> float:
     backend : {'ollama', 'vllm', 'lightweight'}
         Serving backend the footprint is estimated for. Unknown values are
         treated as ``'ollama'`` (the conservative catalog figure). ``'lightweight'``
-        streams layers off disk and so reports the resident size of ONE shard
+        streams layers off disk and so reports the resident size of ONE layer
         rather than of the model — see :func:`offload.footprint_gb`.
 
     Returns
@@ -185,13 +185,13 @@ def model_footprint_gb(entry: dict[str, Any], backend: str = "ollama") -> float:
     9.9
     >>> model_footprint_gb({'id': 'a', 'ram_gb': 9.9, 'size_b': 14}, 'vllm')
     32.2
-    >>> # Streaming sizes one shard, not the model: a 70B becomes laptop-sized.
+    >>> # Streaming sizes one layer, not the model: a 70B becomes laptop-sized.
     >>> model_footprint_gb({'id': 'b', 'size_b': 70, 'layers': 80}, 'lightweight')
     6.1
     """
     if backend == "lightweight":
         # Layer streaming breaks the premise every other branch rests on: the
-        # model is never resident, one shard is. The arithmetic lives in
+        # model is never resident, one layer is. The arithmetic lives in
         # `offload` with the rest of the streaming reasoning, so there is one
         # place to read it and one place to correct it.
         from . import offload as _offload
@@ -301,7 +301,7 @@ def usable_pool_gb(hw: dict[str, float | None]) -> float:
     Every caller sizing a model that STAYS in memory wants
     :func:`effective_budget` instead: the extra headroom is what leaves room for
     the OS, the caller's own workload and KV-cache growth. The exception is
-    layer streaming, where what occupies memory is one transient shard that the
+    layer streaming, where what occupies memory is one transient layer that the
     runtime frees per layer, and where the KV cache is sized explicitly rather
     than absorbed into a margin (see :func:`offload.footprint_gb`) — applying
     the headroom there would reserve the same memory twice and reject the models

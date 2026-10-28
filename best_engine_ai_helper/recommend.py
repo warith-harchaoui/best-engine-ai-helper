@@ -42,6 +42,12 @@ from typing import Any, Literal, cast
 
 import os_helper as osh
 
+# Imported at module scope, not lazily like the rest of the backend plumbing:
+# the streaming method note quotes the batch floor, and a note that quotes a
+# number the selector does not actually use is the defect this file exists to
+# avoid. `offload` is pure arithmetic — the deep-learning stack behind it is
+# imported only when a model is really loaded.
+from .offload import COMFORT_TPS_STREAMING
 from .score import (
     COMFORT_TPS,
     MAX_HEADROOM,
@@ -201,7 +207,7 @@ def _candidate_row(
 
     ``ram_gb``, ``fits`` and ``est_tokens_per_s`` are computed for ``backend``:
     an Ollama pick sizes against the Q4 ``ram_gb``, a vLLM pick against the
-    heavier FP16 footprint, and an lightweight pick against ONE layer shard with a
+    heavier FP16 footprint, and a lightweight pick against ONE layer with a
     disk-bound rate (see :func:`score.model_footprint_gb`).
     """
     from .score import _benchmark_score, model_footprint_gb  # local: internal
@@ -323,7 +329,7 @@ def recommend(
         Serving backend, so memory fit and throughput reflect what actually
         loads. Threaded to :func:`score.rank` and :func:`_candidate_row`.
         ``'lightweight'`` ranks layer-streaming candidates: ``ram_gb`` becomes one
-        resident shard and the rate becomes disk-bound, which is why ``disk``
+        resident layer and the rate becomes disk-bound, which is why ``disk``
         matters there and nowhere else.
     disk : dict or None
         Storage profile from :func:`detect.disk_profile`. Read only under
@@ -523,23 +529,28 @@ _METHOD_NOTE = (
 _STREAMING_METHOD_NOTE = (
     "Layer streaming (lightweight) changes which resource binds, so it is judged on "
     "different factors from the other backends. Memory fit is computed against ONE "
-    "resident layer shard rather than the whole model -- the checkpoint divided by "
-    "its decoder depth, times a margin for the larger embedding shard, times the two "
-    "shards prefetching keeps in flight -- which is what lets a 70B model run in "
+    "resident layer rather than the whole model -- the checkpoint divided by "
+    "its decoder depth, times a margin for the wider embedding layer, times the two "
+    "layers prefetching keeps in flight -- which is what lets a 70B model run in "
     "about 5 GB. Throughput is bounded by the DISK, not the memory bus: every token "
     "re-reads the whole checkpoint from storage, so tokens/s = disk read bandwidth / "
     "checkpoint size x 0.85, and the honest unit is usually seconds per token. The "
-    "comfort floor is therefore 0.2 tok/s (a batch floor), not the 15 tok/s "
-    "interactive floor -- judging a streamed model by the interactive floor would "
-    "reject every candidate and hide the capability. Disk SPACE is the constraint "
-    "that bites first: the layer split needs about twice the checkpoint free at once. "
-    "And no streamed model honours a JSON schema: lightweight exposes raw generation, so "
+    f"comfort floor is therefore {COMFORT_TPS_STREAMING} tok/s (a batch "
+    "floor), not the 15 tok/s interactive floor -- judging a streamed model by the "
+    "interactive floor would reject every candidate and hide the capability. Disk "
+    "SPACE is the constraint that bites first, but only the checkpoint's own size: "
+    "layers are read out of the original safetensors, so nothing is copied and there "
+    "is no scratch space to find. "
+    "And no streamed model honours a JSON schema: the runtime exposes raw generation, so "
     "schema-driven tasks still need an Ollama model."
 )
 
 _STREAMING_SOURCES = [
-    "Layer-by-layer streaming inference: lightweight (github.com/lyogavin/lightweight, "
-    "Apache-2.0) -- resident memory tracks the widest layer, not the model.",
+    "Layer-by-layer streaming inference: this package's own runtime "
+    "(best_engine_ai_helper.streaming) -- resident memory tracks the widest layer, "
+    "not the model. The technique was demonstrated by airllm "
+    "(github.com/lyogavin/airllm, Apache-2.0), against whose published figures the "
+    "footprint arithmetic here is calibrated.",
     "Streaming decode is disk-bandwidth bound: each token re-reads the whole "
     "checkpoint, so tokens/s ~= disk read GB/s / checkpoint GB.",
     "Sequential-read bandwidth per storage class (manufacturer specifications), "

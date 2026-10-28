@@ -93,12 +93,12 @@ only four things decide the question:
   panel prints the repair command rather than leaving a dead end;
 - the **storage class and its read bandwidth**, labelled `measured` or
   `declared`, because the drive sets the entire speed of this backend;
-- the **shard budget**: how much resident memory one layer shard may occupy
-  here, which is a different budget from the one above it (a transient shard
+- the **layer budget**: how much resident memory one decoder layer may occupy
+  here, which is a different budget from the one above it (a transient layer
   does not pay the headroom a resident model does);
 - the **biggest model it would actually run**, with the three figures that
   decide feasibility — resident gigabytes, seconds per token, and the free disk
-  the layer split needs.
+  its checkpoint needs.
 
 The last line is the verdict in prose, straight from the same policy the CLI
 and `resolve` consult, so the page cannot disagree with them: usually "a model

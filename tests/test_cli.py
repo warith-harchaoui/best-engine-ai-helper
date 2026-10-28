@@ -717,7 +717,7 @@ def test_airllm_plan_ranks_candidates_in_seconds_per_token(runner: CliRunner) ->
     res = runner.invoke(cli, ["lightweight", "plan", "--kind", "llm"])
     assert res.exit_code == 0, res.output
     assert "s/token" in res.output
-    assert "shard_gb" in res.output
+    assert "layer_gb" in res.output
     # Whatever this machine is, the table has to say whether each row runs.
     assert "runs" in res.output
 
@@ -750,9 +750,9 @@ def test_recommend_backend_airllm_switches_the_table_and_the_floor(runner: CliRu
     # The interactive comfort floor describes a resident model; judging a
     # streamed one by it would mark every row uncomfortable and say nothing.
     assert "Batch floor: 0.01 tok/s" in streamed.output
-    assert "Memory is one layer shard" in streamed.output
+    assert "Memory is one layer" in streamed.output
     # And the columns differ, because `ram_gb` would be a lie in this table.
-    assert "shard_gb" in streamed.output and "shard_gb" not in plain.output
+    assert "layer_gb" in streamed.output and "layer_gb" not in plain.output
 
 
 def test_resolve_accepts_the_streaming_backend(

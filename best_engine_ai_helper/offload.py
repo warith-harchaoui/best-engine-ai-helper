@@ -5,49 +5,43 @@ Every other backend in this package answers the same question: *which model
 fits?* This one answers the question that follows when the honest answer is
 "none of the good ones": **a transformer never needs all of its layers resident
 at once.** Decoding reads layer 1, then layer 2, then layer 3; only the layer
-being computed has to be in memory. Keep one shard resident, stream the rest
+being computed has to be in memory. Keep one layer resident, stream the rest
 off the disk, and the memory a model needs stops scaling with its parameter
 count and starts scaling with its *widest single layer* — a 70B model becomes a
 ~5 GB resident footprint instead of a 141 GB one.
 
-That idea, and the runtime that implements it, come from **lightweight**
-(https://github.com/lyogavin/lightweight, Apache-2.0). This module is the seam
-between it and the rest of this package:
+The idea is not new: **airllm** (https://github.com/lyogavin/airllm, Apache-2.0)
+demonstrated it, and the arithmetic below was calibrated against its published
+figures. The runtime here is this package's own
+(:mod:`best_engine_ai_helper.streaming`), for three reasons that were measured
+rather than argued:
 
-- **The arithmetic is here.** Which model a machine can stream, what it will
-  cost in resident memory, how many seconds per token the disk will impose, and
-  whether streaming is worth activating at all are *selection* questions, which
-  is this package's entire job. They are re-derived from first principles below
-  (see :func:`footprint_gb` and :func:`estimated_tokens_per_second`) and checked
-  against lightweight's own published figures.
-- **The runtime is imported, not copied.** :func:`load` and :func:`generate`
-  are a thin adapter over ``lightweight.AutoModel``, which is a **core dependency**
-  of this package: streaming is available on every install, not behind an
-  extra. Nothing here reimplements layer sharding.
+1. **airllm did not work on Apple Silicon at all.** Its ``AutoModel`` dispatches
+   on architecture everywhere except macOS, where it hard-returns a hand-written
+   Llama transformer in MLX with ``bias=False`` throughout. Qwen carries
+   attention biases, Llama 3.2 ties its embeddings so there is no ``lm_head``
+   tensor, and older exports persist ``rotary_emb.inv_freq`` — three different
+   crashes on the platform this suite is developed on.
+2. **It wrote a second copy of every checkpoint to disk** as per-layer shards
+   before running, so a 70B needed ~294 GB free rather than ~140. That, not
+   memory, is what made nearly every row of ``lightweight plan`` read
+   ``runs: NO`` on a normal laptop.
+3. **It pulled MLX, bitsandbytes and a per-family subclass for each
+   architecture.** All of that left with it.
 
-Why imported rather than vendored
----------------------------------
-1. **The weight is the price of the capability, and it is paid up front.**
-   lightweight needs torch, transformers, accelerate, safetensors, scipy and
-   sentencepiece, so this install is a gigabyte-scale download rather than the
-   seconds-long one it used to be. That cost is accepted deliberately: "which
-   model can this machine run" and "which model can this machine run if it
-   streams the layers" are the same question, and a capability behind an extra
-   is a capability most callers never discover. Vendoring would not have
-   avoided the weight either — lightweight's own dependencies are the weight — so
-   this is an argument about *declaring* it, not about copying it. The import
-   stays lazy: nothing imports lightweight until a model is actually loaded, so the
-   cost is install size and never startup time.
-2. **It is a moving target.** lightweight's value is per-family sharding code
-   (Llama, Qwen, DeepSeek, Mixtral, ChatGLM, Kimi), rewritten as each new
-   family ships. Vendored, it would be frozen at the day it was copied and rot
-   from the first release after.
-3. **Licence hygiene.** lightweight is Apache-2.0; this package is BSD-3-Clause.
-   Importing keeps the two trees, and their notice obligations, separate.
-4. **The division of labour is real, not a dodge.** lightweight decides *how* to
-   stream. Nothing in it decides *whether* this machine should, which model it
-   should stream, or what the user should expect in tokens per second — and
-   those are the three questions a caller of this package is actually asking.
+What this module owns, and what it does not:
+
+- **The arithmetic is here.** Which model a machine can stream, what it costs in
+  resident memory, how many seconds per token the disk imposes, and whether
+  streaming is worth activating at all are *selection* questions, which is this
+  package's entire job. See :func:`footprint_gb` and
+  :func:`estimated_tokens_per_second`.
+- **The forward pass is not.** :mod:`best_engine_ai_helper.streaming` builds the
+  model on the ``meta`` device and hangs a pre-hook on each decoder layer that
+  materialises its weights out of the checkpoint's own memory-mapped
+  safetensors, plus a post-hook that frees exactly those again. ``transformers``
+  owns the pass itself, which is why Qwen, Gemma and GPT-NeoX work with no
+  per-family code here.
 
 Activation
 ----------
@@ -118,10 +112,14 @@ _REQUEST_ALIASES: dict[str, str] = {
 
 #: Bytes per parameter, by the dtype the weights are *stored* in. A streaming
 #: backend reads the checkpoint as published, so this is the number that sets
-#: both the shard size and the per-token disk traffic — not the dtype the
-#: arithmetic happens in. ``q4``/``q8`` are lightweight's own block-wise
-#: compression, which quantises the weights only (the bottleneck is the disk,
-#: not the multiply) and is therefore a disk-traffic *divider*.
+#: both the resident layer size and the per-token disk traffic — not the dtype
+#: the arithmetic happens in. ``q4``/``q8`` are checkpoints published
+#: already-quantised: nothing here requantises, so a smaller number in this
+#: table is always a property of the repository you point at.
+#:
+#: This prices DISK BYTES, which is the binding resource here. Whether a given
+#: checkpoint also *loads* is a separate question the runtime answers: see
+#: :mod:`best_engine_ai_helper.streaming` for what it refuses.
 _BYTES_PER_PARAM: dict[str, float] = {
     "fp32": 4.0,
     "fp16": 2.0,
@@ -137,9 +135,6 @@ _BYTES_PER_PARAM: dict[str, float] = {
 #: checkpoint published in the last three years ships bf16/fp16 unless it says
 #: otherwise, and the two cost the same per parameter.
 _DEFAULT_DTYPE = "bf16"
-
-#: lightweight's ``compression`` argument mapped onto the stored-dtype key above.
-_COMPRESSION_DTYPE: dict[str, str] = {"4bit": "q4", "8bit": "q8"}
 
 #: Decoder depth at known parameter counts, for an entry that does not declare
 #: ``layers``. Depth grows roughly logarithmically with width across every
@@ -168,7 +163,7 @@ _DEPTH_BY_SIZE_B: tuple[tuple[float, int], ...] = (
 _PEAK_SHARD_RATIO = 1.25
 
 #: Shards resident at once. With prefetching, the next shard is read while the
-#: current one computes, which is where lightweight's ~10% speed-up comes from and
+#: current one computes, which is where the ~10% speed-up comes from and
 #: what makes two shards resident rather than one. Without it, one.
 _RESIDENT_SHARDS_PREFETCH = 2.0
 _RESIDENT_SHARDS_SERIAL = 1.0
@@ -197,7 +192,7 @@ _KV_MB_PER_LAYER_PER_K = 4.0
 #: comparable rather than being quoted at different context lengths.
 #:
 #: It is ALSO what :func:`load` configures on the runtime, which matters more
-#: than it looks: lightweight's own ``max_seq_len`` default is **512 tokens**, and it
+#: than it looks: a tokenizer left at its own default truncates silently, and it
 #: truncates rather than failing. Leaving that default in place would have made
 #: this package price a 4k context while quietly running a 512-token one — the
 #: documentation and the behaviour disagreeing, in the direction where the user
@@ -215,16 +210,6 @@ _TOKENS_PER_K = 1024
 #: most of the gap, which is the difference between the two figures.
 _STREAM_EFFICIENCY_PREFETCH = 0.85
 _STREAM_EFFICIENCY_SERIAL = 0.70
-
-#: Further derating when the shards are compressed, because quantised weights
-#: have to be *dequantised* on the way in and that work is not free.
-#:
-#: Pinned to upstream's own claim rather than to the arithmetic: 4-bit divides
-#: the bytes read by four, and lightweight reports a "3x speed up", so three
-#: quarters of the byte saving survives the dequantisation. The 8-bit figure is
-#: inferred from the same shape — half the bytes, a lighter unpack — and is the
-#: one number here with no published anchor behind it.
-_COMPRESSION_EFFICIENCY: dict[str, float] = {"4bit": 0.75, "8bit": 0.85}
 
 #: Prompt length past which the prefill pass stops being purely I/O-bound.
 #: One pass reads the checkpoint once whatever the prompt length, so a long
@@ -445,7 +430,7 @@ def layer_count(entry: dict[str, Any]) -> tuple[int | None, bool]:
     return None, False
 
 
-def bytes_per_param(entry: dict[str, Any], compression: str | None = None) -> float:
+def bytes_per_param(entry: dict[str, Any]) -> float:
     """
     Bytes each parameter occupies on disk for a streaming load.
 
@@ -453,10 +438,6 @@ def bytes_per_param(entry: dict[str, Any], compression: str | None = None) -> fl
     ----------
     entry : dict[str, Any]
         Catalog entry; reads ``dtype`` (default bf16).
-    compression : {'4bit', '8bit', None}
-        lightweight's block-wise weight compression. When given it REPLACES the
-        checkpoint dtype: the shards lightweight writes are the quantised ones, and
-        they are what gets read per token.
 
     Returns
     -------
@@ -469,18 +450,11 @@ def bytes_per_param(entry: dict[str, Any], compression: str | None = None) -> fl
     2.0
     >>> bytes_per_param({"dtype": "fp8"})
     1.0
-    >>> bytes_per_param({"dtype": "bf16"}, compression="4bit")
+    >>> bytes_per_param({"dtype": "q4"})
     0.5
     >>> bytes_per_param({"dtype": "nonsense"})
     2.0
     """
-    if compression:
-        key = _COMPRESSION_DTYPE.get(str(compression).strip().lower())
-        if key:
-            return _BYTES_PER_PARAM[key]
-        osh.warning(
-            f"Unknown lightweight compression {compression!r}; sizing at the checkpoint dtype."
-        )
     dtype = str(entry.get("dtype") or _DEFAULT_DTYPE).strip().lower()
     if dtype not in _BYTES_PER_PARAM:
         osh.debug(f"Unknown dtype {dtype!r} on {entry.get('id', '?')}; assuming {_DEFAULT_DTYPE}.")
@@ -488,7 +462,7 @@ def bytes_per_param(entry: dict[str, Any], compression: str | None = None) -> fl
     return _BYTES_PER_PARAM[dtype]
 
 
-def checkpoint_gb(entry: dict[str, Any], compression: str | None = None) -> float:
+def checkpoint_gb(entry: dict[str, Any]) -> float:
     """
     Size of the whole checkpoint a streaming backend reads per token (GB).
 
@@ -496,8 +470,6 @@ def checkpoint_gb(entry: dict[str, Any], compression: str | None = None) -> floa
     ----------
     entry : dict[str, Any]
         Catalog entry; needs ``size_b``.
-    compression : {'4bit', '8bit', None}
-        See :func:`bytes_per_param`.
 
     Returns
     -------
@@ -510,7 +482,7 @@ def checkpoint_gb(entry: dict[str, Any], compression: str | None = None) -> floa
     --------
     >>> checkpoint_gb({"size_b": 70})
     140.0
-    >>> checkpoint_gb({"size_b": 70}, compression="4bit")
+    >>> checkpoint_gb({"size_b": 70, "dtype": "q4"})
     35.0
     >>> checkpoint_gb({"id": "unsized"})
     inf
@@ -518,7 +490,7 @@ def checkpoint_gb(entry: dict[str, Any], compression: str | None = None) -> floa
     size_b = float(entry.get("size_b", 0) or 0)
     if size_b <= 0:
         return math.inf
-    return round(size_b * bytes_per_param(entry, compression), 3)
+    return round(size_b * bytes_per_param(entry), 3)
 
 
 def kv_cache_gb(layers: int | None, context_k: float = _DEFAULT_CONTEXT_K) -> float:
@@ -557,7 +529,6 @@ def kv_cache_gb(layers: int | None, context_k: float = _DEFAULT_CONTEXT_K) -> fl
 
 def footprint_gb(
     entry: dict[str, Any],
-    compression: str | None = None,
     prefetching: bool = True,
     context_k: float = _DEFAULT_CONTEXT_K,
     batch: int = 1,
@@ -583,7 +554,7 @@ def footprint_gb(
     5. Plus :data:`_ACTIVATION_GB` for activations and runtime buffers, which
        *are* bounded by one layer.
 
-    Checked against lightweight's published figures, and the check is worth stating
+    Checked against airllm's published figures, and the check is worth stating
     precisely, because the headline "70B on a 4 GB GPU" is true at a context
     length nobody mentions. A Llama-3-70B comes to 3.0 GB serially at a 1k
     context — which is the demo, and it fits a 4 GB card — 3.9 GB serially at
@@ -596,10 +567,8 @@ def footprint_gb(
     ----------
     entry : dict[str, Any]
         Catalog entry; needs ``size_b``, and ``layers`` when it is a MoE model.
-    compression : {'4bit', '8bit', None}
-        lightweight's block-wise weight compression, which shrinks every shard.
     prefetching : bool
-        Whether lightweight's prefetch is on (its default). Off halves the resident
+        Whether prefetching is on (the default). Off halves the resident
         shard count at some cost in speed, and is the knob that gets a 70B model
         onto a 4 GB card.
     context_k : float
@@ -623,7 +592,7 @@ def footprint_gb(
     6.1
     >>> footprint_gb({"size_b": 70, "layers": 80}, prefetching=False)
     3.9
-    >>> footprint_gb({"size_b": 70, "layers": 80}, compression="4bit")
+    >>> footprint_gb({"size_b": 70, "layers": 80, "dtype": "q4"})
     2.8
     >>> footprint_gb({"size_b": 32, "layers": 64})
     4.0
@@ -636,7 +605,7 @@ def footprint_gb(
     >>> footprint_gb({"size_b": 671, "moe": True})     # depth unknown -> unsized
     inf
     """
-    total = checkpoint_gb(entry, compression)
+    total = checkpoint_gb(entry)
     layers, _ = layer_count(entry)
     if not math.isfinite(total) or not layers:
         return math.inf
@@ -653,7 +622,7 @@ def footprint_gb(
     return round(shards + cache + _ACTIVATION_GB, 1)
 
 
-def disk_required_gb(entry: dict[str, Any], compression: str | None = None) -> dict[str, float]:
+def disk_required_gb(entry: dict[str, Any]) -> dict[str, float]:
     """
     Free disk layer streaming needs: the checkpoint, and nothing else.
 
@@ -675,7 +644,6 @@ def disk_required_gb(entry: dict[str, Any], compression: str | None = None) -> d
     ----------
     entry : dict[str, Any]
         Catalog entry.
-    compression : {'4bit', '8bit', None}
         Kept for call compatibility and ignored: this runtime does not
         requantise, so what is on disk is whatever the checkpoint ships.
 
@@ -688,34 +656,29 @@ def disk_required_gb(entry: dict[str, Any], compression: str | None = None) -> d
     --------
     >>> disk_required_gb({"size_b": 70})
     {'peak_gb': 140.0, 'steady_gb': 140.0}
-    >>> disk_required_gb({"size_b": 70}, compression="4bit")   # no longer halves
-    {'peak_gb': 140.0, 'steady_gb': 140.0}
+    >>> disk_required_gb({"size_b": 70, "dtype": "q4"})
+    {'peak_gb': 35.0, 'steady_gb': 35.0}
     >>> disk_required_gb({"id": "unsized"})
     {'peak_gb': inf, 'steady_gb': inf}
     """
-    native = checkpoint_gb(entry, None)
+    native = checkpoint_gb(entry)
     if not math.isfinite(native):
         return {"peak_gb": math.inf, "steady_gb": math.inf}
     size = round(native, 1)
     return {"peak_gb": size, "steady_gb": size}
 
 
-def stream_efficiency(compression: str | None = None, prefetching: bool = True) -> float:
+def stream_efficiency(prefetching: bool = True) -> float:
     """
     Fraction of raw disk bandwidth a streaming pass actually achieves.
 
     Two independent deratings, multiplied: the I/O one (prefetching overlaps
-    the next shard's read with the current layer's compute, or it does not) and
-    the dequantisation one (compressed shards are smaller but have to be
-    unpacked, which is why lightweight reports 3x for 4-bit rather than the 4x the
-    byte count alone would suggest).
+    the next layer's read with the current layer's compute, or it does not.
 
     Parameters
     ----------
-    compression : {'4bit', '8bit', None}
-        lightweight's block-wise weight compression.
     prefetching : bool
-        Whether lightweight's prefetch is on.
+        Whether prefetching is on.
 
     Returns
     -------
@@ -728,22 +691,14 @@ def stream_efficiency(compression: str | None = None, prefetching: bool = True) 
     0.85
     >>> stream_efficiency(prefetching=False)
     0.7
-    >>> stream_efficiency("4bit")
-    0.637
-    >>> # Net of dequantisation, 4-bit is a 3x speed-up, not a 4x one.
-    >>> round(4 * stream_efficiency("4bit") / stream_efficiency(), 2)
-    3.0
     """
     efficiency = _STREAM_EFFICIENCY_PREFETCH if prefetching else _STREAM_EFFICIENCY_SERIAL
-    if compression:
-        efficiency *= _COMPRESSION_EFFICIENCY.get(str(compression).strip().lower(), 1.0)
     return round(efficiency, 3)
 
 
 def seconds_per_pass(
     entry: dict[str, Any],
     read_gbs: float | None,
-    compression: str | None = None,
     prefetching: bool = True,
 ) -> float | None:
     """
@@ -751,13 +706,13 @@ def seconds_per_pass(
 
     The atom of every timing here, and the reason those timings are not what
     intuition suggests. A streamed forward pass walks the layers in order,
-    reading each shard, computing it over *every token in the pass*, then
+    reading each layer, computing it over *every token in the pass*, then
     freeing it. So a pass costs what reading the checkpoint once costs —
     independent of how many tokens rode through it.
 
     Every byte is charged to the drive, and that is correct rather than
     conservative. The tempting correction is to credit the operating system's
-    page cache with the shards it still holds, so a machine with free memory
+    page cache with the layers it still holds, so a machine with free memory
     pays memory speed for part of the pass. It does not work, and the reason is
     the access pattern: a pass reads layers 1..N in order and the next pass
     starts again at layer 1, which the tail of the previous pass evicted. A
@@ -792,10 +747,8 @@ def seconds_per_pass(
         Catalog entry.
     read_gbs : float or None
         Sequential disk read bandwidth in GB/s. None returns None.
-    compression : {'4bit', '8bit', None}
-        lightweight's block-wise weight compression.
     prefetching : bool
-        Whether lightweight's prefetch is on.
+        Whether prefetching is on.
 
     Returns
     -------
@@ -806,17 +759,17 @@ def seconds_per_pass(
     --------
     >>> seconds_per_pass({"size_b": 70}, 4.0)
     41.176
-    >>> seconds_per_pass({"size_b": 70}, 4.0, compression="4bit")
-    13.736
+    >>> seconds_per_pass({"size_b": 70, "dtype": "q4"}, 4.0)
+    10.294
     >>> seconds_per_pass({"size_b": 70}, None) is None
     True
     """
     if not read_gbs or read_gbs <= 0:
         return None
-    total = checkpoint_gb(entry, compression)
+    total = checkpoint_gb(entry)
     if not math.isfinite(total) or total <= 0:
         return None
-    return round(total / read_gbs / stream_efficiency(compression, prefetching), 3)
+    return round(total / read_gbs / stream_efficiency(prefetching), 3)
 
 
 def generation_time(
@@ -826,13 +779,12 @@ def generation_time(
     new_tokens: int = 128,
     prompt_tokens: int = 0,
     batch: int = 1,
-    compression: str | None = None,
     prefetching: bool = True,
 ) -> dict[str, Any] | None:
     """
     How long one streamed generation actually takes, end to end.
 
-    "What is this model's speed under lightweight" has three different answers, and
+    "What is this model's speed when streamed" has three different answers, and
     quoting the wrong one is how a batch job gets planned as an interactive one:
 
     - ``decode_tps`` — the steady-state rate, one token per pass. The headline
@@ -849,7 +801,7 @@ def generation_time(
     And the lever that falls out of the pass model: because a pass costs the
     same whatever rides through it, **a batch of B prompts costs one pass, not
     B passes**. B independent questions answered together go B times faster per
-    answer. 4-bit compression gives ~3x; a batch of 8 gives 8x. For a real
+    answer. A batch of 8 gives 8x. For a real
     batch job that is the larger of the two, and it costs nothing but the KV
     cache (which :func:`footprint_gb` sizes with the same argument).
 
@@ -869,10 +821,8 @@ def generation_time(
     batch : int
         Independent sequences generated together. Multiplies the tokens
         delivered per pass.
-    compression : {'4bit', '8bit', None}
-        lightweight's block-wise weight compression.
     prefetching : bool
-        Whether lightweight's prefetch is on.
+        Whether prefetching is on.
 
     Returns
     -------
@@ -906,7 +856,7 @@ def generation_time(
     >>> generation_time({"size_b": 70}, None) is None
     True
     """
-    per_pass = seconds_per_pass(entry, read_gbs, compression, prefetching)
+    per_pass = seconds_per_pass(entry, read_gbs, prefetching)
     if per_pass is None:
         return None
 
@@ -981,7 +931,6 @@ def human_duration(seconds: float | None) -> str:
 def estimated_tokens_per_second(
     entry: dict[str, Any],
     read_gbs: float | None,
-    compression: str | None = None,
     prefetching: bool = True,
 ) -> float | None:
     """
@@ -1000,9 +949,10 @@ def estimated_tokens_per_second(
 
     This is also why the honest unit is often *seconds per token* — see
     :func:`seconds_per_token`. A 70B model at bf16 on a 4 GB/s NVMe drive is
-    about 0.024 tok/s: forty seconds a token. 4-bit compression makes it three
-    times faster — not four, because the weights have to be dequantised — and
-    it is still a batch job.
+    about 0.024 tok/s: forty seconds a token. The same model published at 4
+    bits reads a quarter of the bytes and so runs about four times faster, but
+    that is a property of the checkpoint you point at rather than a conversion
+    this package performs — and it is still a batch job.
 
     Parameters
     ----------
@@ -1012,11 +962,6 @@ def estimated_tokens_per_second(
         Sequential read bandwidth in GB/s, from
         :func:`detect.disk_profile`. None means "not estimated" and returns
         None rather than a fabricated rate.
-    compression : {'4bit', '8bit', None}
-        Compression of the shards on disk. Divides the bytes read per pass, net
-        of dequantisation (see :func:`stream_efficiency`): ~3x at 4-bit, the
-        biggest lever available on a single sequence. Batching is a bigger one
-        still, and orthogonal to it.
     prefetching : bool
         Whether reads overlap compute.
 
@@ -1030,8 +975,8 @@ def estimated_tokens_per_second(
     --------
     >>> estimated_tokens_per_second({"size_b": 70}, 4.0)
     0.024
-    >>> estimated_tokens_per_second({"size_b": 70}, 4.0, compression="4bit")
-    0.073
+    >>> estimated_tokens_per_second({"size_b": 70, "dtype": "q4"}, 4.0)
+    0.097
     >>> estimated_tokens_per_second({"size_b": 7}, 4.0)
     0.243
     >>> estimated_tokens_per_second({"size_b": 70}, None) is None
@@ -1039,7 +984,7 @@ def estimated_tokens_per_second(
     >>> estimated_tokens_per_second({"id": "unsized"}, 4.0) is None
     True
     """
-    seconds = seconds_per_pass(entry, read_gbs, compression, prefetching)
+    seconds = seconds_per_pass(entry, read_gbs, prefetching)
     if seconds is None:
         return None
     return round(1.0 / seconds, 3)
@@ -1147,7 +1092,7 @@ def runtime(compute: dict[str, Any] | None = None, allow_cpu: bool = False) -> s
         Output of :func:`detect.compute_profile`. None probes it.
     allow_cpu : bool
         Whether to count a CPU-only machine as capable. False by default:
-        lightweight's CPU path is experimental and only works for unsharded models,
+        the CPU path is slower by the same factor the disk is, but it works,
         so proposing it automatically would promise something that often does
         not load. A human can still ask for it.
 
@@ -1249,7 +1194,6 @@ def plan(
     *,
     budget_gb: float | None = None,
     disk: dict[str, Any] | None = None,
-    compression: str | None = None,
     prefetching: bool = True,
     context_k: float = _DEFAULT_CONTEXT_K,
     batch: int = 1,
@@ -1271,10 +1215,8 @@ def plan(
     disk : dict or None
         Output of :func:`detect.disk_profile`. None probes it (table lookup, no
         measurement).
-    compression : {'4bit', '8bit', None}
-        lightweight's weight compression.
     prefetching : bool
-        Whether lightweight's prefetch is on.
+        Whether prefetching is on.
     context_k : float
         Context length in units of 1024 tokens, for the KV term.
     batch : int
@@ -1327,18 +1269,17 @@ def plan(
         disk = _detect.disk_profile()
 
     layers, estimated = layer_count(entry)
-    resident = footprint_gb(entry, compression, prefetching, context_k, batch)
-    total = checkpoint_gb(entry, compression)
-    space = disk_required_gb(entry, compression)
+    resident = footprint_gb(entry, prefetching, context_k, batch)
+    total = checkpoint_gb(entry)
+    space = disk_required_gb(entry)
     free_gb = disk.get("free_gb")
     read_gbs = disk.get("read_gbs")
-    tps = estimated_tokens_per_second(entry, read_gbs, compression, prefetching)
+    tps = estimated_tokens_per_second(entry, read_gbs, prefetching)
     timing = generation_time(
         entry,
         read_gbs,
         new_tokens=new_tokens,
         batch=batch,
-        compression=compression,
         prefetching=prefetching,
     )
 
@@ -1357,13 +1298,13 @@ def plan(
         )
     elif budget_gb is not None and not fits:
         blockers.append(
-            f"one resident shard needs {resident:.1f} GB, above this machine's "
+            f"one resident layer needs {resident:.1f} GB, above this machine's "
             f"{budget_gb:.1f} GB budget"
         )
     if free_gb is not None and not disk_fits and math.isfinite(space["peak_gb"]):
         blockers.append(
-            f"the split needs {space['peak_gb']:.0f} GB free during the layer split "
-            f"({space['steady_gb']:.0f} GB after), and {float(free_gb):.0f} GB is free"
+            f"the checkpoint is {space['steady_gb']:.0f} GB and only "
+            f"{float(free_gb):.0f} GB is free"
         )
     if tps is None:
         blockers.append("disk read bandwidth is unknown on this machine, so no rate can be given")
@@ -1386,7 +1327,6 @@ def plan(
         "checkpoint_gb": total if math.isfinite(total) else None,
         "layers": layers,
         "layers_estimated": estimated,
-        "compression": compression,
         "prefetching": prefetching,
         "context_k": context_k,
         "kv_cache_gb": kv_cache_gb(layers, context_k),
@@ -1498,7 +1438,7 @@ def decide(
     disk : dict or None
         :func:`detect.disk_profile` output. None probes it.
     allow_cpu : bool
-        Count a CPU-only machine as capable (lightweight's CPU path is
+        Count a CPU-only machine as capable (the CPU path is
         experimental).
     env : dict[str, str] or None
         Environment for :data:`ENV_VAR`; None uses ``os.environ``.
@@ -1630,7 +1570,6 @@ def rank(
     *,
     budget_gb: float,
     disk: dict[str, Any] | None = None,
-    compression: str | None = None,
     prefetching: bool = True,
     kind: Literal["llm", "vlm"] | None = None,
     batch: int = 1,
@@ -1641,7 +1580,7 @@ def rank(
 
     Streaming inverts the usual ranking. With memory no longer the binding
     constraint, leanness stops being a virtue: what is wanted is the most
-    capable model whose shards still fit and whose rate clears the batch floor,
+    capable model whose layers still fit and whose rate clears the batch floor,
     with parameter count deciding only where no benchmark does. The trade being
     made here is explicitly "slower for better", so "better" is the sort key —
     see :func:`pick` for why that is not the same as "biggest".
@@ -1654,10 +1593,8 @@ def rank(
         Memory budget from :func:`score.effective_budget`.
     disk : dict or None
         :func:`detect.disk_profile` output. None probes it.
-    compression : {'4bit', '8bit', None}
-        lightweight's weight compression.
     prefetching : bool
-        Whether lightweight's prefetch is on. When it is and a candidate does not
+        Whether prefetching is on. When it is and a candidate does not
         fit, that candidate is re-planned WITHOUT it before being rejected —
         see the comment in the body.
     kind : {'llm', 'vlm', None}
@@ -1707,24 +1644,22 @@ def rank(
             entry,
             budget_gb=budget_gb,
             disk=disk,
-            compression=compression,
             prefetching=prefetching,
             batch=batch,
             new_tokens=new_tokens,
         )
         if prefetching and not row["fits"]:
-            # Prefetching keeps two shards resident to overlap the next read
+            # Prefetching keeps two layers resident to overlap the next read
             # with the current layer's compute. Turning it off halves that term
             # and costs ~15% of an already slow decode — a trade worth making
             # when it is the difference between running the model and not, and
-            # the single knob behind lightweight's "70B on a 4 GB card". Only tried
+            # the single knob behind the "70B on a 4 GB card" claim. Only tried
             # when the prefetched plan failed, so nothing is slowed down for a
             # machine that had room anyway.
             serial = plan(
                 entry,
                 budget_gb=budget_gb,
                 disk=disk,
-                compression=compression,
                 prefetching=False,
                 batch=batch,
                 new_tokens=new_tokens,
@@ -1754,7 +1689,7 @@ def pick(plans: list[dict[str, Any]]) -> dict[str, Any] | None:
     Every other backend in this package picks the LEANEST model within a few
     benchmark points of the best — the anti-greed rule, and the right one when
     a gigabyte of footprint is paid on every run and competes with the caller's
-    own workload. Streaming breaks that premise: resident memory is one shard
+    own workload. Streaming breaks that premise: resident memory is one layer
     whatever the model's size, so leanness buys nothing, and the anti-greed rule
     lands on an 8B model — the one outcome that makes no sense at all, since an
     8B model runs natively a hundred times faster.
@@ -1834,7 +1769,6 @@ def compare(
     new_tokens: int = 300,
     prompt_tokens: int = 0,
     batch: int = 1,
-    compression: str | None = None,
     load: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
@@ -1885,8 +1819,6 @@ def compare(
     batch : int
         Sequences at once. A real lever on the streamed side only, which is
         itself part of the answer.
-    compression : {'4bit', '8bit', None}
-        lightweight compression for the streamed side.
     load : dict or None
         Live load from :func:`detect.server_load`, applied to both budgets.
 
@@ -1965,7 +1897,6 @@ def compare(
         _catalog.servable_only(entries, "lightweight"),
         budget_gb=streamed_budget,
         disk=disk,
-        compression=compression,
         kind=kind,
         batch=batch,
         new_tokens=new_tokens,
@@ -2003,7 +1934,6 @@ def compare(
         "new_tokens": new_tokens,
         "prompt_tokens": prompt_tokens,
         "batch": batch,
-        "compression": compression,
         "disk": disk,
         "native": {
             "backend": native_backend,
@@ -2095,48 +2025,30 @@ def _verdict(
 def load(
     model: str,
     *,
-    compression: str | None = None,
     prefetching: bool = True,
-    layer_shards_saving_path: str | None = None,
     hf_token: str | None = None,
-    delete_original: bool = False,
-    profiling_mode: bool = False,
     max_seq_len: int = int(_DEFAULT_CONTEXT_K * _TOKENS_PER_K),
 ) -> Any:
     """
-    Load a model through lightweight's layer-streaming runtime.
+    Load a model through this package's layer-streaming runtime.
 
-    The adapter, and the only function here that touches the upstream package.
-    Its arguments are lightweight's own, renamed nowhere, so its documentation stays
-    the reference for them.
+    The seam between the arithmetic in this module and
+    :class:`best_engine_ai_helper.streaming.StreamedModel`, which owns the
+    hooks that materialise one decoder layer at a time.
 
     Parameters
     ----------
     model : str
         HuggingFace repository id (``meta-llama/Llama-3.3-70B-Instruct``), or a
-        local path to an already-split checkpoint.
-    compression : {'4bit', '8bit', None}
-        Block-wise weight compression. Needs ``bitsandbytes``, a core
-        dependency on every platform that has a wheel for it (not macOS, where
-        the MLX path handles streaming instead).
+        local path to a downloaded checkpoint.
     prefetching : bool
-        Overlap the next shard's read with the current layer's compute.
-    layer_shards_saving_path : str or None
-        Where the per-layer shards go. None uses lightweight's default (beside the
-        HuggingFace cache). Point it at a fast volume when the cache is not on
-        one — the shard read IS the decode speed.
+        Read the next layer's tensors while the current layer computes.
     hf_token : str or None
         HuggingFace token, for a gated repository.
-    delete_original : bool
-        Remove the downloaded checkpoint once the shards exist. Halves the disk
-        requirement (see :func:`disk_required_gb`) at the cost of re-downloading
-        if the shards are ever lost.
-    profiling_mode : bool
-        Ask lightweight to print per-layer timings.
     max_seq_len : int
         Context length to configure, in tokens. Defaults to 4096, matching the
-        context :func:`footprint_gb` prices — **not** lightweight's own default of
-        512, which truncates a longer prompt instead of refusing it. Raising
+        context :func:`footprint_gb` prices. The tokenizer truncates to it
+        rather than refusing a longer prompt, so the number matters. Raising
         this costs KV cache in exactly the proportion
         :func:`kv_cache_gb` describes, so size it against
         :func:`budget_gb` rather than maximising it.
@@ -2172,19 +2084,6 @@ def load(
         f"Loading {model} through layer streaming "
         f"(prefetching={prefetching}, max_seq_len={max_seq_len})."
     )
-    # `compression`, `profiling_mode`, `delete_original` and
-    # `layer_shards_saving_path` are accepted and ignored: they described the
-    # previous runtime's pre-split, which this one does not have. Shards are
-    # read straight out of the original safetensors, so there is nothing to
-    # save elsewhere and nothing to delete afterwards.
-    if compression:
-        osh.warning(
-            f"compression={compression!r} is ignored: this runtime reads the "
-            "checkpoint's own safetensors and does not requantise. Point it at "
-            "an already-quantised checkpoint instead."
-        )
-    if layer_shards_saving_path or delete_original:
-        osh.debug("Shard-split options are ignored: this runtime does not split.")
     return _streaming.StreamedModel(
         model,
         prefetching=prefetching,
@@ -2198,9 +2097,7 @@ def generate(
     *,
     model: str,
     max_new_tokens: int = 128,
-    compression: str | None = None,
     prefetching: bool = True,
-    layer_shards_saving_path: str | None = None,
     hf_token: str | None = None,
     max_seq_len: int = int(_DEFAULT_CONTEXT_K * _TOKENS_PER_K),
     loaded: Any | None = None,
@@ -2208,9 +2105,9 @@ def generate(
     """
     Generate text with a streamed model, in this process.
 
-    There is no server to talk to: lightweight is a library, not a daemon, so this
+    There is no server to talk to: the runtime is a library, not a daemon, so this
     backend runs inside the caller's interpreter. That is also why ``loaded``
-    exists — splitting and loading a 70B checkpoint is the expensive part, and a
+    exists — loading a 70B checkpoint is the expensive part, and a
     caller making several calls should pay it once.
 
     Parameters
@@ -2222,7 +2119,7 @@ def generate(
     max_new_tokens : int
         Tokens to generate. Keep it small: at streaming speeds every token is
         seconds of disk, so a 2000-token answer is an afternoon.
-    compression, prefetching, layer_shards_saving_path, hf_token, max_seq_len
+    prefetching, hf_token, max_seq_len
         Passed to :func:`load` when it has to load the model itself. Note that
         ``max_seq_len`` bounds prompt AND answer together, and that the
         tokenizer truncates to it — so a prompt near the limit leaves no room
@@ -2250,9 +2147,7 @@ def generate(
         if loaded is not None
         else load(
             model,
-            compression=compression,
             prefetching=prefetching,
-            layer_shards_saving_path=layer_shards_saving_path,
             hf_token=hf_token,
             max_seq_len=max_seq_len,
         )

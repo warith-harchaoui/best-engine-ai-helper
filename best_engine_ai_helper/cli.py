@@ -208,7 +208,7 @@ def _report_measurement(meter: _throughput.Meter, tag: str) -> None:
 #: resident-model table: `ram_gb` there is the model, here it is one shard, and
 #: "tok/s" would read as a rounding error at these rates, so the honest column
 #: is seconds per token.
-_STREAM_COLUMNS = ["id", "params", "shard_gb", "ckpt_gb", "s/token", "disk_gb", "runs", "notes"]
+_STREAM_COLUMNS = ["id", "params", "layer_gb", "ckpt_gb", "s/token", "disk_gb", "runs", "notes"]
 
 
 def _streaming_rows(plans: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -216,7 +216,7 @@ def _streaming_rows(plans: list[dict[str, Any]]) -> list[dict[str, Any]]:
     Format already-ranked streaming plans as a display table.
 
     Takes the plans rather than the catalog entries on purpose: the caller has
-    already ranked them with the batch size, answer length and compression the
+    already ranked them with the batch size and answer length the
     user asked for, and ranking a second time here would print a table computed
     under different assumptions from the pick below it.
 
@@ -252,7 +252,7 @@ def _streaming_rows(plans: list[dict[str, Any]]) -> list[dict[str, Any]]:
             {
                 "id": plan["catalog_id"],
                 "params": f"{plan['size_b']:.0f}B" if plan["size_b"] else "-",
-                "shard_gb": plan["resident_gb"] if plan["resident_gb"] is not None else "-",
+                "layer_gb": plan["resident_gb"] if plan["resident_gb"] is not None else "-",
                 "ckpt_gb": plan["checkpoint_gb"] if plan["checkpoint_gb"] is not None else "-",
                 "s/token": plan["seconds_per_token"] if plan["seconds_per_token"] else "-",
                 "disk_gb": plan["disk"]["peak_gb"],
@@ -346,7 +346,7 @@ _VALID_APPLICATIONS = ["code", "math", "ocr", "vision", "chat", "generalist"]
     show_default=True,
     help=(
         "Size and rank for this backend. 'vllm' loads heavier FP16 weights; "
-        "'lightweight' streams layers off disk, so the footprint becomes one shard "
+        "'lightweight' streams layers off disk, so the footprint becomes one layer "
         "and the rate becomes disk-bound (seconds per token). Candidates the "
         "backend cannot serve are left out."
     ),
@@ -378,7 +378,7 @@ def recommend_cmd(
         click.echo(
             f"\nLayer streaming off {disk.get('storage')} storage at "
             f"{disk.get('read_gbs')} GB/s ({disk.get('basis')}), "
-            f"{disk.get('free_gb')} GB free. Memory is one layer shard; the drive "
+            f"{disk.get('free_gb')} GB free. Memory is one layer; the drive "
             f"sets the speed. Batch floor: {min_tps} tok/s."
         )
 
@@ -1317,12 +1317,11 @@ def validate_cmd() -> None:
 def airllm_group() -> None:
     """Layer streaming: run a model that does NOT fit in this machine's memory.
 
-    A transformer never needs every layer resident at once. Keep one layer
-    shard in memory, stream the rest off disk, and the memory a model needs
-    stops scaling with its parameter count — a 70B model runs in about 4 GB
-    instead of 141. The runtime is lightweight (github.com/lyogavin/lightweight,
-    Apache-2.0), a core dependency here rather than an extra; the arithmetic
-    deciding whether it is worth it is this package's own.
+    A transformer never needs every layer resident at once. Keep one layer in
+    memory, stream the rest off disk, and the memory a model needs stops
+    scaling with its parameter count — a 70B model runs in about 4 GB instead
+    of 141. The runtime is this package's own; the technique was demonstrated
+    by airllm (github.com/lyogavin/airllm, Apache-2.0).
 
     The cost is time: every token re-reads the whole checkpoint from storage, so
     the unit is seconds per token. These are batch jobs — an overnight
@@ -1392,7 +1391,7 @@ def airllm_status(measure: bool, as_json: bool, request: str | None) -> None:
     click.echo(f"  storage         : {disk['storage']} ({disk['basis']})")
     click.echo(f"  read bandwidth  : {disk['read_gbs']} GB/s")
     click.echo(f"  free disk       : {disk['free_gb']} GB")
-    click.echo(f"  shard budget    : {budget} GB of resident memory")
+    click.echo(f"  layer budget    : {budget} GB of resident memory")
     click.echo(f"  request         : {decision['request']}")
     click.echo(f"  would activate  : {'YES' if decision['activate'] else 'no'}")
     click.echo(f"  trigger         : {decision['trigger']}")
@@ -1420,16 +1419,6 @@ def airllm_status(measure: bool, as_json: bool, request: str | None) -> None:
     help="Model type to plan for.",
 )
 @click.option(
-    "--compression",
-    type=click.Choice(["4bit", "8bit"]),
-    default=None,
-    help=(
-        "lightweight's block-wise weight compression. Divides the bytes read per "
-        "token, so it is the single biggest lever on speed (~3x at 4-bit) and "
-        "shrinks the shards too. Needs bitsandbytes, which the extra installs."
-    ),
-)
-@click.option(
     "--context",
     "context_k",
     type=float,
@@ -1449,7 +1438,7 @@ def airllm_status(measure: bool, as_json: bool, request: str | None) -> None:
     help=(
         "Independent prompts answered together. One layer pass is shared by the "
         "whole batch, so B answers arrive in the time of one — the biggest speed "
-        "lever here, bigger than compression. Costs one KV cache per sequence, "
+        "lever the backend has. Costs one KV cache per sequence, "
         "which the shard figure charges for."
     ),
 )
@@ -1468,9 +1457,8 @@ def airllm_status(measure: bool, as_json: bool, request: str | None) -> None:
     help="Measure disk read bandwidth rather than assuming the storage class.",
 )
 @click.option("--json", "as_json", is_flag=True, default=False, help="Emit JSON.")
-def airllm_plan(
+def lightweight_plan(
     kind: str,
-    compression: str | None,
     context_k: float,
     batch: int,
     new_tokens: int,
@@ -1490,7 +1478,6 @@ def airllm_plan(
             entries,
             budget_gb=budget,
             disk=disk,
-            compression=compression,
             kind=k,  # type: ignore[arg-type]
             batch=batch,
             new_tokens=new_tokens,
@@ -1501,15 +1488,14 @@ def airllm_plan(
             continue
         click.echo(
             f"\n=== {k.upper()}: streamable off {disk['storage']} at "
-            f"{disk['read_gbs']} GB/s, {budget} GB shard budget ==="
+            f"{disk['read_gbs']} GB/s, {budget} GB layer budget ==="
         )
         click.echo(_fmt_table(_streaming_rows(plans), _STREAM_COLUMNS))
         if chosen:
             click.echo(
                 f"\n  Pick: {chosen['model']} — {chosen['size_b']:.0f}B in "
                 f"{chosen['resident_gb']} GB resident, {chosen['seconds_per_token']} s/token, "
-                f"{chosen['disk']['peak_gb']:.0f} GB free disk to split "
-                f"({chosen['disk']['steady_gb']:.0f} GB after)."
+                f"{chosen['disk']['steady_gb']:.0f} GB of checkpoint on disk."
             )
             click.echo(
                 f"  A {new_tokens}-token answer: {chosen['answer_human']}"
@@ -1521,13 +1507,13 @@ def airllm_plan(
             )
             if not chosen["prefetching"]:
                 click.echo(
-                    "  Prefetching off for this pick: it does not fit with two shards "
+                    "  Prefetching off for this pick: it does not fit with two layers "
                     "resident, and one does. Slower, but it runs."
                 )
         else:
             click.echo(
-                "\n  Nothing streamable: no candidate fits both one resident shard and "
-                "the free disk the layer split needs."
+                "\n  Nothing streamable: no candidate fits both one resident layer and "
+                "the disk its checkpoint needs."
             )
 
     if as_json:
@@ -1541,62 +1527,32 @@ def airllm_plan(
     "--model",
     type=str,
     required=True,
-    help=(
-        "HuggingFace repository id to download and split (e.g. meta-llama/Llama-3.3-70B-Instruct)."
-    ),
+    help="HuggingFace repository id to download (e.g. meta-llama/Llama-3.3-70B-Instruct).",
 )
-@click.option(
-    "--compression",
-    type=click.Choice(["4bit", "8bit"]),
-    default=None,
-    help="Compress the shards as they are written.",
-)
-@click.option(
-    "--shards-path",
-    type=str,
-    default=None,
-    help=(
-        "Where to write the per-layer shards. Default: beside the HuggingFace "
-        "cache. Point this at your fastest volume — the shard read IS the decode "
-        "speed."
-    ),
-)
-@click.option(
-    "--delete-original",
-    is_flag=True,
-    default=False,
-    help=(
-        "Remove the downloaded checkpoint once the shards exist, halving the disk "
-        "requirement. The shards are then the only copy: losing them means "
-        "downloading again."
-    ),
-)
-def airllm_prepare(
-    model: str, compression: str | None, shards_path: str | None, delete_original: bool
-) -> None:
-    """Download and split a checkpoint now, rather than inside the first call.
+def lightweight_prepare(model: str) -> None:
+    """Download a checkpoint now, rather than inside the first call.
 
-    The first streaming call pays for the download and the layer split, which
-    for a large model is tens of minutes of disk. A caller who meets that inside
-    a job will reasonably conclude it has hung. This pays it deliberately.
+    The first streaming call pays for the download, which for a large model is
+    tens of minutes of disk. A caller who meets that inside a job will
+    reasonably conclude it has hung. This pays it deliberately.
+
+    There is nothing else to prepare. Layers are read straight out of the
+    checkpoint's own memory-mapped safetensors, so no second copy is written
+    and no conversion runs first — which is why this takes the download and
+    nothing more.
     """
     try:
-        _offload.load(
-            model,
-            compression=compression,
-            layer_shards_saving_path=shards_path,
-            delete_original=delete_original,
-        )
+        _offload.load(model)
     except ImportError as exc:
         click.echo(str(exc), err=True)
         sys.exit(1)
-    except Exception as exc:  # the download/split surface is wide; stay readable
+    except Exception as exc:  # the download surface is wide; stay readable
         osh.error(f"lightweight prepare failed:\n\t{exc}")
         click.echo(f"lightweight prepare failed: {exc}", err=True)
         sys.exit(1)
     click.echo(
-        f"Prepared {model}: layer shards are on disk and the first call will not "
-        "have to split them."
+        f"Prepared {model}: the checkpoint is in the HuggingFace cache, so the "
+        "first call pays only for the layers it reads."
     )
 
 
@@ -1645,12 +1601,6 @@ def airllm_prepare(
     ),
 )
 @click.option(
-    "--compression",
-    type=click.Choice(["4bit", "8bit"]),
-    default=None,
-    help="lightweight weight compression for the streamed side (~3x at 4-bit).",
-)
-@click.option(
     "--native-backend",
     type=click.Choice(["ollama", "vllm"]),
     default=None,
@@ -1664,7 +1614,6 @@ def airllm_compare(
     new_tokens: int,
     prompt_tokens: int,
     batch: int,
-    compression: str | None,
     native_backend: str | None,
     measure: bool,
     as_json: bool,
@@ -1693,7 +1642,6 @@ def airllm_compare(
         new_tokens=new_tokens,
         prompt_tokens=prompt_tokens,
         batch=batch,
-        compression=compression,
     )
 
     if as_json:
@@ -1708,7 +1656,7 @@ def airllm_compare(
     )
     click.echo(
         f"  budgets: {native['budget_gb']} GB resident ({native['backend']}) · "
-        f"{streamed['budget_gb']} GB per shard (lightweight) · "
+        f"{streamed['budget_gb']} GB per layer (lightweight) · "
         f"disk {disk['read_gbs']} GB/s ({disk['basis']})"
     )
     if batch > 1:

@@ -73,12 +73,12 @@ load — and `lightweight status` reports that failure as an incomplete install,
 at that point it is one.
 
 **The model, in four numbers.** Resident memory is one layer shard — the
-checkpoint over its decoder depth, ×1.25 (the embedding shard is the biggest
-one), ×2 with prefetch on — plus the KV cache of **every** layer, which
+checkpoint over its decoder depth, ×1.25 (the embedding layer is the widest
+one), ×2 with prefetching on — plus the KV cache of **every** layer, which
 streaming does not shrink. Throughput is bounded by the **disk**: one forward
 pass reads the whole checkpoint, so one token costs one pass (`tok/s = disk
 GB/s ÷ checkpoint GB × 0.85`). Disk *space* is the constraint that usually
-refuses a model: the split needs ~2× the checkpoint free at once. And the
+refuses a model, but it is the checkpoint's own size and nothing more. And the
 comfort floor is 0.01 tok/s — a batch floor, not the 15 tok/s interactive one,
 which would reject every candidate.
 

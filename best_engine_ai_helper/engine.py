@@ -147,7 +147,7 @@ def _serve_command(backend: str, model: str, base_url: str) -> str:
         return f"ollama pull {model}"
     if backend == "lightweight":
         # Nothing to bring up, but something to do: the first call pays for the
-        # download and the layer split, and a caller who discovers that inside a
+        # download, and a caller who discovers that inside a
         # job will think it hung. This command pays it deliberately instead.
         return f"best-engine-ai-helper lightweight prepare --model {model}"
     # vLLM: serve the HuggingFace model on the base URL's port (default 8000).
@@ -213,7 +213,7 @@ def resolve(
         :data:`cloud_catalog.DEFAULT_QUALITY_VS_COST`, only used when
         auto-picking); streaming-only: ``lightweight``
         (``auto``/``always``/``never``, default ``auto``) and
-        ``airllm_compression`` (``4bit``/``8bit``).
+        ``lightweight`` (``auto``/``always``/``never``).
     backend : {'auto', 'ollama', 'vllm', 'lightweight'}
         ``auto`` picks per :func:`default_backend` — which never returns
         ``lightweight``: layer streaming is reached automatically only as a rescue
@@ -480,7 +480,7 @@ def _resolve_local(
                 )
             # What the rescue actually achieved, which is not always what it
             # set out to do: a machine small enough that nothing fits in
-            # memory can also be small enough that no single layer shard
+            # memory can also be small enough that no single layer
             # fits. `activate: true` with an empty `rescued` is that case,
             # and it has to be visible rather than inferred from the absence
             # of a change.
@@ -488,7 +488,7 @@ def _resolve_local(
             if not rescued:
                 osh.warning(
                     "Layer streaming was activated but rescued nothing: no catalog "
-                    "entry fits both one resident layer shard and the free disk the "
+                    "entry fits both one resident layer and the disk its checkpoint "
                     "split needs on this machine."
                 )
             for cmd in streamed.get("serve", []):
@@ -516,7 +516,7 @@ def _resolve_streaming(
 
     Deliberately the SAME pipeline as every other backend —
     :func:`recommend.recommend` with ``backend='lightweight'`` — rather than a second
-    picker. The backend-specific parts (one shard instead of the whole model, a
+    picker. The backend-specific parts (one layer instead of the whole model, a
     disk-bound rate) already live in ``score``/``offload``, so routing through
     the common path keeps one ranking, one report shape, and one place where the
     four decision factors are applied.
@@ -550,7 +550,7 @@ def _resolve_streaming(
     -------
     dict[str, Any]
         An engine descriptor with ``backend: lightweight``, a per-kind section, and
-        the streaming facts a caller needs: resident shard size, checkpoint
+        the streaming facts a caller needs: resident layer size, checkpoint
         size, disk requirement, and seconds per token.
     """
     from . import catalog as _catalog
@@ -558,7 +558,6 @@ def _resolve_streaming(
     from .recommend import recommend as _recommend
 
     floor = float(min_tps) if min_tps is not None else _offload.COMFORT_TPS_STREAMING
-    compression = spec.get("airllm_compression")
     rows = _catalog.servable_only(catalog, "lightweight")
     if catalog and not rows:
         osh.warning(
@@ -580,7 +579,7 @@ def _resolve_streaming(
         headroom=headroom,
         compute=compute,
         min_tps=floor,
-        # Streaming has no schema enforcement at all (lightweight exposes raw
+        # Streaming has no schema enforcement at all (the runtime exposes raw
         # generation), so requiring structured output would disqualify the
         # whole pool. The brief's own wish is honoured by the warning below
         # rather than by a filter that can only ever return nothing.
@@ -619,7 +618,6 @@ def _resolve_streaming(
             "runtime": decision["runtime"],
             "installed": decision["installed"],
             "blockers": decision["blockers"],
-            "compression": compression,
             "install": _offload.INSTALL_HINT,
         },
     }
@@ -634,7 +632,6 @@ def _resolve_streaming(
             rows,
             budget_gb=budget_gb,
             disk=disk,
-            compression=compression,
             prefetching=True,
             kind=kind,
         )
@@ -647,7 +644,7 @@ def _resolve_streaming(
         if plan is None:
             osh.warning(
                 f"No {kind} model can be streamed on this machine: nothing in the "
-                "catalog fits both one resident shard and the free disk the layer "
+                "catalog fits both one resident layer and the disk its checkpoint "
                 "split needs."
             )
             engine[kind] = None

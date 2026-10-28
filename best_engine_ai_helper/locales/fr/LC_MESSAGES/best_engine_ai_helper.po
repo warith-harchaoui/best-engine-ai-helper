@@ -110,8 +110,8 @@ msgstr "tient"
 msgid "GB"
 msgstr "Go"
 
-msgid "GB free disk for the layer split"
-msgstr "Go de disque libre pour la découpe en couches"
+msgid "GB free disk for the checkpoint"
+msgstr "Go de disque libre pour le checkpoint"
 
 msgid "GB RAM"
 msgstr "Go RAM"
@@ -179,8 +179,8 @@ msgstr "pas de clé"
 msgid "no structured JSON output — unfit for schema-driven tasks"
 msgstr "pas de sortie JSON structurée — inadapté aux tâches à schéma"
 
-msgid "Nothing can be streamed here: no model fits both one resident layer shard and the free disk the split needs."
-msgstr "Rien n'est exécutable en flux ici : aucun modèle ne tient à la fois dans une tranche de couche résidente et dans l'espace disque libre que la découpe exige."
+msgid "Nothing can be streamed here: no model fits both one resident layer and the disk its checkpoint needs."
+msgstr "Rien n'est exécutable en flux ici : aucun modèle ne tient à la fois dans une couche résidente puis dans l'espace disque que son checkpoint exige."
 
 msgid "One sentence is enough — visual keywords add a VLM to the recommendation."
 msgstr "Une phrase suffit — les mots-clés visuels ajoutent un VLM à la recommandation."
@@ -212,8 +212,8 @@ msgstr "Référence seulement — aucune clé API lue, aucun appel réseau."
 msgid "Refresh"
 msgstr "Rafraîchir"
 
-msgid "resident shard budget"
-msgstr "budget de tranche résidente"
+msgid "resident layer budget"
+msgstr "budget de couche résidente"
 
 msgid "runtime installed"
 msgstr "moteur installé"
@@ -251,8 +251,8 @@ msgstr "Description de la tâche"
 msgid "Task:"
 msgstr "Tâche :"
 
-msgid "This machine offers no runtime for layer streaming (a CUDA/ROCm GPU, or Apple Silicon through MLX)."
-msgstr "Cette machine n'offre aucun moteur pour la lecture en flux des couches (un GPU CUDA/ROCm ou Apple Silicon via MLX)."
+msgid "This machine offers no runtime for layer streaming (a CUDA/ROCm GPU, or Apple Silicon through Metal)."
+msgstr "Cette machine n'offre aucun moteur pour la lecture en flux des couches (un GPU CUDA/ROCm ou Apple Silicon via Metal)."
 
 msgid "This machine's characteristics, and the best engine (LLM / VLM), local or cloud, for the task you describe."
 msgstr "Caractéristiques de cette machine et le meilleur moteur (LLM / VLM), local ou cloud, pour la tâche que vous décrivez."

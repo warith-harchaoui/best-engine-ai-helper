@@ -138,11 +138,12 @@ read `references/triggers.md`.
   lever.** One forward pass reads the checkpoint once whatever rides through
   it, so a 2000-token prompt costs what a 10-token one does (unique to this
   backend), and eight prompts answered together arrive in the time of one.
-  4-bit compression is worth ~3x; a batch of 8 is worth 8x.
-- **Disk, not memory, is what refuses a streamed model.** The layer split needs
-  roughly twice the checkpoint free at once. Check `lightweight status` for free
-  space before promising anything.
-- **No streamed model honours a JSON schema.** lightweight exposes raw generation,
+  A batch of 8 is worth 8x, and it is the only lever: the runtime reads the
+  checkpoint at the dtype it ships in, so there is no compression flag.
+- **Disk, not memory, is what refuses a streamed model.** It needs the
+  checkpoint and nothing more — nothing is copied — but a 70B is still 140 GB.
+  Check `lightweight status` for free space before promising anything.
+- **No streamed model honours a JSON schema.** The runtime exposes raw generation,
   so schema-driven tasks stay on an Ollama model. The engine file says
   `structured_output: false` and `llm.chat` raises rather than pretending.
 - **If the user already has OpenAI client code, point it here rather than

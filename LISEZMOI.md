@@ -61,13 +61,15 @@ Ce paquet est à la base de la couche de sélection de modèles de la suite AI H
   requis pour `detect`, `recommend` ou `report`)
 - Tout le reste s'installe automatiquement : os-helper (détection matérielle),
   PyYAML, click, requests, langdetect, les surfaces FastAPI/MCP (`fastapi`,
-  `uvicorn`, `fastapi-mcp`), puis **lightweight** pour [la lecture des couches en
-  flux](#trop-gros-pour-tenir-en-mémoire-exécutable-quand-même--le-flux-de-couches).
+  `uvicorn`, `fastapi-mcp`), puis torch/transformers/accelerate/safetensors pour
+  [la lecture des couches en
+  flux](#trop-gros-pour-tenir-en-mémoire-exécutable-quand-même--le-flux-de-couches)
+  (**lightweight**).
   La CLI, la GUI, l'API HTTP, le serveur MCP puis le moteur de flux font tous
   partie de l'installation par défaut, rien d'optionnel à activer.
 - **Comptez environ 2 Go pour l'installation puis quelques minutes.** Ce n'est
-  pas ce paquet — il est en Python pur puis minuscule — c'est la pile d'lightweight :
-  torch, transformers, accelerate. L'arbitrage est délibéré : « quel modèle
+  pas ce paquet — il est en Python pur puis minuscule — c'est la pile du flux :
+  torch, transformers, accelerate, safetensors. L'arbitrage est délibéré : « quel modèle
   cette machine peut-elle exécuter » puis « quel modèle peut-elle exécuter en
   lisant les couches en flux » sont la même question ; une capacité cachée
   derrière un extra optionnel est une capacité que presque personne ne
@@ -599,7 +601,7 @@ résident ≈ (checkpoint ÷ couches) × 1,25 × tranches_résidentes
 - `checkpoint ÷ couches` est la tranche moyenne. La **plus grosse** tranche est
   la matrice d'embedding des jetons plutôt qu'une couche de décodeur — un
   vocabulaire moderne de 128 000 à 152 000 entrées le veut ainsi — d'où le 1,25.
-- `tranches_résidentes` vaut 2 avec le préchargement d'lightweight (la tranche
+- `couches_résidentes` vaut 2 avec le préchargement (la couche
   suivante est lue pendant que la courante calcule, d'où son gain d'environ
   10 %) puis 1 sans. Couper le préchargement est le seul bouton qui fait tenir un
   70B sur une carte de 4 Go, puis ce paquet l'essaie automatiquement avant de
@@ -613,31 +615,34 @@ résident ≈ (checkpoint ÷ couches) × 1,25 × tranches_résidentes
 
 Chiffré, sur un disque NVMe à 4 Go/s avec un contexte de 4k :
 
-| Modèle | Checkpoint | Couches | Résident (préchargé / série) | s/jeton | Disque libre pour la découpe |
-|---|---|---|---|---|---|
-| Llama-3.3-70B | 140 Go | 80 | 6,1 Go / 3,9 Go | 41 s | 294 Go |
-| Qwen2.5-VL-72B | 146 Go | 80 | 6,3 Go / 4,0 Go | 43 s | 307 Go |
-| Mixtral-8x22B (141B, MoE) | 282 Go | 56 | 14,0 Go / 7,7 Go | 83 s | 592 Go |
-| Qwen3-235B-A22B (MoE) | 470 Go | 94 | 14,5 Go / 8,2 Go | 138 s | 987 Go |
-| DeepSeek-V3 (671B, fp8, MoE) | 671 Go | 61 | 29,0 Go / 15,2 Go | 197 s | 1409 Go |
-| Llama-3.1-405B | 810 Go | 126 | 18,5 Go / 10,5 Go | 238 s | 1701 Go |
+| Modèle | Checkpoint (= disque libre nécessaire) | Couches | Résident (préchargé / série) | s/jeton |
+|---|---|---|---|---|
+| Llama-3.3-70B | 140 Go | 80 | 6,1 Go / 3,9 Go | 41 s |
+| Qwen2.5-VL-72B | 146 Go | 80 | 6,3 Go / 4,0 Go | 43 s |
+| Mixtral-8x22B (141B, MoE) | 282 Go | 56 | 14,0 Go / 7,7 Go | 83 s |
+| Qwen3-235B-A22B (MoE) | 470 Go | 94 | 14,5 Go / 8,2 Go | 138 s |
+| DeepSeek-V3 (671B, fp8, MoE) | 671 Go | 61 | 29,0 Go / 15,2 Go | 197 s |
+| Llama-3.1-405B | 810 Go | 126 | 18,5 Go / 10,5 Go | 238 s |
 
 C'est la profondeur qui rend la dernière ligne possible : 405 milliards de
-paramètres sur 126 couches donnent une tranche *plus légère* que 141 milliards
+paramètres sur 126 couches donnent une couche *plus légère* que 141 milliards
 sur 56. Un mélange d'experts (MoE) brise la relation habituelle entre taille et
 profondeur — DeepSeek-V3 fait 671 milliards sur 61 couches là où la tendance
 dense en prédirait le double — donc une entrée MoE qui ne déclare pas ses
 `layers` est **refusée** plutôt que devinée : une devinette s'y trompe d'un
 facteur deux, dans le sens qui promet trop.
 
-Lisez la dernière colonne en premier. **C'est l'espace disque, pas la mémoire,
-qui refuse d'ordinaire un modèle** : lightweight écrit les tranches par couche à côté
-du checkpoint téléchargé, donc le cache contient les deux en même temps puis la
-découpe exige à peu près le double du checkpoint en libre. Un modèle de 405
-milliards de paramètres, c'est 810 Go de téléchargement avant d'être quoi que ce
-soit d'autre. La mémoire est la moitié facile du problème.
+Lisez la deuxième colonne en premier. **C'est l'espace disque, pas la mémoire,
+qui refuse d'ordinaire un modèle** — mais seulement à la taille du checkpoint
+lui-même. Les couches sont lues dans les safetensors d'origine, mémoire-mappés
+puis indexés tenseur par tenseur : rien n'est recopié, donc il n'y a aucun
+espace de travail à trouver. Un modèle de 405 milliards de paramètres, c'est
+810 Go de téléchargement, puis il est prêt. (Le moteur précédent écrivait une
+seconde copie par couche à côté de la première : c'est pourquoi cette colonne
+affichait 1701 Go, puis pourquoi presque chaque ligne de `lightweight plan`
+disait `runs: NO`.) La mémoire est la moitié facile du problème.
 
-Ces chiffres ont été vérifiés contre ceux que publie lightweight, puis la
+Ces chiffres ont été vérifiés contre ceux que publie airllm, puis la
 vérification mérite d'être énoncée précisément, parce que le « 70B sur un GPU de
 4 Go » de l'affiche est vrai à une longueur de contexte que personne ne
 mentionne : le même modèle fait 3,0 Go en série à 1k de contexte — la démo —
@@ -663,7 +668,7 @@ best-engine-ai-helper lightweight compare --tokens 300
 
 ```
 === LLM: ollama vs lightweight, for a 300-token answer ===
-  budgets: 11.04 GB resident (ollama) · 22.08 GB per shard (lightweight) · disk 4.0 GB/s (declared)
+  budgets: 11.04 GB resident (ollama) · 22.08 GB per layer (lightweight) · disk 4.0 GB/s (declared)
 model                       backend  score  resident  tok/s  answer  runs
 --------------------------  -------  -----  --------  -----  ------  ----
 qwen3:72b-q8_0              ollama   89     78.0      8.4    36 s    NO
@@ -762,7 +767,6 @@ ou dans le cahier des charges versionné :
 kind: llm
 task: juger la qualité de descriptions produit générées
 lightweight: always          # auto (défaut) | always | never
-lightweight_compression: 4bit
 ```
 
 ou dans l'environnement, qui ne surclasse que les valeurs par défaut :
@@ -790,7 +794,7 @@ best-engine-ai-helper lightweight plan --kind llm --compression 4bit --batch 8
 # Natif ou en flux, même longueur de réponse, les deux prix
 best-engine-ai-helper lightweight compare --tokens 300 --batch 8
 
-# Payer le téléchargement puis la découpe maintenant, pas dans le premier appel
+# Payer le téléchargement maintenant, pas dans le premier appel
 best-engine-ai-helper lightweight prepare --model meta-llama/Llama-3.3-70B-Instruct
 ```
 
@@ -807,7 +811,7 @@ chiffre flatteur, puis chaque surface étiquette la valeur `measured` ou
 
 ### Les limites, énoncées franchement
 
-- **Pas de sortie structurée.** lightweight expose une génération brute, sans
+- **Pas de sortie structurée.** Le moteur expose une génération brute, sans
   équivalent du `format` contraint par grammaire d'Ollama. Tout modèle en flux
   est donc `structured_output: false` — un fait sur le moteur, pas sur les poids
   — puis les tâches de la suite pilotées par schéma restent sur un modèle
@@ -816,57 +820,82 @@ chiffre flatteur, puis chaque surface étiquette la valeur `measured` ou
 - **Texte uniquement.** L'adaptateur renvoie un modèle de langage causal nu,
   sans le processeur d'images qu'exige un prompt de VLM. Les images lèvent une
   erreur au lieu d'être silencieusement traitées depuis le seul texte.
-- **Pas de serveur.** lightweight est une bibliothèque, donc un modèle en flux
+- **Pas de serveur.** Le moteur est une bibliothèque, donc un modèle en flux
   s'exécute *dans votre propre processus* ; le `base_url` du fichier moteur est
   vide à dessein, parce qu'inventer un port local enverrait un consommateur
   chercher un démon qui n'existera jamais. `llm.chat` garde le modèle chargé
   entre les appels — découper un checkpoint de 141 Go à chaque appel rendrait le
   transport inutilisable.
-- **Expérimental sur processeur.** La voie CPU d'lightweight ne fonctionne que pour
-  les modèles non découpés, donc une machine sans accélérateur ne reçoit pas le
-  flux de couches automatiquement. Elle peut toujours le demander.
-- **La compression 4 bits est indisponible sur macOS.** Elle exige
-  `bitsandbytes`, qui ne publie aucune roue macOS, donc la dépendance porte un
-  marqueur de plateforme puis Apple Silicon diffuse via MLX sans compression.
-  Le dimensionnement le dit au lieu d'annoncer un gain qui n'arrivera pas.
-- **Le contexte vaut 4096 jetons sauf demande contraire.** Le défaut d'lightweight
-  est 512 puis il *tronque* au-delà, donc cet adaptateur passe toujours un
-  `max_seq_len` explicite — réglé sur les mêmes 4k que ceux auxquels
+- **safetensors uniquement.** Un checkpoint publié seulement en
+  `pytorch_model.bin` est refusé nommément. Le pickle ne porte aucun index par
+  tenseur, donc « lire une couche » voudrait dire lire tout le fichier une fois
+  par couche — la seule chose que ce moteur existe pour ne pas faire.
+- **Pas de flux par expert sur un MoE.** Une couche de mélange d'experts
+  épars est matérialisée entière, donc son chiffre résident est le jeu complet
+  d'experts plutôt que la poignée vers laquelle un jeton route vraiment. Le
+  dimensionnement facture le jeu complet, ce qui explique qu'une ligne MoE
+  paraisse chère à côté d'un modèle dense de même profondeur.
+- **Aucune quantisation à la volée.** Le checkpoint tourne dans le dtype où il
+  est publié. Il n'y a pas de bouton `--compression`, parce que rien ici ne
+  pourrait l'honorer : pour diffuser en moins de bits, pointez vers un dépôt
+  déjà publié ainsi, puis le `dtype` du catalogue le tarifera. (Une version
+  antérieure acceptait ce drapeau puis annonçait un gain de 3× que le moteur
+  ne rendait jamais.)
+- **Le processeur fonctionne, lentement.** `cuda`, `mps` puis `cpu` sont trois
+  voies réelles — l'appareil est nommé explicitement plutôt que deviné. Une
+  machine sans accélérateur ne se voit toujours pas *proposer* le flux
+  automatiquement, parce que le débit qu'elle obtiendrait passe sous le
+  plancher de lot ; elle peut le demander.
+- **Le contexte vaut 4096 jetons sauf demande contraire.** Un tokeniseur laissé
+  à son propre défaut *tronque* au-delà, donc le moteur configure toujours
+  `max_seq_len` explicitement — réglé sur les mêmes 4k que ceux auxquels
   l'empreinte ci-dessus est tarifée. Les deux nombres sont délibérément le même
   : un outil qui annonce la mémoire d'un contexte de 4k puis exécute en silence
   un contexte de 512 mentirait dans le sens où vous perdez la fin de votre
   prompt. Montez-le avec `max_seq_len=` puis le terme de cache KV monte
   exactement comme la formule le dit.
 
-### Pourquoi lightweight est importé plutôt que recopié ici
+### Pourquoi ce moteur est le nôtre plutôt qu'un import
 
-Question légitime pour un paquet qui redérive l'arithmétique. Quatre raisons :
+Question légitime, puis la réponse a changé. La technique a été démontrée par
+[airllm](https://github.com/lyogavin/airllm) (Apache-2.0), que ce paquet
+importait au départ. Trois mesures l'ont fait rentrer à la maison :
 
-1. **Le recopier n'aurait pas évité le poids.** lightweight exige torch,
-   transformers, accelerate, safetensors, scipy puis sentencepiece, puis une
-   copie de son code en aurait eu besoin tout autant — le poids, c'est son arbre
-   de dépendances, pas ses lignes. Les ~2 Go sont donc le prix de la capacité
-   quelle que soit la façon dont elle arrive, puis ils sont payés ici
-   délibérément plutôt que cachés derrière un extra que personne ne trouve. Ce
-   qu'une copie ajouterait par-dessus, ce sont les trois problèmes suivants.
-2. **C'est une cible mouvante.** La valeur d'lightweight est son code de découpe par
-   famille de modèles (Llama, Qwen, DeepSeek, Mixtral, ChatGLM, Kimi), réécrit à
-   chaque nouvelle famille. Recopié, il serait figé au jour de la copie puis
-   pourrirait dès la version suivante.
-3. **Hygiène de licence.** lightweight est en Apache-2.0 ; ce paquet est en
-   BSD-3-Clause. L'import garde les deux arbres, puis leurs obligations de
-   notice, séparés.
-4. **Le partage du travail est réel, pas une esquive.** lightweight décide *comment*
-   diffuser. Rien chez lui ne décide *si* cette machine devrait le faire, *quel*
-   modèle diffuser, ni *ce que ça vous coûtera en temps* — et ce sont les trois
-   questions que pose réellement l'appelant de ce paquet.
+1. **Ça ne marchait pas du tout sur Apple Silicon.** L'`AutoModel` d'airllm
+   dispatche sur l'architecture partout sauf sur macOS, où il rend d'office un
+   transformeur Llama écrit à la main en MLX, avec `bias=False` partout. Qwen
+   porte des biais d'attention ; Llama 3.2 lie ses embeddings, donc il n'y a
+   pas de tenseur `lm_head` ; les vieux exports persistent
+   `rotary_emb.inv_freq`. Trois plantages différents, sur la plateforme où
+   cette suite se développe — puis `generate()` n'arrivait de toute façon
+   jamais jusque-là, levant `AttributeError: 'AirLLMLlamaMlx' object has no
+   attribute 'device'` au premier appel sur tous les Mac.
+2. **Il écrivait une seconde copie de chaque checkpoint sur le disque.** Des
+   tranches par couche, écrites avant que rien ne tourne, donc un 70B
+   réclamait ~294 Go libres au lieu de ~140. C'est ce qui faisait lire
+   `runs: NO` à presque chaque ligne de `lightweight plan` sur un portable
+   ordinaire : les modèles tenaient en mémoire par couche puis échouaient sur
+   un espace de travail qui n'a plus lieu d'exister.
+3. **Il traînait MLX, bitsandbytes puis une sous-classe par famille** — Llama,
+   Qwen, DeepSeek, Mixtral, ChatGLM, Kimi — chacune réécrite à la sortie de la
+   famille. Tout cela est parti avec lui.
 
-Le moteur est donc importé puis la **décision** est native : `offload.py` possède
-l'arithmétique d'empreinte, le modèle de temps borné par le disque, la politique
-d'activation, la comparaison natif contre flux puis les métadonnées de catalogue
-dont tout cela a besoin (`layers`, `dtype`, `moe`). Rien de cela n'importe
-lightweight : c'est ce qui garde l'import paresseux, puis ce qui fait que `lightweight
-status` et `lightweight compare` répondent juste même dans un environnement où le
+Ce qui le remplace est plus petit, pas plus gros : construire le modèle sur
+l'appareil `meta`, accrocher sur chaque couche de décodeur un pré-crochet qui
+matérialise ses poids depuis les safetensors mémoire-mappés du checkpoint, puis
+un post-crochet qui libère exactement ceux-là. **`transformers` garde la passe
+avant**, donc l'architecture est celle que `transformers` connaît, puis la pile
+de décodeurs est *découverte* — la `ModuleList` dont la longueur vaut le nombre
+de couches de la config — au lieu d'être nommée dans une table par famille que
+quelqu'un doit tenir à jour.
+
+Le partage du travail à l'intérieur du paquet n'a pas bougé : `streaming.py`
+possède la passe avant, puis `offload.py` possède toutes les questions de
+*sélection* — l'arithmétique d'empreinte, le modèle de temps borné par le
+disque, la politique d'activation, la comparaison natif contre flux puis les
+métadonnées de catalogue dont tout cela a besoin (`layers`, `dtype`, `moe`).
+Rien d'`offload.py` n'importe torch : c'est ce qui fait que `lightweight status`
+puis `lightweight compare` répondent juste, puis instantanément, même là où le
 moteur lui-même refuserait de se charger.
 
 ### Depuis Python
