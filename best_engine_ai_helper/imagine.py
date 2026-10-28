@@ -30,10 +30,12 @@ here:
    which is a property of the model, not a preference: SDXL-Turbo and
    FLUX.1-schnell are distilled for 1-4 steps where SD 1.5 wants 25-30.
 
-The runtime is ``diffusers``, imported lazily and a core dependency of this
-package (torch is already here for layer streaming, so the incremental cost is
-a few megabytes of Python). Nothing in this module reimplements sampling: it
-decides *which* model and *whether*, and :func:`generate` is a thin adapter.
+The runtime is ``diffusers``, imported lazily and behind the ``imagine``
+extra. Nothing above this line needs it: ranking, the footprint arithmetic and
+the timings are plain Python over a catalogue and answer on an interpreter
+that has never heard of torch. Nothing in this module reimplements sampling
+either — it decides *which* model and *whether*, and :func:`generate` is a
+thin adapter over the runtime for callers who install it.
 
 Author
 ------
@@ -51,9 +53,9 @@ import os_helper as osh
 #: Name of the upstream runtime, spelled once.
 PACKAGE = "diffusers"
 
-#: What to tell a caller whose interpreter cannot import it. A core dependency,
-#: so reaching this means an incomplete install rather than a missing opt-in.
-INSTALL_HINT = "pip install --upgrade --force-reinstall best-engine-ai-helper"
+#: What to tell a caller whose interpreter cannot import it. Behind an extra,
+#: so reaching this ordinarily means the feature was never opted into.
+INSTALL_HINT = "pip install --upgrade 'best-engine-ai-helper[imagine]'"
 
 #: Bytes per parameter by the dtype the pipeline RUNS in. Unlike a streamed
 #: language model, where the figure that matters is what sits on disk, a
@@ -491,9 +493,10 @@ def available() -> bool:
     """
     Whether the ``diffusers`` runtime is importable in this interpreter.
 
-    Normally True: it is a core dependency. Checked rather than assumed for the
-    same reason :func:`offload.available` is — declared and importable are
-    different claims, and a stripped container separates them. A real import
+    False on a base install: it lives behind the ``imagine`` extra. Checked
+    rather than assumed for the same reason :func:`offload.available` is —
+    declared and importable are different claims, and a stripped container
+    separates them even when the extra was asked for. A real import
     rather than ``find_spec`` for the same reason too: a package whose
     ``__init__`` raises has a findable spec and is still unusable, which is how
     lightweight behaves on a Mac without ``mlx``.
@@ -815,11 +818,11 @@ def load(
         from diffusers import AutoPipelineForText2Image as _Pipeline
     except ImportError as exc:
         raise ImportError(
-            f"Image generation needs the {PACKAGE} runtime, which IS a dependency of "
-            f"best-engine-ai-helper — so reaching this means the install is incomplete "
-            f"rather than that a feature was not opted into: {INSTALL_HINT}. Text "
-            "models (Ollama, vLLM, layer streaming) keep working meanwhile, since "
-            "this import is lazy."
+            f"Image generation needs the {PACKAGE} runtime, which lives behind the "
+            f"`imagine` extra rather than in the base install: {INSTALL_HINT}. "
+            "Choosing an image model needs none of it — `imagine_rank` and "
+            "`imagine_pick` answer without it — and text models (Ollama, vLLM, layer "
+            "streaming) keep working meanwhile, since this import is lazy."
         ) from exc
 
     accelerated = bool(torch.cuda.is_available() or torch.backends.mps.is_available())

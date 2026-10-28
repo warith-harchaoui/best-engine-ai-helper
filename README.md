@@ -47,19 +47,22 @@ This package sits at the base of the AI Helpers suite's model-selection layer, a
 - Python 3.10 or later
 - [Ollama](https://ollama.com) (needed for `pull`, `validate`, `env`; not for `detect`, `recommend`, or `report`)
 - Everything else installs automatically: os-helper (hardware detection),
-  PyYAML, click, requests, langdetect, the FastAPI/MCP surfaces (`fastapi`,
-  `uvicorn`, `fastapi-mcp`), and torch/transformers/accelerate/safetensors for
-  [**lightweight** layer
-  streaming](#too-large-to-load-still-runnable-layer-streaming). The CLI, GUI,
-  HTTP API, MCP server and the streaming backend are all part of the default
-  install, nothing extra to opt into.
-- **Budget around 2 GB for the install and a few minutes for it.** That is not
-  this package — it is pure Python and tiny — it is the streaming stack: torch,
-  transformers, accelerate and safetensors. The trade is deliberate: "which model can this
-  machine run" and "which model can it run if it streams the layers" are the
-  same question, and a capability behind an optional extra is one most people
-  never find. The import stays lazy, so none of that weight is paid at
-  startup: `detect`, `recommend` and `report` are as fast as they ever were.
+  PyYAML, click, requests, langdetect and the FastAPI/MCP surfaces (`fastapi`,
+  `uvicorn`, `fastapi-mcp`). The CLI, GUI, HTTP API and MCP server are all part
+  of the default install. **It is a few megabytes and it installs in seconds.**
+- **Running a model is opt-in; choosing one is not.** The deep-learning runtime
+  — torch, transformers, accelerate, safetensors, and diffusers for images —
+  lives behind `[lightweight]` and `[imagine]`. It was core for three days and
+  the measurement is why it is not any more: that stack is 196 MB on a
+  processor-only wheel and gigabytes of `nvidia-*` payload when pip takes the
+  CUDA build, which on Linux it does by default. Somebody asking which model
+  fits their laptop should not download a deep-learning stack to be told.
+
+  Nothing above that line needs it. The catalogues, the scoring, the hardware
+  probe and the footprint and timing arithmetic behind `rank`, `imagine_rank`
+  and `imagine_pick` are plain Python over a table, and answer on an
+  interpreter that has never heard of torch. `detect`, `recommend` and `report`
+  are as fast as they ever were, and now the install is too.
 - Optional: `[cloud]` for cloud-provider mode (retry, caching,
   pseudonymization, an OS-keychain fallback for API keys) and `[filtered]` for
   real NSFW classifiers (a DistilBERT text model; LAION's CLIP-based
@@ -77,9 +80,10 @@ This package sits at the base of the AI Helpers suite's model-selection layer, a
 
 ## Installation
 
-Python 3.10+. This package's own code is pure Python; its dependency tree is
-not, because the layer-streaming runtime brings torch with it — so expect a
-**download of about 2 GB** and a wheel chosen for your platform. The other
+Python 3.10+. This package's own code is pure Python, and so is its default
+install: **a few megabytes**. The layer-streaming runtime brings torch with
+it, but it lives behind `[lightweight]`, so that ~2 GB download is paid only
+if you ask for it. The other
 platform-specific piece is the optional **Ollama** runtime (needed only for
 `pull` / `validate` / `env`, not for `detect`, `recommend`, `report`, the GUI,
 or the MCP surface). Pick your OS below.
@@ -453,12 +457,17 @@ with its *widest single layer*. A 70B model becomes about **4 GB resident
 instead of 141 GB**.
 
 The runtime that does this is **this package's own**
-(`best_engine_ai_helper.streaming`), and streaming is available on every
-install, with nothing to opt into.
+(`best_engine_ai_helper.streaming`), and it is one extra away.
 
 ```sh
-pip install best-engine-ai-helper     # layer streaming comes with it
+pip install 'best-engine-ai-helper[lightweight]'    # the streaming runtime
+pip install 'best-engine-ai-helper[generate]'       # streaming + images
 ```
+
+Deciding *whether* a model can be streamed, and how fast, needs none of that:
+`lightweight plan` and `lightweight compare` answer on a base install, because
+the arithmetic is the package's own and the runtime is only wanted once you
+actually run something.
 
 It used to be the third-party `airllm`. That dependency is gone, for reasons
 that were measured rather than assumed:
@@ -478,10 +487,11 @@ is needed at all**, and `transformers` owns the forward pass, so the
 architecture is whatever `transformers` knows. Apple Silicon is torch on
 Metal (MPS), not a second framework.
 
-That is what the ~2 GB of the install buys (torch, transformers, accelerate,
-safetensors). It is paid once, at install time: the imports are lazy, so
-nothing of that stack is loaded until you actually stream a model, and
-`detect` / `recommend` / `report` stay instant.
+That is what `[lightweight]` buys (torch, transformers, accelerate,
+safetensors). It is paid once, at install time, and only by callers who asked
+for it: the imports are lazy on top of that, so nothing of the stack is loaded
+until you actually stream a model, and `detect` / `recommend` / `report` stay
+instant either way.
 
 How a streamed forward pass actually runs:
 
@@ -940,13 +950,15 @@ Sizes are derived from a constant **measured** against the seed's own fourteen Q
 
 `--arena` additionally merges conversational ratings from [LM Arena](https://lmarena.ai) mirrors, and two measured facts about that axis are worth knowing before you reach for it.
 
-![Every Arena source tried in turn, and why each one fails today](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/arena-staleness.png)
+![Every Arena source tried in turn: the official board has no public API, one community mirror now answers with 37 models from a 21-day-old snapshot, a paid scraper is refused on principle, and the bulk history is 524 days stale](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/arena-staleness.png)
 
-**It serves the cloud catalog, not the local one.** Arena rates what its voters can chat with. Matched against the bundled catalogs (measured 2026-10-19 against the freshest working mirror), it covered **6 of the 10 cloud models** in `pricing.yaml` but only **3 of the 20 local models** in `models.yaml`.
+**It rates hosted frontier endpoints, and nothing else.** Arena rates what its voters can chat with, which today means names like `claude-opus-5.5-max`, `gpt-6-astra-max` and `gemini-4-argon-high`. Re-surveyed 2026-10-28, that is **37 models**, and **none of them matches either bundled catalog**: `models.yaml` holds open-weight Ollama tags nobody votes on, and `pricing.yaml` holds 2024 API models Arena stopped ranking generations ago. The families overlap — `claude`, `gemini`, `gpt` — but the versions do not, and matching `claude-opus-5.5-max`'s Elo onto `claude-3-5-sonnet` would be worse than matching nothing. The matcher refuses, correctly.
 
-The three local hits say more than the ratio does: they were `qwen2.5-coder:32b`, `qwen3:32b-q4_k_m` and `qwen3:32b-q8_0` — every match was a 32B build, and nothing smaller matched at all. The four embedding models (`nomic-embed-text`, `mxbai-embed-large`, `snowflake-arctic-embed2`, `bge-m3`) cannot match by construction: nobody chats with an embedder, so no leaderboard of chat preferences will ever rate one. So the axis is not simply "cloud-biased" — it rates large conversational models, which is most of a cloud price list and a minority of a local catalog. That is the opposite of what most people expect from a "model leaderboard", and it is the difference between using the axis well and waiting for it to break ties it will never see. The command prints its own `matched/total` every run, so you never have to take this paragraph's word for it.
+Embedding models cannot match by construction either: nobody chats with an embedder, so no leaderboard of chat preferences will ever rate one. The command prints its own `matched/total` every run, so you never have to take this paragraph's word for it.
 
-**It may well return nothing at all.** Arena publishes no API, so every source here is a third-party scrape, and scrapes rot: as of 2026-10 the official site answers 403, one mirror returns empty leaderboards, and the freshest working mirror is more than a year stale. The adapter refuses a snapshot past its staleness bar and names the reason rather than merging it, because an Elo from a previous generation of models would rank 2025's models above 2026's — strictly worse than no Elo. When that happens the command says so and leaves the axis empty; it does not report a success that enriched nothing.
+**It is a third-party scrape, and the mirrors rot in ways that look like outages.** Arena publishes no API. One mirror stopped updating 524 days ago. The other runs daily and keeps producing a directory even on days its own scrape returns nothing — so its index names an empty one, and the adapter used to read that, report "no usable data", and stop. It now walks back to the newest snapshot that *has* data, and reads the board names from the mirror's own index rather than guessing them: two of the four names it used to guess (`overall`, `coding`) were never published, so the code axis was silently empty against a mirror that was serving it as `code`. That is the difference between 0 ratings and 37.
+
+Past `MAX_SNAPSHOT_AGE_DAYS` the adapter still refuses and names the reason, because an Elo from a previous generation would rank 2025's models above 2026's — strictly worse than no Elo. It never reports a success that enriched nothing.
 
 ## Hardware table
 

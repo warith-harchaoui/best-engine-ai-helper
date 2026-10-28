@@ -84,10 +84,10 @@ import os_helper as osh
 PACKAGE = "torch/transformers/accelerate/safetensors"
 
 #: What to tell a caller whose interpreter cannot import the runtime. These
-#: are CORE dependencies, so reaching this means the install is incomplete —
-#: a stripped environment, a failed wheel build, a vendored subset — rather
-#: than a choice the user made. The command that fixes that is a reinstall.
-INSTALL_HINT = "pip install --upgrade --force-reinstall best-engine-ai-helper"
+#: live behind the ``lightweight`` extra, so reaching this usually means the
+#: feature was never opted into — and sometimes means a stripped environment
+#: or a failed wheel build. One command covers both.
+INSTALL_HINT = "pip install --upgrade 'best-engine-ai-helper[lightweight]'"
 
 #: Environment variable that forces the policy :func:`decide` applies.
 #: ``auto`` (the default) activates streaming only as a last resort; ``always``
@@ -1489,8 +1489,8 @@ def decide(
         )
     if not installed:
         blockers.append(
-            f"the {PACKAGE} runtime cannot be imported, though it is a dependency of "
-            f"this package — the install looks incomplete: {INSTALL_HINT}"
+            f"the {PACKAGE} runtime cannot be imported — it lives behind the "
+            f"`lightweight` extra: {INSTALL_HINT}"
         )
     if not disk.get("read_gbs"):
         blockers.append(
@@ -2072,12 +2072,12 @@ def load(
         from . import streaming as _streaming
     except ImportError as exc:
         raise ImportError(
-            f"Layer streaming needs {PACKAGE}, all of which ARE dependencies of "
-            f"best-engine-ai-helper — so reaching this means the install is "
-            f"incomplete rather than that a feature was not opted into: "
-            f"{INSTALL_HINT}. Everything else here (detection, recommendation, the "
-            "Ollama and vLLM backends) keeps working meanwhile, since the import is "
-            "lazy and happens only when a model is actually loaded."
+            f"Layer streaming needs {PACKAGE}, which live behind the `lightweight` "
+            f"extra rather than in the base install — running a model is opt-in here, "
+            f"choosing one is not: {INSTALL_HINT}. Everything else (detection, "
+            "recommendation, the Ollama and vLLM backends) keeps working meanwhile, "
+            "since the import is lazy and happens only when a model is actually "
+            "loaded."
         ) from exc
 
     osh.info(

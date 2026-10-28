@@ -106,42 +106,60 @@ def test_the_catalogue_is_not_empty_from_its_bundled_seed_alone() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_the_streaming_runtime_is_a_core_dependency_not_an_extra() -> None:
-    """Layer streaming installs with the package, on every install.
+def test_the_deep_learning_runtime_is_an_extra_not_a_core_dependency() -> None:
+    """Running a model is opt-in here; choosing one is not.
 
-    The runtime is no longer a third-party package: it is
-    ``best_engine_ai_helper.streaming``, over torch, transformers, accelerate
-    and safetensors. What has to stay true is the *decision* this test was
-    written to pin -- that "which model can this machine run" and "which model
-    can this machine run if it streams the layers" are the same question, so a
-    capability behind an extra is one most callers never discover.
+    This test was written the other way round, pinning the runtime as core on
+    the argument that "which model can this machine run" and "which model can
+    it run if it streams the layers" are the same question, so a capability
+    behind an extra is one most callers never discover. Its own docstring said
+    the tempting refactor was an extra, and that if it were ever revisited it
+    should be revisited on purpose, here. This is that revisit.
 
-    The tempting refactor is still the same one (these libraries are large, and
-    someone reading the install size will reach for an extra). If that is ever
-    revisited it should be revisited on purpose, with this test as the place
-    the reasoning is written down.
+    What changed is a measurement, not a preference. A base install is a few
+    megabytes; torch, transformers, accelerate, safetensors and diffusers are
+    196 MB on a processor-only wheel and gigabytes of ``nvidia-*`` payload when
+    pip takes the CUDA build, which on Linux it does by default. And the
+    premise turned out to be false in the half that matters: deciding what a
+    machine can run needs none of it. ``rank``, ``imagine_rank``,
+    ``imagine_pick``, the catalogues, the scoring and the hardware probe are
+    plain Python over a table and answer on an interpreter that has never
+    heard of torch -- which is what ``lightweight plan`` and ``imagine plan``
+    are. Only loading a model needs the runtime, and the four modules that do
+    import it lazily.
+
+    So the shape pinned here is: nothing heavy in the base list, all of it
+    reachable by name, and the published aliases still resolving.
     """
-    manifest = (_REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    config = tomllib.loads(manifest)
+    config = tomllib.loads((_REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     core = config["project"]["dependencies"]
     extras = config["project"]["optional-dependencies"]
 
-    for required in ("torch", "transformers", "accelerate", "safetensors"):
-        assert any(dep.startswith(required) for dep in core), (required, core)
-    # And the dependency that used to provide this is gone, not merely unused:
-    # it did not work on Apple Silicon and it wrote a second copy of every
-    # checkpoint to disk before running.
+    heavy = ("torch", "transformers", "accelerate", "safetensors", "huggingface-hub", "diffusers")
+    for forbidden in heavy:
+        assert not any(dep.startswith(forbidden) for dep in core), (forbidden, core)
+    # And the third-party runtime that used to provide this is gone, not
+    # merely unused: it did not work on Apple Silicon and it wrote a second
+    # copy of every checkpoint to disk before running.
     assert not any(dep.startswith(("airllm", "mlx", "bitsandbytes")) for dep in core), core
-    # Both extra names survive as empty aliases: they are published in release
-    # notes and sit in lockfiles, and an unknown extra is a hard resolution
-    # error rather than a warning.
-    assert extras["airllm"] == []
-    assert extras["lightweight"] == []
+
+    for required in ("torch", "transformers", "accelerate", "safetensors", "huggingface-hub"):
+        assert any(dep.startswith(required) for dep in extras["lightweight"]), required
+    assert any(dep.startswith("diffusers") for dep in extras["imagine"]), extras["imagine"]
+
+    # `[airllm]` is published in release notes and sits in lockfiles, and an
+    # unknown extra is a hard resolution error rather than a warning. It was
+    # an empty alias while the runtime was core; now it has to resolve to
+    # something that actually works.
+    assert extras["airllm"] == ["best-engine-ai-helper[lightweight]"]
+    assert extras["generate"] == ["best-engine-ai-helper[imagine,lightweight]"]
+
     # requirements.txt is the runtime mirror of the core list, so it has to
     # agree or a pip-based install diverges from a pyproject-based one.
     runtime = (_REPO_ROOT / "requirements.txt").read_text(encoding="utf-8")
-    assert "transformers" in runtime
-    assert "airllm" not in runtime
+    for forbidden in (*heavy, "airllm"):
+        assert forbidden not in runtime, forbidden
+    assert "click" in runtime, "the mirror lost the core list too"
 
 
 def test_importing_the_package_does_not_import_torch() -> None:

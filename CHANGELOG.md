@@ -4,6 +4,32 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-10-28
+
+### Changed
+
+- **The deep-learning runtime is an extra again.** torch, transformers,
+  accelerate, safetensors and diffusers left the base install for
+  `[lightweight]` and `[imagine]`, with `[generate]` for both and `[airllm]`
+  now an alias of `[lightweight]` rather than an empty no-op. They were core
+  for three days; the measurement is why they are not any more. A base install
+  is a few megabytes. That stack is 196 MB on a processor-only wheel and
+  gigabytes of `nvidia-*` payload when pip takes the CUDA build, which on
+  Linux it does by default — and this package's job is to say *which* model to
+  run, which is plain Python over a table. `rank`, `imagine_rank`,
+  `imagine_pick`, the catalogues, the scoring and the hardware probe all answer
+  on an interpreter that has never heard of torch; only the four modules that
+  actually run a model need the runtime, and all four import it lazily. Running
+  a model is opt-in now; choosing one never was.
+
+  Both install hints changed with it (`[lightweight]` / `[imagine]` rather than
+  a `--force-reinstall`), and so did every sentence calling the stack core:
+  `imagine.available()` returning False is an un-asked-for extra now, not an
+  incomplete install. The gate lane installs `[imagine,lightweight]` on
+  purpose, because the modules that need them are modules this suite tests and
+  a lane that skipped them would hold a 90% coverage floor by not looking.
+
+
 ### Changed
 
 - **Layer streaming is this package's own now, and `airllm` is gone.** The

@@ -965,11 +965,13 @@ def _refresh_cloud_prices(timeout: float) -> None:
     is_flag=True,
     default=False,
     help=(
-        "Also merge LM Arena conversational ratings. These cover hosted "
-        "frontier models far better than small local ones, so the axis mostly "
-        "serves the cloud catalog. Arena publishes no API and every mirror is "
-        "a third-party scrape: when none is fresh enough, the command says so "
-        "and leaves the axis empty."
+        "Also merge LM Arena conversational ratings. Arena rates hosted "
+        "frontier endpoints, so the names it carries are things like "
+        "'claude-opus-5.5-max' rather than an Ollama tag or a 2024 API model: "
+        "expect few matches against either catalog unless yours is current. "
+        "Arena publishes no API and every mirror is a third-party scrape, so "
+        "the command reports which mirror answered, how old its snapshot is, "
+        "and how many ratings actually matched."
     ),
 )
 @click.option(
@@ -1484,8 +1486,9 @@ def airllm_status(measure: bool, as_json: bool, request: str | None) -> None:
 
     click.echo("\n=== Layer streaming (lightweight) ===")
     click.echo(f"  runtime here    : {decision['runtime'] or 'none'}")
-    # "import", not "installed": lightweight is a core dependency, so the question
-    # worth answering is whether this interpreter can actually load it.
+    # "import", not "installed": the question worth answering is whether this
+    # interpreter can actually load the runtime, which is a different thing
+    # from whether the `lightweight` extra was requested at install time.
     ok = "ok" if decision["installed"] else "FAILS (install incomplete)"
     click.echo(f"  runtime import  : {ok}")
     click.echo(f"  storage         : {disk['storage']} ({disk['basis']})")

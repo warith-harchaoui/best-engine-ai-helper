@@ -60,22 +60,25 @@ Ce paquet est à la base de la couche de sélection de modèles de la suite AI H
 - [Ollama](https://ollama.com) (nécessaire uniquement pour `pull`, `validate` et `env` ; pas
   requis pour `detect`, `recommend` ou `report`)
 - Tout le reste s'installe automatiquement : os-helper (détection matérielle),
-  PyYAML, click, requests, langdetect, les surfaces FastAPI/MCP (`fastapi`,
-  `uvicorn`, `fastapi-mcp`), puis torch/transformers/accelerate/safetensors pour
-  [la lecture des couches en
-  flux](#trop-gros-pour-tenir-en-mémoire-exécutable-quand-même--le-flux-de-couches)
-  (**lightweight**).
-  La CLI, la GUI, l'API HTTP, le serveur MCP puis le moteur de flux font tous
-  partie de l'installation par défaut, rien d'optionnel à activer.
-- **Comptez environ 2 Go pour l'installation puis quelques minutes.** Ce n'est
-  pas ce paquet — il est en Python pur puis minuscule — c'est la pile du flux :
-  torch, transformers, accelerate, safetensors. L'arbitrage est délibéré : « quel modèle
-  cette machine peut-elle exécuter » puis « quel modèle peut-elle exécuter en
-  lisant les couches en flux » sont la même question ; une capacité cachée
-  derrière un extra optionnel est une capacité que presque personne ne
-  découvre.
-  L'import reste paresseux, donc rien de ce poids n'est payé au démarrage :
-  `detect`, `recommend` puis `report` sont aussi rapides qu'avant.
+  PyYAML, click, requests, langdetect puis les surfaces FastAPI/MCP (`fastapi`,
+  `uvicorn`, `fastapi-mcp`). La CLI, la GUI, l'API HTTP puis le serveur MCP
+  font tous partie de l'installation par défaut. **Quelques mégaoctets, et
+  quelques secondes.**
+- **Exécuter un modèle s'active ; en choisir un, non.** Le moteur
+  d'apprentissage profond — torch, transformers, accelerate, safetensors, puis
+  diffusers pour les images — vit derrière `[lightweight]` et `[imagine]`. Il a
+  été central trois jours, et c'est la mesure qui explique qu'il ne le soit
+  plus : cette pile pèse 196 Mo en roue processeur seul, et des gigaoctets de
+  charge `nvidia-*` quand pip prend la version CUDA — ce qu'il fait par défaut
+  sous Linux. Qui demande quel modèle tient dans son portable ne devrait pas
+  télécharger une pile d'apprentissage profond pour l'apprendre.
+
+  Rien au-dessus de cette ligne n'en a besoin. Les catalogues, le score, la
+  sonde matérielle puis l'arithmétique d'empreinte et de durée derrière `rank`,
+  `imagine_rank` et `imagine_pick` sont du Python ordinaire sur une table, et
+  répondent sur un interpréteur qui n'a jamais entendu parler de torch.
+  `detect`, `recommend` puis `report` sont aussi rapides qu'avant, et
+  l'installation l'est devenue aussi.
 - Optionnel : `[cloud]` pour le mode fournisseur cloud (retry, cache,
   pseudonymisation, repli sur le trousseau OS pour les clés API) et
   `[filtered]` pour de vrais classifieurs NSFW (un modèle DistilBERT pour le
@@ -95,10 +98,11 @@ Ce paquet est à la base de la couche de sélection de modèles de la suite AI H
 
 ## Installation
 
-Python 3.10+. Le code de ce paquet est en Python pur ; son arbre de
-dépendances ne l'est pas, parce que le moteur de lecture en flux amène torch
-avec lui — comptez donc un **téléchargement d'environ 2 Go** puis une roue
-choisie pour votre plateforme. L'autre élément spécifique à la plateforme est
+Python 3.10+. Le code de ce paquet est en Python pur, et son installation par
+défaut aussi : **quelques mégaoctets**. Le moteur de lecture en flux amène
+torch avec lui, mais il vit derrière `[lightweight]`, donc ce téléchargement
+d'environ 2 Go ne se paie que si vous le demandez. L'autre élément spécifique
+à la plateforme est
 le runtime **Ollama** optionnel (nécessaire uniquement pour `pull` /
 `validate` / `env`, pas pour `detect`, `recommend`, `report`, la GUI ni la
 surface MCP). Choisissez votre OS ci-dessous.
@@ -469,12 +473,17 @@ proportionnelle à sa **plus large couche**. Un modèle de 70 milliards de
 paramètres passe ainsi de 141 Go à environ **4 Go résidents**.
 
 Le moteur qui fait cela est **celui de ce paquet**
-(`best_engine_ai_helper.streaming`) : le flux de couches est disponible sur
-chaque installation, sans rien à activer.
+(`best_engine_ai_helper.streaming`), à un extra de distance.
 
 ```sh
-pip install best-engine-ai-helper     # le streaming vient avec
+pip install 'best-engine-ai-helper[lightweight]'    # le moteur de flux
+pip install 'best-engine-ai-helper[generate]'       # flux + images
 ```
+
+Décider *si* un modèle peut être diffusé, et à quelle vitesse, n'en demande
+rien : `lightweight plan` puis `lightweight compare` répondent sur une
+installation de base, parce que l'arithmétique appartient au paquet et que le
+moteur ne sert qu'au moment d'exécuter quelque chose.
 
 C'était `airllm`. Cette dépendance est partie, pour des raisons mesurées
 plutôt que supposées :
@@ -496,10 +505,11 @@ travail n'est nécessaire**. `transformers` garde la passe avant, donc
 l'architecture est celle que `transformers` connaît. Apple Silicon, c'est
 torch sur Metal (MPS), pas un second cadriciel.
 
-C'est ce qu'achètent les ~2 Go de l'installation (torch, transformers,
-accelerate, safetensors). Ils se paient une fois, à l'installation : les
-imports sont paresseux, donc rien de cette pile n'est chargé avant que vous ne
-diffusiez réellement un modèle, puis `detect` / `recommend` / `report` restent
+C'est ce qu'achète `[lightweight]` (torch, transformers, accelerate,
+safetensors). Cela se paie une fois, à l'installation, et seulement par qui l'a
+demandé : les imports sont paresseux par-dessus, donc rien de cette pile n'est
+chargé avant que vous ne diffusiez réellement un modèle, puis `detect` /
+`recommend` / `report` restent
 instantanés.
 
 Comment une passe avant diffusée se déroule réellement :
@@ -989,13 +999,15 @@ Les tailles viennent d'une constante **mesurée** sur les quatorze entrées Q4 d
 
 `--arena` fusionne en plus les notes de préférence conversationnelle issues des miroirs de [LM Arena](https://lmarena.ai). Deux faits mesurés méritent d'être connus avant d'y recourir.
 
-![Chaque source Arena essayée tour à tour, puis la raison de son échec aujourd'hui](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/arena-staleness.png)
+![Chaque source Arena essayée tour à tour : le tableau officiel n'a aucune API publique, un miroir communautaire répond désormais avec 37 modèles d'un instantané vieux de 21 jours, un collecteur payant est refusé par principe, puis l'historique en vrac a 524 jours](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/arena-staleness.png)
 
-**Cet axe sert le catalogue cloud, pas le catalogue local.** L'Arena note ce avec quoi ses votants peuvent discuter. Apparié aux catalogues livrés (mesuré le 2026-10-19 contre le miroir vivant le plus frais), il couvrait **6 des 10 modèles cloud** de `pricing.yaml` mais seulement **3 des 20 modèles locaux** de `models.yaml`.
+**Elle note des points d'accès hébergés de pointe, puis rien d'autre.** L'Arena note ce avec quoi ses votants peuvent discuter, ce qui donne aujourd'hui des noms comme `claude-opus-5.5-max`, `gpt-6-astra-max` puis `gemini-4-argon-high`. Au relevé du 2026-10-28, cela fait **37 modèles**, dont **aucun n'apparie l'un des deux catalogues livrés** : `models.yaml` porte des tags Ollama à poids ouverts sur lesquels personne ne vote, puis `pricing.yaml` porte des modèles d'API de 2024 que l'Arena a cessé de classer depuis des générations. Les familles se recoupent — `claude`, `gemini`, `gpt` — mais pas les versions, puis coller l'Elo de `claude-opus-5.5-max` sur `claude-3-5-sonnet` serait pire que de ne rien coller. L'appariement refuse, à juste titre.
 
-Les trois appariements locaux en disent plus que le rapport : `qwen2.5-coder:32b`, `qwen3:32b-q4_k_m` et `qwen3:32b-q8_0` — chaque appariement était un modèle 32B, rien de plus petit n'a été apparié. Les quatre modèles d'embedding (`nomic-embed-text`, `mxbai-embed-large`, `snowflake-arctic-embed2`, `bge-m3`) ne peuvent pas être appariés par construction : personne ne discute avec un encodeur, donc aucun classement de préférences conversationnelles n'en notera jamais un. L'axe n'est donc pas simplement « biaisé cloud » : il note de gros modèles conversationnels, ce qui décrit l'essentiel d'une grille tarifaire cloud puis une minorité d'un catalogue local. C'est l'inverse de ce qu'on attend d'un « classement de modèles » ; c'est toute la différence entre bien se servir de cet axe et attendre qu'il départage ce qu'il ne verra jamais. La commande affiche son propre `matched/total` à chaque exécution : vous n'avez pas à croire ce paragraphe sur parole.
+Les modèles d'embedding ne peuvent pas s'apparier par construction : personne ne discute avec un encodeur, donc aucun classement de préférences conversationnelles n'en notera jamais un. La commande imprime son propre `apparié/total` à chaque passage, vous n'avez donc jamais à croire ce paragraphe sur parole.
 
-**Il peut très bien ne rien retourner du tout.** L'Arena ne publie aucune API, donc chaque source ici est le scrape d'un tiers et un scrape pourrit : au 2026-10 le site officiel répond 403, un miroir rend des classements vides puis le miroir vivant le plus frais a plus d'un an. L'adaptateur refuse une capture au-delà de sa limite de péremption en nommant la raison plutôt que de la fusionner, parce qu'un Elo d'une génération précédente classerait les modèles de 2025 au-dessus de ceux de 2026 — strictement pire que pas d'Elo. Le cas échéant la commande le dit et laisse l'axe vide ; elle n'annonce pas un succès qui n'a rien enrichi.
+**C'est le scrape d'un tiers, puis les miroirs pourrissent d'une façon qui ressemble à une panne.** L'Arena ne publie aucune API. Un miroir a cessé d'être mis à jour il y a 524 jours. L'autre tourne tous les jours puis continue de produire un répertoire même les jours où son propre scrape ne rend rien — son index nomme donc un répertoire vide, puis l'adaptateur lisait celui-là, annonçait « aucune donnée utilisable » et s'arrêtait. Il remonte désormais jusqu'au plus récent instantané qui *contient* des données, puis il lit les noms des tableaux dans l'index du miroir au lieu de les deviner : deux des quatre noms devinés (`overall`, `coding`) n'ont jamais été publiés, donc l'axe code restait vide en silence face à un miroir qui le servait sous `code`. C'est la différence entre 0 note puis 37.
+
+Passé `MAX_SNAPSHOT_AGE_DAYS`, l'adaptateur refuse toujours puis nomme la raison, parce qu'un Elo d'une génération précédente classerait les modèles de 2025 au-dessus de ceux de 2026 — strictement pire que pas d'Elo du tout. Il n'annonce jamais un succès qui n'a rien enrichi.
 
 ## Table matérielle
 

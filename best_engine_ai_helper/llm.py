@@ -628,8 +628,8 @@ def _chat_airllm(
     NotImplementedError
         For images or a JSON schema.
     ImportError
-        When the lightweight runtime cannot be imported (it is a core dependency,
-        so that means an incomplete install).
+        When the lightweight runtime cannot be imported — it lives behind the
+        ``lightweight`` extra, so ordinarily that means it was not asked for.
     """
     from . import offload as _offload
 

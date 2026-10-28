@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "best-engine-ai-helper"
-version = "1.9.0"
+version = "1.10.0"
 description = "Pick and pull the best local LLM/VLM for the current hardware."
 authors = [{name = "Warith Harchaoui", email = "warithmetics@deraison.ai"}]
 license = {text = "BSD-3-Clause"}
@@ -46,46 +46,6 @@ dependencies = [
     # signature and breaks fastapi-mcp at import. Pin to the 1.x line until
     # fastapi-mcp ships a 2.x-compatible release (same issue hit md2star).
     "mcp>=1.12,<2",
-    # Layer streaming (offload.py + streaming.py): run a model that does NOT
-    # fit in memory by reading one layer at a time off disk.
-    #
-    # This used to be `airllm`. It is now this project's own `streaming.py`,
-    # and the dependency is gone, for three measured reasons:
-    #
-    #   It did not work on Apple Silicon at all. airllm's `AutoModel` skips
-    #   architecture dispatch on macOS and hard-returns a hand-written Llama
-    #   transformer in MLX, so Qwen (attention biases), Llama 3.2 (tied
-    #   embeddings, no lm_head tensor) and older exports (persisted
-    #   `rotary_emb.inv_freq`) each failed differently. That is the platform
-    #   this suite is developed on.
-    #
-    #   It wrote a second copy of the checkpoint to disk before running, so
-    #   streaming a 70B needed ~294 GB of scratch on top of the download.
-    #   Reading per-tensor out of the original safetensors needs none.
-    #
-    #   It pulled MLX and bitsandbytes with it, both of which leave with it.
-    #
-    # What stays is what the technique actually needs, and all of it was
-    # already here: torch runs the layers (and speaks Metal, which is what
-    # makes Apple Silicon work), transformers owns the forward pass so the
-    # architecture is whatever it knows, accelerate provides the meta-device
-    # construction and tensor placement, safetensors provides the
-    # memory-mapped per-tensor reads, huggingface-hub fetches the weights.
-    # Declared directly because the code imports them by name, not by luck.
-    "torch>=2.4",
-    "transformers>=4.49,<7",
-    "accelerate>=0.30",
-    "safetensors>=0.4",
-    "huggingface-hub>=0.24",
-    # Text-to-image (imagine.py), the third kind of model this package chooses.
-    # Core for the same reason layer streaming is: "what can this machine run" covers
-    # pixels as well as text, and the OpenAI-compatible surface advertises an
-    # image endpoint, which has to work rather than apologise. The incremental
-    # cost is small — torch and transformers are already here for layer
-    # streaming, so this adds a few megabytes of Python plus Pillow — and the
-    # import is lazy, so nothing of it is paid until an image is asked for.
-    # Weights download on first use, like every other model here.
-    "diffusers>=0.31,<1",
 ]
 
 [project.optional-dependencies]
@@ -103,13 +63,44 @@ cloud = [
     "Faker>=25",
     "keyring>=24",
 ]
-# Two empty aliases, not deletions. `[airllm]` was published in release notes
-# and is in a lockfile somewhere; `[lightweight]` is the name the feature has
-# now and the one a reader will reach for. An unknown extra is a hard
-# resolution error, so both resolve to nothing rather than to a failure --
-# layer streaming is core either way, and the runtime it used to name is gone.
-airllm = []
-lightweight = []
+# The deep-learning runtime, and it is not in the base install.
+#
+# This package's job is to say WHICH model to run. Everything that decides
+# that -- the catalogues, the scoring, the hardware probe, the footprint and
+# timing arithmetic behind `rank`, `imagine_rank` and `imagine_pick` -- is
+# plain Python over a table, and runs with none of what follows installed.
+# Only the four modules that actually RUN a model need it (`streaming.py` and
+# `offload.py` for layer streaming, `imagine.py` for text-to-image,
+# `safety.py` for CLIP screening via `[filtered]` below), and all four import
+# it lazily, inside the functions that use it.
+#
+# It was core for three days and the measurement is why it is not any more: a
+# base install is a few megabytes, these are 196 MB on a processor-only wheel
+# and gigabytes of nvidia-* payload when pip takes the CUDA build -- which on
+# Linux it does by default. A caller asking which model fits their laptop
+# should not download a deep-learning stack to be told. The capability probes
+# (`imagine.available`, `offload.available`) already answer False cleanly and
+# name what to install, because they were written for a stripped container
+# and a Mac without `mlx` before they were ever needed for this.
+lightweight = [
+    "torch>=2.4",
+    "transformers>=4.49,<7",
+    "accelerate>=0.30",
+    "safetensors>=0.4",
+    "huggingface-hub>=0.24",
+]
+imagine = [
+    "diffusers>=0.31,<1",
+    "best-engine-ai-helper[lightweight]",
+]
+# `[airllm]` was published in release notes and is in a lockfile somewhere.
+# It was an empty alias while layer streaming was core; now that the runtime
+# is an extra again, the old spelling resolves to the new one rather than to
+# nothing, so a lockfile written against it still installs something that
+# works.
+airllm = ["best-engine-ai-helper[lightweight]"]
+# Everything a caller needs to run a model rather than choose one.
+generate = ["best-engine-ai-helper[imagine,lightweight]"]
 # NSFW / policy filtering for chat(safety=...) (safety.py): a DistilBERT model
 # fine-tuned for NSFW text (via transformers), and LAION's CLIP-based NSFW
 # image detector -- transformers for the CLIP ViT-L/14 encoder, onnxruntime
@@ -118,11 +109,10 @@ lightweight = []
 # docstring). Optional -- text degrades to a crude keyword heuristic without
 # it; images degrade to "unavailable" (never a fabricated verdict) without it.
 filtered = [
-    # transformers and torch below are already satisfied by the core layer
-    # streaming dependencies; they stay listed because this extra states what
-    # IT needs,
-    # and a reader of this block should not have to know where else they
-    # happen to come from.
+    # Listed in full because this extra states what IT needs. They overlap
+    # with `[lightweight]` above and a reader of this block should not have
+    # to know that, nor rely on it: installing `[filtered]` alone has to be
+    # enough.
     "transformers>=4.30",
     # transformers alone does not pull in an inference backend -- without
     # this, both classifiers below load their tokenizer/config fine but
