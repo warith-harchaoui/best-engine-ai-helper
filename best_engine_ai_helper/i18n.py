@@ -146,4 +146,8 @@ def prompt(key: str, field: str = "user") -> str:
     >>> prompt("writing_charter_excerpt", "text").startswith("Rule 5")
     True
     """
-    return prompts().text(key, field=field)
+    # os_helper's accessors are untyped under some installed versions, so the
+    # return is `Any` there and typed here. Narrowing at the boundary keeps
+    # the signature a promise rather than a hope, and keeps mypy's verdict
+    # the same whichever os_helper the machine has.
+    return str(prompts().text(key, field=field))

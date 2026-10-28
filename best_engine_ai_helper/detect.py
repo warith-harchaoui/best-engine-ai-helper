@@ -57,7 +57,7 @@ def platform_name() -> str:
     >>> platform_name() in ('darwin', 'linux', 'windows')
     True
     """
-    return osh.platform_name()
+    return str(osh.platform_name())
 
 
 def chip_vendor() -> str:
@@ -75,7 +75,7 @@ def chip_vendor() -> str:
     >>> chip_vendor() in ('apple', 'nvidia', 'amd', 'intel', 'cpu')
     True
     """
-    return osh.gpu_vendor()
+    return str(osh.gpu_vendor())
 
 
 def chip_name() -> str | None:
@@ -84,7 +84,8 @@ def chip_name() -> str | None:
     Delegates to :func:`os_helper.apple_chip_name`; None on non-macOS
     platforms or when the chip line is absent (old Intel Macs).
     """
-    return osh.apple_chip_name()
+    chip = osh.apple_chip_name()
+    return str(chip) if chip is not None else None
 
 
 # ---------------------------------------------------------------------------

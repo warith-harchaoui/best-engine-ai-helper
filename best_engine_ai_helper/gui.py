@@ -145,12 +145,12 @@ def _catalog() -> osh.Catalog:
 
 def supported_languages() -> tuple[str, ...]:
     """Language codes the GUI can render: English plus every compiled catalogue."""
-    return _catalog().languages
+    return tuple(str(code) for code in _catalog().languages)
 
 
 def default_language() -> str:
     """The language an unknown or absent ``?lang=`` falls back to."""
-    return _catalog().default_language
+    return str(_catalog().default_language)
 
 
 # The language toggle is computed, not translated. Both of its parts mean "the
@@ -1006,7 +1006,7 @@ def render_gui(lang: str = _DEFAULT_LANG) -> str:
         href) as readily as in text nodes, and a French apostrophe — or the
         curly quotes in the task placeholder — would close the attribute early.
         """
-        return html.escape(translate(match.group(1)), quote=True)
+        return str(html.escape(translate(match.group(1)), quote=True))
 
     page = _SOURCE_RE.sub(_render_source, _GUI_TEMPLATE)
     page = page.replace("{{LANG}}", html.escape(resolved, quote=True))

@@ -380,6 +380,16 @@ All notable changes to best-engine-ai-helper are documented here.
   convention — a name is not a secret, the brief still overrides it, and
   presence is reported separately.
 
+- **Seven `no-any-return` errors that only one of two mypy installations
+  reported.** `os_helper`'s accessors are untyped under some installed
+  versions, so `detect.platform_name`, `gui.supported_languages` and four
+  others returned `Any` through a declared `str`. The errors are *located* in
+  this package, which is why `gate.sh`'s "every error is in a dependency"
+  heuristic could not recognise them as an environment difference — it blocked
+  a push on a verdict about the machine. Narrowed at the boundary instead, so
+  both installations now agree and the signature is a promise rather than a
+  hope.
+
 - **`imagine.pick` printed `at about None s`** when no model cleared the
   comfort mark and the machine's memory bandwidth was unknown, which reads as a
   measurement. It now says the rate cannot be estimated.
