@@ -488,7 +488,7 @@ plutôt que supposées :
 
 Celui-ci lit un tenseur à la fois directement dans les safetensors du
 checkpoint — mémoire-mappés, avec leur propre index — donc **aucun espace de
-travail n'est nécessaire**, et `transformers` garde la passe avant, donc
+travail n'est nécessaire**. `transformers` garde la passe avant, donc
 l'architecture est celle que `transformers` connaît. Apple Silicon, c'est
 torch sur Metal (MPS), pas un second cadriciel.
 
