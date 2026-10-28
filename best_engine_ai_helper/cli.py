@@ -1399,6 +1399,13 @@ def airllm_status(measure: bool, as_json: bool, request: str | None) -> None:
     click.echo(f"\n  {decision['reason']}")
     for blocker in decision["blockers"]:
         click.echo(f"  - {blocker}")
+    # Caveats are not blockers: streaming starts here, and then whether it
+    # finishes depends on the checkpoint. Printed because the alternative is
+    # that the user discovers it from a stack trace halfway through a load.
+    if decision.get("caveats"):
+        click.echo("\n  Known limits of this runtime:")
+        for caveat in decision["caveats"]:
+            click.echo(f"  - {caveat}")
     if not decision["installed"]:
         click.echo(f"\n  Repair the install:  {_offload.INSTALL_HINT}")
     click.echo()

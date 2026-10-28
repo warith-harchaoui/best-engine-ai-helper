@@ -754,6 +754,85 @@ def test_generate_strips_the_echoed_prompt(fake_airllm: types.ModuleType) -> Non
     assert answer == "the streamed answer"
 
 
+@pytest.fixture()
+def fake_airllm_mlx(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    """airllm as it really behaves on macOS, plus a stand-in for ``mlx.core``.
+
+    Both halves are faked on purpose. mlx has no Linux wheel, so a test that
+    imported the real one would pass on a Mac and be skipped-or-broken on the
+    CI runner -- the exact host dependence that let the streaming path stay
+    dead on macOS without any test noticing.
+    """
+
+    class _Tokenizer:
+        def __call__(self, prompts: list[str], **_: Any) -> dict[str, Any]:
+            return {"input_ids": [[7, 8, 9]]}
+
+    class _MlxModel:
+        """`AirLLMLlamaMlx`: no `.device`, and `generate` returns decoded text."""
+
+        tokenizer = _Tokenizer()
+        calls: list[dict[str, Any]] = []
+
+        def generate(self, x: Any, **kwargs: Any) -> str:
+            _MlxModel.calls.append({"x": x, **kwargs})
+            return "  the streamed answer"
+
+    class _AutoModel:
+        @staticmethod
+        def from_pretrained(model: str, **kwargs: Any) -> _MlxModel:
+            return _MlxModel()
+
+    airllm_module = types.ModuleType("airllm")
+    airllm_module.AutoModel = _AutoModel  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "airllm", airllm_module)
+
+    seen: dict[str, Any] = {}
+    core = types.ModuleType("mlx.core")
+
+    def _array(value: Any) -> str:
+        seen["array"] = value
+        return f"mlx:{value}"
+
+    core.array = _array  # type: ignore[attr-defined]
+    mlx_module = types.ModuleType("mlx")
+    mlx_module.core = core  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "mlx", mlx_module)
+    monkeypatch.setitem(sys.modules, "mlx.core", core)
+    return {"calls": _MlxModel.calls, "seen": seen}
+
+
+def test_generate_runs_on_the_mlx_runtime_which_has_no_device(
+    fake_airllm_mlx: dict[str, Any],
+) -> None:
+    """The Apple Silicon path, which used to raise before reaching the model.
+
+    `generate` placed its tokens with `tokens["input_ids"].to(instance.device)`,
+    and airllm's macOS class — which `AutoModel.from_pretrained` hard-returns
+    there, whatever the architecture — has no `.device`. So every Apple Silicon
+    machine got `AttributeError: 'AirLLMLlamaMlx' object has no attribute
+    'device'`, on the platform this suite is developed on. `load` succeeded,
+    which is what made it look fine.
+
+    Found by running it against a real checkpoint rather than by reading, and
+    pinned here so the two runtimes' genuinely different contracts stay
+    covered: mlx array in, decoded continuation out, nothing to strip.
+    """
+    answer = offload.generate("Hello", model="x/y", max_new_tokens=8)
+
+    # Already decoded by airllm, and only the continuation — so the adapter
+    # must not try to slice a prompt off the front of it.
+    assert answer == "the streamed answer"
+
+    call = fake_airllm_mlx["calls"][-1]
+    # The ids went through `mlx.core.array`, not through torch's `.to(device)`.
+    assert call["x"] == "mlx:[[7, 8, 9]]"
+    assert fake_airllm_mlx["seen"]["array"] == [[7, 8, 9]]
+    # Not optional on this path: airllm's MLX loop compares `len(tokens) >=
+    # max_new_tokens` and raises on None.
+    assert call["max_new_tokens"] == 8
+
+
 def test_an_unimportable_runtime_raises_the_repair_command() -> None:
     """airllm is a core dependency, so this path means a broken install.
 

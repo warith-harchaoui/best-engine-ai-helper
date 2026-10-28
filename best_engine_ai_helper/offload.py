@@ -1415,6 +1415,65 @@ def plan(
     }
 
 
+#: What the Apple Silicon path cannot do, established by running it rather
+#: than by reading about it. airllm's ``AutoModel.from_pretrained`` dispatches
+#: on architecture everywhere EXCEPT macOS, where it hard-returns
+#: ``AirLLMLlamaMlx`` whatever the model is -- a hand-written Llama transformer
+#: in MLX whose projections are all ``bias=False``.
+#:
+#: Measured on an M-series Mac against real checkpoints:
+#:
+#: - ``TinyLlama-1.1B-Chat`` (Llama architecture, untied embeddings) streams
+#:   and generates correctly. The path works.
+#: - ``Llama-3.2-1B-Instruct`` fails at ``lm_head``: it ties its embeddings, so
+#:   no ``lm_head`` tensor exists, and the empty shard will not load.
+#: - ``JackFram/llama-160m`` fails on ``rotary_emb``: older exports persist
+#:   ``inv_freq``, which the MLX block has no parameter for.
+#:
+#: Stated as caveats rather than enforced as a filter on purpose. The honest
+#: signal here is the architecture of the weights, which the catalogue does not
+#: carry, and guessing it from a model id would hide working models as
+#: confidently as it would flag broken ones. Telling the truth beats a filter
+#: built on a guess.
+MLX_CAVEATS: tuple[str, ...] = (
+    "on macOS airllm serves every model through its Llama MLX class whatever "
+    "the architecture, so a non-Llama checkpoint (Qwen, Gemma, Mixtral) is "
+    "unlikely to load even when this plan says it fits",
+    "a checkpoint with tied embeddings (no separate lm_head, e.g. Llama 3.2) "
+    "fails when the lm_head shard is read",
+)
+
+
+def caveats(runtime_name: str | None) -> tuple[str, ...]:
+    """
+    Known limitations of a runtime, as sentences for a human.
+
+    Separate from ``blockers``: a blocker says streaming cannot start, a caveat
+    says it starts and then depends on the model. Both belong in the engine
+    file, because the consumer reading it is the one that finds out otherwise.
+
+    Parameters
+    ----------
+    runtime_name : str or None
+        Output of :func:`runtime`.
+
+    Returns
+    -------
+    tuple[str, ...]
+        Empty for every runtime with nothing known against it.
+
+    Examples
+    --------
+    >>> caveats("cuda")
+    ()
+    >>> len(caveats("mlx"))
+    2
+    >>> caveats(None)
+    ()
+    """
+    return MLX_CAVEATS if runtime_name == "mlx" else ()
+
+
 def decide(
     *,
     request: object = None,
@@ -1526,6 +1585,7 @@ def decide(
             "runtime": runtime_name,
             "disk": disk,
             "blockers": blockers,
+            "caveats": caveats(runtime_name),
         }
 
     if wanted == "auto" and conventional_resolved:
@@ -1542,6 +1602,7 @@ def decide(
             "runtime": runtime_name,
             "disk": disk,
             "blockers": blockers,
+            "caveats": caveats(runtime_name),
         }
 
     trigger = "manual" if wanted == "always" else "fallback"
@@ -1558,6 +1619,7 @@ def decide(
             "runtime": runtime_name,
             "disk": disk,
             "blockers": blockers,
+            "caveats": caveats(runtime_name),
         }
 
     reason = (
@@ -1576,6 +1638,7 @@ def decide(
         "runtime": runtime_name,
         "disk": disk,
         "blockers": blockers,
+        "caveats": caveats(runtime_name),
     }
 
 
@@ -2208,6 +2271,34 @@ def generate(
             max_seq_len=max_seq_len,
         )
     )
+    # Two runtimes, two genuinely different contracts, and the difference is
+    # not cosmetic -- it is why this function used to raise `AttributeError:
+    # 'AirLLMLlamaMlx' object has no attribute 'device'` on every Apple
+    # Silicon machine, which is to say on the platform this suite is developed
+    # on. `load` succeeded there and `generate` could not run at all.
+    #
+    # On CUDA/ROCm airllm returns a transformers model: it wants a torch
+    # tensor placed on `.device` and hands back a sequences tensor holding
+    # prompt + continuation, to be decoded here.
+    #
+    # On macOS airllm's `AutoModel.from_pretrained` hard-returns
+    # `AirLLMLlamaMlx`, which has no `.device`, takes an **mlx** array, and
+    # returns text it has already decoded -- and only the continuation, since
+    # it decodes the tokens it generated rather than the whole sequence. So
+    # there is nothing to strip off the front either.
+    #
+    # Told apart by asking the instance rather than the platform: `.device` is
+    # the attribute whose absence is the whole difference, and a duck-typed
+    # check keeps a fake runtime usable in tests without faking `sys.platform`.
+    if getattr(instance, "device", None) is None:
+        import mlx.core as mx
+
+        encoded = instance.tokenizer([prompt], return_attention_mask=False, truncation=True)
+        # `max_new_tokens` is not optional on this path: the MLX loop compares
+        # `len(tokens) >= max_new_tokens` and would raise on None.
+        text = instance.generate(mx.array(encoded["input_ids"]), max_new_tokens=max_new_tokens)
+        return str(text).lstrip()
+
     tokens = instance.tokenizer(
         [prompt], return_tensors="pt", return_attention_mask=False, truncation=True
     )
