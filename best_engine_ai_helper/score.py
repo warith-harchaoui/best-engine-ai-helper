@@ -41,11 +41,26 @@ import os_helper as osh
 _APP_BENCH_PRIORITY: dict[str, list[str]] = {
     "code": ["code", "general", "arena_code", "arena"],
     "math": ["math", "general", "arena"],
-    "ocr": ["ocr", "vision", "arena_vision", "general"],
-    "vision": ["vision", "arena_vision", "general"],
+    "ocr": ["ocr", "vision", "arena_vision", "general", "arena"],
+    "vision": ["vision", "arena_vision", "general", "arena"],
     "chat": ["arena", "general"],
     "generalist": ["general", "arena"],
 }
+
+# What `application=None` means, per kind. Every surface that does not ask for
+# a use case -- `select`, `rank`, `rank_cloud`, `storage`, the MCP tools, `/v1`
+# -- lands here, so this is the rule that runs most of the time.
+#
+# It used to be written out a second time inside `_benchmark_score` as "vision
+# axis for a VLM, general for an LLM", and the two rules disagreed about
+# exactly one thing: the Arena axes. `catalog update --arena` writes `arena`
+# onto entries whose every other axis is null (ApXML and the Ollama library
+# publish no benchmarks at all), and the default rule could not read it -- so
+# the refresh that had just scored a model ranked it at 0.0, below every
+# hand-scored seed entry, while the same entry asked for as `--application
+# generalist` scored 84. One table now, so a default call and an explicit
+# `generalist` call cannot answer differently.
+_DEFAULT_APPLICATION: dict[str, str] = {"llm": "generalist", "vlm": "vision"}
 
 
 # Fraction of an Apple Silicon unified-memory pool the GPU (Metal) may use
@@ -562,10 +577,16 @@ def _benchmark_score(
     """
     Extract the relevant benchmark score for ranking.
 
-    When *application* is given it is looked up in ``_APP_BENCH_PRIORITY`` and
-    the first non-null benchmark in that priority list is used.  When absent
-    (or unknown) the legacy rule applies: vision score for VLMs, general for
-    LLMs.  Falls back to 0 when no matching score is found.
+    *application* is looked up in :data:`_APP_BENCH_PRIORITY` and the first
+    non-null benchmark in that priority list is used. ``None`` -- and any
+    keyword the table does not know -- resolves through
+    :data:`_DEFAULT_APPLICATION` to ``vision`` for a VLM and ``generalist``
+    for an LLM, so there is exactly one rule rather than a default rule that
+    can drift from the named one. Falls back to 0.0 when every axis in the
+    list is null.
+
+    Explicit ``is not None`` checks throughout, so a legitimately-recorded
+    score of 0.0 is honoured rather than silently treated as missing.
 
     Parameters
     ----------
@@ -575,33 +596,132 @@ def _benchmark_score(
         The inference kind being selected.
     application : str or None
         Optional use-case keyword (e.g. ``"code"``, ``"math"``, ``"ocr"``).
-        ``None`` or ``"generalist"`` use the default kind-based rule.
+        ``None`` uses the kind's default list.
 
     Returns
     -------
     float
         Benchmark score, or 0.0 if absent.
+
+    Examples
+    --------
+    An entry scored only by LM Arena -- which is every entry a
+    ``catalog update --arena`` refresh touches, since the spec sources
+    publish no benchmarks -- is read by the default path, not ranked at zero:
+
+    >>> refreshed = {"benchmarks": {"general": None, "arena": 84.0}}
+    >>> _benchmark_score(refreshed, "llm")
+    84.0
+    >>> _benchmark_score(refreshed, "llm", "generalist")   # same answer
+    84.0
+
+    A measured score always beats the fallback behind it:
+
+    >>> _benchmark_score({"benchmarks": {"general": 60, "arena": 84.0}}, "llm")
+    60.0
+    """
+    found = resolve_benchmark(entry, kind, application)
+    return 0.0 if found is None else found[1]
+
+
+def benchmark_score_or_none(
+    entry: dict[str, Any],
+    kind: Literal["llm", "vlm"],
+    application: str | None = None,
+) -> float | None:
+    """
+    Same lookup as :func:`_benchmark_score`, but None when no axis is populated.
+
+    The two answers ``_benchmark_score`` cannot tell apart are "measured at
+    zero" and "nobody measured it", and it reports both as ``0.0``. Sorting by
+    raw score does not care -- an unscored model goes last either way. A
+    min-max *normalisation* does: a single unscored candidate pulls the bottom
+    of the quality range down to zero, compressing every real score toward the
+    top and quietly handing the decision to whatever axis it is blended with
+    (see :func:`cloud_catalog.rank_cloud`, where that axis is price).
+
+    So the caller that normalises asks this one, and leaves the unscored out of
+    the range rather than at the floor of it.
+
+    Parameters
+    ----------
+    entry : dict[str, Any]
+        A catalog entry dict.
+    kind : {'llm', 'vlm'}
+        The inference kind being selected.
+    application : str or None
+        Optional use-case keyword; resolved exactly as in
+        :func:`_benchmark_score`.
+
+    Returns
+    -------
+    float or None
+        The score, or None when every axis in the priority list is null.
+
+    Examples
+    --------
+    >>> benchmark_score_or_none({"benchmarks": {"general": 0.0}}, "llm")
+    0.0
+    >>> benchmark_score_or_none({"benchmarks": {"general": None}}, "llm") is None
+    True
+    >>> benchmark_score_or_none({"benchmarks": {"arena_code": 96.1}}, "llm") is None
+    True
+    """
+    found = resolve_benchmark(entry, kind, application)
+    return None if found is None else found[1]
+
+
+def resolve_benchmark(
+    entry: dict[str, Any],
+    kind: Literal["llm", "vlm"],
+    application: str | None = None,
+) -> tuple[str, float] | None:
+    """
+    Which axis supplies this entry's score, and what it says.
+
+    The single implementation behind :func:`_benchmark_score` and
+    :func:`benchmark_score_or_none` — and the one a caller asks when the axis
+    matters as much as the number. It often does: a priority list falls through
+    until something is populated, so two candidates in the same ranking can be
+    scored on different measurements. 88 from an MMLU-style suite and 86 from a
+    human-preference leaderboard are both "out of 100" and are not the same
+    quantity, and a table that prints only the numbers invites a comparison
+    nobody verified.
+
+    Parameters
+    ----------
+    entry : dict[str, Any]
+        A catalog entry dict.
+    kind : {'llm', 'vlm'}
+        The inference kind being selected.
+    application : str or None
+        Optional use-case keyword; ``None`` resolves through
+        :data:`_DEFAULT_APPLICATION`.
+
+    Returns
+    -------
+    tuple[str, float] or None
+        ``(axis name, score)``, or None when every axis in the list is null.
+
+    Examples
+    --------
+    >>> resolve_benchmark({"benchmarks": {"general": 88}}, "llm")
+    ('general', 88.0)
+    >>> resolve_benchmark({"benchmarks": {"general": None, "arena": 85.2}}, "llm")
+    ('arena', 85.2)
+    >>> resolve_benchmark({"benchmarks": {}}, "llm") is None
+    True
     """
     benchmarks = entry.get("benchmarks") or {}
-
-    if application:
-        priority = _APP_BENCH_PRIORITY.get(application.lower())
-        if priority:
-            for key in priority:
-                val = benchmarks.get(key)
-                if val is not None:
-                    return float(val)
-            return 0.0
-
-    # Default: vision axis for VLMs, general for LLMs. Explicit None checks
-    # (not `or`) so a legitimately-recorded score of 0.0 is honoured rather
-    # than silently treated as missing and replaced by a fallback axis.
-    if kind == "vlm":
-        vision = benchmarks.get("vision")
-        score = vision if vision is not None else benchmarks.get("general")
-    else:
-        score = benchmarks.get("general")
-    return float(score) if score is not None else 0.0
+    key = (application or "").strip().lower()
+    priority = _APP_BENCH_PRIORITY.get(key)
+    if priority is None:
+        priority = _APP_BENCH_PRIORITY[_DEFAULT_APPLICATION["vlm" if kind == "vlm" else "llm"]]
+    for axis in priority:
+        val = benchmarks.get(axis)
+        if val is not None:
+            return axis, float(val)
+    return None
 
 
 def select(

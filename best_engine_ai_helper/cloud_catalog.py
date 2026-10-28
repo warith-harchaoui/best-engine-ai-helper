@@ -29,7 +29,7 @@ from typing import Any, Literal
 import os_helper as osh
 import yaml
 
-from .score import _benchmark_score
+from .score import resolve_benchmark
 
 # pricing.yaml sits next to pyproject.toml, same convention as models.yaml /
 # hardware.yaml / usages.yaml (see catalog.py) and observe.py's _PRICING_PATH.
@@ -129,12 +129,10 @@ def load_cloud_catalog(path: Path | None = None) -> list[dict[str, Any]]:
 
     # Overlay the refreshed cache, same contract as the local catalogue: the
     # bundled seed is never modified, the cache wins field by field, and
-    # deleting the cache returns you to the seed. A cached entry only ever
-    # carries repriceable fields (see `reprice`), so the seed's benchmark
-    # scores survive a refresh that has none of its own.
+    # deleting the cache returns you to the seed.
     cached = _read_models(_CLOUD_CACHE_PATH) if path is None else {}
     if cached:
-        osh.info(f"Overlaying {len(cached)} repriced cloud entry(ies):\n\t{_CLOUD_CACHE_PATH}")
+        osh.info(f"Overlaying {len(cached)} cached cloud entry(ies):\n\t{_CLOUD_CACHE_PATH}")
 
     entries = []
     for model_id, spec in models.items():
@@ -142,11 +140,120 @@ def load_cloud_catalog(path: Path | None = None) -> list[dict[str, Any]]:
         overlay = cached.get(model_id)
         if isinstance(overlay, dict):
             merged.update({k: v for k, v in overlay.items() if k in REPRICEABLE})
+            merged.update(_rescored(merged, overlay))
         entries.append(merged)
+
+    # Entries the cache carries and the seed does not. This loop used to not
+    # exist, and its absence quietly capped the paid catalogue at whatever the
+    # seed held: `catalog update --cloud --arena` would adopt eighteen current
+    # models, write them, and then nothing would ever read them back, because
+    # loading walked the seed's ids and treated the cache as an overlay only.
+    # The local catalogue has always merged both ways — that is how ApXML's
+    # entries reach a report — so this was an asymmetry, not a policy.
+    for model_id, spec in cached.items():
+        if model_id in models or not isinstance(spec, dict):
+            continue
+        entry = {"id": model_id, **spec}
+        if not _rankable(entry):
+            osh.warning(
+                f"Ignoring cached cloud entry with no price or no score:\n\t{model_id}\n\t"
+                "rank_cloud would rate it worst on both axes, which says more about "
+                "the gap in the entry than about the model."
+            )
+            continue
+        entries.append(entry)
 
     osh.info(f"Loaded {len(entries)} cloud model(s) from:\n\t{catalog_path}")
     _warn_if_stale_once()
     return entries
+
+
+def _rescored(seed: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
+    """
+    The quality fields a cached entry may contribute to a seed entry.
+
+    :data:`REPRICEABLE` is about what a *price* source may overwrite, and
+    ``benchmarks`` is deliberately not in it. But a cache can also hold what a
+    *rating* source added, and dropping that on load would make
+    ``catalog update --cloud --arena`` score an entry and then forget it.
+
+    The merge is additive and the seed always wins: a cached axis is taken only
+    where the seed has none. A hand-written score is somebody's judgement with
+    a provider's paper behind it; a leaderboard axis fills a hole rather than
+    overruling one.
+
+    Parameters
+    ----------
+    seed : dict[str, Any]
+        The entry as the bundled catalogue has it (already repriced).
+    overlay : dict[str, Any]
+        The cached entry of the same id.
+
+    Returns
+    -------
+    dict[str, Any]
+        Fields to apply; empty when the cache adds nothing.
+
+    Examples
+    --------
+    >>> seed = {"benchmarks": {"general": 88, "arena": None}}
+    >>> over = {"benchmarks": {"general": 60, "arena": 85.2},
+    ...         "arena_snapshot": "2026-10-07"}
+    >>> _rescored(seed, over)["benchmarks"]
+    {'general': 88, 'arena': 85.2}
+    >>> _rescored(seed, over)["arena_snapshot"]
+    '2026-10-07'
+    >>> _rescored(seed, {}) == {}
+    True
+    """
+    update: dict[str, Any] = {}
+    scores = dict(seed.get("benchmarks") or {})
+    added = False
+    for axis, value in (overlay.get("benchmarks") or {}).items():
+        if value is not None and scores.get(axis) is None:
+            scores[axis] = value
+            added = True
+    if added:
+        update["benchmarks"] = scores
+    for key in ("arena_snapshot", "arena_matched"):
+        if key in overlay:
+            update[key] = overlay[key]
+    return update
+
+
+def _rankable(entry: dict[str, Any]) -> bool:
+    """
+    Whether an entry carries both halves :func:`rank_cloud` needs.
+
+    A paid entry is only a candidate if somebody priced it and somebody scored
+    it. Missing either, it is rated worst on that axis and drags the min-max
+    normalisation of the whole pool — which is the exact failure the adoption
+    rule exists to prevent, so the loader refuses to let one in through the
+    cache either.
+
+    Parameters
+    ----------
+    entry : dict[str, Any]
+        A candidate cloud entry.
+
+    Returns
+    -------
+    bool
+        True when the entry has a positive input price and at least one
+        non-null benchmark axis.
+
+    Examples
+    --------
+    >>> _rankable({"input_per_1m": 2.0, "benchmarks": {"arena": 85.0}})
+    True
+    >>> _rankable({"input_per_1m": 2.0, "benchmarks": {"arena": None}})
+    False
+    >>> _rankable({"benchmarks": {"arena": 85.0}})
+    False
+    """
+    if not (entry.get("input_per_1m") or 0) > 0:
+        return False
+    return any(v is not None for v in (entry.get("benchmarks") or {}).values())
 
 
 def _read_models(path: Path) -> dict[str, dict[str, Any]]:
@@ -257,6 +364,165 @@ def reprice(
         updated.update({k: v for k, v in live.items() if k in REPRICEABLE})
         merged.append(updated)
     return merged, missing
+
+
+#: Which provider wins when the price table lists one id under several. A
+#: first-party endpoint before a reseller: the reseller's price carries its own
+#: margin, and its id is a routing alias rather than the name the model's own
+#: API answers to.
+_PROVIDER_PREFERENCE: tuple[str, ...] = (
+    "openai",
+    "anthropic",
+    "gemini",
+    "mistral",
+    "together",
+    "openrouter",
+)
+
+#: Quality axes this catalog keeps by hand. Written out as explicit nulls on an
+#: adopted entry, so the file says "no source for this axis" rather than
+#: leaving a reader to infer it from an absence.
+_UNSCORED_AXES: dict[str, float | None] = {
+    "general": None,
+    "code": None,
+    "math": None,
+    "ocr": None,
+    "vision": None,
+}
+
+
+def adopt_rated(
+    fetched: list[dict[str, Any]],
+    ratings: dict[str, Any],
+    known: set[str],
+) -> list[dict[str, Any]]:
+    """
+    Build catalog entries for priced models that a rating source also rates.
+
+    This is the rule that was missing, and the reason the paid catalog sat at
+    ten models from 2024 while the price source knew three hundred. The seed
+    could be *repriced* from a source, never *extended* from one, because an
+    entry needs a quality score to be rankable and the price table publishes
+    none. So the catalog could learn what a model cost and never that it
+    existed.
+
+    An entry is adopted only where **both** sources speak about the same model:
+    a list price from the price table, and a rating from the leaderboard. That
+    is two citations, neither of them invented, and it is the whole admission
+    test -- a priced model nobody rated is still not adopted, and a rated model
+    nobody prices still cannot be billed.
+
+    What is deliberately *not* filled in: ``general``, ``code``, ``math``,
+    ``ocr`` and ``vision`` stay null. The leaderboard measures conversational
+    preference; synthesising an MMLU-style number from it would put a
+    measurement-shaped claim in a file that bills people. ``score`` reads the
+    Arena axes directly (see ``score._APP_BENCH_PRIORITY``), so a null there
+    costs nothing.
+
+    Parameters
+    ----------
+    fetched : list[dict[str, Any]]
+        Normalised price rows (:func:`sources.litellm_prices.fetch_cloud_prices`).
+    ratings : dict[str, Any]
+        A :func:`sources.arena.fetch_arena_ratings` result.
+    known : set[str]
+        Ids the catalog already carries; those are repriced, not re-adopted.
+
+    Returns
+    -------
+    list[dict[str, Any]]
+        Adoptable entries, cheapest first. Empty when the two sources share no
+        model, which is a normal outcome and not an error.
+
+    Examples
+    --------
+    >>> priced = [
+    ...     {"id": "claude-opus-5-5", "provider": "anthropic", "kind": "vlm",
+    ...      "input_per_1m": 4.0, "output_per_1m": 20.0, "source": "litellm",
+    ...      "fetched_at": "2026-10-28"},
+    ...     {"id": "nobody-rates-this", "provider": "openai", "kind": "llm",
+    ...      "input_per_1m": 1.0, "output_per_1m": 2.0, "source": "litellm",
+    ...      "fetched_at": "2026-10-28"},
+    ... ]
+    >>> rated = {"snapshot": "2026-10-07",
+    ...          "scores": {"arena": {"claude-opus-5.5-high": 85.2}}}
+    >>> adopted = adopt_rated(priced, rated, known=set())
+    >>> [e["id"] for e in adopted]           # priced AND rated, only
+    ['claude-opus-5-5']
+    >>> adopted[0]["benchmarks"]["arena"], adopted[0]["benchmarks"]["general"]
+    (85.2, None)
+    >>> adopted[0]["source"]
+    'litellm+arena'
+    """
+    from .sources import arena
+
+    if not (ratings.get("scores") or {}):
+        return []
+
+    # One id, one entry. The price table lists the same model under every
+    # provider that resells it, and the catalog is keyed by id, so a duplicate
+    # would make which price you are quoted depend on iteration order.
+    best: dict[str, dict[str, Any]] = {}
+    for entry in fetched:
+        model_id = str(entry.get("id") or "")
+        provider = str(entry.get("provider") or "")
+        if not model_id or model_id in known:
+            continue
+        if entry.get("kind") not in {"llm", "vlm"}:
+            continue
+        # A zero list price is a preview or experimental tier rather than
+        # something you can buy, and ranking on it would make the unbuyable
+        # option always win on cost.
+        if not (entry.get("input_per_1m") or 0) > 0:
+            continue
+        incumbent = best.get(model_id)
+        if incumbent is None or _preference(provider) < _preference(
+            str(incumbent.get("provider") or "")
+        ):
+            best[model_id] = entry
+
+    candidates = sorted(best.values(), key=lambda e: str(e["id"]))
+    merged, _report = arena.merge_into(candidates, ratings)
+
+    adopted: list[dict[str, Any]] = []
+    for entry in merged:
+        if not entry.get("arena_matched"):
+            continue
+        row = dict(entry)
+        row["benchmarks"] = {**_UNSCORED_AXES, **(entry.get("benchmarks") or {})}
+        row["source"] = "litellm+arena"
+        adopted.append(row)
+
+    adopted.sort(key=lambda e: (e.get("input_per_1m") or 0.0, str(e["id"])))
+    return adopted
+
+
+def _preference(provider: str) -> int:
+    """Rank of *provider* in :data:`_PROVIDER_PREFERENCE`; unknown ones last.
+
+    Parameters
+    ----------
+    provider : str
+        A provider name as the price source normalised it.
+
+    Returns
+    -------
+    int
+        Lower is preferred.
+
+    Examples
+    --------
+    >>> _preference("openai") < _preference("openrouter")
+    True
+    >>> _preference("who") == len(_PROVIDER_PREFERENCE)
+    True
+    """
+    name = provider.strip().lower()
+    return (
+        _PROVIDER_PREFERENCE.index(name)
+        if name in _PROVIDER_PREFERENCE
+        else len(_PROVIDER_PREFERENCE)
+    )
 
 
 def write_cloud_cache(entries: list[dict[str, Any]], cache_path: Path | None = None) -> Path:
@@ -505,17 +771,26 @@ def rank_cloud(
         return []
 
     weight = _clamp_weight(quality_vs_cost)
-    scores = [_benchmark_score(e, kind, application) for e in candidates]
+    found = [resolve_benchmark(e, kind, application) for e in candidates]
+    scores = [None if f is None else f[1] for f in found]
     prices = [blended_price_per_1m(e) for e in candidates]
 
-    # Normalise the cost axis over the entries that actually have a price. An
-    # unpriced entry is deliberately left out of the range: letting a None
-    # participate as a zero would both best the cheapest real model and drag
-    # the scale, and the whole point here is that "nobody priced this" is not a
-    # claim about cost.
-    known = [p for p in prices if p is not None]
-    lo_s, hi_s = min(scores), max(scores)
-    lo_p, hi_p = (min(known), max(known)) if known else (0.0, 0.0)
+    # Normalise each axis over the entries that actually have a figure on it.
+    # A None left in as a zero would do two things, both wrong: beat nothing
+    # while claiming the best possible cost, and stretch the range's bottom to
+    # zero so every real figure compresses toward 1.0 and the other axis
+    # decides. "Nobody priced this" is not a claim about cost, and "nobody
+    # scored this on this axis" is not a claim about quality.
+    #
+    # The score half of that used to be missing, and the leaderboard is what
+    # exposed it: its mirror publishes the top twenty per board, so a model can
+    # be rated for code and absent from text — censored, not weak. Four such
+    # entries at a floor of 0 turned a 68-88 quality spread into 0-88, and a
+    # quality-led default (0.7) started behaving like a price-led one.
+    known_p = [p for p in prices if p is not None]
+    known_s = [v for v in scores if v is not None]
+    lo_s, hi_s = (min(known_s), max(known_s)) if known_s else (0.0, 0.0)
+    lo_p, hi_p = (min(known_p), max(known_p)) if known_p else (0.0, 0.0)
 
     unpriced = [
         str(e.get("id") or "?") for e, p in zip(candidates, prices, strict=True) if p is None
@@ -528,12 +803,35 @@ def rank_cloud(
             "unpriced model never wins on cost. Add the figures to pricing.yaml."
         )
 
+    unscored = [
+        str(e.get("id") or "?") for e, v in zip(candidates, scores, strict=True) if v is None
+    ]
+    if unscored:
+        axis = application or ("vision" if kind == "vlm" else "general")
+        osh.warning(
+            "No benchmark on the "
+            + axis
+            + " axis for "
+            + ", ".join(sorted(unscored))
+            + "; ranked last on quality rather than first, and left out of the "
+            "quality range so it does not flatten the scale for everyone else."
+        )
+
     annotated = []
-    for entry, score, price in zip(candidates, scores, prices, strict=True):
+    for entry, hit, price in zip(candidates, found, prices, strict=True):
+        score = None if hit is None else hit[1]
         row = dict(entry)
-        row["score"] = score
+        # `score` stays a float so every consumer can print and sort it; the
+        # companion flag is what distinguishes "0" from "unknown".
+        row["score"] = 0.0 if score is None else score
+        row["scored"] = score is not None
+        # Which measurement the number came from. Two rows here can be scored
+        # on different axes — a 2024 entry on a published MMLU-style suite, an
+        # adopted one on a preference leaderboard — and the honest thing is to
+        # say so per row rather than let a shared column imply a shared ruler.
+        row["score_axis"] = None if hit is None else hit[0]
         row["price_per_1m"] = price
-        quality_n = _normalize(score, lo_s, hi_s)
+        quality_n = 0.0 if score is None else _normalize(score, lo_s, hi_s)
         # Unknown cost scores as the worst, not the best. This package's stance
         # elsewhere is that a figure without provenance is worth less than no
         # figure; the same applies to a price nobody supplied, and the safe

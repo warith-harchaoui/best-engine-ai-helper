@@ -67,8 +67,8 @@ Ce paquet est à la base de la couche de sélection de modèles de la suite AI H
 - **Exécuter un modèle s'active ; en choisir un, non.** Le moteur
   d'apprentissage profond — torch, transformers, accelerate, safetensors, puis
   diffusers pour les images — vit derrière `[lightweight]` et `[imagine]`. Il a
-  été central trois jours, et c'est la mesure qui explique qu'il ne le soit
-  plus : cette pile pèse 196 Mo en roue processeur seul, et des gigaoctets de
+  été central trois jours ; c'est la mesure qui explique qu'il ne le soit
+  plus : cette pile pèse 196 Mo en roue processeur seul, puis des gigaoctets de
   charge `nvidia-*` quand pip prend la version CUDA — ce qu'il fait par défaut
   sous Linux. Qui demande quel modèle tient dans son portable ne devrait pas
   télécharger une pile d'apprentissage profond pour l'apprendre.
@@ -98,7 +98,7 @@ Ce paquet est à la base de la couche de sélection de modèles de la suite AI H
 
 ## Installation
 
-Python 3.10+. Le code de ce paquet est en Python pur, et son installation par
+Python 3.10+. Le code de ce paquet est en Python pur, son installation par
 défaut aussi : **quelques mégaoctets**. Le moteur de lecture en flux amène
 torch avec lui, mais il vit derrière `[lightweight]`, donc ce téléchargement
 d'environ 2 Go ne se paie que si vous le demandez. L'autre élément spécifique
@@ -480,7 +480,7 @@ pip install 'best-engine-ai-helper[lightweight]'    # le moteur de flux
 pip install 'best-engine-ai-helper[generate]'       # flux + images
 ```
 
-Décider *si* un modèle peut être diffusé, et à quelle vitesse, n'en demande
+Décider *si* un modèle peut être diffusé, puis à quelle vitesse, n'en demande
 rien : `lightweight plan` puis `lightweight compare` répondent sur une
 installation de base, parce que l'arithmétique appartient au paquet et que le
 moteur ne sert qu'au moment d'exécuter quelque chose.
@@ -506,7 +506,7 @@ l'architecture est celle que `transformers` connaît. Apple Silicon, c'est
 torch sur Metal (MPS), pas un second cadriciel.
 
 C'est ce qu'achète `[lightweight]` (torch, transformers, accelerate,
-safetensors). Cela se paie une fois, à l'installation, et seulement par qui l'a
+safetensors). Cela se paie une fois, à l'installation, puis seulement par qui l'a
 demandé : les imports sont paresseux par-dessus, donc rien de cette pile n'est
 chargé avant que vous ne diffusiez réellement un modèle, puis `detect` /
 `recommend` / `report` restent
@@ -966,7 +966,7 @@ outil MCP, comme tous les autres points d'entrée.
 | `storage` | Planifie la capacité : ce qui tient sur le disque, puis ce qui tient en mémoire ensemble |
 | `providers` | Quels fournisseurs cloud sont utilisables, puis pour les autres la variable à poser |
 | `catalog show` | Affiche le catalogue de modèles fusionné |
-| `catalog update` | Rafraîchit le cache modèles (`--ollama` pour des tags réellement tirables, `--arena` pour fusionner les notes LM Arena, `--limit N` pour un rafraîchissement partiel) |
+| `catalog update` | Rafraîchit le cache modèles (`--ollama` pour des tags réellement tirables, `--arena` pour fusionner les notes LM Arena, `--cloud` pour retarifer le catalogue payant, `--cloud --arena` pour adopter en plus les modèles que les deux sources connaissent, `--limit N` pour un rafraîchissement partiel) |
 | `hardware show` | Affiche la table des puces matérielles connues |
 | `hardware update` | Enregistre la puce et la mémoire de cette machine dans le cache matériel |
 | `pull` | Télécharge le meilleur modèle et exécute les contrôles Ralph |
@@ -1001,7 +1001,9 @@ Les tailles viennent d'une constante **mesurée** sur les quatorze entrées Q4 d
 
 ![Chaque source Arena essayée tour à tour : le tableau officiel n'a aucune API publique, un miroir communautaire répond désormais avec 37 modèles d'un instantané vieux de 21 jours, un collecteur payant est refusé par principe, puis l'historique en vrac a 524 jours](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/arena-staleness.png)
 
-**Elle note des points d'accès hébergés de pointe, puis rien d'autre.** L'Arena note ce avec quoi ses votants peuvent discuter, ce qui donne aujourd'hui des noms comme `claude-opus-5.5-max`, `gpt-6-astra-max` puis `gemini-4-argon-high`. Au relevé du 2026-10-28, cela fait **37 modèles**, dont **aucun n'apparie l'un des deux catalogues livrés** : `models.yaml` porte des tags Ollama à poids ouverts sur lesquels personne ne vote, puis `pricing.yaml` porte des modèles d'API de 2024 que l'Arena a cessé de classer depuis des générations. Les familles se recoupent — `claude`, `gemini`, `gpt` — mais pas les versions, puis coller l'Elo de `claude-opus-5.5-max` sur `claude-3-5-sonnet` serait pire que de ne rien coller. L'appariement refuse, à juste titre.
+**Elle note des points d'accès hébergés de pointe, puis rien d'autre.** L'Arena note ce avec quoi ses votants peuvent discuter, ce qui donne aujourd'hui des noms comme `claude-opus-5.5-max`, `gpt-6-astra-max` puis `gemini-4-argon-high`. Au relevé du 2026-10-28, cela fait **37 modèles** sur trois tableaux de vingt. Face au catalogue *local*, c'est presque rien — **1 sur 51**, `kimi-k3` — parce que personne ne vote sur un tag Ollama à poids ouverts. Face au catalogue *payant*, c'est l'essentiel : **18 sur 28**, dès que `catalog update --cloud` a mis des modèles actuels dans le fichier. Cette asymétrie est la propriété qui définit l'axe, pas un défaut dedans.
+
+Un nom de tableau porte un suffixe d'effort de raisonnement qu'un identifiant d'API ne porte jamais : `claude-opus-5.5-max` puis `claude-opus-5.5-high` sont un seul modèle facturable servi à deux efforts, facturé une fois au même tarif par jeton. Les deux notes appartiennent donc à la même entrée de catalogue, puis celle qui est retenue est la **plus basse** — la plus haute décrit un mode qu'il faut demander, qui coûte davantage de jetons de sortie, donc l'attribuer à l'identifiant nu promettrait ce qu'un appel par défaut ne rend pas. Quand le tableau note aussi le nom sans suffixe (`claude-opus-4-6` voisine avec son `-high`), c'est celui-là qui gagne d'emblée : il *est* le mode par défaut. Un *produit* de service différent — `claude-3-5-sonnet-20250219-thinking-32k` — continue de n'apparier rien, exprès.
 
 Les modèles d'embedding ne peuvent pas s'apparier par construction : personne ne discute avec un encodeur, donc aucun classement de préférences conversationnelles n'en notera jamais un. La commande imprime son propre `apparié/total` à chaque passage, vous n'avez donc jamais à croire ce paragraphe sur parole.
 
@@ -1223,6 +1225,15 @@ choisir le modèle :
   score, `0.0` uniquement sur le prix et le défaut privilégie la qualité avec le prix en
   départage.
 
+Azure se fixe à la main, ne se choisit jamais automatiquement, puis la raison
+est structurelle plutôt qu'une préférence : c'est le seul fournisseur sans
+adresse de base universelle vers laquelle router. Son point d'accès est
+`https://<votre-ressource>.openai.azure.com` puis l'identifiant qu'une requête
+porte est un *nom de déploiement* que vous avez choisi, pas le nom de modèle
+qu'une table de prix liste — une entrée Azure choisie automatiquement se
+résoudrait donc en `base_url` vide puis n'appellerait rien. Fixez `provider`,
+`model` puis `base_url` et cela marche exactement comme avant.
+
 #### Garder le catalogue payant honnête
 
 `pricing.yaml` est tenu à la main, puis il est longtemps resté sans source d'où
@@ -1249,19 +1260,77 @@ jamais modifiée. La fusion est délibérément étroite, puis c'est tout l'int�
   aucun avis sur la qualité, donc les entrées rafraîchies gardent les scores de
   la graine. Ce paquet ne mettra pas dans un fichier qui facture des gens un
   nombre que personne n'a mesuré.
-- **Rien n'est ajouté ni supprimé automatiquement.** Les modèles que la source
-  connaît puis que le catalogue ignore sont *affichés* pour que vous triiez, pas
-  fusionnés : un modèle payant sans score ne peut pas être classé. Les modèles
-  dont la source n'a jamais entendu parler — quatre sur dix, dont les deux
-  entrées Gemini 1.5, retirées par Google bien avant — sont signalés puis
-  laissés tels quels, parce que l'absence d'une source est un indice fort, pas
-  une preuve.
+- **Rien n'est supprimé automatiquement.** Les modèles dont la source n'a
+  jamais entendu parler — quatre sur dix, dont les deux entrées Gemini 1.5,
+  retirées par Google bien avant — sont signalés puis laissés tels quels, parce
+  que l'absence d'une source est un indice fort, pas une preuve.
+- **Rien n'est ajouté sur une seule source.** Un modèle payant sans score ne
+  peut pas être classé, donc un modèle tarifé mais non noté est *affiché* pour
+  que vous triiez plutôt que fusionné. Ce qui sort un modèle de cette liste,
+  c'est une seconde source — voir ci-dessous.
 
 Tant que vous ne l'avez pas lancée, chaque surface cloud dit que la table ne
 porte aucune date. C'est exact : les nombres de la graine ont été écrits de
 mémoire plutôt que vérifiés un jour donné, donc il n'y a pas d'`as_of` honnête à
 poser. Un rafraîchissement écrit un vrai `fetched_at` par entrée, puis
 l'avertissement cesse.
+
+#### Comment le catalogue payant s'agrandit : deux sources, puis une entrée exige les deux
+
+Le retarifage corrige ce que les modèles du catalogue *coûtent*. Il ne peut pas
+apprendre au catalogue qu'un modèle existe, puisque le classer demande une note
+de qualité puis qu'une table de prix n'en publie aucune. Le fichier pouvait donc
+apprendre que `gpt-4o` avait augmenté, jamais que `gpt-6-sol` était sorti — dix
+modèles de 2024, indéfiniment.
+
+Ajoutez `--arena` : une seconde source répond à l'autre moitié.
+
+```sh
+best-engine-ai-helper catalog update --cloud --arena
+```
+
+![Comment le catalogue payant s'agrandit : une table de prix publique connaît 188 modèles de dialogue achetables sans aucune note de qualité, un miroir de classement connaît 37 noms notés sans aucun prix, puis un modèle n'est adopté que si les deux le nomment — 18 aujourd'hui, avec 164 tarifés non notés affichés pour triage puis 4 entrées du catalogue inconnues de la source de prix laissées exactement en l'état](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/deux-sources.png)
+
+**Une entrée n'est adoptée que si les deux sources nomment le même modèle.**
+Cela fait deux citations, dont aucune n'est inventée, puis c'est tout le test
+d'admission. Un modèle tarifé que personne n'a noté n'est toujours pas adopté ;
+un modèle noté que personne ne tarife ne peut toujours pas être facturé. Au
+relevé du 2026-10-28, 18 modèles passent, 164 sont tarifés sans note puis
+restent sur la liste de triage, le catalogue passant de 10 entrées à 28.
+
+Ce qu'une entrée adoptée ne porte délibérément **pas**, c'est un score
+`general`, `code`, `math`, `ocr` ou `vision`. Ceux-là restent nuls. Le classement
+mesure une préférence conversationnelle ; en synthétiser un nombre façon MMLU
+serait la fiction même que le reste de ce fichier existe pour éviter. Le
+classeur lit directement les axes Arena, donc un nul n'y coûte rien — puis
+chaque entrée adoptée enregistre le nom de tableau derrière chaque axe retenu,
+si bien que `85.2` se retrace jusqu'à `claude-opus-5.5-high` sur l'instantané
+`2026-10-07` au lieu d'être un nombre sans provenance.
+
+Deux conséquences à connaître avant de lire le classement :
+
+- **La colonne `from` n'est pas un ornement.** Un score de 88 mesuré par une
+  suite publiée façon MMLU puis un score de 86 converti d'un classement de
+  préférence s'impriment tous deux sur 100 sans être *la même grandeur*. La
+  table cloud nomme l'axe derrière chaque ligne exactement pour ça, puis
+  quelques points entre deux lignes mesurées différemment ne sont pas un
+  résultat.
+- **Un modèle peut être noté puis afficher `?`.** Le miroir publie les vingt
+  premiers par tableau, donc un modèle peut être noté en code puis absent du
+  texte — censuré, pas faible. Ces candidats se classent derniers en qualité
+  *puis* sortent de l'étendue de qualité, afin que l'un d'eux ne puisse pas
+  aplatir l'échelle de tous les autres. (Il le pouvait : avant cela, quatre
+  entrées de ce genre transformaient un écart de qualité de 68 à 88 en 0 à 88,
+  puis le défaut orienté qualité se mettait à se comporter comme un défaut
+  orienté prix.)
+
+Refaites vous-même n'importe lequel de ces nombres — le script est dans le
+dépôt puis il lit à travers les chargeurs du paquet, il ne peut donc pas diverger
+de ce que fait le code :
+
+```sh
+python scripts/measure_arena_coverage.py
+```
 
 ```yaml
 mode: cloud

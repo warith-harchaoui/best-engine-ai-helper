@@ -234,3 +234,83 @@ def test_a_sizeless_entry_no_longer_beats_a_real_one_on_a_small_machine() -> Non
     rows = block["recommendations"]["llm"]["candidates"]
     assert [r["id"] for r in rows] == ["real-8b"]
     assert block["recommendations"]["llm"]["chosen"]["id"] == "real-8b"
+
+
+# ---------------------------------------------------------------------------
+# The default benchmark axis — one rule, not two
+# ---------------------------------------------------------------------------
+#
+# `catalog update --arena` writes an `arena` rating onto entries whose every
+# other axis is null, because the spec sources (ApXML, the Ollama library)
+# publish no benchmarks at all. The default lookup could not read that axis, so
+# the refresh that had just scored a model ranked it at 0.0 — below every
+# hand-scored seed entry — while the same entry, asked for by name as
+# `--application generalist`, scored 84. Two rules that disagreed about exactly
+# the thing a refresh adds.
+
+
+def _arena_only(kind: str = "llm") -> dict[str, object]:
+    """An entry as a `--arena` refresh leaves it: one rating, nothing else."""
+    axis = "arena_vision" if kind == "vlm" else "arena"
+    return {
+        "id": "refreshed",
+        "kind": kind,
+        "ram_gb": 8.0,
+        "benchmarks": {"general": None, "vision": None, "code": None, axis: 84.0},
+    }
+
+
+def test_default_axis_reads_an_arena_only_entry() -> None:
+    """The refresh scores a model; the default path must not rank it at zero."""
+    assert score._benchmark_score(_arena_only("llm"), "llm") == 84.0
+    assert score._benchmark_score(_arena_only("vlm"), "vlm") == 84.0
+
+
+def test_default_and_named_application_cannot_disagree() -> None:
+    """`application=None` resolves through the same table as every keyword."""
+    for entry, kind, named in (
+        (_arena_only("llm"), "llm", "generalist"),
+        (_arena_only("vlm"), "vlm", "vision"),
+    ):
+        assert score._benchmark_score(entry, kind) == score._benchmark_score(entry, kind, named)
+
+
+def test_a_measured_axis_always_beats_the_fallback_behind_it() -> None:
+    """The Arena rung is a fallback, never an override of a curated score."""
+    entry = {"benchmarks": {"general": 60, "arena": 84.0}}
+    assert score._benchmark_score(entry, "llm") == 60.0
+
+
+def test_an_unknown_application_falls_back_rather_than_scoring_zero() -> None:
+    """A typo in a brief must not silently flatten every candidate to 0."""
+    entry = {"benchmarks": {"general": 77}}
+    assert score._benchmark_score(entry, "llm", "nonsense") == 77.0
+
+
+def test_absent_is_distinguishable_from_measured_at_zero() -> None:
+    """The distinction a min-max normalisation needs and `0.0` cannot carry."""
+    assert score.benchmark_score_or_none({"benchmarks": {"general": 0.0}}, "llm") == 0.0
+    assert score.benchmark_score_or_none({"benchmarks": {"general": None}}, "llm") is None
+    # Scored on a different board than the one asked for is still "not this one".
+    assert score.benchmark_score_or_none({"benchmarks": {"arena_code": 96.1}}, "llm") is None
+
+
+def test_the_axis_a_score_came_from_is_reportable() -> None:
+    """Two rows in one table can be measured with two different rulers."""
+    assert score.resolve_benchmark({"benchmarks": {"general": 88}}, "llm") == ("general", 88.0)
+    assert score.resolve_benchmark({"benchmarks": {"general": None, "arena": 85.2}}, "llm") == (
+        "arena",
+        85.2,
+    )
+    assert score.resolve_benchmark({"benchmarks": {}}, "llm") is None
+
+
+def test_every_priority_list_ends_at_the_broadest_axis_it_can_reach() -> None:
+    """A list that stops early turns a censored axis into a zero.
+
+    The leaderboard mirror publishes a top twenty per board, so a model rated
+    for code can be missing from text. Every list therefore falls through to
+    `arena`, the broadest rung available, before giving up.
+    """
+    for application, priority in score._APP_BENCH_PRIORITY.items():
+        assert priority[-1] in {"arena", "general"}, application

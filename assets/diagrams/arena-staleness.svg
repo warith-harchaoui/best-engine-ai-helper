@@ -5,10 +5,12 @@
   28 October 2026. The official site has no public API; the oolong-tea-2026 community mirror now
   answers with 37 models from a snapshot 21 days old, once the adapter walks back past the empty
   directory its index names; a paid scraping service is
-  refused on principle because it would route the request through a third party; and the one mirror
-  that does work last published on 22 May 2025, which is 515 days old and past the 120-day staleness
-  bar. The adapter therefore merges nothing and says why, because a rating from a previous generation
-  of models would rank 2025's models above 2026's, which is worse than having no rating at all.</desc>
+  refused on principle because it would route the request through a third party; and the bulk-history
+  mirror last published on 22 May 2025, which is 524 days old and past the 120-day staleness bar, so
+  it is refused with its reason: a rating from a previous generation of models would rank 2025's
+  models above 2026's, which is worse than having no rating at all. The live snapshot is merged and
+  dated. It scores 18 of the 28 models in the paid catalogue and 1 of the 51 local ones, because
+  Arena rates what its voters can chat with and nobody votes on an open-weight Ollama tag.</desc>
 
   <style>
     .lane       { fill: #ffffff; stroke: #e0e0e0; stroke-width: 1.5; }
@@ -110,6 +112,6 @@
   <text class="caption" x="500" y="344" text-anchor="middle">The mirror was never empty: its newest directory was.</text>
   <text class="caption" x="500" y="368" text-anchor="middle">Reading the index instead of guessing it turned 0 ratings into 37, from a snapshot 21 days old.</text>
 
-  <text class="src-why" x="500" y="404" text-anchor="middle">What it still cannot do: Arena rates hosted frontier endpoints — claude-opus-5.5-max, gpt-6-astra-max — so nothing in either</text>
-  <text class="src-why" x="500" y="422" text-anchor="middle">bundled catalogue matches today: the local one holds open-weight tags, the cloud one holds 2024 models.</text>
+  <text class="src-why" x="500" y="404" text-anchor="middle">Where it lands: Arena rates hosted frontier endpoints — claude-opus-5.5-max, gpt-6-astra-max — so it scores 18 of the paid</text>
+  <text class="src-why" x="500" y="422" text-anchor="middle">catalogue's 28 entries and 1 of the local 51 (kimi-k3): nobody votes on an open-weight Ollama tag.</text>
 </svg>

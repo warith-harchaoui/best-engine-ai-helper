@@ -575,10 +575,18 @@ _CLOUD_METHOD_NOTE = (
     "on price, 0.7 (the default) leans quality with price as a tiebreaker. "
     "Structured-output capability is checked first, exactly as in local mode: a "
     "model that cannot honour a JSON schema is never auto-chosen over one that "
-    "can. This is a REFERENCE ranking, not a live call: it needs no API key and "
-    "reaches no network, and the benchmark figures are hand-maintained seed "
-    "values (see pricing.yaml) -- good for comparing candidates against each "
-    "other, not a substitute for checking the provider's own current numbers."
+    "can. A candidate with no score on the requested axis is ranked last on "
+    "quality AND left out of the quality range, so it does not flatten the "
+    "scale for the models that do have one. This is a REFERENCE ranking, not a "
+    "live call: it needs no API key and reaches no network. The `from` column "
+    "names the measurement behind each score, and it matters: a `general` "
+    "figure is a published MMLU-style suite result carried by hand in "
+    "pricing.yaml, while an `arena` one is a human-preference win rate adopted "
+    "from a leaderboard by `catalog update --cloud --arena`. Both are printed "
+    "out of 100 and they are NOT the same quantity, so a few points between two "
+    "rows measured differently is not a result. Good for comparing candidates "
+    "against each other, not a substitute for the provider's own current "
+    "numbers."
 )
 
 
@@ -841,12 +849,20 @@ def to_markdown_cloud(report: dict[str, Any]) -> str:
         else:
             lines.append("_No candidate found._")
         lines.append("")
-        lines.append("| model | provider | score | $/1M | structured |")
-        lines.append("|---|---|---|---|---|")
+        lines.append("| model | provider | score | from | $/1M | structured |")
+        lines.append("|---|---|---|---|---|---|")
         for r in block["candidates"]:
             price = r["price_per_1m"]
+            # "?" rather than "0": the leaderboard mirror publishes a top
+            # twenty per board, so a model can be rated for code and missing
+            # from text. Printing 0 there would read as "measured, and bad".
+            score = f"{r['score']:.0f}" if r.get("scored", True) else "?"
+            # The ruler each score was measured with. A `general` 88 and an
+            # `arena` 86 sit in the same column and are not the same quantity,
+            # so the column that says which one it is has to be there.
+            axis = r.get("score_axis") or "—"
             lines.append(
-                f"| `{r['id']}` | {r['provider']} | {r['score']:.0f} | "
+                f"| `{r['id']}` | {r['provider']} | {score} | {axis} | "
                 f"{f'{price:.2f}' if price is not None else '?'} | "
                 f"{'yes' if r.get('structured_output', True) else 'no'} |"
             )

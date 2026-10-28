@@ -603,9 +603,40 @@ def normalize_apxml_specs(
     return [e for e in entries if e is not None]
 
 
+def fetch_arena_safely(timeout: float = 30.0) -> tuple[dict[str, Any] | None, str]:
+    """
+    Fetch Arena ratings without ever raising, and say what happened.
+
+    The "a dead mirror must not sink a good refresh" contract lives here, in
+    one place, because two callers need it: :func:`merge_arena_axes`, which
+    scores entries, and the cloud refresh, which also *adopts* models from the
+    same snapshot. Threading one fetch through both beats fetching twice, and
+    beats a second copy of the contract more.
+
+    Parameters
+    ----------
+    timeout : float
+        Per-request network timeout, in seconds.
+
+    Returns
+    -------
+    (result, message)
+        ``result`` is a :func:`sources.arena.fetch_arena_ratings` payload, or
+        None when no mirror answered. ``message`` is always worth showing.
+    """
+    from .sources import arena
+
+    try:
+        result = arena.fetch_arena_ratings(timeout=timeout)
+    except Exception as exc:  # a dead mirror must not sink a good refresh
+        return None, f"Arena ratings unavailable: {exc}"
+    return result, str(result.get("note") or "no reason given")
+
+
 def merge_arena_axes(
     entries: list[dict[str, Any]],
     timeout: float = 30.0,
+    ratings: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], str, bool]:
     """
     Add LM Arena conversational axes to ``entries``, and report what happened.
@@ -630,7 +661,11 @@ def merge_arena_axes(
     entries : list[dict[str, Any]]
         Catalog entries to enrich. Not mutated; ``arena.merge_into`` copies.
     timeout : float
-        Per-request network timeout, in seconds.
+        Per-request network timeout, in seconds. Ignored when *ratings* is
+        supplied.
+    ratings : dict or None
+        A snapshot already fetched by :func:`fetch_arena_safely`, so a caller
+        that needs the same ratings twice fetches once. None fetches here.
 
     Returns
     -------
@@ -640,10 +675,11 @@ def merge_arena_axes(
     """
     from .sources import arena
 
-    try:
-        result = arena.fetch_arena_ratings(timeout=timeout)
-    except Exception as exc:  # a dead mirror must not sink a good refresh
-        return list(entries), f"Arena ratings unavailable: {exc}", False
+    result = ratings
+    if result is None:
+        result, note = fetch_arena_safely(timeout)
+        if result is None:
+            return list(entries), note, False
 
     merged, report = arena.merge_into(entries, result)
     note = str(report.get("note") or "no reason given")

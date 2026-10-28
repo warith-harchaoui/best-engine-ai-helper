@@ -107,6 +107,11 @@ msgstr "Échec du chargement : "
 msgid "fits"
 msgstr "tient"
 
+#. Column header: which measurement a cloud score came from (general, arena,
+#. arena_code...). Two rows can be scored by different rulers.
+msgid "from"
+msgstr "d'après"
+
 msgid "GB"
 msgstr "Go"
 

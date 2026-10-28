@@ -140,6 +140,15 @@ controls come with it.
   bundled `pricing.yaml` catalog ranked the same way `report --cloud` ranks
   it.
 
+  The candidate table carries a **`from`** column naming the measurement
+  behind each score, because after a `catalog update --cloud --arena` the
+  rows are no longer scored by one ruler: a `general` figure is a published
+  MMLU-style suite result carried by hand, an `arena` one is a preference win
+  rate adopted from a leaderboard, and both print out of 100 without being the
+  same quantity. A model the leaderboard does not rate on the requested axis
+  shows **`?`** rather than `0` — the mirror publishes a top twenty per board,
+  so that absence is censorship, not weakness.
+
 ![Cloud mode results](assets/screenshots/gui-cloud.png)
 
 Switching modes re-runs the last query if one was already shown; the deep

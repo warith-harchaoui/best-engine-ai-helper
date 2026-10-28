@@ -300,6 +300,16 @@ the whole section with `--no-cloud`; steer it with `--quality-vs-cost 0..1`
 default 0.7) and `--cloud-provider openai|mistral|...` to restrict it to one
 provider.
 
+Those two scores come from the bundled seed, which is where a fresh install
+starts. Run `catalog update --cloud --arena` and the table fills with current
+models whose scores come from a leaderboard instead — at which point the
+ranking's `from` column stops being decoration, because an 88 from a published
+MMLU-style suite and an 86 converted from a preference leaderboard are both
+printed out of 100 and are not the same quantity. A candidate the leaderboard
+does not rate on the requested axis shows `?` rather than `0`: the mirror
+publishes a top twenty per board, so that absence is censorship, not weakness,
+and it is kept out of the quality range instead of sitting at the floor of it.
+
 ## 3. One brief per repo, one engine per machine
 
 `report` prints advice. `resolve` writes the descriptor your code reads at call
@@ -681,8 +691,10 @@ was not run for this file: `catalog update` pulls open-weight specs from ApXML,
 library, `catalog update --arena` merges LM Arena ratings when a fresh enough
 mirror exists and says so plainly when none does, `catalog update --cloud`
 reprices the PAID catalogue from LiteLLM's public table (prices and context
-lengths only, never benchmark scores, which that source does not publish), and
-`hardware update` records this machine's own chip and memory.
+lengths only, never benchmark scores, which that source does not publish),
+`catalog update --cloud --arena` additionally *adopts* the paid models both
+sources name — a price from one, a rating from the other, two citations or no
+entry — and `hardware update` records this machine's own chip and memory.
 
 ## 7. Too large to fit, still runnable: layer streaming
 
@@ -1395,7 +1407,7 @@ command; there is one name now, and this is it.
 | `providers` | which cloud providers are usable right now, and why not; `--json` | — |
 | `doctor` | resolved engine against live daemon; non-zero when they disagree; `--directory`, `--timeout` | Ollama |
 | `catalog show` | the merged model catalogue | — |
-| `catalog update` | refresh the catalogue cache; `--limit`, `--timeout`, `--ollama`, `--arena`, `--cloud` (paid list prices from LiteLLM) | network |
+| `catalog update` | refresh the catalogue cache; `--limit`, `--timeout`, `--ollama`, `--arena`, `--cloud` (paid list prices from LiteLLM), `--cloud --arena` (also adopt the models both sources name) | network |
 | `hardware show` | the merged chip table | — |
 | `hardware update` | record this machine's chip and memory | — |
 | `lightweight status` | can this machine stream layers, and would it; `--measure`, `--json`, `--request` | — |

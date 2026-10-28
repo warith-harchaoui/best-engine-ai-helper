@@ -852,7 +852,7 @@ def catalog_show() -> None:
     click.echo(_fmt_table(rows, cols))
 
 
-def _refresh_cloud_prices(timeout: float) -> None:
+def _refresh_cloud_prices(timeout: float, with_arena: bool = False) -> None:
     """Reprice the paid catalog from LiteLLM's public table.
 
     Split out of :func:`catalog_update` because it shares none of the local
@@ -860,10 +860,17 @@ def _refresh_cloud_prices(timeout: float) -> None:
     is deliberately narrow (prices and context lengths only — see
     :func:`cloud_catalog.reprice`).
 
+    With *with_arena*, a second source is crossed with the first: models the
+    price table prices *and* the leaderboard rates are adopted into the cache,
+    which is the only way this catalog grows without someone typing a score in.
+
     Parameters
     ----------
     timeout : float
         Per-request network timeout, in seconds.
+    with_arena : bool
+        Also fetch LM Arena ratings, merge them onto the entries already here,
+        and adopt the priced-and-rated models the catalog does not carry yet.
     """
     from . import cloud_catalog as _cc
     from .sources import litellm_prices
@@ -896,8 +903,51 @@ def _refresh_cloud_prices(timeout: float) -> None:
         != (e.get("input_per_1m"), e.get("output_per_1m"))
     ]
 
-    path = _cc.write_cloud_cache(repriced)
+    known = {str(e["id"]) for e in seed}
+    adopted: list[dict[str, Any]] = []
+    if with_arena:
+        click.echo("Fetching conversational ratings from LM Arena mirrors…", err=True)
+        ratings, note = _catalog.fetch_arena_safely(timeout)
+        if ratings is None:
+            osh.warning(note)
+            click.echo(note, err=True)
+        else:
+            repriced, message, merged_ok = _catalog.merge_arena_axes(repriced, ratings=ratings)
+            click.echo(message, err=True)
+            # Adoption does NOT depend on that merge landing. The two ask
+            # different questions: whether the leaderboard rates the ten
+            # models already here (it does not — they are from 2024), and
+            # whether it rates any of the three hundred the price table knows
+            # (it rates plenty). Gating the second on the first is what kept
+            # the catalog at ten.
+            adopted = _cc.adopt_rated(fetched, ratings, known)
+            # Only a snapshot that neither scored an existing model nor
+            # produced an adoptable one is worth a warning. "Nothing matched
+            # the seed" on its own is the expected reading of a 2024 seed
+            # against a current board, and reporting it as a problem while
+            # eighteen models land underneath would be noise.
+            if not merged_ok and not adopted:
+                osh.warning(message)
+
+    path = _cc.write_cloud_cache(repriced + adopted)
     click.echo(f"Repriced {len(repriced) - len(missing)} of {len(repriced)} model(s) -> {path}")
+
+    if adopted:
+        click.echo(
+            f"\nAdopted {len(adopted)} model(s) the catalog did not carry. Each has a"
+            "\nlist price from the price table AND a rating from the leaderboard —"
+            "\nnothing is adopted on one source alone, and no quality score is"
+            "\ninvented: the hand-maintained axes stay null.\n"
+        )
+        for entry in adopted:
+            cited = entry.get("arena_matched") or {}
+            axes = ", ".join(
+                f"{axis}={entry['benchmarks'][axis]:.1f} ({name})" for axis, name in cited.items()
+            )
+            click.echo(
+                f"  {entry['id']:<28} {entry['provider']:<10} {entry['kind']:<4} "
+                f"{entry['input_per_1m']}/{entry['output_per_1m']}  {axes}"
+            )
 
     if changed:
         click.echo("\nPrices that moved (USD per 1M tokens, in/out):")
@@ -913,17 +963,31 @@ def _refresh_cloud_prices(timeout: float) -> None:
             "\nbenchmark scores in the seed are the only ones this package has."
         )
 
-    known = {str(e["id"]) for e in seed}
     # A zero list price is an experimental or preview tier rather than
     # something you can buy, and it would otherwise fill the whole triage list.
-    fresh = [e for e in fetched if str(e["id"]) not in known and (e.get("input_per_1m") or 0) > 0]
+    # Embedding models are out too: `rank_cloud` only ever selects llm/vlm, so
+    # listing them under "add this with a score" would point at a shelf this
+    # catalog has no slot for.
+    seen = known | {str(e["id"]) for e in adopted}
+    fresh = [
+        e
+        for e in fetched
+        if str(e["id"]) not in seen
+        and (e.get("input_per_1m") or 0) > 0
+        and e.get("kind") in {"llm", "vlm"}
+    ]
     if fresh:
         click.echo(
             f"\n{len(fresh)} priced model(s) the source knows and this catalog does not."
-            "\nThey are NOT added: a paid model with no benchmark score cannot be"
-            "\nranked, and inventing one is not on offer. To adopt any of them, add"
-            "\nit to pricing.yaml with a score you can cite. A few of the cheapest"
-            "\nper 1M tokens, for triage:"
+            "\nThey are NOT added: nobody this package reads published a quality"
+            "\nscore for them, and inventing one is not on offer."
+            + (
+                "\nThe leaderboard was consulted and does not rate these."
+                if with_arena
+                else "\nRun again with --arena to adopt the ones a leaderboard does rate."
+            )
+            + "\nTo take one anyway, add it to pricing.yaml with a score you can"
+            "\ncite. A few of the cheapest per 1M tokens, for triage:"
         )
         for entry in sorted(fresh, key=lambda e: e.get("input_per_1m") or 0.0)[:10]:
             ctx = entry.get("context_length")
@@ -971,7 +1035,10 @@ def _refresh_cloud_prices(timeout: float) -> None:
         "expect few matches against either catalog unless yours is current. "
         "Arena publishes no API and every mirror is a third-party scrape, so "
         "the command reports which mirror answered, how old its snapshot is, "
-        "and how many ratings actually matched."
+        "and how many ratings actually matched. Combined with --cloud it also "
+        "ADOPTS the paid models the price table prices and the leaderboard "
+        "rates, which is the only way the paid catalog grows without anyone "
+        "typing in a score."
     ),
 )
 @click.option(
@@ -983,7 +1050,9 @@ def _refresh_cloud_prices(timeout: float) -> None:
         "Refresh the PAID catalog instead: list prices and context lengths "
         "from LiteLLM's public table. Benchmarks are left alone — that source "
         "publishes none, and a quality score nobody measured has no business "
-        "in a file that bills people."
+        "in a file that bills people. Add --arena for the quality half: it "
+        "merges ratings onto what is already here and adopts the models both "
+        "sources know."
     ),
 )
 def catalog_update(
@@ -999,10 +1068,13 @@ def catalog_update(
 
     ``--arena`` is one such scored source, with a caveat worth stating up
     front: it rates what its voters can chat with, so it populates the cloud
-    catalog far better than the local one.
+    catalog far better than the local one. With ``--cloud`` it does one thing
+    more: a model the price table prices and Arena rates has both halves a
+    ranking needs, so it is adopted into the paid catalog. Two citations or no
+    entry.
     """
     if from_cloud:
-        _refresh_cloud_prices(timeout)
+        _refresh_cloud_prices(timeout, with_arena=arena)
         return
 
     source_name = "the Ollama library" if from_ollama else "ApXML"

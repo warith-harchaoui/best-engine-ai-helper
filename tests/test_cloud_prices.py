@@ -70,6 +70,16 @@ _TABLE: dict[str, Any] = {
         "mode": "chat",
         "input_cost_per_token": 3e-07,
     },
+    # The same OpenAI model under Azure's roof: a deployment name the tenant
+    # chooses, behind an endpoint only they know.
+    "azure/gpt-4o": {
+        "litellm_provider": "azure",
+        "mode": "chat",
+        "input_cost_per_token": 2.5e-06,
+        "output_cost_per_token": 1e-05,
+        "max_input_tokens": 128000,
+        "supports_vision": True,
+    },
     # Priced at nothing: a preview tier, not something you can buy.
     "gemini-exp-1206": {
         "litellm_provider": "gemini",
@@ -229,3 +239,80 @@ def test_a_dated_table_only_complains_once_it_is_old(
     assert cc.staleness_note(today="2026-02-01", path=seed) is None
     stale = cc.staleness_note(today="2027-01-01", path=seed)
     assert stale is not None and "2026-01-01" in stale
+
+
+def test_azure_rows_never_enter_the_catalogue() -> None:
+    """A catalogue entry must be routable from its id alone, and Azure is not.
+
+    Azure is the one provider `llm._OPENAI_COMPATIBLE` lists that
+    `engine._CLOUD_BASE_URLS` does not, because there is no universal base URL
+    to list: the endpoint is per-tenant and the id in a request is a deployment
+    name the tenant picked. An auto-picked Azure entry resolves to
+    `base_url=""` and cannot be called. It also duplicated — most Azure rows
+    repeat an OpenAI id that already works — so admitting them filled the
+    triage list with models that were already there.
+    """
+    from best_engine_ai_helper import engine
+
+    entries = _normalised()
+    assert "azure" not in {e["provider"] for e in entries}
+    # The reason, pinned: no base URL means no route.
+    assert "azure" not in engine._CLOUD_BASE_URLS
+    # And exactly one gpt-4o survives, under the provider that can serve it.
+    gpt4o = [e for e in entries if e["id"] == "gpt-4o"]
+    assert [e["provider"] for e in gpt4o] == ["openai"]
+
+
+def test_the_two_sources_together_are_what_grows_the_catalogue(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`catalog update --cloud --arena`, end to end, with both sources faked.
+
+    The bug this pins: adoption used to be gated on the Arena merge landing on
+    the *seed*. It never can — the seed is ten models from 2024 and the board
+    rates what people chat with today — so the gate meant the catalogue could
+    only ever reprice itself. The two questions are different, and only the
+    second one grows anything.
+    """
+    from click.testing import CliRunner
+
+    from best_engine_ai_helper import catalog as _catalog
+    from best_engine_ai_helper.cli import cli
+
+    seed = tmp_path / "pricing.yaml"
+    seed.write_text(
+        "models:\n"
+        "  old-model:\n"
+        "    provider: mistral\n"
+        "    kind: llm\n"
+        "    benchmarks: {general: 84}\n"
+        "    input_per_1m: 2.0\n"
+        "    output_per_1m: 6.0\n",
+        encoding="utf-8",
+    )
+    cache = tmp_path / "pricing_cache.yaml"
+    monkeypatch.setattr(cc, "_PRICING_PATH", seed)
+    monkeypatch.setattr(cc, "_CLOUD_CACHE_PATH", cache)
+    monkeypatch.setattr(lp, "fetch_cloud_prices", lambda **kw: _normalised())
+    monkeypatch.setattr(
+        _catalog,
+        "fetch_arena_safely",
+        lambda timeout: (
+            {"snapshot": "2026-10-07", "scores": {"arena": {"gpt-4o": 88.0}}},
+            "fixture",
+        ),
+    )
+
+    result = CliRunner().invoke(cli, ["catalog", "update", "--cloud", "--arena"])
+    assert result.exit_code == 0, result.output
+
+    written = yaml.safe_load(cache.read_text())["models"]
+    # The seed's own model is still there, repriced and never re-adopted.
+    assert "old-model" in written
+    # And a model the seed never carried arrived, because two sources name it.
+    assert written["gpt-4o"]["benchmarks"]["arena"] == 88.0
+    assert written["gpt-4o"]["benchmarks"]["general"] is None
+    assert written["gpt-4o"]["source"] == "litellm+arena"
+    # The priced-but-unrated ones stayed out.
+    assert "mistral-large-latest" not in written
+    assert "Adopted 1 model(s)" in result.output

@@ -4,6 +4,108 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **The paid catalogue can grow now, and only on two citations.** Repricing
+  fixed what the catalogue's models *cost* and could never tell it a model
+  existed, because ranking one needs a quality score and a price table
+  publishes none. So the file learned that `gpt-4o` had gone up and never that
+  `gpt-6-sol` had shipped: ten models from 2024, indefinitely.
+
+  `catalog update --cloud --arena` crosses the two sources. A model is adopted
+  only where the price table prices it **and** the leaderboard rates it — two
+  citations, neither invented — and the `general`/`code`/`math`/`ocr`/`vision`
+  axes stay null on an adopted entry, because a preference vote is not an
+  MMLU-style result and synthesising one would be the fiction this file exists
+  to avoid. Measured 2026-10-28: 18 models adopted, 164 priced-but-unrated
+  printed for triage, 4 catalogue entries unknown to the price source left
+  exactly as they were. The catalogue goes from 10 entries to 28.
+
+  Each adopted entry records `arena_matched`, the board name behind every axis
+  it took, so `85.2` traces back to `claude-opus-5.5-high` on the `2026-10-07`
+  snapshot instead of being a number with no provenance.
+
+- **`score.resolve_benchmark` and `score.benchmark_score_or_none`.** The axis a
+  score came from, and the difference between "measured at zero" and "nobody
+  measured it". `rank_cloud` rows now carry `score_axis` and `scored`, and the
+  cloud table prints a `from` column and a `?` rather than a misleading `0`.
+
+### Fixed
+
+- **The default ranking rule could not read the Arena axis, so `--arena`
+  demoted the models it had just scored.** `catalog update --arena` writes an
+  `arena` rating onto entries whose every other axis is null — ApXML and the
+  Ollama library publish no benchmarks at all — and `_benchmark_score`'s
+  default path looked only at `general` (or `vision` for a VLM). The refreshed
+  model therefore scored `0.0` and ranked below every hand-scored seed entry,
+  while the *same* entry asked for as `--application generalist` scored 84.
+  Two rules that disagreed about exactly the thing a refresh adds. There is one
+  table now: `application=None` resolves through `_DEFAULT_APPLICATION` into
+  the same priority list every keyword uses, and every list falls through to
+  `arena` as its last rung.
+
+- **An unscored candidate flattened the whole quality scale.** `rank_cloud`
+  min-max normalises quality and price, and already excluded unpriced entries
+  from the price range for the obvious reason. It did not do the same for
+  quality, because `_benchmark_score` reported a missing axis as `0.0`. The
+  leaderboard is what exposed it: its mirror publishes a top twenty per board,
+  so a model can be rated for code and absent from text — censored, not weak.
+  Four such entries turned a 68–88 quality spread into 0–88, every real score
+  compressed toward 1.0, and the quality-led default (0.7) started behaving
+  like a price-led one. Both axes now normalise over the entries that have a
+  figure, and both say out loud which ones did not.
+
+- **The price source admitted Azure, which no auto-pick can route to.** Azure
+  is the one provider in `llm._OPENAI_COMPATIBLE` with no entry in
+  `engine._CLOUD_BASE_URLS`, and there is no universal value to put there: the
+  endpoint is per-tenant and the id a request carries is a deployment name the
+  tenant chose. An auto-picked Azure entry resolves to `base_url=""`. It also
+  duplicated — 66 of its 94 rows repeated an OpenAI id already in the table —
+  so they inflated the triage list with models that were already there under a
+  provider that works. Azure stays usable by pinning `provider`, `model` and
+  `base_url`; what is removed is the pretence that it can be chosen for you.
+
+- **A cache entry with no seed counterpart was written and never read.**
+  `load_cloud_catalog` walked the seed's ids and treated the cache purely as an
+  overlay, so the eighteen adopted models landed in
+  `pricing_cache.yaml` and nothing ever loaded them. The local catalogue has
+  always merged both ways — that is how ApXML's entries reach a report — so
+  this was an asymmetry rather than a policy. A cache-only entry with no price
+  or no score is still refused, and says so.
+
+- **`scripts/measure_arena_coverage.py` had been broken since the data files
+  moved into the package.** It opened `models.yaml` and `pricing.yaml` at the
+  repository root; nothing runs it in a test lane, so a measurement the README
+  invites you to re-run had been raising `FileNotFoundError`. It reads through
+  the package's own loaders now, and reports the adoptable intersection as well
+  as per-catalogue coverage.
+
+- **The test suite read the developer's `~/.best-engine-ai-helper` caches.**
+  Three refreshable caches overlay the bundled seeds and every loader reads
+  them by default, so a run described whatever the machine had last refreshed
+  rather than what the repository contains: two `report` tests went red the
+  first time the paid cache held models that rank differently from the seed's
+  ten, with no code change behind it. An autouse fixture points all three at an
+  empty directory, matching `_isolate_ledger`'s existing stance.
+
+### Changed
+
+- **LM Arena's reasoning-effort suffixes resolve to the model that is billed.**
+  `claude-opus-5.5-max` and `claude-opus-5.5-high` are one billable id at one
+  rate per token, so both ratings belong to the same catalogue entry — and the
+  one taken is the **lowest**, because the higher rating describes a mode the
+  caller has to ask for and pay more output tokens for. When the board also
+  rates the bare name (`claude-opus-4-6` beside its `-high`), that wins
+  outright: it is the default mode. A different serving *product*
+  (`-thinking-32k`) still matches nothing, on purpose. This is also what lets
+  the axis reach the local catalogue at all: `kimi-k3` matches now.
+
+- **Figures.** `assets/diagrams/two-sources.svg` and its French twin
+  `deux-sources.svg`: what each source knows, the admission test, and the three
+  things a refresh does with a model. `arena-staleness.svg` lost two claims
+  this release made false ("merges nothing", and a 515-day figure that was
+  really 524).
+
 ## [1.10.0] - 2026-10-28
 
 ### Changed

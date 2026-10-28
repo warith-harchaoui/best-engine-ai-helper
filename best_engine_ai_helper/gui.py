@@ -108,6 +108,10 @@ _JS_NAME_TO_SOURCE: dict[str, str] = {
     "thCalls": "calls",
     "thCost": "cost",
     "thFits": "fits",
+    # Which measurement a cloud score came from. Two rows in one table can be
+    # scored by different rulers -- a published MMLU-style suite, a preference
+    # leaderboard -- and both print out of 100 without being the same quantity.
+    "thFrom": "from",
     "thModel": "model",
     "thPrice": "$/1M tokens",
     "thProvider": "provider",
@@ -875,11 +879,16 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
     }
 
     function cloudCandidateRow(r) {
+      // "?" rather than "0" for a model nobody scored on this axis: the
+      // leaderboard mirror publishes a top twenty per board, so an absence is
+      // censorship, not a measurement of weakness.
+      const scored = r.scored !== false;
       return `
         <tr class="border-t border-neutral-200 dark:border-neutral-800">
           <td class="py-1.5 pr-3 font-mono">${esc(r.id)}</td>
           <td class="py-1.5 pr-3">${esc(r.provider)}</td>
-          <td class="py-1.5 pr-3">${fmt0(r.score)}</td>
+          <td class="py-1.5 pr-3">${scored ? fmt0(r.score) : "?"}</td>
+          <td class="py-1.5 pr-3 font-mono text-xs">${r.score_axis ? esc(r.score_axis) : "—"}</td>
           <td class="py-1.5 pr-3">${r.price_per_1m == null ? "?" : fmtPrice(r.price_per_1m)}</td>
           <td class="py-1.5">${r.structured_output === false ? T.no : T.yes}</td>
         </tr>`;
@@ -891,7 +900,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
         <p class="flex flex-wrap items-center gap-2 text-sm">
           ${pill(esc(chosen.id))}
           <span class="text-neutral-600 dark:text-neutral-300">
-            ${esc(chosen.provider)}, ${T.score} ${fmt0(chosen.score)}, ${chosen.price_per_1m == null ? T.priceUnknown : `~${fmtPrice(chosen.price_per_1m)}/1M ${T.blended}`}
+            ${esc(chosen.provider)}, ${T.score} ${chosen.scored === false ? "?" : fmt0(chosen.score)}${chosen.score_axis ? ` (${esc(chosen.score_axis)})` : ""}, ${chosen.price_per_1m == null ? T.priceUnknown : `~${fmtPrice(chosen.price_per_1m)}/1M ${T.blended}`}
           </span>
           ${chosen.structured_output === false ? `<span class="text-amber-600 dark:text-amber-400">${T.notStructured}</span>` : ""}
         </p>
@@ -914,6 +923,7 @@ _GUI_TEMPLATE: str = r"""<!doctype html>
                     <th class="pb-1.5 pr-3 font-medium">${T.thModel}</th>
                     <th class="pb-1.5 pr-3 font-medium">${T.thProvider}</th>
                     <th class="pb-1.5 pr-3 font-medium">${T.thScore}</th>
+                    <th class="pb-1.5 pr-3 font-medium">${T.thFrom}</th>
                     <th class="pb-1.5 pr-3 font-medium">${T.thPrice}</th>
                     <th class="pb-1.5 font-medium">${T.thStructured}</th>
                   </tr>

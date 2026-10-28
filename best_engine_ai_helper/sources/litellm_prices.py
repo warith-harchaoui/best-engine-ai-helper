@@ -48,6 +48,20 @@ PRICES_URL = (
 #: package routes to (``engine._CLOUD_BASE_URLS``). Anything outside this map
 #: is skipped: a price for a provider no transport here can reach would be a
 #: number with nowhere to go.
+#:
+#: **Azure is deliberately absent, and it used to be here.** It is the one
+#: provider in ``llm._OPENAI_COMPATIBLE`` with no entry in
+#: ``engine._CLOUD_BASE_URLS``, because it has no universal base URL to put
+#: there: the endpoint is ``https://<your-resource>.openai.azure.com`` and the
+#: id a request carries is a *deployment name* the tenant chose, not the model
+#: name the table lists. A catalog entry is something the ranker may pick and
+#: then route to from its id alone, and an Azure row is not that -- it would
+#: resolve to ``base_url=""``. It also duplicated: 66 of its 94 rows repeated
+#: an OpenAI id already in the table, so they inflated the triage list with
+#: models that were already there under a provider that works.
+#:
+#: Azure remains usable, as it always was, by pointing a brief at your own
+#: endpoint. What is removed is the pretence that it can be auto-picked.
 _PROVIDERS: dict[str, str] = {
     "openai": "openai",
     "anthropic": "anthropic",
@@ -55,7 +69,6 @@ _PROVIDERS: dict[str, str] = {
     "mistral": "mistral",
     "openrouter": "openrouter",
     "together_ai": "together",
-    "azure": "azure",
 }
 
 #: Entry modes worth carrying. ``image_generation`` is deliberately absent: it

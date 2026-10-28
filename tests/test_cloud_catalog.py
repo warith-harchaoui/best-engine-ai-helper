@@ -285,3 +285,277 @@ def test_every_shipped_provider_is_documented_in_the_settings_example() -> None:
         "settings.yaml.example is the file the README tells the reader to copy; "
         f"these shipped providers have no entry there: {sorted(needed - documented)}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Adoption — the rule that lets the paid catalogue grow
+# ---------------------------------------------------------------------------
+#
+# The seed could be repriced from a source and never extended from one, because
+# an entry needs a quality score to be rankable and a price table publishes
+# none. So the catalogue could learn what a model cost and never that it
+# existed, and sat at ten models from 2024 while the price source knew three
+# hundred. An entry is adopted only where BOTH sources speak about the same
+# model: a price, and a rating. Two citations or no entry.
+
+_PRICED = [
+    {
+        "id": "claude-opus-5-5",
+        "provider": "anthropic",
+        "kind": "vlm",
+        "input_per_1m": 4.0,
+        "output_per_1m": 20.0,
+        "context_length": 1000000,
+        "source": "litellm",
+        "fetched_at": "2026-10-28",
+    },
+    {
+        "id": "nobody-rates-this",
+        "provider": "openai",
+        "kind": "llm",
+        "input_per_1m": 1.0,
+        "output_per_1m": 2.0,
+        "source": "litellm",
+        "fetched_at": "2026-10-28",
+    },
+    {
+        "id": "free-preview",
+        "provider": "gemini",
+        "kind": "llm",
+        "input_per_1m": 0.0,
+        "output_per_1m": 0.0,
+        "source": "litellm",
+        "fetched_at": "2026-10-28",
+    },
+    {
+        "id": "an-embedder",
+        "provider": "openai",
+        "kind": "embed",
+        "input_per_1m": 0.02,
+        "output_per_1m": 0.0,
+        "source": "litellm",
+        "fetched_at": "2026-10-28",
+    },
+]
+
+_RATED = {
+    "snapshot": "2026-10-07",
+    "scores": {
+        "arena": {"claude-opus-5.5-high": 85.2, "free-preview": 70.0, "an-embedder": 10.0},
+        "arena_code": {"claude-opus-5.5-max": 97.2},
+    },
+}
+
+
+def test_adoption_needs_a_price_and_a_rating_not_either() -> None:
+    adopted = cloud_catalog.adopt_rated(_PRICED, _RATED, known=set())
+
+    assert [e["id"] for e in adopted] == ["claude-opus-5-5"]
+
+
+def test_adoption_never_invents_the_axes_it_has_no_source_for() -> None:
+    """The leaderboard measures preference. It does not measure MMLU.
+
+    Synthesising a `general` number from an `arena` one would put a
+    measurement-shaped claim in a file that bills people.
+    """
+    adopted = cloud_catalog.adopt_rated(_PRICED, _RATED, known=set())[0]
+
+    assert adopted["benchmarks"]["arena"] == 85.2
+    assert adopted["benchmarks"]["arena_code"] == 97.2
+    assert adopted["benchmarks"]["general"] is None
+    assert adopted["benchmarks"]["vision"] is None
+    assert adopted["source"] == "litellm+arena"
+    assert adopted["arena_matched"]["arena"] == "claude-opus-5.5-high"
+
+
+def test_a_model_already_in_the_catalogue_is_repriced_not_re_adopted() -> None:
+    assert cloud_catalog.adopt_rated(_PRICED, _RATED, known={"claude-opus-5-5"}) == []
+
+
+def test_nothing_is_adopted_when_no_mirror_answered() -> None:
+    assert cloud_catalog.adopt_rated(_PRICED, {"scores": {}}, known=set()) == []
+
+
+def test_one_id_one_entry_with_the_first_party_provider_winning() -> None:
+    """A reseller's price carries its own margin, and its id is an alias.
+
+    The catalogue is keyed by id, so a duplicate would make which price you are
+    quoted depend on iteration order.
+    """
+    reseller = dict(_PRICED[0], provider="openrouter", input_per_1m=5.0)
+    adopted = cloud_catalog.adopt_rated([reseller, _PRICED[0]], _RATED, known=set())
+
+    assert len(adopted) == 1
+    assert adopted[0]["provider"] == "anthropic"
+    assert adopted[0]["input_per_1m"] == 4.0
+
+
+# ---------------------------------------------------------------------------
+# Loading — the cache is a source of entries, not only of overlays
+# ---------------------------------------------------------------------------
+
+
+def _seed_file(tmp_path: Path) -> Path:
+    path = tmp_path / "pricing.yaml"
+    path.write_text(
+        "models:\n"
+        "  seeded:\n"
+        "    provider: acme\n"
+        "    kind: llm\n"
+        "    benchmarks: {general: 80, arena: null}\n"
+        "    input_per_1m: 1.0\n"
+        "    output_per_1m: 2.0\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_a_cached_entry_with_no_seed_counterpart_is_loaded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`catalog update --cloud --arena` adopted eighteen models and loading
+    walked only the seed's ids, so nothing ever read them back."""
+    cache = tmp_path / "pricing_cache.yaml"
+    cache.write_text(
+        "models:\n"
+        "  adopted:\n"
+        "    provider: acme\n"
+        "    kind: llm\n"
+        "    benchmarks: {general: null, arena: 85.2}\n"
+        "    input_per_1m: 4.0\n"
+        "    output_per_1m: 20.0\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cloud_catalog, "_CLOUD_CACHE_PATH", cache)
+    monkeypatch.setattr(cloud_catalog, "_PRICING_PATH", _seed_file(tmp_path))
+
+    ids = {e["id"] for e in cloud_catalog.load_cloud_catalog()}
+    assert ids == {"seeded", "adopted"}
+
+
+def test_a_cached_entry_with_no_score_or_no_price_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Letting one in would drag the normalisation the adoption rule protects."""
+    cache = tmp_path / "pricing_cache.yaml"
+    cache.write_text(
+        "models:\n"
+        "  unscored:\n"
+        "    provider: acme\n"
+        "    kind: llm\n"
+        "    benchmarks: {general: null, arena: null}\n"
+        "    input_per_1m: 4.0\n"
+        "  unpriced:\n"
+        "    provider: acme\n"
+        "    kind: llm\n"
+        "    benchmarks: {arena: 85.2}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cloud_catalog, "_CLOUD_CACHE_PATH", cache)
+    monkeypatch.setattr(cloud_catalog, "_PRICING_PATH", _seed_file(tmp_path))
+
+    assert {e["id"] for e in cloud_catalog.load_cloud_catalog()} == {"seeded"}
+
+
+def test_a_cached_rating_fills_a_hole_and_never_overrules_a_curated_score(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hand-written score has a provider's paper behind it; a leaderboard
+    axis fills a null rather than replacing a judgement."""
+    cache = tmp_path / "pricing_cache.yaml"
+    cache.write_text(
+        "models:\n"
+        "  seeded:\n"
+        "    benchmarks: {general: 12, arena: 85.2}\n"
+        "    arena_snapshot: '2026-10-07'\n"
+        "    input_per_1m: 0.5\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cloud_catalog, "_CLOUD_CACHE_PATH", cache)
+    monkeypatch.setattr(cloud_catalog, "_PRICING_PATH", _seed_file(tmp_path))
+
+    entry = cloud_catalog.load_cloud_catalog()[0]
+    assert entry["benchmarks"]["general"] == 80  # the seed's, not the cache's
+    assert entry["benchmarks"]["arena"] == 85.2  # the hole, filled
+    assert entry["arena_snapshot"] == "2026-10-07"
+    assert entry["input_per_1m"] == 0.5  # repriceable, so the cache wins
+
+
+# ---------------------------------------------------------------------------
+# Ranking — an unscored candidate must not flatten the scale
+# ---------------------------------------------------------------------------
+
+
+def test_an_unscored_candidate_is_left_out_of_the_quality_range() -> None:
+    """The leaderboard mirror publishes a top twenty per board, so a model can
+    be rated for code and absent from text: censored, not weak.
+
+    Left at a floor of zero it stretches the quality range's bottom, every real
+    score compresses toward 1.0, and a quality-led weight starts behaving like
+    a price-led one.
+    """
+    pool = [
+        {
+            "id": "good-and-dear",
+            "provider": "acme",
+            "kind": "llm",
+            "benchmarks": {"general": 88},
+            "input_per_1m": 5.0,
+            "output_per_1m": 15.0,
+        },
+        {
+            "id": "fair-and-cheap",
+            "provider": "acme",
+            "kind": "llm",
+            "benchmarks": {"general": 68},
+            "input_per_1m": 0.1,
+            "output_per_1m": 0.3,
+        },
+    ]
+    censored = {
+        "id": "rated-elsewhere",
+        "provider": "acme",
+        "kind": "llm",
+        "benchmarks": {"general": None, "arena_code": 96.1},
+        "input_per_1m": 2.0,
+        "output_per_1m": 10.0,
+    }
+
+    without = cloud_catalog.rank_cloud(pool, "llm", quality_vs_cost=0.7)
+    with_it = cloud_catalog.rank_cloud([*pool, censored], "llm", quality_vs_cost=0.7)
+
+    # Adding a candidate nobody scored on this axis must not reorder the two
+    # that were scored, nor change what they were worth.
+    assert [r["id"] for r in without] == [r["id"] for r in with_it][:2]
+    assert without[0]["combined"] == pytest.approx(with_it[0]["combined"])
+
+    unscored = next(r for r in with_it if r["id"] == "rated-elsewhere")
+    assert unscored["scored"] is False
+    assert unscored["score_axis"] is None
+    assert unscored is with_it[-1]
+
+
+def test_a_rank_row_says_which_ruler_measured_it() -> None:
+    """88 from an MMLU-style suite and 86 from a preference leaderboard are
+    both out of 100 and are not the same quantity."""
+    pool = [
+        {
+            "id": "hand-scored",
+            "provider": "acme",
+            "kind": "llm",
+            "benchmarks": {"general": 88},
+            "input_per_1m": 5.0,
+            "output_per_1m": 15.0,
+        },
+        {
+            "id": "adopted",
+            "provider": "acme",
+            "kind": "llm",
+            "benchmarks": {"general": None, "arena": 86.7},
+            "input_per_1m": 2.0,
+            "output_per_1m": 10.0,
+        },
+    ]
+    axes = {r["id"]: r["score_axis"] for r in cloud_catalog.rank_cloud(pool, "llm")}
+    assert axes == {"hand-scored": "general", "adopted": "arena"}

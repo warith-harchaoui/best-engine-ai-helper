@@ -917,7 +917,7 @@ tool like every other endpoint.
 | `storage` | Plan capacity: what fits on disk, and what fits in memory together |
 | `providers` | Which cloud providers are usable right now, and for the others, the variable to set |
 | `catalog show` | Print the merged model catalog |
-| `catalog update` | Refresh the model cache (`--ollama` for pullable tags from the official library, `--arena` to merge LM Arena ratings, `--limit N` for a partial refresh) |
+| `catalog update` | Refresh the model cache (`--ollama` for pullable tags from the official library, `--arena` to merge LM Arena ratings, `--cloud` to reprice the paid catalogue, `--cloud --arena` to also adopt the models both sources know, `--limit N` for a partial refresh) |
 | `hardware show` | Print the known hardware chip table |
 | `hardware update` | Record this machine's chip and memory in the hardware cache |
 | `pull` | Download the best model and run the Ralph gates |
@@ -952,7 +952,9 @@ Sizes are derived from a constant **measured** against the seed's own fourteen Q
 
 ![Every Arena source tried in turn: the official board has no public API, one community mirror now answers with 37 models from a 21-day-old snapshot, a paid scraper is refused on principle, and the bulk history is 524 days stale](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/arena-staleness.png)
 
-**It rates hosted frontier endpoints, and nothing else.** Arena rates what its voters can chat with, which today means names like `claude-opus-5.5-max`, `gpt-6-astra-max` and `gemini-4-argon-high`. Re-surveyed 2026-10-28, that is **37 models**, and **none of them matches either bundled catalog**: `models.yaml` holds open-weight Ollama tags nobody votes on, and `pricing.yaml` holds 2024 API models Arena stopped ranking generations ago. The families overlap — `claude`, `gemini`, `gpt` — but the versions do not, and matching `claude-opus-5.5-max`'s Elo onto `claude-3-5-sonnet` would be worse than matching nothing. The matcher refuses, correctly.
+**It rates hosted frontier endpoints, and nothing else.** Arena rates what its voters can chat with, which today means names like `claude-opus-5.5-max`, `gpt-6-astra-max` and `gemini-4-argon-high`. Re-surveyed 2026-10-28, that is **37 models** across three boards of twenty. Against the *local* catalogue that is almost nothing — **1 of 51**, `kimi-k3` — because nobody votes on an open-weight Ollama tag. Against the *paid* one it is most of it: **18 of 28**, once `catalog update --cloud` has put current models in the file. That asymmetry is the axis's defining property, not a defect in it.
+
+A board name carries a reasoning-effort suffix an API model id never does: `claude-opus-5.5-max` and `claude-opus-5.5-high` are one billable model served at two efforts, billed once at one rate per token. Both ratings therefore belong to the same catalogue entry, and the one taken is the **lowest** of them — the higher one describes a mode you have to ask for and pay more output tokens for, so attributing it to the bare id would promise what a default call does not deliver. When the board also rates the unsuffixed name (`claude-opus-4-6` sits next to its `-high`), that one wins outright: it *is* the default mode. A different serving *product* — `claude-3-5-sonnet-20250219-thinking-32k` — still matches nothing, on purpose.
 
 Embedding models cannot match by construction either: nobody chats with an embedder, so no leaderboard of chat preferences will ever rate one. The command prints its own `matched/total` every run, so you never have to take this paragraph's word for it.
 
@@ -1098,6 +1100,8 @@ A paid call never happens by accident. It takes a brief that says `mode: cloud`,
 - **Pin it**: name `provider` and `model` explicitly in the brief, exactly as before.
 - **Auto-pick it**: omit `model` (and `provider`, to search every provider) and best-engine picks the best paid model from a small bundled catalog (`pricing.yaml`, extended with benchmark scores per model), the same way local mode auto-picks from `models.yaml`, except that the resource being budgeted is **price**, not memory, since every paid model fits on any machine. A `quality_vs_cost` knob (0..1, default 0.7) tips the pick: `1.0` picks purely on benchmark score, `0.0` picks purely on price, and the default leans quality with price as a tiebreaker.
 
+Azure is pinned only, never auto-picked, and the reason is structural rather than a preference: it is the one provider with no universal base URL to route to. Its endpoint is `https://<your-resource>.openai.azure.com` and the id a request carries is a *deployment name* you chose, not the model name a price table lists — so an auto-picked Azure entry would resolve to an empty `base_url` and call nothing. Pin `provider`, `model` and `base_url` and it works exactly as it always did.
+
 #### Keeping the paid catalogue honest
 
 `pricing.yaml` is hand-maintained, and for a long time it had no source to
@@ -1123,17 +1127,73 @@ is the point:
 - **Benchmark scores are never touched.** A price table has no opinion about
   quality, so refreshed entries keep the scores already in the seed. This
   package will not put a number nobody measured into a file that bills people.
-- **Nothing is added or deleted automatically.** Models the source knows and
-  the catalogue does not are *printed* for you to triage, not merged: a paid
-  model with no benchmark score cannot be ranked. Models the source has never
-  heard of — four of ten, including both Gemini 1.5 entries, retired by Google
-  well before this — are reported and left exactly as they are, because
-  absence from one source is strong evidence rather than proof.
+- **Nothing is deleted automatically.** Models the source has never heard of
+  — four of ten, including both Gemini 1.5 entries, retired by Google well
+  before this — are reported and left exactly as they are, because absence
+  from one source is strong evidence rather than proof.
+- **Nothing is added on one source alone.** A paid model with no benchmark
+  score cannot be ranked, so a priced-but-unrated model is *printed* for you to
+  triage rather than merged. What lifts a model out of that list is a second
+  source — see below.
 
 Until you run it, every cloud surface says the table carries no date. That is
 accurate: the seed's numbers were written from recollection rather than
 verified on a given day, so there is no honest `as_of` to stamp. A refresh
 writes a real `fetched_at` per entry, and the warning stops.
+
+#### How the paid catalogue grows: two sources, and an entry needs both
+
+Repricing fixes what the catalogue's models *cost*. It cannot tell the
+catalogue that a model exists, because ranking one needs a quality score and a
+price table publishes none. So the file could learn that `gpt-4o` had gone up
+and never that `gpt-6-sol` had shipped — ten models from 2024, indefinitely.
+
+Add `--arena` and a second source answers the other half:
+
+```sh
+best-engine-ai-helper catalog update --cloud --arena
+```
+
+![How the paid catalogue grows: a public price table knows 188 chat models you can buy and no quality score; a leaderboard mirror knows 37 rated names and no price; a model is adopted only where both name it — 18 today, with 164 priced-but-unrated printed for triage and 4 catalogue entries unknown to the price source left exactly as they were](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/two-sources.png)
+
+**An entry is adopted only where both sources name the same model.** That is
+two citations, neither of them invented, and it is the whole admission test. A
+priced model nobody rated is still not adopted; a rated model nobody prices
+still cannot be billed. Measured on 2026-10-28, 18 models pass, 164 are priced
+without a rating and stay on the triage list, and the catalogue goes from 10
+entries to 28.
+
+What an adopted entry deliberately does **not** carry is a `general`, `code`,
+`math`, `ocr` or `vision` score. Those stay null. The leaderboard measures
+conversational preference; synthesising an MMLU-style number out of it would be
+the same fiction the rest of this file exists to avoid. The ranker reads the
+Arena axes directly, so a null there costs nothing — and each adopted entry
+records the board name behind every axis it took, so `85.2` is traceable to
+`claude-opus-5.5-high` on the `2026-10-07` snapshot rather than being a number
+with no provenance.
+
+Two consequences worth knowing before you read the ranking:
+
+- **The `from` column is not decoration.** A score of 88 measured by a
+  published MMLU-style suite and a score of 86 converted from a preference
+  leaderboard are both printed out of 100 and are *not the same quantity*. The
+  cloud table names the axis behind every row for exactly that reason, and a
+  few points between two rows measured differently is not a result.
+- **A model can be rated and still show `?`.** The mirror publishes a top
+  twenty per board, so a model can be rated for code and absent from text —
+  censored, not weak. Those candidates rank last on quality *and* are left out
+  of the quality range, so one of them cannot flatten the scale for everyone
+  else. (It could: before this, four such entries turned a 68–88 quality spread
+  into 0–88, and the quality-led default started behaving like a price-led
+  one.)
+
+Re-derive any of these numbers yourself — the script is in the repository and
+reads through the package's own loaders, so it cannot drift from what the code
+does:
+
+```sh
+python scripts/measure_arena_coverage.py
+```
 
 ```yaml
 mode: cloud

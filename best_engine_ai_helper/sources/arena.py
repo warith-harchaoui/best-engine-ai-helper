@@ -120,6 +120,16 @@ _RELEASE_SUFFIXES = ("-instruct", "-chat", "-it", "-preview", "-latest")
 #: An alias suffix meaning "whichever release is current".
 _ALIAS_SUFFIX = re.compile(r"-(?:latest|preview)$")
 
+#: Reasoning-effort tokens the leaderboard appends and an API model id never
+#: carries. ``claude-opus-5.5-max`` and ``claude-opus-5.5-high`` are the same
+#: billable model served at two efforts: one id, one price per token, two
+#: ratings. The board votes on serving modes; a price list bills models.
+#:
+#: Distinct from :data:`_RELEASE_SUFFIXES`, which name a *release* of a model,
+#: and from the ``-thinking-32k`` style tokens left unmatched on purpose: those
+#: change the product, not the dial.
+_SERVING_MODES = frozenset({"low", "medium", "high", "xhigh", "max"})
+
 #: A dated release token, in the three spellings providers actually use:
 #: ``2024-05-13``, ``20241022``, ``2407`` (year-month).
 #:
@@ -447,15 +457,19 @@ def match_model(catalog_id: str, ratings: dict[str, float]) -> str | None:
     is heuristic and deliberately conservative: a wrong match attributes
     another model's reputation to this one, which is worse than no match.
 
-    Five passes, strictest first: exact; exact after normalising separators;
-    exact after dropping a quantization suffix the leaderboard never carries
-    (``qwen3:32b-q4_k_m`` is Arena's ``qwen3-32b``); and finally a *unique*
-    prefix match, which catches the release suffixes a leaderboard adds
-    (``-instruct``, ``-preview``). A prefix matching several entries is
-    rejected rather than guessed: attributing one model's reputation to
-    another is worse than leaving the axis empty, because the ranker would act
-    on it. Finally, an alias is resolved to the newest dated release of its
-    family, which is what the alias means rather than a heuristic.
+    Passes, strictest first: exact; exact after normalising separators; exact
+    after dropping a quantization suffix the leaderboard never carries
+    (``qwen3:32b-q4_k_m`` is Arena's ``qwen3-32b``); a *unique* prefix match,
+    which catches the release suffixes a leaderboard adds (``-instruct``,
+    ``-preview``); then the reasoning-effort suffixes
+    (:data:`_SERVING_MODES`), where one billable id is rated several times and
+    the **lowest** of those ratings is the one this takes; and finally an alias
+    resolved to the newest dated release of its family, which is what the alias
+    means rather than a heuristic.
+
+    A prefix matching several entries is rejected rather than guessed:
+    attributing one model's reputation to another is worse than leaving the
+    axis empty, because the ranker would act on it.
 
     Parameters
     ----------
@@ -489,6 +503,20 @@ def match_model(catalog_id: str, ratings: dict[str, float]) -> str | None:
     >>> match_model("claude-3-5-sonnet",
     ...             {"claude-3-5-sonnet-20250219-thinking-32k": 1.0}) is None
     True
+
+    One model, several reasoning efforts, one price per token: the floor is
+    taken, because the higher rating describes a mode the caller has to ask
+    for.
+
+    >>> match_model("claude-opus-5-5",
+    ...             {"claude-opus-5.5-max": 97.2, "claude-opus-5.5-high": 85.2})
+    'claude-opus-5.5-high'
+
+    Unless the board also rates the bare id, which IS the default mode:
+
+    >>> match_model("claude-opus-4-6",
+    ...             {"claude-opus-4-6": 84.7, "claude-opus-4-6-high": 85.3})
+    'claude-opus-4-6'
     """
 
     def normalise(text: str) -> str:
@@ -515,6 +543,32 @@ def match_model(catalog_id: str, ratings: dict[str, float]) -> str | None:
         ]
         if len(prefixed) == 1:
             return prefixed[0]
+
+    # One model served at several reasoning efforts. The board rates
+    # `claude-opus-5.5-high` and `claude-opus-5.5-max` separately; the price
+    # table bills `claude-opus-5-5` once, at one rate per token, whichever dial
+    # you turn. So the ratings belong to the same catalog entry -- and the one
+    # this takes is the LOWEST of them.
+    #
+    # Lowest, not highest or mean, for the same reason every other rule here
+    # errs downward: the high-effort rating describes a mode the caller has to
+    # ask for and pay more output tokens for, so attributing it to the bare id
+    # would promise what a default call does not deliver. The floor is the
+    # claim this catalog can keep. `arena_modes` on the entry records which
+    # `arena_matched` on the entry records the exact board name behind each
+    # axis, so the mode a score came from is readable rather than implied.
+    #
+    # Reached only when no bare name matched above: when the board carries the
+    # unsuffixed model too (`claude-opus-4-6` sits next to its `-high`), that
+    # IS the default mode and the exact-match pass has already taken it.
+    for candidate in (wanted, bare):
+        modes = [
+            original
+            for key, original in index.items()
+            if key.rpartition("-")[0] == candidate and key.rpartition("-")[2] in _SERVING_MODES
+        ]
+        if modes:
+            return min(modes, key=lambda name: ratings[name])
 
     # Alias -> newest dated release of the same family. `mistral-large-latest`
     # IS `mistral-large-2411` until the provider ships the next one, so taking
@@ -554,6 +608,21 @@ def merge_into(
         ``report`` carries ``matched``, ``unmatched`` and the source note, so a
         caller can show which models got a rating and which the heuristic
         declined to guess at.
+
+    Examples
+    --------
+    A matched entry carries the snapshot it came from and the board name behind
+    each axis, so the rating can be traced back without re-running the fetch:
+
+    >>> result = {"snapshot": "2026-10-07",
+    ...           "scores": {"arena": {"claude-opus-5.5-high": 85.2}}}
+    >>> merged, report = merge_into([{"id": "claude-opus-5-5"}], result)
+    >>> merged[0]["benchmarks"]["arena"], merged[0]["arena_snapshot"]
+    (85.2, '2026-10-07')
+    >>> merged[0]["arena_matched"]
+    {'arena': 'claude-opus-5.5-high'}
+    >>> report["matched"]
+    ['claude-opus-5-5']
     """
     scores = result.get("scores") or {}
     if not scores:
@@ -566,14 +635,19 @@ def merge_into(
     for entry in entries:
         copy = {**entry, "benchmarks": dict(entry.get("benchmarks") or {})}
         ident = str(copy.get("id") or "")
-        hit = False
+        # Which board name each axis came from. A paid entry's rating can decide
+        # what a caller is billed, so "85.2, from claude-opus-5.5-high on the
+        # 2026-10-07 snapshot" is the claim; "85.2" alone is a number with no
+        # provenance, which is the kind of thing this package exists to remove.
+        cited: dict[str, str] = {}
         for axis, rows in scores.items():
             key = match_model(ident, rows)
             if key is not None:
                 copy["benchmarks"][axis] = rows[key]
-                hit = True
-        if hit:
+                cited[axis] = key
+        if cited:
             copy["arena_snapshot"] = result.get("snapshot")
+            copy["arena_matched"] = cited
             matched.append(ident)
         else:
             unmatched.append(ident)

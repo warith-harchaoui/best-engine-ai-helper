@@ -303,6 +303,17 @@ texte à moitié prix. Sautez toute la section avec `--no-cloud` ; orientez-la a
 moins cher sans égard à la qualité, défaut 0.7) puis
 `--cloud-provider openai|mistral|...` pour la limiter à un seul fournisseur.
 
+Ces deux scores viennent de la graine embarquée, point de départ d'une
+installation neuve. Lancez `catalog update --cloud --arena` puis la table se
+remplit de modèles actuels dont les notes viennent d'un classement — moment où
+la colonne `from` cesse d'être un ornement, puisqu'un 88 issu d'une suite
+publiée façon MMLU puis un 86 converti d'un classement de préférence
+s'impriment tous deux sur 100 sans être la même grandeur. Un candidat que le
+classement ne note pas sur l'axe demandé affiche `?` plutôt que `0` : le miroir
+publie les vingt premiers par tableau, cette absence est donc une censure, pas
+une faiblesse, puis elle est tenue hors de l'étendue de qualité au lieu d'en
+occuper le plancher.
+
 ## 3. Un brief par dépôt, un moteur par machine
 
 `report` affiche un conseil. `resolve` écrit le descripteur que votre code lit au
@@ -701,8 +712,10 @@ spécifications des modèles à poids ouverts depuis ApXML, `catalog update --ol
 frais existe puis le dit franchement quand aucun ne l'est, `catalog update
 --cloud` retarife le catalogue PAYANT depuis la table publique de LiteLLM
 (prix puis longueurs de contexte seulement, jamais les scores de benchmark, que
-cette source ne publie pas), enfin `hardware update` consigne la puce puis la
-mémoire de cette machine.
+cette source ne publie pas), `catalog update --cloud --arena` *adopte* en plus
+les modèles payants que les deux sources nomment — un prix chez l'une, une note
+chez l'autre, deux citations sinon rien — enfin `hardware update` consigne la
+puce puis la mémoire de cette machine.
 
 ## 7. Trop gros pour tenir, exécutable quand même
 
@@ -1439,7 +1452,7 @@ qu'un seul nom, c'est celui-ci.
 | `providers` | quels fournisseurs cloud sont utilisables à l'instant, puis pourquoi pas les autres ; `--json` | — |
 | `doctor` | le moteur résolu face au démon en fonctionnement ; code non nul s'ils se contredisent ; `--directory`, `--timeout` | Ollama |
 | `catalog show` | le catalogue de modèles fusionné | — |
-| `catalog update` | rafraîchit le cache du catalogue ; `--limit`, `--timeout`, `--ollama`, `--arena`, `--cloud` (prix payants depuis LiteLLM) | réseau |
+| `catalog update` | rafraîchit le cache du catalogue ; `--limit`, `--timeout`, `--ollama`, `--arena`, `--cloud` (prix payants depuis LiteLLM), `--cloud --arena` (adopte en plus les modèles que les deux sources nomment) | réseau |
 | `hardware show` | la table des puces fusionnée | — |
 | `hardware update` | consigne la puce puis la mémoire de cette machine | — |
 | `lightweight status` | cette machine peut-elle lire les couches en flux, le lui demanderait-on ; `--measure`, `--json`, `--request` | — |

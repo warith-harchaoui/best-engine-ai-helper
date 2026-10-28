@@ -1,0 +1,135 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 478" width="1040" height="478"
+     role="img" aria-labelledby="ds-title ds-desc" font-family="Roboto, 'Helvetica Neue', Arial, sans-serif">
+  <title id="ds-title">Comment le catalogue payant s'agrandit : deux sources, puis une entrée exige les deux</title>
+  <desc id="ds-desc">Deux sources indépendantes alimentent le catalogue des modèles payants,
+  mesurées le 28 octobre 2026. D'un côté une table de prix publique liste 188 modèles de dialogue
+  réellement achetables, avec un prix catalogue, une longueur de contexte puis des drapeaux de
+  capacité, sans aucune note de qualité. De l'autre, un miroir communautaire d'un classement de
+  préférence humaine publie 37 noms de modèles dans un instantané daté du 7 octobre 2026, trois
+  tableaux de vingt, avec une note puis aucun prix. Un modèle n'entre au catalogue que si les deux
+  sources le nomment : deux citations, dont aucune n'est inventée. Dix-huit modèles passent
+  aujourd'hui. Cent soixante-quatre sont tarifés sans être notés : ils sont affichés pour triage
+  humain plutôt qu'ajoutés, puisqu'un modèle sans note ne peut pas être classé. Quatre entrées déjà
+  au catalogue sont inconnues de la source de prix, ce qui est un indice fort de retrait sans en
+  être la preuve : elles sont signalées puis laissées exactement en l'état. Le catalogue passe de
+  dix modèles de 2024 à vingt-huit.</desc>
+
+  <style>
+    .panel      { fill: #ffffff; stroke: #e0e0e0; stroke-width: 1.5; }
+    .eyebrow    { fill: #6b6b6b; font-size: 12px; font-weight: 700; letter-spacing: .1em; }
+    .h          { font-size: 16px; font-weight: 700; fill: #111111; }
+    .sub        { font-size: 12.5px; fill: #5a5a5a; }
+    .muted      { font-size: 12px; fill: #8a8a8a; font-style: italic; }
+    .mono       { font-family: 'Roboto Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+    .count      { font-size: 25px; font-weight: 700; }
+    .flow       { fill: none; stroke: #9a9a9a; stroke-width: 2; }
+
+    .priced     { fill: #E5F1F8; stroke: #0072B2; stroke-width: 1.8; }
+    .priced-k   { fill: #0072B2; }
+    .rated      { fill: #DFF2EC; stroke: #009E73; stroke-width: 1.8; }
+    .rated-k    { fill: #007254; }
+
+    .gate       { fill: #FDF0E3; stroke: #E69F00; stroke-width: 2.2; }
+    .gate-k     { fill: #8a5600; }
+
+    .keep       { fill: #DFF2EC; stroke: #009E73; stroke-width: 1.8; }
+    .keep-k     { fill: #007254; }
+    .hold       { fill: #FFF9E6; stroke: #E69F00; stroke-width: 1.8; }
+    .hold-k     { fill: #8a5600; }
+    .leave      { fill: #FBEDE6; stroke: #D55E00; stroke-width: 1.8; }
+    .leave-k    { fill: #9c4400; }
+
+    .caption    { font-size: 12.5px; fill: #5a5a5a; font-style: italic; }
+
+    @media (prefers-color-scheme: dark) {
+      .panel    { fill: #1b1b1d; stroke: #3a3a3d; }
+      .eyebrow  { fill: #a0a0a6; }
+      .h        { fill: #f2f2f4; }
+      .sub      { fill: #b4b4ba; }
+      .muted    { fill: #8f8f96; }
+      .flow     { stroke: #7a7a82; }
+      .caption  { fill: #a0a0a6; }
+
+      .priced   { fill: #10243d; stroke: #4da2ff; }
+      .priced-k { fill: #7ab8ff; }
+      .rated    { fill: #0d2a22; stroke: #3ec9a1; }
+      .rated-k  { fill: #5fd9b6; }
+      .gate     { fill: #33250d; stroke: #ffb52e; }
+      .gate-k   { fill: #ffc85c; }
+      .keep     { fill: #0d2a22; stroke: #3ec9a1; }
+      .keep-k   { fill: #5fd9b6; }
+      .hold     { fill: #33250d; stroke: #ffb52e; }
+      .hold-k   { fill: #ffc85c; }
+      .leave    { fill: #3a1f10; stroke: #ff8a3d; }
+      .leave-k  { fill: #ff9f63; }
+    }
+  </style>
+
+  <defs>
+    <marker id="ds-arrow" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#9a9a9a"/>
+    </marker>
+  </defs>
+
+  <!-- ===================== evidence ===================== -->
+  <text class="eyebrow" x="28" y="34">CE QUE CHAQUE SOURCE SAIT</text>
+
+  <rect class="priced" x="28" y="52" width="372" height="134" rx="12"/>
+  <text class="eyebrow priced-k" x="48" y="78">TARIFÉ</text>
+  <text class="h" x="48" y="102">Table de prix publique LiteLLM</text>
+  <text class="sub mono" x="48" y="126">188 modèles de dialogue achetables</text>
+  <text class="sub" x="48" y="146">prix · longueur de contexte · vision · schéma</text>
+  <text class="muted" x="48" y="168">aucune note de qualité, par construction</text>
+
+  <rect class="rated" x="28" y="212" width="372" height="134" rx="12"/>
+  <text class="eyebrow rated-k" x="48" y="238">NOTÉ</text>
+  <text class="h" x="48" y="262">Miroir communautaire LM Arena</text>
+  <text class="sub mono" x="48" y="286">37 noms · instantané 2026-10-07</text>
+  <text class="sub" x="48" y="306">trois tableaux, vingt premiers chacun</text>
+  <text class="muted" x="48" y="328">aucun prix, par construction</text>
+
+  <!-- ===================== the gate ===================== -->
+  <path class="flow" d="M404 119 H510 V134" marker-end="url(#ds-arrow)"/>
+  <path class="flow" d="M404 279 H510 V264" marker-end="url(#ds-arrow)"/>
+
+  <rect class="gate" x="434" y="142" width="152" height="114" rx="12"/>
+  <text class="eyebrow gate-k" x="510" y="176" text-anchor="middle">ADMISSION</text>
+  <text class="h" x="510" y="202" text-anchor="middle">les deux,</text>
+  <text class="h" x="510" y="222" text-anchor="middle">ou aucune</text>
+  <text class="muted" x="510" y="243" text-anchor="middle">deux citations, sinon rien</text>
+
+  <path class="flow" d="M590 199 H602"/>
+  <path class="flow" d="M602 105 V341"/>
+  <path class="flow" d="M602 105 H610" marker-end="url(#ds-arrow)"/>
+  <path class="flow" d="M602 223 H610" marker-end="url(#ds-arrow)"/>
+  <path class="flow" d="M602 341 H610" marker-end="url(#ds-arrow)"/>
+
+  <!-- ===================== outcomes ===================== -->
+  <text class="eyebrow" x="618" y="34">CE QUE LE RAFRAÎCHISSEMENT EN FAIT</text>
+
+  <rect class="keep" x="618" y="52" width="394" height="106" rx="12"/>
+  <text class="count keep-k mono" x="642" y="88">18</text>
+  <text class="h" x="700" y="86">adoptés</text>
+  <text class="sub" x="642" y="112">un prix chez l’une, une note chez l’autre</text>
+  <text class="muted" x="642" y="136">general · code · math restent nuls — personne ne les a mesurés</text>
+
+  <rect class="hold" x="618" y="170" width="394" height="106" rx="12"/>
+  <text class="count hold-k mono" x="642" y="206">164</text>
+  <text class="h" x="712" y="204">affichés pour triage</text>
+  <text class="sub" x="642" y="230">tarifés, puis aucun classement ne les note</text>
+  <text class="muted" x="642" y="254">listés, jamais ajoutés : un modèle sans note ne se classe pas</text>
+
+  <rect class="leave" x="618" y="288" width="394" height="106" rx="12"/>
+  <text class="count leave-k mono" x="642" y="324">4</text>
+  <text class="h" x="678" y="322">laissés exactement en l’état</text>
+  <text class="sub" x="642" y="348">au catalogue, inconnus de la source de prix</text>
+  <text class="muted" x="642" y="372">sans doute retirés — indice fort, pas une preuve</text>
+
+  <!-- ===================== result ===================== -->
+  <rect class="panel" x="28" y="372" width="558" height="60" rx="10"/>
+  <text class="h" x="52" y="398">Le catalogue payant</text>
+  <text class="sub mono" x="52" y="420">10 modèles de 2024  →  28, dont 18 portent un prix daté puis une note datée</text>
+
+  <text class="caption" x="28" y="462">Mesuré le 2026-10-28 par scripts/measure_arena_coverage.py. Relancez-le : les nombres bougent dès qu’une source bouge.</text>
+</svg>

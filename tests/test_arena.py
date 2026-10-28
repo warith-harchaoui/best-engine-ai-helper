@@ -463,3 +463,72 @@ def test_the_walk_back_stops_at_the_staleness_limit(monkeypatch):
     )
 
     assert arena._from_snapshots(None, 5.0) is None
+
+
+# ---------------------------------------------------------------------------
+# One model, several reasoning efforts
+# ---------------------------------------------------------------------------
+#
+# The board rates serving modes; a price list bills models. `claude-opus-5.5-max`
+# and `claude-opus-5.5-high` are one billable id at one rate per token, so both
+# ratings belong to the same catalogue entry — and the one taken is the floor,
+# because the higher rating describes a mode the caller has to ask for and pay
+# more output tokens for.
+
+
+def test_effort_variants_resolve_to_the_lowest_rating() -> None:
+    ratings = {"claude-opus-5.5-max": 97.2, "claude-opus-5.5-high": 85.2}
+    assert arena.match_model("claude-opus-5-5", ratings) == "claude-opus-5.5-high"
+
+
+def test_the_bare_name_wins_when_the_board_carries_it() -> None:
+    """The unsuffixed entry IS the default mode; no discount is needed."""
+    ratings = {"claude-opus-4-6": 84.7, "claude-opus-4-6-high": 85.3}
+    assert arena.match_model("claude-opus-4-6", ratings) == "claude-opus-4-6"
+
+
+def test_a_serving_mode_is_not_a_different_product() -> None:
+    """`-thinking-32k` changes what you get; `-xhigh` changes a dial.
+
+    The first stays unmatched on purpose — rating a different serving product
+    under this id would attribute another thing's reputation to it.
+    """
+    assert arena.match_model("gpt-5.6-sol", {"gpt-5.6-sol-xhigh": 83.7}) == "gpt-5.6-sol-xhigh"
+    assert (
+        arena.match_model("claude-3-5-sonnet", {"claude-3-5-sonnet-20250219-thinking-32k": 1.0})
+        is None
+    )
+
+
+def test_a_merged_entry_cites_the_board_name_behind_each_axis() -> None:
+    """A rating that can decide what a caller is billed needs provenance.
+
+    "85.2" is a number; "85.2, from claude-opus-5.5-high on the 2026-10-07
+    snapshot" is a claim somebody can check.
+    """
+    result = {
+        "snapshot": "2026-10-07",
+        "scores": {
+            "arena": {"claude-opus-5.5-high": 85.2},
+            "arena_code": {"claude-opus-5.5-max": 97.2},
+        },
+    }
+    merged, report = arena.merge_into([{"id": "claude-opus-5-5"}], result)
+
+    assert merged[0]["benchmarks"] == {"arena": 85.2, "arena_code": 97.2}
+    assert merged[0]["arena_matched"] == {
+        "arena": "claude-opus-5.5-high",
+        "arena_code": "claude-opus-5.5-max",
+    }
+    assert merged[0]["arena_snapshot"] == "2026-10-07"
+    assert report["matched"] == ["claude-opus-5-5"]
+
+
+def test_an_unmatched_entry_carries_no_provenance_either() -> None:
+    """No rating, no snapshot stamp: the absence must stay visible."""
+    result = {"snapshot": "2026-10-07", "scores": {"arena": {"something-else": 80.0}}}
+    merged, report = arena.merge_into([{"id": "gpt-4o"}], result)
+
+    assert "arena_matched" not in merged[0]
+    assert "arena_snapshot" not in merged[0]
+    assert report["unmatched"] == ["gpt-4o"]
