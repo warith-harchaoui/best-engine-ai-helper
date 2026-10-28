@@ -1207,6 +1207,46 @@ choisir le modèle :
   score, `0.0` uniquement sur le prix et le défaut privilégie la qualité avec le prix en
   départage.
 
+#### Garder le catalogue payant honnête
+
+`pricing.yaml` est tenu à la main, puis il est longtemps resté sans source d'où
+se rafraîchir — il vieillissait donc en silence pendant qu'`observe.py` tarifait
+chaque appel payant dessus puis que le choix automatique classait sur les mêmes
+nombres. Il en a une désormais :
+
+```sh
+best-engine-ai-helper catalog update --cloud
+```
+
+La commande tire les prix catalogue puis les longueurs de contexte de
+[la table publique de LiteLLM](https://github.com/BerriAI/litellm) vers
+`~/.best-engine-ai-helper/pricing_cache.yaml`, superposé à la graine embarquée,
+jamais modifiée. La fusion est délibérément étroite, puis c'est tout l'intérêt :
+
+- **Prix, longueurs de contexte puis drapeaux de capacité sont rafraîchis.** À
+  l'arrivée de cette commande, quatre des dix entrées de la graine étaient
+  fausses : `mistral-large-latest` était tarifé quatre fois son coût réel, donc
+  le classement évitait le modèle qui était justement le moins cher, pendant que
+  `mistral-medium-latest` sous-facturait de presque quatre. Les deux directions
+  comptent, puisque `quality_vs_cost` classe exactement sur ces nombres.
+- **Les scores de benchmark ne sont jamais touchés.** Une table de prix n'a
+  aucun avis sur la qualité, donc les entrées rafraîchies gardent les scores de
+  la graine. Ce paquet ne mettra pas dans un fichier qui facture des gens un
+  nombre que personne n'a mesuré.
+- **Rien n'est ajouté ni supprimé automatiquement.** Les modèles que la source
+  connaît puis que le catalogue ignore sont *affichés* pour que vous triiez, pas
+  fusionnés : un modèle payant sans score ne peut pas être classé. Les modèles
+  dont la source n'a jamais entendu parler — quatre sur dix, dont les deux
+  entrées Gemini 1.5, retirées par Google bien avant — sont signalés puis
+  laissés tels quels, parce que l'absence d'une source est un indice fort, pas
+  une preuve.
+
+Tant que vous ne l'avez pas lancée, chaque surface cloud dit que la table ne
+porte aucune date. C'est exact : les nombres de la graine ont été écrits de
+mémoire plutôt que vérifiés un jour donné, donc il n'y a pas d'`as_of` honnête à
+poser. Un rafraîchissement écrit un vrai `fetched_at` par entrée, puis
+l'avertissement cesse.
+
 ```yaml
 mode: cloud
 kind: both

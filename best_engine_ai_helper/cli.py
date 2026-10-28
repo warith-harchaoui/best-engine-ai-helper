@@ -852,6 +852,88 @@ def catalog_show() -> None:
     click.echo(_fmt_table(rows, cols))
 
 
+def _refresh_cloud_prices(timeout: float) -> None:
+    """Reprice the paid catalog from LiteLLM's public table.
+
+    Split out of :func:`catalog_update` because it shares none of the local
+    path's machinery: a different source, a different cache, and a merge that
+    is deliberately narrow (prices and context lengths only — see
+    :func:`cloud_catalog.reprice`).
+
+    Parameters
+    ----------
+    timeout : float
+        Per-request network timeout, in seconds.
+    """
+    from . import cloud_catalog as _cc
+    from .sources import litellm_prices
+
+    click.echo("Fetching paid-model list prices from the LiteLLM table…", err=True)
+    try:
+        fetched = litellm_prices.fetch_cloud_prices(timeout=timeout)
+    except Exception as exc:  # network / parse failures should not traceback
+        osh.error(f"catalog update --cloud failed:\n\t{exc}")
+        click.echo(f"catalog update --cloud failed: {exc}", err=True)
+        sys.exit(1)
+
+    if not fetched:
+        click.echo("No usable prices returned; cache unchanged.", err=True)
+        sys.exit(1)
+
+    seed = _cc.load_cloud_catalog()
+    repriced, missing = _cc.reprice(seed, fetched)
+
+    changed = [
+        (
+            e["id"],
+            before["input_per_1m"],
+            before["output_per_1m"],
+            e["input_per_1m"],
+            e["output_per_1m"],
+        )
+        for before, e in zip(seed, repriced, strict=True)
+        if (before.get("input_per_1m"), before.get("output_per_1m"))
+        != (e.get("input_per_1m"), e.get("output_per_1m"))
+    ]
+
+    path = _cc.write_cloud_cache(repriced)
+    click.echo(f"Repriced {len(repriced) - len(missing)} of {len(repriced)} model(s) -> {path}")
+
+    if changed:
+        click.echo("\nPrices that moved (USD per 1M tokens, in/out):")
+        for model_id, was_in, was_out, now_in, now_out in changed:
+            click.echo(f"  {model_id:<24} {was_in}/{was_out}  ->  {now_in}/{now_out}")
+
+    if missing:
+        click.echo(
+            "\nNot found in the source, so left exactly as they were:\n  "
+            + "\n  ".join(missing)
+            + "\n\nA model the table has never heard of is usually retired or renamed."
+            "\nNothing is deleted automatically: that is a judgement call, and the"
+            "\nbenchmark scores in the seed are the only ones this package has."
+        )
+
+    known = {str(e["id"]) for e in seed}
+    # A zero list price is an experimental or preview tier rather than
+    # something you can buy, and it would otherwise fill the whole triage list.
+    fresh = [e for e in fetched if str(e["id"]) not in known and (e.get("input_per_1m") or 0) > 0]
+    if fresh:
+        click.echo(
+            f"\n{len(fresh)} priced model(s) the source knows and this catalog does not."
+            "\nThey are NOT added: a paid model with no benchmark score cannot be"
+            "\nranked, and inventing one is not on offer. To adopt any of them, add"
+            "\nit to pricing.yaml with a score you can cite. A few of the cheapest"
+            "\nper 1M tokens, for triage:"
+        )
+        for entry in sorted(fresh, key=lambda e: e.get("input_per_1m") or 0.0)[:10]:
+            ctx = entry.get("context_length")
+            click.echo(
+                f"  {entry['id']:<36} {entry['provider']:<10} {entry['kind']:<5} "
+                f"{entry['input_per_1m']}/{entry['output_per_1m']}"
+                + (f"  ctx {ctx}" if ctx else "")
+            )
+
+
 @catalog_group.command("update")
 @click.option(
     "--limit",
@@ -890,7 +972,21 @@ def catalog_show() -> None:
         "and leaves the axis empty."
     ),
 )
-def catalog_update(limit: int | None, timeout: float, arena: bool, from_ollama: bool) -> None:
+@click.option(
+    "--cloud",
+    "from_cloud",
+    is_flag=True,
+    default=False,
+    help=(
+        "Refresh the PAID catalog instead: list prices and context lengths "
+        "from LiteLLM's public table. Benchmarks are left alone — that source "
+        "publishes none, and a quality score nobody measured has no business "
+        "in a file that bills people."
+    ),
+)
+def catalog_update(
+    limit: int | None, timeout: float, arena: bool, from_ollama: bool, from_cloud: bool
+) -> None:
     """Refresh the catalog cache from the ApXML open-weight model directory.
 
     Fetched specs are normalized to catalog entries and merged into
@@ -903,6 +999,10 @@ def catalog_update(limit: int | None, timeout: float, arena: bool, from_ollama: 
     front: it rates what its voters can chat with, so it populates the cloud
     catalog far better than the local one.
     """
+    if from_cloud:
+        _refresh_cloud_prices(timeout)
+        return
+
     source_name = "the Ollama library" if from_ollama else "ApXML"
     click.echo(f"Fetching models from {source_name}…", err=True)
     try:

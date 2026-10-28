@@ -41,6 +41,38 @@ from .score import _benchmark_score
 _PACKAGE_ROOT = Path(__file__).resolve().parent / "data"
 _PRICING_PATH = _PACKAGE_ROOT / "pricing.yaml"
 
+# Refreshed prices land beside the local catalogue's cache, under the same
+# contract: the bundled seed is never modified, the cache is overlaid on top of
+# it by id, and deleting the cache returns you to the seed.
+_USER_DIR = Path.home() / ".best-engine-ai-helper"
+_CLOUD_CACHE_PATH = _USER_DIR / "pricing_cache.yaml"
+
+#: Public alias, so the CLI and tests can name the cache without reaching into
+#: a private attribute (mirrors ``catalog.CACHE_PATH``).
+CLOUD_CACHE_PATH = _CLOUD_CACHE_PATH
+
+#: How old the effective price table may get before every cloud surface says
+#: so. Providers reprice and retire models on a scale of months — the seed
+#: shipped `gemini-1.5-pro` long after Google retired the 1.5 line — so half a
+#: year is already generous. It is a warning, never a refusal: an old price is
+#: still better than no price, and the user may have no network.
+STALE_AFTER_DAYS: int = 180
+
+#: Fields a refresh is allowed to overwrite. Everything else on a seed entry —
+#: `benchmarks` above all — survives, because the price source carries no
+#: quality scores and blanking them would silently disarm the ranker.
+REPRICEABLE: frozenset[str] = frozenset(
+    {
+        "input_per_1m",
+        "output_per_1m",
+        "context_length",
+        "kind",
+        "structured_output",
+        "source",
+        "fetched_at",
+    }
+)
+
 # A quality_vs_cost outside [0, 1] is silently clamped, mirroring score.py's
 # MAX_HEADROOM clamp discipline: a caller-supplied knob is never honoured past
 # its meaningful range.
@@ -95,9 +127,246 @@ def load_cloud_catalog(path: Path | None = None) -> list[dict[str, Any]]:
     if not isinstance(models, dict):
         raise ValueError(f"{catalog_path}: 'models' must be a mapping, got {type(models)!r}")
 
-    entries = [{"id": model_id, **spec} for model_id, spec in models.items()]
+    # Overlay the refreshed cache, same contract as the local catalogue: the
+    # bundled seed is never modified, the cache wins field by field, and
+    # deleting the cache returns you to the seed. A cached entry only ever
+    # carries repriceable fields (see `reprice`), so the seed's benchmark
+    # scores survive a refresh that has none of its own.
+    cached = _read_models(_CLOUD_CACHE_PATH) if path is None else {}
+    if cached:
+        osh.info(f"Overlaying {len(cached)} repriced cloud entry(ies):\n\t{_CLOUD_CACHE_PATH}")
+
+    entries = []
+    for model_id, spec in models.items():
+        merged = {"id": model_id, **spec}
+        overlay = cached.get(model_id)
+        if isinstance(overlay, dict):
+            merged.update({k: v for k, v in overlay.items() if k in REPRICEABLE})
+        entries.append(merged)
+
     osh.info(f"Loaded {len(entries)} cloud model(s) from:\n\t{catalog_path}")
+    _warn_if_stale_once()
     return entries
+
+
+def _read_models(path: Path) -> dict[str, dict[str, Any]]:
+    """Read a ``{models: {id: spec}}`` YAML file, or {} when it is absent.
+
+    Parameters
+    ----------
+    path : Path
+        File to read.
+
+    Returns
+    -------
+    dict[str, dict[str, Any]]
+        The ``models`` mapping, or an empty dict.
+
+    Examples
+    --------
+    >>> _read_models(Path("/nonexistent/pricing.yaml"))
+    {}
+    """
+    if not osh.file_exists(str(path)):
+        return {}
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except Exception as exc:  # noqa: BLE001 — a corrupt cache must not break resolution
+        osh.warning(f"Ignoring unreadable cloud price file:\n\t{path}\n\t{exc}")
+        return {}
+    models = data.get("models") or {}
+    return models if isinstance(models, dict) else {}
+
+
+#: Set once the staleness note has been emitted, so a path that loads the
+#: catalogue repeatedly (``report`` ranks llm and vlm separately; ``/v1``
+#: resolves per kind and mode) says it once rather than once per call.
+_WARNED_STALE = False
+
+
+def _warn_if_stale_once() -> None:
+    """Emit :func:`staleness_note` at most once per process."""
+    global _WARNED_STALE
+    if _WARNED_STALE:
+        return
+    _WARNED_STALE = True
+    note = staleness_note()
+    if note:
+        osh.warning(note)
+
+
+def reprice(
+    seed: list[dict[str, Any]], fetched: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """
+    Overlay fetched prices onto the catalog we carry, and name what was missed.
+
+    The merge is deliberately *narrow*. Only :data:`REPRICEABLE` fields are
+    taken from the source; ``benchmarks`` and everything else stay as the seed
+    has them, because the price table carries no quality scores and a refresh
+    that blanked them would leave `rank_cloud` ranking every model at zero.
+
+    Nothing new is added either. A model the source knows and the seed does not
+    has a price but no score, so adding it would either flood the ranking with
+    unscorable candidates or require inventing a number. Those ids come back as
+    the second return value for a human to triage — see
+    ``catalog update --cloud``, which prints them.
+
+    Parameters
+    ----------
+    seed : list[dict[str, Any]]
+        The catalog as loaded today.
+    fetched : list[dict[str, Any]]
+        Normalised source entries (:func:`sources.litellm_prices.fetch_cloud_prices`).
+
+    Returns
+    -------
+    tuple[list[dict[str, Any]], list[str]]
+        The repriced entries, and the ids of seed models the source did not
+        know. An id in that second list is a model the source has never heard
+        of: usually retired, occasionally renamed, and in both cases worth a
+        look rather than an automatic deletion.
+
+    Examples
+    --------
+    >>> seed = [{"id": "m", "provider": "p", "kind": "llm",
+    ...          "benchmarks": {"general": 80}, "input_per_1m": 9.0,
+    ...          "output_per_1m": 9.0}]
+    >>> live = [{"id": "m", "provider": "p", "kind": "vlm",
+    ...          "input_per_1m": 1.0, "output_per_1m": 2.0,
+    ...          "context_length": 128000}]
+    >>> merged, missing = reprice(seed, live)
+    >>> merged[0]["input_per_1m"], merged[0]["context_length"], missing
+    (1.0, 128000, [])
+    >>> merged[0]["benchmarks"]          # never touched by a price source
+    {'general': 80}
+    >>> reprice(seed, [])[1]
+    ['m']
+    """
+    by_id = {str(e.get("id")): e for e in fetched}
+    merged: list[dict[str, Any]] = []
+    missing: list[str] = []
+    for entry in seed:
+        model_id = str(entry.get("id"))
+        live = by_id.get(model_id)
+        if live is None:
+            missing.append(model_id)
+            merged.append(dict(entry))
+            continue
+        updated = dict(entry)
+        updated.update({k: v for k, v in live.items() if k in REPRICEABLE})
+        merged.append(updated)
+    return merged, missing
+
+
+def write_cloud_cache(entries: list[dict[str, Any]], cache_path: Path | None = None) -> Path:
+    """
+    Write repriced entries to the user cache, leaving the bundled seed alone.
+
+    Parameters
+    ----------
+    entries : list[dict[str, Any]]
+        Entries to persist, each carrying an ``id``.
+    cache_path : Path or None
+        Destination. Defaults to :data:`CLOUD_CACHE_PATH`; override in tests.
+
+    Returns
+    -------
+    Path
+        The path written.
+    """
+    path = cache_path if cache_path is not None else _CLOUD_CACHE_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"models": {str(e["id"]): {k: v for k, v in e.items() if k != "id"} for e in entries}}
+    path.write_text(yaml.safe_dump(payload, sort_keys=True, allow_unicode=True), encoding="utf-8")
+    osh.info(f"Wrote {len(entries)} repriced cloud model(s):\n\t{path}")
+    return path
+
+
+def catalog_as_of(path: Path | None = None) -> str | None:
+    """
+    The date the effective price table was last known good, as ISO ``YYYY-MM-DD``.
+
+    Reads the cache's newest ``fetched_at`` when a refresh has happened, and
+    otherwise the seed's own ``as_of`` stamp. Returns None when neither exists,
+    which is itself worth reporting: a table of prices with no date is one
+    nobody can judge.
+
+    Parameters
+    ----------
+    path : Path or None
+        Override the seed file (tests use a fixture).
+
+    Returns
+    -------
+    str or None
+        ISO date, or None when the table carries no stamp at all.
+    """
+    stamps: list[str] = []
+    cache = _read_models(_CLOUD_CACHE_PATH)
+    stamps.extend(
+        str(spec["fetched_at"])
+        for spec in cache.values()
+        if isinstance(spec.get("fetched_at"), str)
+    )
+    seed_path = path if path is not None else _PRICING_PATH
+    if osh.file_exists(str(seed_path)):
+        data = yaml.safe_load(seed_path.read_text(encoding="utf-8")) or {}
+        if isinstance(data.get("as_of"), str):
+            stamps.append(str(data["as_of"]))
+    return max(stamps) if stamps else None
+
+
+def staleness_note(today: str | None = None, path: Path | None = None) -> str | None:
+    """
+    One sentence about how old the prices are, or None when they are fresh.
+
+    Every cloud surface prints this rather than deciding for the user. An old
+    price is still better than no price — and the machine may have no network —
+    so this never refuses a resolution, it only stops a stale number from
+    passing itself off as current.
+
+    Parameters
+    ----------
+    today : str or None
+        ISO date to measure against; defaults to today (UTC).
+    path : Path or None
+        Override the seed file (tests use a fixture).
+
+    Returns
+    -------
+    str or None
+        The note, or None when the table is within :data:`STALE_AFTER_DAYS`.
+
+    Examples
+    --------
+    >>> note = staleness_note(today="2000-01-01")   # long before any stamp
+    >>> note is None
+    True
+    """
+    from datetime import date
+
+    as_of = catalog_as_of(path)
+    if as_of is None:
+        return (
+            "The paid-model table carries no date, so there is no way to tell "
+            "how current its prices are. `best-engine-ai-helper catalog update "
+            "--cloud` stamps it from a live source."
+        )
+    try:
+        stamped = date.fromisoformat(as_of)
+        now = date.fromisoformat(today) if today else date.today()
+    except ValueError:
+        return None
+    age = (now - stamped).days
+    if age < STALE_AFTER_DAYS:
+        return None
+    return (
+        f"Paid-model prices are from {as_of} ({age} days ago). Providers "
+        "reprice and retire models on a scale of months, so treat the cost "
+        "figures below as indicative. Refresh them with "
+        "`best-engine-ai-helper catalog update --cloud`."
+    )
 
 
 def blended_price_per_1m(entry: dict[str, Any]) -> float | None:

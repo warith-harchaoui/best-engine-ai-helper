@@ -679,8 +679,10 @@ Both are the merge of a bundled seed with anything cached under
 was not run for this file: `catalog update` pulls open-weight specs from ApXML,
 `catalog update --ollama` widens to real pull tags from the official Ollama
 library, `catalog update --arena` merges LM Arena ratings when a fresh enough
-mirror exists and says so plainly when none does, and `hardware update` records
-this machine's own chip and memory.
+mirror exists and says so plainly when none does, `catalog update --cloud`
+reprices the PAID catalogue from LiteLLM's public table (prices and context
+lengths only, never benchmark scores, which that source does not publish), and
+`hardware update` records this machine's own chip and memory.
 
 ## 7. Too large to fit, still runnable: layer streaming
 
@@ -1393,7 +1395,7 @@ command; there is one name now, and this is it.
 | `providers` | which cloud providers are usable right now, and why not; `--json` | — |
 | `doctor` | resolved engine against live daemon; non-zero when they disagree; `--directory`, `--timeout` | Ollama |
 | `catalog show` | the merged model catalogue | — |
-| `catalog update` | refresh the catalogue cache; `--limit`, `--timeout`, `--ollama`, `--arena` | network |
+| `catalog update` | refresh the catalogue cache; `--limit`, `--timeout`, `--ollama`, `--arena`, `--cloud` (paid list prices from LiteLLM) | network |
 | `hardware show` | the merged chip table | — |
 | `hardware update` | record this machine's chip and memory | — |
 | `lightweight status` | can this machine stream layers, and would it; `--measure`, `--json`, `--request` | — |

@@ -33,6 +33,23 @@
 #               before using them for a procurement decision.
 #   input_per_1m / output_per_1m  USD per 1M tokens, list price.
 
+# NO `as_of:` HERE, DELIBERATELY. The loader supports the key and
+# `catalog_as_of()` reads it, but these numbers were written down from
+# recollection rather than verified against a source on a particular day, so
+# there is no date to put. Stamping the last commit that touched this file
+# would say "verified on" about an edit, which is exactly the kind of claim
+# this project spends its time removing.
+#
+# The consequence is intended: `staleness_note()` reports that the table
+# carries no date, on every cloud surface, until somebody refreshes it.
+# `best-engine-ai-helper catalog update --cloud` pulls list prices and context
+# lengths from LiteLLM's public table and stamps each entry with a real
+# `fetched_at`, which then supersedes this absence.
+#
+# Benchmarks are NOT refreshed by that command: the price source publishes
+# none, and this file will not carry a quality score nobody measured. They stay
+# hand-maintained, and a refresh preserves them.
+
 models:
   gpt-4o:
     provider: openai

@@ -1082,6 +1082,43 @@ A paid call never happens by accident. It takes a brief that says `mode: cloud`,
 - **Pin it**: name `provider` and `model` explicitly in the brief, exactly as before.
 - **Auto-pick it**: omit `model` (and `provider`, to search every provider) and best-engine picks the best paid model from a small bundled catalog (`pricing.yaml`, extended with benchmark scores per model), the same way local mode auto-picks from `models.yaml`, except that the resource being budgeted is **price**, not memory, since every paid model fits on any machine. A `quality_vs_cost` knob (0..1, default 0.7) tips the pick: `1.0` picks purely on benchmark score, `0.0` picks purely on price, and the default leans quality with price as a tiebreaker.
 
+#### Keeping the paid catalogue honest
+
+`pricing.yaml` is hand-maintained, and for a long time it had no source to
+refresh from — so it aged silently while `observe.py` priced every paid call
+against it and the auto-pick ranked on the same numbers. It now has one:
+
+```sh
+best-engine-ai-helper catalog update --cloud
+```
+
+This pulls list prices and context lengths from
+[LiteLLM's public table](https://github.com/BerriAI/litellm) into
+`~/.best-engine-ai-helper/pricing_cache.yaml`, overlaid on the bundled seed,
+which is never modified. The merge is deliberately narrow, and the narrowness
+is the point:
+
+- **Prices, context lengths and capability flags are refreshed.** When this
+  landed, four of the ten seed entries were wrong — `mistral-large-latest` was
+  priced at four times its real cost, so the ranker avoided the model that was
+  actually cheap, while `mistral-medium-latest` under-billed by nearly four.
+  Both directions matter, because `quality_vs_cost` ranks on exactly these
+  numbers.
+- **Benchmark scores are never touched.** A price table has no opinion about
+  quality, so refreshed entries keep the scores already in the seed. This
+  package will not put a number nobody measured into a file that bills people.
+- **Nothing is added or deleted automatically.** Models the source knows and
+  the catalogue does not are *printed* for you to triage, not merged: a paid
+  model with no benchmark score cannot be ranked. Models the source has never
+  heard of — four of ten, including both Gemini 1.5 entries, retired by Google
+  well before this — are reported and left exactly as they are, because
+  absence from one source is strong evidence rather than proof.
+
+Until you run it, every cloud surface says the table carries no date. That is
+accurate: the seed's numbers were written from recollection rather than
+verified on a given day, so there is no honest `as_of` to stamp. A refresh
+writes a real `fetched_at` per entry, and the warning stops.
+
 ```yaml
 mode: cloud
 kind: both

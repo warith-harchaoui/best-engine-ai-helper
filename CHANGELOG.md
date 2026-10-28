@@ -67,6 +67,53 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Added
 
+- **`catalog update --cloud`: the paid catalogue finally has a source.**
+  `pricing.yaml` is hand-maintained and its own header said to "refresh when a
+  provider reprices or ships a new flagship" — with nothing to refresh *from*.
+  It aged silently while `observe.py` priced every paid call against it and
+  `cloud_catalog.rank_cloud` ranked on the same numbers.
+
+  The new command pulls list prices and context lengths from
+  [LiteLLM's public table](https://github.com/BerriAI/litellm) through
+  `sources/litellm_prices.py`, into `~/.best-engine-ai-helper/pricing_cache.yaml`
+  overlaid on the seed — the same contract the local catalogue has always had:
+  the bundled file is never modified, and deleting the cache reverts.
+
+  **What it found on the first real run**, which is the argument for having it:
+  four of the ten seed entries were mispriced, in both directions.
+  `mistral-large-latest` was listed at 2.00/6.00 against a real 0.50/1.50 — four
+  times too dear, so the ranker avoided the model that was in fact the cheap
+  one — while `mistral-medium-latest` was 0.40/2.00 against 1.50/7.50,
+  under-billing by nearly four. Four more entries (`claude-3-5-sonnet`,
+  `claude-3-5-haiku`, `gemini-1.5-pro`, `gemini-1.5-flash`) the source has never
+  heard of at all.
+
+  The merge is narrow on purpose:
+
+  - **Benchmarks are never refreshed.** The source publishes none, so entries
+    keep the scores already in the seed. This package will not put a quality
+    number nobody measured into a file that bills people — the same deliberate
+    gap `sources/apxml.py` documents on the local side.
+  - **Nothing is added.** Models the source knows and the catalogue does not —
+    283 priced ones — are *printed* for triage rather than merged, because a
+    paid model with no score cannot be ranked.
+  - **Nothing is deleted.** Ids the source has never heard of are reported and
+    left untouched: absence from one source is strong evidence of retirement,
+    not proof, and the seed holds the only benchmark scores this package has.
+
+  Context lengths arrive as a side effect, which closes half of a separate open
+  item for the paid side.
+
+- **`staleness_note()`, and the honest absence of an `as_of` in the seed.** The
+  bundled prices were written from recollection rather than verified against a
+  source on a given day, so there is no date to stamp — using the last commit
+  that touched the file would say "verified on" about an edit. Every cloud
+  surface therefore reports that the table carries no date, once per process,
+  and names the command that creates one. A refresh writes a real `fetched_at`
+  per entry and the warning stops. It is a warning and never a refusal: an old
+  price beats no price, and a machine may have no network.
+
+
 - **An OpenAI-compatible surface: from the outside, this package is an OpenAI
   endpoint** (`best_engine_ai_helper.openai_api`, `best-engine-ai-helper
   serve`). `/v1/models`, `/v1/chat/completions` (text and vision, streaming or

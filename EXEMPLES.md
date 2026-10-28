@@ -698,8 +698,11 @@ rafraîchissement n'a pas été lancé pour ce fichier : `catalog update` tire l
 spécifications des modèles à poids ouverts depuis ApXML, `catalog update --ollama`
 élargit à de vrais tags tirables depuis la bibliothèque officielle d'Ollama,
 `catalog update --arena` fusionne les notes de LM Arena quand un miroir assez
-frais existe puis le dit franchement quand aucun ne l'est, enfin
-`hardware update` consigne la puce puis la mémoire de cette machine.
+frais existe puis le dit franchement quand aucun ne l'est, `catalog update
+--cloud` retarife le catalogue PAYANT depuis la table publique de LiteLLM
+(prix puis longueurs de contexte seulement, jamais les scores de benchmark, que
+cette source ne publie pas), enfin `hardware update` consigne la puce puis la
+mémoire de cette machine.
 
 ## 7. Trop gros pour tenir, exécutable quand même
 
@@ -1436,7 +1439,7 @@ qu'un seul nom, c'est celui-ci.
 | `providers` | quels fournisseurs cloud sont utilisables à l'instant, puis pourquoi pas les autres ; `--json` | — |
 | `doctor` | le moteur résolu face au démon en fonctionnement ; code non nul s'ils se contredisent ; `--directory`, `--timeout` | Ollama |
 | `catalog show` | le catalogue de modèles fusionné | — |
-| `catalog update` | rafraîchit le cache du catalogue ; `--limit`, `--timeout`, `--ollama`, `--arena` | réseau |
+| `catalog update` | rafraîchit le cache du catalogue ; `--limit`, `--timeout`, `--ollama`, `--arena`, `--cloud` (prix payants depuis LiteLLM) | réseau |
 | `hardware show` | la table des puces fusionnée | — |
 | `hardware update` | consigne la puce puis la mémoire de cette machine | — |
 | `lightweight status` | cette machine peut-elle lire les couches en flux, le lui demanderait-on ; `--measure`, `--json`, `--request` | — |
