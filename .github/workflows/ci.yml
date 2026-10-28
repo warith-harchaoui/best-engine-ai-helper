@@ -132,8 +132,8 @@ jobs:
     # Python the package promises, which is exactly the promise most likely to
     # break when a dependency as large as torch joins it.
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.10"
           cache: pip
