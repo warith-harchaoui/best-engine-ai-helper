@@ -6,6 +6,37 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Added
 
+- **A 52-second launch film, and the spec that keeps it honest.**
+  `assets/film/` holds the composition, the MP4, a poster and WebVTT captions in
+  both languages. What the film *asserts* lives in `film.yaml`, not inside the
+  frames: twelve claims, each naming the file that decides it, checked by
+  `make-film verify`. Numbers that no file could source were taken off the
+  screen rather than left unchecked.
+
+  The first cut was **wrong**, and drawing the chart is what showed it: the
+  secret-sauce beat said a model measuring 15.2 tok/s had been *refused*
+  against a comfort floor of 15. It clears the floor. The README already had
+  the truer sentence — "the correction is the difference between a
+  recommendation that sounds comfortable and one that is" — and the beat is
+  built on that now. Six audits pass: `verify`, `pitch` (both readings),
+  `assets`, `prose`, `calque`.
+
+- **Three figures were English-only inside the French documents.**
+  `LISEZMOI.md` carried translated captions above pictures reading `1 ·
+  PREDICT`, `Reserved, not yours`, `EVERY ARENA SOURCE`. The EN/FR parity
+  checker passes that by construction — both files link the same URL, which is
+  exactly what it calls agreement — so it took reading the figures to find it.
+  `boucle-de-mesure.svg`, `budget-memoire.svg` and `obsolescence-arena.svg` are
+  the twins; `tests/test_figures.py` now refuses an English figure in a French
+  document.
+
+- **`scripts/make_memory_budget_figure.py` draws both languages**, and gives
+  the result an accessible name. It was the one generated figure here and the
+  only one in `assets/diagrams/` with no `<title>` and nothing pointing
+  `aria-labelledby` at its `<desc>`. It also grew a width guard: the generator
+  sets the subtitle on one line and silently lets the right edge cut it off,
+  which is how the French twin shipped clipped on its first draw.
+
 - **The two languages have a check now, and had drifted in ten places.** Three
   root documents ship twice — `README`/`LISEZMOI`, `EXAMPLES`/`EXEMPLES`,
   `LANDSCAPE`/`PAYSAGE`, about 7,000 lines across six files — and nothing

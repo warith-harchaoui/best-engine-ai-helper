@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>best-engine-ai-helper — launch film</title>
+<!--
+  The composition. Motion, layout and timing live here; what the film ASSERTS
+  lives in ../film.yaml, which `make-film verify` checks against the code.
+
+  The clock is explicit rather than wall-time: `setTime(seconds)` is the only
+  thing that moves the film, so a renderer can step it frame by frame and get
+  the same pixels every run, and a human can scrub it with the arrow keys.
+  CSS animations would have been shorter to write and impossible to seek.
+-->
+<style>
+  :root{
+    --ink:#0a0a0c; --paper:#ffffff;
+    --brand:#007aff;
+    --blue:#0072B2; --green:#009E73; --amber:#E69F00;
+    --vermilion:#D55E00; --rose:#CC79A7;
+    --dim:#8a8a93;
+    --sans:'Roboto','Helvetica Neue',Arial,sans-serif;
+    --serif:'Roboto Serif',Georgia,'Times New Roman',serif;
+    --mono:'Roboto Mono','SF Mono',Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:#000;}
+  #stage{
+    position:relative;width:1920px;height:1080px;overflow:hidden;
+    background:var(--ink);color:#f4f4f6;font-family:var(--sans);
+    transform-origin:top left;
+  }
+  .scene{position:absolute;inset:0;opacity:0;display:flex;flex-direction:column;
+         justify-content:center;padding:0 150px;will-change:opacity,transform}
+
+  /* ------------------------------------------------------------------ type */
+  .kicker{font-size:26px;letter-spacing:.22em;text-transform:uppercase;
+          color:var(--dim);font-weight:700;margin-bottom:34px}
+  .punch{font-family:var(--serif);font-size:96px;line-height:1.08;font-weight:700;
+         letter-spacing:-.015em;max-width:1500px}
+  .h{font-size:68px;line-height:1.14;font-weight:700;letter-spacing:-.01em;max-width:1480px}
+  .sub{font-size:34px;line-height:1.45;color:#b9b9c2;margin-top:30px;max-width:1300px}
+  .mono{font-family:var(--mono);font-variant-ligatures:none}
+  .accent{color:var(--brand)}
+  .warn{color:var(--vermilion)}
+  .good{color:#3ec9a1}
+
+  /* ----------------------------------------------------------------- parts */
+  .code{font-family:var(--mono);font-size:46px;background:#141419;border:1px solid #2b2b33;
+        border-radius:14px;padding:34px 42px;display:inline-block;line-height:1.6}
+  .caret{display:inline-block;width:20px;height:50px;background:var(--brand);
+         vertical-align:-8px;margin-left:4px}
+  .strike{position:absolute;height:5px;background:var(--vermilion);border-radius:3px;
+          left:42px;top:50%;transform-origin:left center}
+
+  .chips{display:flex;gap:18px;flex-wrap:wrap;margin-top:46px}
+  .chip{font-size:27px;padding:14px 26px;border-radius:999px;border:1.6px solid #35353f;
+        color:#cfcfd8;background:#16161b}
+
+  .cards{display:flex;gap:30px;margin-top:56px}
+  .card{flex:1;background:#141419;border:1.6px solid #2b2b33;border-radius:18px;padding:34px}
+  .card .name{font-size:30px;font-weight:700;color:#e9e9f0}
+  .card .spec{font-size:25px;color:var(--dim);margin-top:10px}
+  .card .verdict{font-family:var(--mono);font-size:27px;margin-top:26px;font-weight:700}
+  .card.bad{border-color:var(--vermilion)}
+  .card.ok{border-color:var(--green)}
+
+  .flow{display:flex;align-items:stretch;gap:26px;margin-top:56px}
+  .step{flex:1;background:#141419;border:1.6px solid #2b2b33;border-radius:18px;padding:32px}
+  .step .n{font-family:var(--mono);font-size:22px;color:var(--brand);font-weight:700;
+           letter-spacing:.14em}
+  .step .t{font-size:31px;font-weight:700;margin-top:14px;line-height:1.25}
+  .step .d{font-family:var(--mono);font-size:23px;color:var(--dim);margin-top:16px;line-height:1.5}
+  .arrow{display:flex;align-items:center;color:#4a4a55;font-size:42px}
+
+  .meter{display:flex;align-items:flex-end;gap:96px;margin:104px 0 92px 10px;
+        height:290px;position:relative;align-self:flex-start}
+  .bar{width:210px;border-radius:12px 12px 0 0;position:relative}
+  .bar .v{position:absolute;top:-62px;left:0;right:0;text-align:center;
+          font-family:var(--mono);font-size:44px;font-weight:700}
+  .bar .k{position:absolute;bottom:-52px;left:-44px;right:-44px;text-align:center;
+          font-size:24px;color:var(--dim)}
+  .floor{position:absolute;left:0;width:620px;height:3px;background:var(--amber);
+         border-radius:2px;bottom:150px}
+  .floor span{position:absolute;left:646px;top:-17px;font-family:var(--mono);font-size:24px;
+              color:var(--amber);font-weight:700;white-space:nowrap}
+
+  .cta{display:flex;gap:28px;margin-top:52px}
+  .btn{display:flex;align-items:center;gap:18px;background:#141419;border:2px solid #2b2b33;
+       border-radius:16px;padding:30px 42px;font-size:34px;font-weight:700}
+  .btn.primary{border-color:var(--brand);color:#9ccaff}
+  .btn.star{border-color:var(--amber);color:#ffcf6b}
+  .btn .glyph{font-size:40px}
+
+  .logo{height:120px;margin-bottom:38px}
+  .progress{position:absolute;left:0;bottom:0;height:5px;background:var(--brand)}
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <!-- 1 · opening punchline ------------------------------------------------>
+  <section class="scene" id="s0">
+    <div class="kicker">best-engine-ai-helper</div>
+    <div style="position:relative;display:inline-block;align-self:flex-start">
+      <div class="code"><span id="typed"></span><span class="caret" id="caret"></span></div>
+      <div class="strike" id="strike" style="width:0;right:42px"></div>
+    </div>
+    <div class="punch" id="p0" style="margin-top:62px">A hardcoded model name<br>is right <span class="warn">exactly once</span>.</div>
+  </section>
+
+  <!-- 2 · what ------------------------------------------------------------->
+  <section class="scene" id="s1">
+    <img class="logo" src="../../logo.png" alt="">
+    <div class="h">It picks the model,<br>so your code <span class="accent">never has to</span>.</div>
+    <div class="sub">Local or paid, for the machine you are on and the keys you actually hold.</div>
+    <div class="chips">
+      <div class="chip">library</div><div class="chip">CLI</div>
+      <div class="chip">HTTP API</div><div class="chip">MCP</div>
+      <div class="chip">agent skill</div>
+    </div>
+  </section>
+
+  <!-- 3 · problem ---------------------------------------------------------->
+  <section class="scene" id="s2">
+    <div class="kicker warn">the problem</div>
+    <div class="h">One name. <span class="warn">Three machines.</span></div>
+    <div class="sub">It was true on the laptop where somebody typed it, and it outlives that laptop.</div>
+    <div class="cards">
+      <div class="card ok" id="m0">
+        <div class="name">Apple M2 Max</div><div class="spec">96 GB unified</div>
+        <div class="verdict good">fits — 36 GB budget</div>
+      </div>
+      <div class="card ok" id="m1">
+        <div class="name">A workstation GPU</div><div class="spec">discrete VRAM</div>
+        <div class="verdict good">fits, barely</div>
+      </div>
+      <div class="card bad" id="m2">
+        <div class="name">A colleague's laptop</div><div class="spec">a fraction of the memory</div>
+        <div class="verdict warn">does not fit — and nothing re-decides</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 · solution --------------------------------------------------------->
+  <section class="scene" id="s3">
+    <div class="kicker accent">the solution</div>
+    <div class="h">Describe the <span class="accent">job</span>.<br>It names the model.</div>
+    <div class="flow">
+      <div class="step" id="f0"><div class="n">01 · COMMITTED</div><div class="t">a brief</div>
+        <div class="d">kind: both<br>min_tps: 15<br>task: "schema-constrained SQL"</div></div>
+      <div class="arrow">→</div>
+      <div class="step" id="f1"><div class="n">02 · PER MACHINE</div><div class="t">an engine file</div>
+        <div class="d">backend: ollama<br>llm: {model: gemma3:12b,<br>&nbsp;&nbsp;ram_gb: 9.2}</div></div>
+      <div class="arrow">→</div>
+      <div class="step" id="f2"><div class="n">03 · NO CONSTANT</div><div class="t">your call site</div>
+        <div class="d">llm.chat(prompt,<br>&nbsp;&nbsp;engine=ensure("."))</div></div>
+    </div>
+  </section>
+
+  <!-- 5 · secret sauce ----------------------------------------------------->
+  <section class="scene" id="s4">
+    <div class="kicker" style="color:var(--amber)">the part that is not obvious</div>
+    <div class="h">It <span style="color:var(--amber)">measures</span> the speed —<br>instead of assuming it.</div>
+    <div class="meter">
+      <div class="bar" id="b0" style="background:#3a3a44;height:0">
+        <div class="v" style="color:#9a9aa6">28.3</div><div class="k">estimated tok/s</div>
+      </div>
+      <div class="bar" id="b1" style="background:var(--vermilion);height:0">
+        <div class="v warn">15.2</div><div class="k">measured tok/s</div>
+      </div>
+      <div class="floor" id="floor" style="opacity:0"><span>comfort floor · 15</span></div>
+    </div>
+    <div class="sub" id="verdict5" style="opacity:0">One sails past the floor. The other <em>only just clears it</em> — and that gap is the difference<br>between a recommendation that sounds comfortable and one that <span class="good">is</span>.</div>
+  </section>
+
+  <!-- 6 · best example ----------------------------------------------------->
+  <section class="scene" id="s5">
+    <div class="kicker accent">the nicest part</div>
+    <div class="h">Any OpenAI SDK. <span class="accent">Unchanged.</span></div>
+    <div class="code" style="margin-top:46px;align-self:flex-start;font-size:40px">
+      client = OpenAI(base_url=<span style="color:#9ccaff">"http://127.0.0.1:8000/v1"</span>)<br>
+      client.chat.completions.create(<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;model=<span id="best" style="color:var(--amber);font-weight:700">"best"</span>, messages=[…])
+    </div>
+    <div class="sub">No model name to choose. No code to change.</div>
+  </section>
+
+  <!-- 7 · CTA -------------------------------------------------------------->
+  <section class="scene" id="s6">
+    <div class="kicker">try it</div>
+    <div class="h">Free, local-first,<br>BSD-3-Clause.</div>
+    <div class="cta">
+      <div class="btn primary" id="c0"><span class="glyph">🌐</span> deraison.ai/ai-helpers</div>
+      <div class="btn star" id="c1"><span class="glyph">★</span> star it on GitHub</div>
+    </div>
+    <div class="sub mono" style="font-size:28px">github.com/warith-harchaoui/best-engine-ai-helper</div>
+  </section>
+
+  <!-- 8 · closing punchline ------------------------------------------------>
+  <section class="scene" id="s7" style="align-items:center;text-align:center">
+    <div class="punch" id="p7">Name the <span class="accent">job</span>.<br>Never the model.</div>
+    <div class="sub" style="text-align:center" id="p7b">best-engine-ai-helper</div>
+  </section>
+
+  <div class="progress" id="progress" style="width:0"></div>
+</div>
+
+<script>
+/* The film, as data. `at` is when the scene takes over; the last entry's end
+   is DURATION. Keeping it here rather than in CSS is what makes seeking
+   possible — and seeking is what makes deterministic rendering possible. */
+const DURATION = 52;
+const SCENES = [
+  {id:'s0', at:0.0},  {id:'s1', at:5.0},  {id:'s2', at:10.5}, {id:'s3', at:19.0},
+  {id:'s4', at:27.0}, {id:'s5', at:36.0}, {id:'s6', at:43.0}, {id:'s7', at:48.0},
+];
+const LINE = 'DEFAULT_MODEL = "llama3:8b"';
+
+const $ = id => document.getElementById(id);
+const clamp = (v,a=0,b=1) => Math.max(a, Math.min(b, v));
+/* Cubic ease-out. Motion that starts fast and settles reads as deliberate;
+   linear reads as a slideshow. */
+const ease = t => 1 - Math.pow(1 - clamp(t), 3);
+/* Ramp from `a` to `b` over [t0,t1]. */
+const ramp = (t,t0,t1) => ease((t - t0) / Math.max(t1 - t0, 1e-6));
+
+function setTime(t){
+  t = clamp(t, 0, DURATION);
+
+  /* --- which scene, and its cross-fade ---------------------------------- */
+  SCENES.forEach((s, i) => {
+    const next = SCENES[i+1] ? SCENES[i+1].at : DURATION;
+    const el = $(s.id);
+    const inScene = t >= s.at && t < next;
+    /* 0.45s in, 0.35s out: long enough to read as a cut with intent, short
+       enough that no beat is spent on the transition itself. */
+    let o = 0, y = 26;
+    if (inScene){
+      o = ramp(t, s.at, s.at + 0.45);
+      y = 26 * (1 - ramp(t, s.at, s.at + 0.55));
+      const outAt = next - 0.35;
+      if (t > outAt){ o = 1 - ramp(t, outAt, next); y = -18 * ramp(t, outAt, next); }
+    }
+    el.style.opacity = o.toFixed(4);
+    el.style.transform = `translateY(${y.toFixed(2)}px)`;
+  });
+
+  /* --- 1 · the line types, then gets struck through --------------------- */
+  const typed = Math.floor(clamp((t - 0.35) / 1.5) * LINE.length);
+  $('typed').textContent = LINE.slice(0, typed);
+  /* The caret blinks on a 1 Hz square wave, off once the strike lands. */
+  $('caret').style.opacity = (t > 2.6) ? 0 : (Math.floor(t * 2) % 2 ? 0.25 : 1);
+  $('strike').style.width = (ramp(t, 2.6, 3.3) * 620).toFixed(1) + 'px';
+  $('p0').style.opacity = ramp(t, 3.2, 4.0).toFixed(3);
+
+  /* --- 3 · the three machines land one after another -------------------- */
+  ['m0','m1','m2'].forEach((id, i) => {
+    const a = 12.6 + i * 0.85;
+    $(id).style.opacity = ramp(t, a, a + 0.5).toFixed(3);
+    $(id).style.transform = `translateY(${(20*(1-ramp(t,a,a+0.6))).toFixed(1)}px)`;
+  });
+
+  /* --- 4 · brief → engine file → call ----------------------------------- */
+  ['f0','f1','f2'].forEach((id, i) => {
+    const a = 21.0 + i * 1.1;
+    $(id).style.opacity = ramp(t, a, a + 0.5).toFixed(3);
+    $(id).style.transform = `translateY(${(20*(1-ramp(t,a,a+0.6))).toFixed(1)}px)`;
+  });
+
+  /* --- 5 · the magic beat: estimate, measurement, refusal ---------------- */
+  /* 283px and 152px: one pixel per 0.1 tok/s, so the two bars are to scale
+     against each other and against the floor line at 150px. */
+  $('b0').style.height = (ramp(t, 29.0, 30.0) * 283).toFixed(1) + 'px';
+  $('b1').style.height = (ramp(t, 30.6, 31.6) * 152).toFixed(1) + 'px';
+  $('floor').style.opacity = ramp(t, 32.0, 32.6).toFixed(3);
+  $('verdict5').style.opacity = ramp(t, 33.2, 34.0).toFixed(3);
+
+  /* --- 6 · the one token that matters, pulsing -------------------------- */
+  const pulse = 1 + 0.06 * Math.sin(Math.max(0, t - 38.0) * 3.4);
+  $('best').style.display = 'inline-block';
+  $('best').style.transform = `scale(${(t > 38.0 ? pulse : 1).toFixed(4)})`;
+
+  /* --- 7 · the two calls to action -------------------------------------- */
+  ['c0','c1'].forEach((id, i) => {
+    const a = 44.2 + i * 0.7;
+    $(id).style.opacity = ramp(t, a, a + 0.45).toFixed(3);
+    $(id).style.transform = `scale(${(0.94 + 0.06*ramp(t,a,a+0.5)).toFixed(4)})`;
+  });
+
+  /* --- 8 · the closing line, and the wordmark under it ------------------ */
+  $('p7').style.opacity = ramp(t, 48.3, 49.2).toFixed(3);
+  $('p7b').style.opacity = (0.75 * ramp(t, 49.6, 50.4)).toFixed(3);
+
+  $('progress').style.width = (100 * t / DURATION).toFixed(3) + '%';
+}
+window.setTime = setTime;
+window.FILM = {duration: DURATION, scenes: SCENES};
+
+/* Playing is for humans; the renderer only ever calls setTime. */
+let playing = false, t0 = 0, base = 0;
+function loop(now){
+  if (!playing) return;
+  setTime(base + (now - t0) / 1000);
+  requestAnimationFrame(loop);
+}
+function fit(){
+  const s = Math.min(innerWidth / 1920, innerHeight / 1080);
+  $('stage').style.transform = `scale(${s})`;
+  document.body.style.height = (1080 * s) + 'px';
+}
+addEventListener('resize', fit);
+addEventListener('keydown', e => {
+  if (e.key === ' '){ e.preventDefault();
+    playing = !playing;
+    if (playing){ t0 = performance.now(); requestAnimationFrame(loop); }
+    else { base = clamp(base, 0, DURATION); }
+  }
+  if (e.key === 'ArrowRight'){ base = clamp(base + 1, 0, DURATION); setTime(base); }
+  if (e.key === 'ArrowLeft'){ base = clamp(base - 1, 0, DURATION); setTime(base); }
+});
+fit(); setTime(0);
+</script>
+</body>
+</html>

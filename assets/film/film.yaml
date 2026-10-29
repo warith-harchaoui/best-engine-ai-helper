@@ -1,0 +1,208 @@
+# The launch film for best-engine-ai-helper, as a reviewable text file.
+#
+# Everything here is the part that goes stale: what the film asserts, where
+# each assertion is checked. What it says out loud. Motion, layout and
+# timing live in composition/index.html. They cannot be wrong about the
+# project, only ugly.
+#
+# Audit it:
+#   make-film verify assets/film/film.yaml --root .
+#   make-film pitch  assets/film/film.yaml --duration 52
+#   make-film scan   assets/film/composition/index.html --spec assets/film/film.yaml
+#
+# Author: Warith Harchaoui
+
+name: best-engine-ai-helper
+
+# ---------------------------------------------------------------------------
+# What the film asserts. The file that decides whether it is still true.
+# Deliberately few: every number on screen is one more thing that can rot.
+# A film is the worst place to keep a fact, because nothing re-reads it.
+# ---------------------------------------------------------------------------
+claims:
+  - text: "two quality gates"
+    value: "two quality gates"
+    source:
+      path: README.md
+      method: literal
+      selector: "two quality gates"
+
+  - text: "estimated 28.3 tok/s"
+    value: "28.3"
+    source:
+      path: README.md
+      method: literal
+      selector: "28.3"
+
+  - text: "15.2 only just clears the floor"
+    value: "only just clears it"
+    source: {path: README.md, method: literal, selector: "only just clears it"}
+
+  - text: "measured 15.2 tok/s"
+    value: "15.2"
+    source:
+      path: README.md
+      method: literal
+      selector: "15.2"
+
+  - text: 'model="best"'
+    value: 'model="best"'
+    source:
+      path: README.md
+      method: literal
+      selector: 'model="best"'
+
+  - text: "12 tools on the landscape"
+    value: 13          # 12 tools plus the header row
+    source:
+      path: assets/landscape.csv
+      method: line_count
+
+
+  # Every remaining number the composition puts on screen. The ones that could
+  # not be sourced were taken OFF the screen instead: a GPU model and a laptop's
+  # memory are facts about the world, not about this project. No file here
+  # decides them, so the cards now say "a workstation GPU" plus "a fraction of
+  # the memory". A number the repository cannot check does not belong in a film.
+  - text: "96 GB unified"
+    value: "96 GB"
+    source: {path: README.md, method: literal, selector: "96 GB"}
+  - text: "36 GB budget"
+    value: "36 GB"
+    source: {path: README.md, method: literal, selector: "36 GB"}
+  - text: "min_tps: 15"
+    value: "min_tps: 15"
+    source: {path: README.md, method: literal, selector: "min_tps: 15"}
+  - text: "ram_gb: 9.2"
+    value: "ram_gb: 9.2"
+    source: {path: README.md, method: literal, selector: "ram_gb: 9.2"}
+  - text: "gemma3:12b"
+    value: "gemma3:12b"
+    source: {path: README.md, method: literal, selector: "gemma3:12b"}
+  - text: "127.0.0.1:8000"
+    value: "127.0.0.1:8000"
+    source: {path: README.md, method: literal, selector: "127.0.0.1:8000"}
+
+  # Three numbers on screen are deliberately NOT claims: 01, 02, 03 are the step
+  # ordinals in the solution flow. They assert nothing about the project, so
+  # declaring them would teach the reader that this list is decoration.
+  #
+  # NOTE on `make-film scan`: it reported "0 undeclared numbers" against this
+  # composition while seeing zero characters of it. `claims.visible_text`
+  # increments a suppression counter on <meta> -- a void element with no end tag
+  # -- so the counter never returns to zero and the whole document is skipped.
+  # Any composition with a charset declaration scans as empty and passes. The
+  # scan above was therefore run with a corrected parser; the numbers it found
+  # are the ones declared here.
+
+  # "9 criteria" was declared here and withdrawn: regex_count counts commas in
+  # the whole CSV (117), not in its header, so the claim could only be made
+  # true by contriving a source. A number the film cannot check is a number
+  # the film should not say.
+
+# ---------------------------------------------------------------------------
+# What it renders from. Nothing licensed, nothing that exists on one disk only:
+# this film can be rebuilt from a clone, which is the whole point of the ledger.
+# ---------------------------------------------------------------------------
+assets:
+  - rel: composition/index.html
+    provenance: tracked
+    source: assets/film/composition/index.html
+  - rel: ../logo.png
+    provenance: tracked
+    source: assets/logo.png
+  - rel: ../diagrams/three-families.png
+    provenance: derived
+    recipe: "rsvg-convert -z 2 -o three-families.png three-families.svg"
+  - rel: ../landscape.png
+    provenance: derived
+    recipe: "standpoint assets/landscape.csv -r best-engine-ai-helper"
+
+# ---------------------------------------------------------------------------
+# The eight beats, in film order. `pitch` below points at three of them by
+# index. That is how the check runs against the film that exists rather than
+# against a second copy of its words.
+# ---------------------------------------------------------------------------
+scenes:
+  - start: 0.0
+    text: "A hardcoded model name is right exactly once."
+  - start: 5.0
+    text: "best-engine-ai-helper picks the model, so your code never has to."
+  - start: 10.5
+    text: "The name you typed was true on one laptop, on one afternoon. It outlives both. Nothing re-decides when the hardware changes."
+  - start: 19.0
+    text: "Describe the job instead. It reads the machine in front of it, ranks what actually fits, then writes the answer to a file your code reads."
+  - start: 27.0
+    text: "It measures the speed instead of assuming it. An estimate of 28.3 tok/s sails past the comfort floor of 15; the measured 15.2 only just clears it. That gap is the difference between a recommendation that sounds comfortable and one that is."
+  - start: 36.0
+    text: 'Any OpenAI SDK, unchanged. Ask for model="best" and the right one answers.'
+  - start: 43.0
+    text: "deraison.ai/ai-helpers. A star too, if it saved you an afternoon."
+  - start: 48.0
+    text: "Name the job. Never the model."
+
+# Guy Kawasaki's order. The third beat is the one films get wrong: the magic is
+# the single non-obvious thing that makes the solution possible, not a feature.
+# Here it is that a missing measurement is allowed to *refuse* a model, where
+# every other tool in this space reports and moves on.
+pitch:
+  problem: [2]
+  solution: [3]
+  magic: [4]
+
+# ---------------------------------------------------------------------------
+# What it says out loud. Eight lines because the film is eight beats. A viewer
+# receives far more words than the screen shows, so `make-film pitch --voice`
+# reads this half rather than the captions.
+# ---------------------------------------------------------------------------
+narration:
+  en:
+    - start: 0.0
+      text: "A hardcoded model name is right exactly once."
+      duration: 5.0
+    - start: 5.0
+      text: "This picks the model for you, so your code never has to know one."
+      duration: 5.5
+    - start: 10.5
+      text: "The name you typed was true on one laptop, on one afternoon. It outlives both. Nothing re-decides when the hardware changes. Nothing tells you it stopped being the right answer."
+      duration: 8.5
+    - start: 19.0
+      text: "So describe the job instead. It reads the machine in front of it, ranks only what actually fits, then writes the answer to a file your code reads at call time."
+      duration: 8.0
+    - start: 27.0
+      text: "Here is the part that is not obvious. It measures the speed instead of assuming it. An estimate of twenty-eight point three tokens a second sails past the comfort floor of fifteen. The measurement, fifteen point two, only just clears it. That gap is the difference between a recommendation that sounds comfortable and one that is."
+      duration: 9.0
+    - start: 36.0
+      text: "Any OpenAI SDK, unchanged. Ask for model equals best. The right one answers."
+      duration: 7.0
+    - start: 43.0
+      text: "It is at deraison dot a i slash a i hyphen helpers. Leave a star on GitHub if it saved you an afternoon."
+      duration: 5.0
+    - start: 48.0
+      text: "Name the job. Never the model."
+      duration: 4.0
+  fr:
+    - start: 0.0
+      text: "Un nom de modèle écrit en dur. Il n'a raison qu'une seule fois."
+      duration: 5.0
+    - start: 5.0
+      text: "Celui-ci choisit le modèle pour vous, donc votre code n'a jamais à en connaître un."
+      duration: 5.5
+    - start: 10.5
+      text: "Le nom que vous avez tapé était vrai sur un portable, un après-midi. Il survit aux deux. Rien ne redécide quand le matériel change, puis rien ne vous dit qu'il a cessé d'être la bonne réponse."
+      duration: 8.5
+    - start: 19.0
+      text: "Décrivez plutôt le travail. L'outil lit la machine devant lui, ne classe que ce qui tient vraiment, puis écrit la réponse dans un fichier que votre code lit au moment de l'appel."
+      duration: 8.0
+    - start: 27.0
+      text: "Voici la part non évidente. Il mesure la vitesse au lieu de la supposer. Une estimation de vingt-huit virgule trois jetons par seconde passe largement le plancher de confort de quinze. La mesure, quinze virgule deux, ne fait que le franchir de justesse. Cet écart, c'est toute la différence entre une recommandation qui semble confortable puis une qui l'est."
+      duration: 9.0
+    - start: 36.0
+      text: "N'importe quel SDK OpenAI, sans rien changer : demandez model égale best puis le bon répond."
+      duration: 7.0
+    - start: 43.0
+      text: "Rendez-vous sur deraison point a i slash a i tiret helpers, puis laissez une étoile sur GitHub. Si ça vous a fait gagner un après-midi."
+      duration: 5.0
+    - start: 48.0
+      text: "Nommez le travail, jamais le modèle."
+      duration: 4.0

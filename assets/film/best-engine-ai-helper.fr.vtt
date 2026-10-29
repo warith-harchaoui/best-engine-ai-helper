@@ -1,0 +1,118 @@
+WEBVTT
+
+00:00:00.000 --> 00:00:02.419
+Un nom de modèle écrit en dur.
+
+00:00:02.419 --> 00:00:05.000
+Il n'a raison qu'une seule fois.
+
+00:00:05.000 --> 00:00:07.512
+Celui-ci choisit le modèle pour vous,
+
+00:00:07.512 --> 00:00:09.277
+donc votre code n'a jamais
+
+00:00:09.277 --> 00:00:10.500
+à en connaître un.
+
+00:00:10.500 --> 00:00:11.909
+Le nom que vous avez tapé était
+
+00:00:11.909 --> 00:00:12.863
+vrai sur un portable,
+
+00:00:12.863 --> 00:00:14.409
+un après-midi. Il survit aux deux.
+
+00:00:14.409 --> 00:00:16.318
+Rien ne redécide quand le matériel change,
+
+00:00:16.318 --> 00:00:17.636
+puis rien ne vous dit qu'il a
+
+00:00:17.636 --> 00:00:19.000
+cessé d'être la bonne réponse.
+
+00:00:19.000 --> 00:00:20.241
+Décrivez plutôt le travail.
+
+00:00:20.241 --> 00:00:21.804
+L'outil lit la machine devant lui,
+
+00:00:21.804 --> 00:00:23.459
+ne classe que ce qui tient vraiment,
+
+00:00:23.459 --> 00:00:25.344
+puis écrit la réponse dans un fichier que
+
+00:00:25.344 --> 00:00:27.000
+votre code lit au moment de l'appel.
+
+00:00:27.000 --> 00:00:27.704
+Voici la part non évidente.
+
+00:00:27.704 --> 00:00:28.304
+Il mesure la vitesse au
+
+00:00:28.304 --> 00:00:28.826
+lieu de la supposer.
+
+00:00:28.826 --> 00:00:29.765
+Une estimation de vingt-huit virgule
+
+00:00:29.765 --> 00:00:30.391
+trois jetons par seconde
+
+00:00:30.391 --> 00:00:31.095
+passe largement le plancher
+
+00:00:31.095 --> 00:00:31.643
+de confort de quinze.
+
+00:00:31.643 --> 00:00:32.452
+La mesure, quinze virgule deux,
+
+00:00:32.452 --> 00:00:33.052
+ne fait que le franchir
+
+00:00:33.052 --> 00:00:33.652
+de justesse. Cet écart,
+
+00:00:33.652 --> 00:00:34.304
+c'est toute la différence
+
+00:00:34.304 --> 00:00:34.930
+entre une recommandation
+
+00:00:34.930 --> 00:00:35.504
+qui semble confortable
+
+00:00:35.504 --> 00:00:36.000
+puis une qui l'est.
+
+00:00:36.000 --> 00:00:38.044
+N'importe quel SDK OpenAI,
+
+00:00:38.044 --> 00:00:39.539
+sans rien changer :
+
+00:00:39.539 --> 00:00:41.505
+demandez model égale best
+
+00:00:41.505 --> 00:00:43.000
+puis le bon répond.
+
+00:00:43.000 --> 00:00:44.136
+Rendez-vous sur deraison point
+
+00:00:44.136 --> 00:00:45.196
+a i slash a i tiret helpers,
+
+00:00:45.196 --> 00:00:46.522
+puis laissez une étoile sur GitHub.
+
+00:00:46.522 --> 00:00:48.000
+Si ça vous a fait gagner un après-midi.
+
+00:00:48.000 --> 00:00:52.000
+Nommez le travail, jamais le modèle.

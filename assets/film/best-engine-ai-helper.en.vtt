@@ -1,0 +1,109 @@
+WEBVTT
+
+00:00:00.000 --> 00:00:02.500
+A hardcoded model name
+
+00:00:02.500 --> 00:00:05.000
+is right exactly once.
+
+00:00:05.000 --> 00:00:07.492
+This picks the model for you,
+
+00:00:07.492 --> 00:00:10.500
+so your code never has to know one.
+
+00:00:10.500 --> 00:00:12.575
+The name you typed was true on one laptop,
+
+00:00:12.575 --> 00:00:14.305
+on one afternoon. It outlives both.
+
+00:00:14.305 --> 00:00:15.441
+Nothing re-decides when
+
+00:00:15.441 --> 00:00:16.479
+the hardware changes.
+
+00:00:16.479 --> 00:00:17.863
+Nothing tells you it stopped
+
+00:00:17.863 --> 00:00:19.000
+being the right answer.
+
+00:00:19.000 --> 00:00:20.445
+So describe the job instead.
+
+00:00:20.445 --> 00:00:22.303
+It reads the machine in front of it,
+
+00:00:22.303 --> 00:00:23.851
+ranks only what actually fits,
+
+00:00:23.851 --> 00:00:25.503
+then writes the answer to a file
+
+00:00:25.503 --> 00:00:27.000
+your code reads at call time.
+
+00:00:27.000 --> 00:00:28.047
+Here is the part that is not obvious.
+
+00:00:28.047 --> 00:00:28.867
+It measures the speed instead
+
+00:00:28.867 --> 00:00:29.292
+of assuming it.
+
+00:00:29.292 --> 00:00:30.056
+An estimate of twenty-eight
+
+00:00:30.056 --> 00:00:30.622
+point three tokens a
+
+00:00:30.622 --> 00:00:31.443
+second sails past the comfort
+
+00:00:31.443 --> 00:00:31.924
+floor of fifteen.
+
+00:00:31.924 --> 00:00:32.915
+The measurement, fifteen point two,
+
+00:00:32.915 --> 00:00:33.481
+only just clears it.
+
+00:00:33.481 --> 00:00:34.216
+That gap is the difference
+
+00:00:34.216 --> 00:00:34.896
+between a recommendation
+
+00:00:34.896 --> 00:00:35.547
+that sounds comfortable
+
+00:00:35.547 --> 00:00:36.000
+and one that is.
+
+00:00:36.000 --> 00:00:38.459
+Any OpenAI SDK, unchanged.
+
+00:00:38.459 --> 00:00:40.918
+Ask for model equals best.
+
+00:00:40.918 --> 00:00:43.000
+The right one answers.
+
+00:00:43.000 --> 00:00:44.237
+It is at deraison dot a i
+
+00:00:44.237 --> 00:00:45.475
+slash a i hyphen helpers.
+
+00:00:45.475 --> 00:00:46.712
+Leave a star on GitHub if
+
+00:00:46.712 --> 00:00:48.000
+it saved you an afternoon.
+
+00:00:48.000 --> 00:00:52.000
+Name the job. Never the model.

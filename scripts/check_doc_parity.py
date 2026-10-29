@@ -88,6 +88,9 @@ MIRROR: dict[str, str] = {
     "how-it-works": "comment-ca-marche",
     "two-sources": "deux-sources",
     "three-families": "trois-familles",
+    "measurement-loop": "boucle-de-mesure",
+    "memory-budget": "budget-memoire",
+    "arena-staleness": "obsolescence-arena",
     "parity-skeleton": "parite-squelette",
     "landscape": "paysage",
 }

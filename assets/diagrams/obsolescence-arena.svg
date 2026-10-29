@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 440" width="1000" height="440"
+     role="img" aria-labelledby="ar-title ar-desc" font-family="Roboto, 'Helvetica Neue', Arial, sans-serif">
+  <title id="ar-title">Pourquoi l'axe Arena reste le plus souvent vide, puis pourquoi c'est la bonne réponse</title>
+  <desc id="ar-desc">Quatre sources candidates de notes LM Arena sont essayées tour à tour, relevées
+  à nouveau le 28 octobre 2026. Le site officiel n'a aucune API publique ; le miroir communautaire
+  oolong-tea-2026 répond désormais avec 37 modèles depuis un instantané vieux de 21 jours, une fois
+  que l'adaptateur remonte au-delà du répertoire vide que son index nomme ; un service de collecte
+  payant est refusé par principe, parce qu'il ferait passer la requête par un tiers ; enfin le
+  miroir d'historique en vrac a publié pour la dernière fois le 22 mai 2025, soit 524 jours, au-delà
+  de la barre de fraîcheur de 120 jours, donc il est refusé avec sa raison : une note d'une
+  génération précédente de modèles classerait ceux de 2025 au-dessus de ceux de 2026, ce qui est
+  pire que pas de note du tout. L'instantané vivant est fusionné puis daté. Il note 18 des 28
+  modèles du catalogue payant puis 1 des 51 locaux, parce qu'Arena note ce avec quoi ses votants
+  peuvent discuter et que personne ne vote sur un tag Ollama à poids ouverts.</desc>
+
+  <style>
+    .lane       { fill: #ffffff; stroke: #e0e0e0; stroke-width: 1.5; }
+    .src        { fill: #F8F8F8; stroke: #9a9a9a; stroke-width: 1.5; }
+    .src-name   { font-size: 14px; font-weight: 600; fill: #111111; }
+    .src-why    { font-size: 12px; fill: #5a5a5a; }
+    .verdict    { font-size: 11.5px; font-weight: 700; letter-spacing: .04em; }
+    .dead       { fill: #C62B21; }
+    .refused    { fill: #A8520B; }
+    .stale      { fill: #8a6d00; }
+    .live       { fill: #00543d; }
+    .pill-live    { fill: #CCECE3; stroke: #009E73; stroke-width: 1.2; }
+    .pill-dead    { fill: #FDECEA; stroke: #C62B21; stroke-width: 1.2; }
+    .pill-refused { fill: #FDF0E3; stroke: #A8520B; stroke-width: 1.2; }
+    .pill-stale   { fill: #FFF9E0; stroke: #8a6d00; stroke-width: 1.2; }
+    .gate-box   { fill: #FFF4E0; stroke: #FF9500; stroke-width: 2; }
+    .out-box    { fill: #1A5FB4; stroke: #124a8f; stroke-width: 2; }
+    .h          { font-size: 15px; font-weight: 700; fill: #111111; }
+    .on-dark    { fill: #ffffff; }
+    .on-dark-sub{ fill: #d8e8ff; }
+    .flow       { fill: none; stroke: #9a9a9a; stroke-width: 2; }
+    .caption    { font-size: 12.5px; fill: #5a5a5a; font-style: italic; }
+    .eyebrow    { fill: #6b6b6b; font-size: 12.5px; font-weight: 600; letter-spacing: .08em; }
+    .mono       { font-family: 'Roboto Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+    @media (prefers-color-scheme: dark) {
+      .lane     { fill: #1b1b1d; stroke: #3a3a3d; }
+      .src      { fill: #2a2a2e; stroke: #6f6f76; }
+      .src-name { fill: #f2f2f4; }
+      .src-why  { fill: #b4b4ba; }
+      .h        { fill: #f2f2f4; }
+      .flow     { stroke: #7a7a82; }
+      .caption  { fill: #a0a0a6; }
+      .eyebrow  { fill: #a0a0a6; }
+      .gate-box { fill: #3a2d12; stroke: #FF9500; }
+      .pill-dead    { fill: #3b1512; stroke: #F2635A; }
+      .pill-refused { fill: #38220c; stroke: #E8923F; }
+      .pill-stale   { fill: #332b08; stroke: #FFCC00; }
+      .dead     { fill: #F2635A; }
+      .refused  { fill: #E8923F; }
+      .stale    { fill: #FFCC00; }
+    }
+  </style>
+
+  <defs>
+    <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#9a9a9a"/>
+    </marker>
+  </defs>
+
+  <text class="eyebrow" x="40" y="34">CHAQUE SOURCE ARENA, TOUR À TOUR · RELEVÉE LE 2026-10-28</text>
+
+  <!-- ── source rows ── -->
+  <rect class="lane" x="40" y="48" width="560" height="248" rx="10"/>
+
+  <!-- 1 -->
+  <rect class="src" x="60" y="66" width="340" height="48" rx="8"/>
+  <text class="src-name" x="76" y="86">lmarena.ai</text>
+  <text class="src-why"  x="76" y="104">le tableau officiel · aucune API publique</text>
+  <rect class="pill-dead" x="416" y="76" width="166" height="28" rx="14"/>
+  <text class="verdict dead" x="499" y="94" text-anchor="middle">AUCUNE API PUBLIQUE</text>
+
+  <!-- 2 -->
+  <rect class="src" x="60" y="124" width="340" height="48" rx="8"/>
+  <text class="src-name" x="76" y="144">oolong-tea-2026</text>
+  <text class="src-why"  x="76" y="162">miroir communautaire · remonte au dernier jour plein</text>
+  <rect class="pill-live" x="416" y="134" width="166" height="28" rx="14"/>
+  <text class="verdict live" x="499" y="152" text-anchor="middle">37 MODÈLES · 21 JOURS</text>
+
+  <!-- 3 -->
+  <rect class="src" x="60" y="182" width="340" height="48" rx="8"/>
+  <text class="src-name" x="76" y="202">Apify</text>
+  <text class="src-why"  x="76" y="220">marche, mais jeton payant puis détour par un tiers</text>
+  <rect class="pill-refused" x="416" y="192" width="166" height="28" rx="14"/>
+  <text class="verdict refused" x="499" y="210" text-anchor="middle">REFUSÉ PAR PRINCIPE</text>
+
+  <!-- 4 -->
+  <rect class="src" x="60" y="240" width="340" height="48" rx="8"/>
+  <text class="src-name" x="76" y="260">lmarena-history</text>
+  <text class="src-why"  x="76" y="278">historique en vrac · 270 notes, plus mis à jour</text>
+  <rect class="pill-stale" x="416" y="250" width="166" height="28" rx="14"/>
+  <text class="verdict stale" x="499" y="268" text-anchor="middle">VIEUX DE 524 JOURS</text>
+
+  <!-- ── the staleness gate ── -->
+  <path class="flow" d="M600 172 L646 172" marker-end="url(#a2)"/>
+
+  <rect class="gate-box" x="650" y="104" width="300" height="76" rx="10"/>
+  <text class="h"       x="800" y="132" text-anchor="middle">Plus vieux que 120 jours ?</text>
+  <text class="src-why" x="800" y="154" text-anchor="middle">une note d'une génération précédente de modèles</text>
+  <text class="src-why" x="800" y="170" text-anchor="middle">classerait 2025 au-dessus de 2026</text>
+
+  <path class="flow" d="M800 180 L800 218" marker-end="url(#a2)"/>
+
+  <rect class="out-box" x="650" y="220" width="300" height="84" rx="10"/>
+  <text class="h on-dark"    x="800" y="248" text-anchor="middle">On fusionne. On date.</text>
+  <text class="src-why on-dark-sub" x="800" y="270" text-anchor="middle">le plus récent QUI a des données, puis daté</text>
+  <text class="src-why on-dark-sub mono" x="800" y="290" text-anchor="middle">"37 ratings · 2026-10-07 · 21d"</text>
+
+  <text class="caption" x="500" y="344" text-anchor="middle">Le miroir n'a jamais été vide : c'est son répertoire le plus récent qui l'était.</text>
+  <text class="caption" x="500" y="368" text-anchor="middle">Lire l'index au lieu de le deviner a transformé 0 note en 37, depuis un instantané vieux de 21 jours.</text>
+
+  <text class="src-why" x="500" y="404" text-anchor="middle">Où ça atterrit : Arena note des points d'accès frontière hébergés — claude-opus-5.5-max, gpt-6-astra-max — donc elle note 18 des</text>
+  <text class="src-why" x="500" y="422" text-anchor="middle">28 entrées du catalogue payant puis 1 des 51 locales (kimi-k3) : personne ne vote sur un tag Ollama à poids ouverts.</text>
+</svg>

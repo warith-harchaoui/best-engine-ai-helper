@@ -11,6 +11,25 @@ Pick and pull the best local large language model (LLM) or vision-language model
 
 The tool detects available memory (Apple Silicon unified pool, NVIDIA VRAM, or system RAM), consults a bundled model catalog, and selects the highest-scoring model that fits within a configurable safety headroom. After selection, it pulls the model via Ollama and puts it through two quality gates before trusting it: does it catch and fix a known flaw seeded into a short text (the Ralph Loop), and does it spot an obvious visual defect seeded into a small test image (the Ralph Eyeball Loop)? Only a model that passes both gets its environment file written, the file downstream projects read to find the chosen model.
 
+## The film
+
+[![The launch film: a hardcoded model name is right exactly once](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/film/poster.jpg)](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/film/best-engine-ai-helper.mp4)
+
+Fifty-two seconds, in `assets/film/`. What it *asserts* lives in `film.yaml`
+rather than inside the frames, which is the only reason it can be checked:
+
+```sh
+make-film verify assets/film/film.yaml --root .   # claims vs the code
+make-film pitch  assets/film/film.yaml --duration 52
+```
+
+A number burned into a keyframe is never re-read, so the film is the worst
+place in this repository to keep a fact. Twelve claims, each pointing at the
+file that decides it; the numbers that could not be sourced were taken off the
+screen rather than left unchecked. The first cut said a model had been
+*refused* at 15.2 tok/s against a floor of 15 — drawing the bar chart is what
+showed that 15.2 clears it, and the README already had the better sentence.
+
 ## The Promise
 
 `best-engine-ai-helper` is designed to run entirely offline once the weights

@@ -1,0 +1,144 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 470" width="1000" height="470"
+     role="img" aria-labelledby="ml-title ml-desc" font-family="Roboto, 'Helvetica Neue', Arial, sans-serif">
+  <title id="ml-title">Comment une estimation devient une mesure, puis la mesure une meilleure estimation</title>
+  <desc id="ml-desc">Une boucle à trois étapes. Prédire : la machine est détectée puis la vitesse de
+  décodage est estimée depuis la bande passante mémoire, ce qui donne 28,3 jetons par seconde pour
+  gemma3:12b sur un Apple M2 Max. Choisir : les candidats sont classés, puis un plancher de débit ne
+  rétrograde un modèle que si le chiffre dessous a été mesuré, jamais s'il n'était qu'estimé.
+  Éprouver : les portes de qualité Ralph tournent, puis les jetons qu'elles génèrent déjà sont
+  chronométrés, ce qui donne 15,2 jetons par seconde. La mesure est conservée par modèle puis par
+  machine, enfin elle revient de deux façons : elle autorise le plancher à disqualifier, puis elle
+  corrige les estimations suivantes sur cette machine — d'un facteur 0,54 pour cette paire. Éprouvé
+  en laissant-un-de-côté dans scripts/validate_calibration.py : la correction se transporte aux
+  autres modèles, faisant passer leur erreur de 64-118 pour cent à 17-25 pour cent, ce qui est une
+  forte amélioration plutôt qu'une précision.</desc>
+
+  <style>
+    .panel      { fill: #ffffff; stroke: #d6d6d6; stroke-width: 1.5; }
+    .panel-label{ fill: #6b6b6b; font-size: 13px; font-weight: 600; letter-spacing: .08em; }
+    .node       { stroke-width: 1.5; }
+    .guess      { fill: #F8F8F8; stroke: #9a9a9a; }
+    .gate       { fill: #FFF4E0; stroke: #FF9500; }
+    .measure    { fill: #007AFF; stroke: #0062CC; }
+    .n-title    { font-size: 15px; font-weight: 600; fill: #111111; }
+    .n-sub      { font-size: 12px; fill: #5a5a5a; }
+    .on-dark    { fill: #ffffff; }
+    .on-dark-sub{ fill: #d8e8ff; }
+    .flow       { fill: none; stroke: #9a9a9a; stroke-width: 2; }
+    .feedback   { fill: none; stroke: #1A8F30; stroke-width: 2.5; }
+    .fb-label   { font-size: 13px; font-weight: 700; fill: #1A8F30; }
+    .fb-sub     { font-size: 12px; fill: #3f7a48; font-weight: 600; }
+    .caption    { font-size: 12.5px; fill: #5a5a5a; font-style: italic; }
+    .num        { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums;
+                  font-family: 'Roboto Mono', ui-monospace, monospace; }
+    .num-guess  { fill: #8a6d00; }
+    .num-real   { fill: #ffffff; }
+    .store-fill { fill: #1A8F30; }
+    .store-line { fill: none; stroke: #14761F; stroke-width: 1.5; }
+    .store-cap  { font-size: 12px; fill: #5a5a5a; }
+
+    @media (prefers-color-scheme: dark) {
+      .panel      { fill: #1b1b1d; stroke: #3a3a3d; }
+      .panel-label{ fill: #a0a0a6; }
+      .guess      { fill: #2a2a2e; stroke: #6f6f76; }
+      .gate       { fill: #3a2d12; stroke: #FF9500; }
+      .n-title    { fill: #f2f2f4; }
+      .n-sub      { fill: #b4b4ba; }
+      .flow       { stroke: #7a7a82; }
+      .feedback   { stroke: #36C04C; }
+      .fb-label   { fill: #36C04C; }
+      .fb-sub     { fill: #7fc98d; }
+      .caption    { fill: #a0a0a6; }
+      .num-guess  { fill: #FFCC00; }
+      .store-line { stroke: #36C04C; }
+      .store-cap  { fill: #a0a0a6; }
+    }
+  </style>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#9a9a9a"/>
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#1A8F30"/>
+    </marker>
+  </defs>
+
+  <!-- ─────────────── Étape 1 : Prédire ─────────────── -->
+  <rect class="panel" x="24" y="56" width="290" height="226" rx="10"/>
+  <text class="panel-label" x="44" y="80">1 · PRÉDIRE</text>
+
+  <rect class="node guess" x="48" y="94" width="242" height="54" rx="8"/>
+  <text class="n-title" x="169" y="117" text-anchor="middle">Détecter cette machine</text>
+  <text class="n-sub"   x="169" y="136" text-anchor="middle">réservoir mémoire, bande passante</text>
+
+  <path class="flow" d="M169 148 L169 178" marker-end="url(#arrow)"/>
+
+  <rect class="node guess" x="48" y="180" width="242" height="76" rx="8"/>
+  <text class="n-title"      x="169" y="203" text-anchor="middle">Estimer la vitesse</text>
+  <text class="n-sub"        x="169" y="221" text-anchor="middle">bande passante ÷ octets actifs</text>
+  <text class="num num-guess" x="169" y="244" text-anchor="middle">prédit 28,3 jetons/s</text>
+
+  <!-- ─────────────── Étape 2 : Choisir ─────────────── -->
+  <rect class="panel" x="355" y="56" width="290" height="226" rx="10"/>
+  <text class="panel-label" x="375" y="80">2 · CHOISIR</text>
+
+  <rect class="node gate" x="379" y="94" width="242" height="54" rx="8"/>
+  <text class="n-title" x="500" y="117" text-anchor="middle">Classer ce qui tient</text>
+  <text class="n-sub"   x="500" y="136" text-anchor="middle">axe de benchmark + mémoire</text>
+
+  <path class="flow" d="M500 148 L500 178" marker-end="url(#arrow)"/>
+
+  <rect class="node gate" x="379" y="180" width="242" height="76" rx="8"/>
+  <text class="n-title" x="500" y="203" text-anchor="middle">Appliquer le plancher min_tps</text>
+  <text class="n-sub"   x="500" y="221" text-anchor="middle">mesuré → rétrograde</text>
+  <text class="n-sub"   x="500" y="239" text-anchor="middle">estimé → signale seulement</text>
+
+  <!-- ─────────────── Étape 3 : Éprouver ─────────────── -->
+  <rect class="panel" x="686" y="56" width="290" height="226" rx="10"/>
+  <text class="panel-label" x="706" y="80">3 · ÉPROUVER</text>
+
+  <rect class="node measure" x="710" y="94" width="242" height="54" rx="8"/>
+  <text class="n-title on-dark"   x="831" y="117" text-anchor="middle">Portes de qualité Ralph</text>
+  <text class="n-sub on-dark-sub" x="831" y="136" text-anchor="middle">chasse au défaut, texte + image</text>
+
+  <path class="flow" d="M831 148 L831 178" marker-end="url(#arrow)"/>
+
+  <rect class="node measure" x="710" y="180" width="242" height="76" rx="8"/>
+  <text class="n-title on-dark"   x="831" y="203" text-anchor="middle">Chronométrer ces jetons</text>
+  <text class="n-sub on-dark-sub" x="831" y="221" text-anchor="middle">horloge de décodage</text>
+  <text class="num num-real"      x="831" y="244" text-anchor="middle">mesure 15,2 jetons/s</text>
+
+  <!-- stage-to-stage arrows -->
+  <path class="flow" d="M316 170 L351 170" marker-end="url(#arrow)"/>
+  <path class="flow" d="M647 170 L682 170" marker-end="url(#arrow)"/>
+
+  <!-- the gates already generate the tokens: metering is free -->
+  <text class="caption" x="831" y="274" text-anchor="middle">aucune inférence de plus — les portes ont déjà tourné</text>
+
+  <!-- ─────────────── Conserver ─────────────── -->
+  <path class="flow" d="M831 282 L831 310" marker-end="url(#arrow)"/>
+  <g>
+    <path class="store-fill" d="M745 326 h172 a16 10 0 0 1 0 0 v36 a86 12 0 0 1 -172 0 v-36 z"/>
+    <ellipse class="store-fill" cx="831" cy="326" rx="86" ry="12"/>
+    <rect class="store-fill" x="745" y="326" width="172" height="36"/>
+    <ellipse class="store-fill" cx="831" cy="362" rx="86" ry="12"/>
+    <ellipse class="store-line" cx="831" cy="326" rx="86" ry="12"/>
+    <path class="store-line" d="M745 326 v36 a86 12 0 0 0 172 0 v-36"/>
+    <text class="n-title on-dark" x="831" y="350" text-anchor="middle" font-size="13.5">measurements.yaml</text>
+  </g>
+  <text class="store-cap" x="806" y="388" text-anchor="middle">par modèle ET par machine</text>
+  <text class="store-cap" x="806" y="404" text-anchor="middle">garde l'échantillon le plus rapide</text>
+
+  <!-- feedback arc 2 : store -> the floor. Routed as straight runs with a
+       rounded corner so the label can sit clear of the line, not across it. -->
+  <path class="feedback" d="M745 344 L524 344 Q500 344 500 320 L500 292"
+        marker-end="url(#arrow-green)" stroke-dasharray="7 5"/>
+  <text class="fb-sub" x="632" y="336" text-anchor="middle">autorise le plancher à disqualifier</text>
+
+  <!-- feedback arc 1 : store -> the estimate, the long way round the bottom -->
+  <path class="feedback" d="M917 350 L941 350 Q953 350 953 362 L953 418 Q953 430 941 430 L181 430 Q169 430 169 418 L169 292"
+        marker-end="url(#arrow-green)" stroke-dasharray="7 5"/>
+  <text class="fb-label" x="500" y="422" text-anchor="middle">× 0,54 pour cette paire — l'estimateur était environ deux fois optimiste</text>
+  <text class="caption"  x="500" y="456" text-anchor="middle">Mesurer un modèle corrige l'estimation de tous les autres ici, y compris ceux jamais téléchargés.</text>
+</svg>

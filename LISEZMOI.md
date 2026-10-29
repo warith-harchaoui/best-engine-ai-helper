@@ -20,6 +20,27 @@ Ralph Eyeball) ? Seul un modèle qui réussit les deux voit son fichier d'enviro
 
 [![logo](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/logo.png)](https://deraison.ai/ai-helpers)
 
+## Le film
+
+[![Le film de lancement : un nom de modèle écrit en dur n'a raison qu'une seule fois](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/film/poster.jpg)](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/film/best-engine-ai-helper.mp4)
+
+Cinquante-deux secondes, dans `assets/film/`. Ce qu'il *affirme* vit dans
+`film.yaml` plutôt que dans les images, puis c'est la seule raison pour
+laquelle on peut le vérifier :
+
+```sh
+make-film verify assets/film/film.yaml --root .   # les affirmations contre le code
+make-film pitch  assets/film/film.yaml --duration 52
+```
+
+Un chiffre gravé dans une image-clé n'est jamais relu : le film est donc le
+pire endroit de ce dépôt où garder un fait. Douze affirmations, chacune
+pointant le fichier qui en décide ; les nombres qu'aucune source ne pouvait
+appuyer ont été retirés de l'écran plutôt que laissés sans contrôle. Le premier
+montage disait qu'un modèle avait été *refusé* à 15,2 jetons/s contre un
+plancher de 15 — dessiner l'histogramme est ce qui a montré que 15,2 le
+franchit, puis le LISEZMOI avait déjà la meilleure phrase.
+
 ## La promesse
 
 `best-engine-ai-helper` est conçu pour fonctionner entièrement hors ligne une fois les poids
@@ -372,7 +393,7 @@ tient quand son `ram_gb` (pic d'inférence estimé) reste au plus égal à ce bu
 
 Sur la machine où ceci s'écrit, cette arithmétique donne ceci :
 
-![Ce que 96 Go de mémoire unifiée valent réellement pour un modèle : le pool, moins les 24 Go que Metal ne confiera pas au GPU, moins 36 Go de marge pour le système puis pour un cache KV qui grandit, laissant un budget de 36 Go](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/memory-budget.png)
+![Ce que 96 Go de mémoire unifiée valent réellement pour un modèle : le pool, moins les 24 Go que Metal ne confiera pas au GPU, moins 36 Go de marge pour le système puis pour un cache KV qui grandit, laissant un budget de 36 Go](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/budget-memoire.png)
 
 96 Go sur la boîte, 36 Go pour un modèle. L'écart n'est pas du pessimisme :
 une moitié est une limite de pilote qui ne se discute pas, l'autre est une
@@ -423,7 +444,7 @@ llama.cpp / MLX). Les rapports exacts vivent en constantes documentées dans
 
 ### Le débit mesuré, puis pourquoi l'estimation demandait une correction
 
-![La boucle de mesure : prédire, choisir, éprouver, puis réinjecter la mesure dans la prédiction suivante](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/measurement-loop.png)
+![La boucle de mesure : prédire, choisir, éprouver, puis réinjecter la mesure dans la prédiction suivante](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/boucle-de-mesure.png)
 
 Tout ce qui précède est une **estimation**. Pour un outil dont l'argument est
 qu'il faut mesurer plutôt que supposer, c'était le seul endroit où il supposait
@@ -1030,7 +1051,7 @@ Les tailles viennent d'une constante **mesurée** sur les quatorze entrées Q4 d
 
 `--arena` fusionne en plus les notes de préférence conversationnelle issues des miroirs de [LM Arena](https://lmarena.ai). Deux faits mesurés méritent d'être connus avant d'y recourir.
 
-![Chaque source Arena essayée tour à tour : le tableau officiel n'a aucune API publique, un miroir communautaire répond désormais avec 37 modèles d'un instantané vieux de 21 jours, un collecteur payant est refusé par principe, puis l'historique en vrac a 524 jours](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/arena-staleness.png)
+![Chaque source Arena essayée tour à tour : le tableau officiel n'a aucune API publique, un miroir communautaire répond désormais avec 37 modèles d'un instantané vieux de 21 jours, un collecteur payant est refusé par principe, puis l'historique en vrac a 524 jours](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/obsolescence-arena.png)
 
 **Elle note des points d'accès hébergés de pointe, puis rien d'autre.** L'Arena note ce avec quoi ses votants peuvent discuter, ce qui donne aujourd'hui des noms comme `claude-opus-5.5-max`, `gpt-6-astra-max` puis `gemini-4-argon-high`. Au relevé du 2026-10-28, cela fait **37 modèles** sur trois tableaux de vingt. Face au catalogue *local*, c'est presque rien — **1 sur 51**, `kimi-k3` — parce que personne ne vote sur un tag Ollama à poids ouverts. Face au catalogue *payant*, c'est l'essentiel : **18 sur 28**, dès que `catalog update --cloud` a mis des modèles actuels dans le fichier. Cette asymétrie est la propriété qui définit l'axe, pas un défaut dedans.
 
