@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 840" width="1060" height="840"
+     role="img" aria-labelledby="tf-title tf-desc" font-family="Roboto, 'Helvetica Neue', Arial, sans-serif">
+  <title id="tf-title">Three families of tool, and the region only one of them occupies</title>
+  <desc id="tf-desc">Twelve tools surveyed on 29 October 2026, drawn as three overlapping
+  abilities rather than as a ranking. The first ability is knowing what the machine in front of you
+  can run: detecting its memory and sizing a model against it. llmfit, Ollama, LM Studio and the
+  browser VRAM calculators have that and nothing else. The second is reaching the paid providers
+  through one surface: LiteLLM, OpenRouter, Not Diamond, RouteLLM and the ngrok AI gateway have
+  that and nothing else — the gateway can be pointed at a local endpoint, which is not the same as
+  knowing whether a model fits on it. The third is pricing the two worlds against each other, which
+  only the break-even calculators do, and they do it from a monthly token volume you type in rather
+  than one anybody measured. AMD Lemonade sits where the first two overlap: it detects CPU, GPU and
+  NPU, and an experimental cloud-offload setting lets it hand a request to an OpenAI-compatible
+  provider. The two remaining two-way overlaps are empty. The centre, where all three abilities
+  meet, holds best-engine-ai-helper alone. That is a claim about coverage, not about quality: every
+  tool here is good at the job it was built for.</desc>
+
+  <style>
+    .bg      { fill: #ffffff; }
+    .eyebrow { fill: #6b6b6b; font-size: 12px; font-weight: 700; letter-spacing: .12em; }
+    .h       { font-size: 19px; font-weight: 700; fill: #111111; }
+    .ring-h  { font-size: 14.5px; font-weight: 700; }
+    .ring-s  { font-size: 11.5px; }
+    .member  { font-size: 13px; fill: #2b2b2b; }
+    .star    { font-size: 14px; font-weight: 700; fill: #8a5600; }
+    .muted   { font-size: 11.5px; fill: #7e7e86; font-style: italic; }
+    .caption { font-size: 12.5px; fill: #5a5a5a; font-style: italic; }
+
+    .ring-a  { fill: #0072B2; fill-opacity: .13; stroke: #0072B2; stroke-width: 1.8; }
+    .ring-b  { fill: #009E73; fill-opacity: .13; stroke: #009E73; stroke-width: 1.8; }
+    .ring-c  { fill: #CC79A7; fill-opacity: .13; stroke: #CC79A7; stroke-width: 1.8; }
+    .key-a   { fill: #005a8d; }
+    .key-b   { fill: #00664b; }
+    .key-c   { fill: #9c4b7d; }
+
+    .chip    { fill: #ffffff; stroke: #E69F00; stroke-width: 2.2; }
+
+    @media (prefers-color-scheme: dark) {
+      .bg      { fill: #141416; }
+      .eyebrow { fill: #a0a0a6; }
+      .h       { fill: #f2f2f4; }
+      .member  { fill: #e9e9ee; }
+      .muted   { fill: #9a9aa2; }
+      .caption { fill: #a0a0a6; }
+      .star    { fill: #ffc85c; }
+
+      .ring-a  { fill: #4da2ff; fill-opacity: .16; stroke: #4da2ff; }
+      .ring-b  { fill: #3ec9a1; fill-opacity: .16; stroke: #3ec9a1; }
+      .ring-c  { fill: #e79ac4; fill-opacity: .16; stroke: #e79ac4; }
+      .key-a   { fill: #7ab8ff; }
+      .key-b   { fill: #5fd9b6; }
+      .key-c   { fill: #f0b7d8; }
+
+      .chip    { fill: #1b1b1d; stroke: #ffb52e; }
+    }
+  </style>
+
+  <rect class="bg" x="0" y="0" width="1060" height="840"/>
+
+  <text class="eyebrow" x="40" y="36">THE LANDSCAPE, 29 OCTOBER 2026</text>
+  <text class="h" x="40" y="64">Three abilities. Twelve tools. One region with a single occupant.</text>
+  <text class="caption" x="40" y="88">A claim about coverage, never about quality: every tool outside the centre is excellent at the job it was built for.</text>
+
+  <!-- The three abilities. Radii and centres chosen so that each of the seven
+       regions a three-circle diagram creates is large enough to hold the text
+       that belongs in it, including the two that hold the word "empty". -->
+  <circle class="ring-a" cx="390" cy="330" r="200"/>
+  <circle class="ring-b" cx="650" cy="330" r="200"/>
+  <circle class="ring-c" cx="520" cy="560" r="200"/>
+
+  <!-- Ring titles sit outside their own circle, flush to the frame, so they
+       can never be read as the name of a region. -->
+  <text class="ring-h key-a" x="40" y="196">Knows this machine</text>
+  <text class="ring-s key-a" x="40" y="214">detects the memory,</text>
+  <text class="ring-s key-a" x="40" y="230">sizes a model against it</text>
+
+  <text class="ring-h key-b" x="1020" y="196" text-anchor="end">Reaches the providers</text>
+  <text class="ring-s key-b" x="1020" y="214" text-anchor="end">one surface over</text>
+  <text class="ring-s key-b" x="1020" y="230" text-anchor="end">many paid APIs</text>
+
+  <text class="ring-h key-c" x="520" y="806" text-anchor="middle">Prices here against there</text>
+  <text class="ring-s key-c" x="520" y="824" text-anchor="middle">what the same work costs free on this machine, versus billed</text>
+
+  <!-- Knows-the-machine only -->
+  <text class="member" x="272" y="278" text-anchor="middle">llmfit</text>
+  <text class="member" x="272" y="300" text-anchor="middle">Ollama</text>
+  <text class="member" x="272" y="322" text-anchor="middle">LM Studio</text>
+  <text class="member" x="272" y="344" text-anchor="middle">browser VRAM</text>
+  <text class="member" x="272" y="362" text-anchor="middle">calculators</text>
+
+  <!-- Reaches-the-providers only -->
+  <text class="member" x="768" y="278" text-anchor="middle">LiteLLM</text>
+  <text class="member" x="768" y="300" text-anchor="middle">OpenRouter</text>
+  <text class="member" x="768" y="322" text-anchor="middle">Not Diamond</text>
+  <text class="member" x="768" y="344" text-anchor="middle">RouteLLM</text>
+  <text class="member" x="768" y="366" text-anchor="middle">ngrok AI gateway</text>
+
+  <!-- Machine + providers, and nothing else -->
+  <text class="member" x="520" y="292" text-anchor="middle">AMD Lemonade</text>
+  <text class="muted" x="520" y="310" text-anchor="middle">cloud offload,</text>
+  <text class="muted" x="520" y="326" text-anchor="middle">experimental</text>
+
+  <!-- Prices-the-two-worlds only -->
+  <text class="member" x="520" y="668" text-anchor="middle">break-even calculators</text>
+  <text class="muted" x="520" y="686" text-anchor="middle">the volume is typed in, not measured</text>
+
+  <!-- The two two-way overlaps that hold nothing, named rather than left blank;
+       an unlabelled region reads as an oversight, a labelled one as a finding. -->
+  <text class="muted" x="412" y="492" text-anchor="middle">— empty —</text>
+  <text class="muted" x="628" y="492" text-anchor="middle">— empty —</text>
+
+  <!-- The centre, at the centroid of the three-way region -->
+  <rect class="chip" x="459" y="396" width="122" height="46" rx="9"/>
+  <text class="star" x="520" y="416" text-anchor="middle">best-engine</text>
+  <text class="star" x="520" y="432" text-anchor="middle">-ai-helper</text>
+</svg>

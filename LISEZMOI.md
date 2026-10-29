@@ -231,6 +231,14 @@ sont aussi accessibles comme outils MCP pour tout hôte agentique compatible :
 best-engine-ai-helper-mcp        # -> http://127.0.0.1:8000 (MCP sur /mcp)
 ```
 
+Un hôte agentique lit une seule phrase avant de décider s'il charge ces outils,
+donc cette phrase dit les deux moitiés : la détection du matériel puis le
+meilleur moteur local, **puis** le meilleur modèle payant pour la même tâche
+ainsi que les fournisseurs dont la clé est utilisable. Tout cela tourne ici
+puis **ne fait aucun appel de modèle ni aucun appel fournisseur** — c'est
+précisément pourquoi les routes d'inférence `/v1` sont exclues de la liste
+d'outils au lieu d'y être publiées.
+
 Voir [EXEMPLES.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXEMPLES.md) pour des recettes complètes avec exemples de sortie
 et [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) pour la GUI navigateur.
 
@@ -263,13 +271,28 @@ séparée. Local uniquement : aucun appel réseau, aucun service tiers.
 ```sh
 best-engine-ai-helper activity              # tableau
 best-engine-ai-helper activity --format json
+best-engine-ai-helper activity --what-if    # + ce que les appels gratuits auraient coûté
 ```
+
+**`--what-if` : une facture évitée, pas une économie.** Les calculateurs de
+seuil de rentabilité local-contre-cloud posent tous la même question puis
+doivent tous deviner la même entrée — vous saisissez un volume mensuel de
+jetons avant que la charge n'existe, puis la durée d'amortissement hérite de la
+devinette. Ce journal tient déjà la charge, mesurée. `--what-if` la croise avec
+la table de prix contre laquelle le journal facture les appels payants, puis
+affiche ce que les **appels gratuits déjà faits** auraient coûté au tarif public
+de chaque modèle payant, du moins cher au plus cher. C'est rapporté comme une
+facture évitée, jamais comme une économie : l'électricité, le disque puis le
+temps d'un modèle plus lent sont des coûts réels dont aucun n'est mesuré ici.
+Les comptes de jetons sont approximatifs aussi — un backend local ne rend aucun
+bloc `usage`, donc les caractères passent par la même règle d'environ 4
+caractères par jeton qu'un appel payant sans compte rendu.
 
 Le CLI, la GUI et le serveur MCP activent l'enregistrement par défaut ;
 désactivable avec `BEST_ENGINE_NO_LEDGER=1`. La section **Activité** de la GUI
 et `GET /api/activity` lisent le même journal. Voir
 `best_engine_ai_helper.observe` pour l'API bibliothèque (`enable()`,
-`as_user(nom)`, `Ledger.summary()`).
+`as_user(nom)`, `Ledger.summary()`, `Ledger.counterfactual()`).
 
 ## Comment fonctionne la sélection
 
@@ -379,7 +402,26 @@ le signale — puis, sur une machine qui a le disque pour cela, propose d'exécu
 un *bon* modèle à la place en lisant ses couches en flux (voir [plus
 bas](#trop-gros-pour-tenir-en-mémoire-exécutable-quand-même--le-flux-de-couches)).
 
-#### Le débit mesuré, puis pourquoi l'estimation demandait une correction
+### 5. Charge serveur en direct (optionnel, `--live`)
+
+Les quatre facteurs ci-dessus décrivent la capacité *théorique* de la machine. Ajouter
+`--live` (`recommend`/`report` ; `live: true` sur `POST /api/recommend`) pèse aussi ce qui
+s'y passe *en ce moment* : RAM libre actuelle, usage CPU/GPU/disque et le nombre de moteurs
+déjà lancés (modèles Ollama, serveurs vLLM). Une machine chargée obtient un budget plus
+réaliste qu'une machine identique mais inactive. Désactivé par défaut : cela ajoute une
+sonde en direct (~0,1-0,5 s : `nvidia-smi`/`ioreg`, un ping Ollama local, un échantillon
+`psutil`) et rend la recommandation dépendante de cet instant précis plutôt que d'être une
+fonction déterministe du seul matériel, ce qui compte pour des rapports reproductibles et la CI.
+
+**Sources.** Le plafond de l'ensemble de travail Metal d'Apple (documentation
+développeur Apple / apple-specs) ; la décomposition de la mémoire d'inférence
+poids + KV (15-20 %) + surcoûts (5-10 %) (guides de dimensionnement des LLM
+locaux) ; le décodage borné par la bande passante
+`jetons/s ≈ bande passante ÷ octets actifs × 0,5-0,8` (mesures communautaires
+llama.cpp / MLX). Les rapports exacts vivent en constantes documentées dans
+`score.py`.
+
+### Le débit mesuré, puis pourquoi l'estimation demandait une correction
 
 ![La boucle de mesure : prédire, choisir, éprouver, puis réinjecter la mesure dans la prédiction suivante](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/measurement-loop.png)
 
@@ -446,17 +488,6 @@ n'y paraissait : `COMFORT_TPS` vaut 15 jetons/s, donc une estimation non corrig�
 de 28,3 le franchit sans hésiter alors que la mesure réelle de 15,2 l'effleure.
 La correction fait toute la différence entre une recommandation qui *semble*
 confortable puis une qui l'est.
-
-### 5. Charge serveur en direct (optionnel, `--live`)
-
-Les quatre facteurs ci-dessus décrivent la capacité *théorique* de la machine. Ajouter
-`--live` (`recommend`/`report` ; `live: true` sur `POST /api/recommend`) pèse aussi ce qui
-s'y passe *en ce moment* : RAM libre actuelle, usage CPU/GPU/disque et le nombre de moteurs
-déjà lancés (modèles Ollama, serveurs vLLM). Une machine chargée obtient un budget plus
-réaliste qu'une machine identique mais inactive. Désactivé par défaut : cela ajoute une
-sonde en direct (~0,1-0,5 s : `nvidia-smi`/`ioreg`, un ping Ollama local, un échantillon
-`psutil`) et rend la recommandation dépendante de cet instant précis plutôt que d'être une
-fonction déterministe du seul matériel, ce qui compte pour des rapports reproductibles et la CI.
 
 ## Trop gros pour tenir en mémoire, exécutable quand même : le flux de couches
 
@@ -1123,6 +1154,13 @@ et spécifique à la machine : son absence est normale, `ensure` le résout depu
 premier usage. Le modèle reste ainsi hors de toute variable : le fichier moteur résolu est
 l'unique source de vérité.
 
+Les consommateurs de la suite — [Standpoint](https://github.com/warith-harchaoui/standpoint),
+vocal-helper puis md2star — suivent ce motif : chacun livre un `llm.brief.yaml` qui décrit
+son propre travail (celui de Standpoint, par exemple, réclame du JSON contraint par schéma,
+donc la garde de sortie structurée écarte des modèles de vision mieux notés mais incapables
+d'honorer un schéma, puis retient le plus fort de ceux qui le peuvent) et ne lit le modèle
+que depuis le fichier moteur résolu.
+
 ## Où tourne le modèle
 
 C'est le seul paquet de la suite AI Helpers qui sache joindre un service cloud payant de
@@ -1206,8 +1244,6 @@ absent puis s'exécute là où il est présent. Le fichier moteur consigne
 tarife un modèle payant qu'il n'appelle jamais. Rien dans ce paquet ne passe du local au
 payant de lui-même ; la seule direction automatique est la direction sûre, payant → local,
 quand un appel payant échoue.
-
-### Cloud (payant)
 
 `mode: cloud` route plutôt vers un fournisseur payant : OpenAI, Mistral, OpenRouter, Together
 ou Azure OpenAI (tous compatibles OpenAI), plus Anthropic et Gemini (formats propres à chacun),

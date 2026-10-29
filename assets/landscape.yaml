@@ -1,11 +1,11 @@
 meta:
   reference: best-engine-ai-helper
-  rotation_deg: 28.924
+  rotation_deg: 24.482
   explained_variance_ratio:
-  - 0.4279
-  - 0.3221
-  cumulative_variance: 0.75
-  n_approaches: 9
+  - 0.4077
+  - 0.2931
+  cumulative_variance: 0.7008
+  n_approaches: 12
   attributes:
   - Hardware detection
   - Local fit
@@ -17,40 +17,41 @@ meta:
   - Verifies quality before you depend on it
   - Programmatic API
   lower_is_better: []
+  imputed_cells: []
 axes:
   axis_1:
     name: Valuable ↔ Resourceful
     pole_left: Valuable
     pole_right: Resourceful
     loadings:
-      Hardware detection: 0.5096
-      Local fit: 0.4977
-      Measures speed on this machine: 0.5079
-      Paid models in the same decision: -0.2401
-      Routes on keys present: 0.0509
-      Scores carry provenance: 0.3395
-      Catalog breadth: 0.1518
-      Verifies quality before you depend on it: 0.1883
-      Programmatic API: -0.0255
+      Hardware detection: 0.4929
+      Local fit: 0.504
+      Measures speed on this machine: 0.4982
+      Paid models in the same decision: -0.2876
+      Routes on keys present: -0.0006
+      Scores carry provenance: 0.3038
+      Catalog breadth: 0.1943
+      Verifies quality before you depend on it: 0.1882
+      Programmatic API: 0.0811
   axis_2:
-    name: Diverse ↔ Precise
-    pole_bottom: Diverse
-    pole_top: Precise
+    name: Adaptable ↔ Connected
+    pole_bottom: Adaptable
+    pole_top: Connected
     loadings:
-      Hardware detection: 0.047
-      Local fit: -0.1893
-      Measures speed on this machine: 0.0136
-      Paid models in the same decision: 0.5023
-      Routes on keys present: 0.4687
-      Scores carry provenance: 0.2866
-      Catalog breadth: -0.0549
-      Verifies quality before you depend on it: 0.4401
-      Programmatic API: 0.4593
+      Hardware detection: 0.0381
+      Local fit: -0.1935
+      Measures speed on this machine: 0.048
+      Paid models in the same decision: 0.5025
+      Routes on keys present: 0.5136
+      Scores carry provenance: 0.2272
+      Catalog breadth: 0.0558
+      Verifies quality before you depend on it: 0.4522
+      Programmatic API: 0.4282
 approaches:
 - name: best-engine-ai-helper
   coordinates:
-    axis_1: 2.5032
-    axis_2: 1.9612
+    axis_1: 2.6835
+    axis_2: 1.9296
   role: best
   color: '#FF3B30'
   attributes:
@@ -63,10 +64,11 @@ approaches:
     Catalog breadth: 4.0
     Verifies quality before you depend on it: 5.0
     Programmatic API: 5.0
+  imputed_attributes: []
 - name: llmfit
   coordinates:
-    axis_1: 2.5032
-    axis_2: -0.123
+    axis_1: 2.6835
+    axis_2: -0.0326
   role: right
   color: '#007AFF'
   attributes:
@@ -79,12 +81,47 @@ approaches:
     Catalog breadth: 5.0
     Verifies quality before you depend on it: 2.0
     Programmatic API: 4.0
-- name: RouteLLM
+  imputed_attributes: []
+- name: AMD Lemonade
   coordinates:
-    axis_1: -2.116
-    axis_2: 1.9612
+    axis_1: 0.158
+    axis_2: 0.653
+  role: competitor
+  color: '#98CD7A'
+  attributes:
+    Hardware detection: 5.0
+    Local fit: 4.0
+    Measures speed on this machine: 2.0
+    Paid models in the same decision: 3.0
+    Routes on keys present: 2.0
+    Scores carry provenance: 1.0
+    Catalog breadth: 4.0
+    Verifies quality before you depend on it: 2.0
+    Programmatic API: 5.0
+  imputed_attributes: []
+- name: ngrok AI Gateway
+  coordinates:
+    axis_1: -2.3445
+    axis_2: 1.9296
   role: top
   color: '#AF52DE'
+  attributes:
+    Hardware detection: 1.0
+    Local fit: 1.0
+    Measures speed on this machine: 2.0
+    Paid models in the same decision: 5.0
+    Routes on keys present: 4.0
+    Scores carry provenance: 1.0
+    Catalog breadth: 4.0
+    Verifies quality before you depend on it: 2.0
+    Programmatic API: 4.0
+  imputed_attributes: []
+- name: RouteLLM
+  coordinates:
+    axis_1: -2.2021
+    axis_2: 1.8127
+  role: competitor
+  color: '#00B09A'
   attributes:
     Hardware detection: 1.0
     Local fit: 1.0
@@ -95,12 +132,13 @@ approaches:
     Catalog breadth: 2.0
     Verifies quality before you depend on it: 3.0
     Programmatic API: 5.0
+  imputed_attributes: []
 - name: LiteLLM
   coordinates:
-    axis_1: -2.5032
-    axis_2: 1.6311
+    axis_1: -2.5919
+    axis_2: 1.8856
   role: competitor
-  color: '#00A7C6'
+  color: '#009EC8'
   attributes:
     Hardware detection: 1.0
     Local fit: 1.0
@@ -111,12 +149,13 @@ approaches:
     Catalog breadth: 5.0
     Verifies quality before you depend on it: 1.0
     Programmatic API: 5.0
+  imputed_attributes: []
 - name: OpenRouter
   coordinates:
-    axis_1: -2.3352
-    axis_2: 0.468
+    axis_1: -2.408
+    axis_2: 0.6371
   role: competitor
-  color: '#C0B7FF'
+  color: '#D099E9'
   attributes:
     Hardware detection: 1.0
     Local fit: 1.0
@@ -127,12 +166,13 @@ approaches:
     Catalog breadth: 5.0
     Verifies quality before you depend on it: 1.0
     Programmatic API: 4.0
+  imputed_attributes: []
 - name: Not Diamond
   coordinates:
-    axis_1: -2.3222
-    axis_2: 1.57
+    axis_1: -2.4759
+    axis_2: 1.66
   role: competitor
-  color: '#81C980'
+  color: '#8AA4F8'
   attributes:
     Hardware detection: 1.0
     Local fit: 1.0
@@ -143,12 +183,13 @@ approaches:
     Catalog breadth: 3.0
     Verifies quality before you depend on it: 3.0
     Programmatic API: 4.0
+  imputed_attributes: []
 - name: Ollama
   coordinates:
-    axis_1: -0.7124
-    axis_2: -0.9217
+    axis_1: -0.5804
+    axis_2: -0.9027
   role: competitor
-  color: '#C26383'
+  color: '#C36B42'
   attributes:
     Hardware detection: 2.0
     Local fit: 3.0
@@ -159,12 +200,13 @@ approaches:
     Catalog breadth: 4.0
     Verifies quality before you depend on it: 1.0
     Programmatic API: 4.0
+  imputed_attributes: []
 - name: LM Studio
   coordinates:
-    axis_1: -0.0808
-    axis_2: -1.3889
+    axis_1: -0.0328
+    axis_2: -1.3156
   role: competitor
-  color: '#D59741'
+  color: '#BE9C34'
   attributes:
     Hardware detection: 3.0
     Local fit: 4.0
@@ -175,12 +217,13 @@ approaches:
     Catalog breadth: 4.0
     Verifies quality before you depend on it: 1.0
     Programmatic API: 3.0
+  imputed_attributes: []
 - name: Browser VRAM calculators
   coordinates:
-    axis_1: -1.1882
-    axis_2: -1.9612
-  role: worst
-  color: '#A52A2A'
+    axis_1: -1.367
+    axis_2: -1.9296
+  role: competitor
+  color: '#FFA1C1'
   attributes:
     Hardware detection: 1.0
     Local fit: 4.0
@@ -191,3 +234,21 @@ approaches:
     Catalog breadth: 3.0
     Verifies quality before you depend on it: 1.0
     Programmatic API: 1.0
+  imputed_attributes: []
+- name: Break-even calculators
+  coordinates:
+    axis_1: -2.6835
+    axis_2: -0.8804
+  role: worst
+  color: '#A52A2A'
+  attributes:
+    Hardware detection: 1.0
+    Local fit: 2.0
+    Measures speed on this machine: 1.0
+    Paid models in the same decision: 4.0
+    Routes on keys present: 1.0
+    Scores carry provenance: 2.0
+    Catalog breadth: 2.0
+    Verifies quality before you depend on it: 1.0
+    Programmatic API: 1.0
+  imputed_attributes: []

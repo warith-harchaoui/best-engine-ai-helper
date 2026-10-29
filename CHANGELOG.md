@@ -6,31 +6,69 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Added
 
-- **The paid catalogue can grow now, and only on two citations.** Repricing
-  fixed what the catalogue's models *cost* and could never tell it a model
-  existed, because ranking one needs a quality score and a price table
-  publishes none. So the file learned that `gpt-4o` had gone up and never that
-  `gpt-6-sol` had shipped: ten models from 2024, indefinitely.
+- **The two languages have a check now, and had drifted in ten places.** Three
+  root documents ship twice — `README`/`LISEZMOI`, `EXAMPLES`/`EXEMPLES`,
+  `LANDSCAPE`/`PAYSAGE`, about 7,000 lines across six files — and nothing
+  verified that the halves still had the same shape. Each file reads perfectly
+  well alone, which is exactly why nobody noticed: the failure mode is
+  structure diverging while both sides stay locally coherent.
 
-  `catalog update --cloud --arena` crosses the two sources. A model is adopted
-  only where the price table prices it **and** the leaderboard rates it — two
-  citations, neither invented — and the `general`/`code`/`math`/`ocr`/`vision`
-  axes stay null on an adopted entry, because a preference vote is not an
-  MMLU-style result and synthesising one would be the fiction this file exists
-  to avoid. Measured 2026-10-28: 18 models adopted, 164 priced-but-unrated
-  printed for triage, 4 catalogue entries unknown to the price source left
-  exactly as they were. The catalogue goes from 10 entries to 28.
+  `scripts/check_doc_parity.py` compares the **skeleton**, never the wording,
+  on six invariants chosen because each survives a translation and breaks on a
+  drift: heading levels in order; fenced blocks per section; the shell command
+  head and its flags (quoted arguments and trailing comments dropped, because
+  `--task "invoice lines"` and `--task "lignes de facture"` are the same
+  command and `--job` is not); link targets as a multiset, through a declared
+  `MIRROR` of names that differ on purpose; the number of significant lines
+  each fenced block holds; and tables per section. Stdlib only, like
+  `check_triggers.py`; `tests/test_doc_parity.py` puts it in the pre-push gate
+  and in CI, and asserts each invariant fires on the drift it was written for.
 
-  Each adopted entry records `arena_matched`, the board name behind every axis
-  it took, so `85.2` traces back to `claude-opus-5.5-high` on the `2026-10-07`
-  snapshot instead of being a number with no provenance.
+  What it found on the first run, all real: a section promoted to `h4` and
+  moved before factor 5 in French only (and a **Sources** paragraph the French
+  never had); a `### Cloud (payant)` heading with no English counterpart,
+  splitting a section in two on one side; a `mode: cloud` paragraph present
+  only in French; the Standpoint link and the two shields badges present only
+  on one side; and — the one that mattered — a French terminal panel one line
+  shorter than its English twin, missing the `Repair the install:` line that
+  the French paragraph underneath promises the panel prints.
 
-- **`score.resolve_benchmark` and `score.benchmark_score_or_none`.** The axis a
-  score came from, and the difference between "measured at zero" and "nobody
-  measured it". `rank_cloud` rows now carry `score_axis` and `scored`, and the
-  cloud table prints a `from` column and a `?` rather than a misleading `0`.
+- **`activity --what-if`: what the free calls would have cost.** Taken from the
+  local-versus-cloud break-even calculators, which all ask this and all have to
+  guess the input — you type in a monthly token volume before the workload
+  exists, and the payback period inherits the guess. The ledger already holds
+  the workload, measured, so `Ledger.counterfactual()` crosses it with the same
+  price table the ledger bills paid calls against and reports what the **free
+  calls already made** would have cost at each paid model's list price,
+  cheapest first. Reported as an avoided *bill*, never as a saving:
+  electricity, disk and the slower model's time are real costs and none is
+  measured here. `--format json` carries it under a `what_if` key only when the
+  flag was passed, because a question nobody asked differs from one answered
+  with zero.
 
 ### Fixed
+
+- **The MCP tool description had become false by omission.** It said these
+  tools detect hardware and recommend the best local engine "entirely on the
+  local machine", and stopped — while `/api/recommend` had carried a paid-model
+  ranking for several iterations and `/api/providers` reports which providers
+  hold a usable key. That string is the *only* thing an MCP host reads before
+  deciding whether to load the tools, so a host was being told about half the
+  answer and would never ask for the other half. The description now names both
+  halves and keeps the claim that is still exactly true and justifies excluding
+  `/v1`: these tools decide and make **no model call and no provider call**.
+  `tests/test_mcp.py` asserts it, so the string is a contract rather than prose.
+
+- **The activity ledger could not price the models the refresh had just
+  priced.** `observe._load_pricing()` read `data/pricing.yaml` directly while
+  `cloud_catalog.load_cloud_catalog()` overlays
+  `~/.best-engine-ai-helper/pricing_cache.yaml`, where `catalog update --cloud`
+  writes fetched list prices and adopted entries. So a call to one of the
+  eighteen adopted models was recorded as `cost_usd: None` — "nobody priced
+  this" — about a price sitting one module away, while `report --cloud` ranked
+  the same model on it. The ledger now reads through the loader, and
+  `observe._PRICING_PATH` is gone: two modules each holding their own path to
+  the same file is how the two answers diverged in the first place.
 
 - **The default ranking rule could not read the Arena axis, so `--arena`
   demoted the models it had just scored.** `catalog update --arena` writes an
@@ -89,6 +127,52 @@ All notable changes to best-engine-ai-helper are documented here.
   empty directory, matching `_isolate_ledger`'s existing stance.
 
 ### Changed
+
+- **`LANDSCAPE.md` / `PAYSAGE.md` re-surveyed 2026-10-29, and the conclusion
+  moved.** Three entries added: **AMD Lemonade** (routes across CPU, GPU and
+  **NPU**, picks a backend per model and device, and its v11.5.0 router sends a
+  request to the most suitable already-installed model), the **ngrok AI
+  gateway** (GA 2026-06-23; one endpoint over hosted *and* self-hosted
+  providers with CEL-based selection and failover across models, providers and
+  keys), and the **break-even calculator** genre. The `llmfit` entry was re-read
+  against its actual repository, which supersedes the previous survey's note
+  that no URL had been recorded.
+
+  The PCA moved with them. This project is at (2.68, 1.93); `llmfit` is at
+  *exactly* the same horizontal coordinate and ngrok at *exactly* the same
+  vertical one. So the old "alone in the top-right corner" reading is replaced
+  by a narrower and sharper one: **best on neither axis, and the only entry not
+  near the bottom of one.** A second lost column is written up rather than
+  buried — Lemonade uses an NPU this project has no notion of.
+
+  New hand-authored figure (`assets/diagrams/three-families.svg` + the French
+  `trois-familles.svg`): the three abilities as overlapping regions, with the
+  two empty two-way overlaps named rather than left blank.
+
+- **The paid catalogue can grow now, and only on two citations.** Repricing
+  fixed what the catalogue's models *cost* and could never tell it a model
+  existed, because ranking one needs a quality score and a price table
+  publishes none. So the file learned that `gpt-4o` had gone up and never that
+  `gpt-6-sol` had shipped: ten models from 2024, indefinitely.
+
+  `catalog update --cloud --arena` crosses the two sources. A model is adopted
+  only where the price table prices it **and** the leaderboard rates it — two
+  citations, neither invented — and the `general`/`code`/`math`/`ocr`/`vision`
+  axes stay null on an adopted entry, because a preference vote is not an
+  MMLU-style result and synthesising one would be the fiction this file exists
+  to avoid. Measured 2026-10-28: 18 models adopted, 164 priced-but-unrated
+  printed for triage, 4 catalogue entries unknown to the price source left
+  exactly as they were. The catalogue goes from 10 entries to 28.
+
+  Each adopted entry records `arena_matched`, the board name behind every axis
+  it took, so `85.2` traces back to `claude-opus-5.5-high` on the `2026-10-07`
+  snapshot instead of being a number with no provenance.
+
+- **`score.resolve_benchmark` and `score.benchmark_score_or_none`.** The axis a
+  score came from, and the difference between "measured at zero" and "nobody
+  measured it". `rank_cloud` rows now carry `score_axis` and `scored`, and the
+  cloud table prints a `from` column and a `?` rather than a misleading `0`.
+
 
 - **LM Arena's reasoning-effort suffixes resolve to the model that is billed.**
   `claude-opus-5.5-max` and `claude-opus-5.5-high` are one billable id at one

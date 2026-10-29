@@ -2,10 +2,12 @@
 
 A thin adapter that exposes the FastAPI app from :mod:`best_engine_ai_helper.api`
 as MCP tools, so any MCP-aware host (an agent runtime, an IDE integration, a
-custom shell) can call ``/api/system`` (this machine's hardware snapshot) and
-``/api/recommend`` (the best local LLM/VLM engine for a free-text task) as
-first-class tools — the same detect-then-recommend workflow the CLI's
-``detect``/``recommend``/``report`` commands expose. Uses `fastapi-mcp`
+custom shell) can call ``/api/system`` (this machine's hardware snapshot),
+``/api/recommend`` (the best local LLM/VLM engine for a free-text task, and the
+best paid cloud model for it alongside) and ``/api/providers`` (which paid
+providers hold a usable key) as first-class tools — the same
+detect-then-recommend workflow the CLI's ``detect``/``recommend``/``report``
+commands expose. Uses `fastapi-mcp`
 (https://github.com/tadata-org/fastapi_mcp): one wrapper publishes the whole
 existing HTTP surface, so the routes are never duplicated.
 
@@ -60,14 +62,26 @@ _INFERENCE_OPERATIONS = sorted(
 mcp = FastApiMCP(
     app,
     name="best-engine-ai-helper",
+    # This string is the ONLY thing an MCP host reads before deciding whether to
+    # load these tools, so it has to describe what they actually do. It used to
+    # say the work happens "entirely on the local machine" and stop there, which
+    # had quietly become false by omission: `/api/recommend` has carried a
+    # `cloud` ranking for several iterations, and `/api/providers` reports which
+    # paid providers hold a usable key. Both still run locally and still make no
+    # model call — the distinction worth stating is *no call*, not *no cloud*,
+    # because a host told only the second one would never ask for the half of
+    # the answer that prices a paid model.
     description=(
         "best-engine-ai-helper MCP tools: detect this machine's hardware "
-        "(CPU, RAM, GPU, accelerator, memory bandwidth) and recommend the "
-        "best local LLM/VLM engine(s) for a free-text task, entirely on the "
-        "local machine — no model call happens inside these tools, only "
-        "hardware detection and catalog ranking. Inference itself is reachable "
-        "on the same port through the OpenAI-compatible `/v1` routes, which are "
-        "deliberately not MCP tools."
+        "(CPU, RAM, GPU, accelerator, memory bandwidth), recommend the best "
+        "local LLM/VLM engine(s) for a free-text task, and — in the same "
+        "answer — rank the best PAID cloud model for it against a bundled "
+        "price-and-benchmark catalogue, plus report which cloud providers hold "
+        "a usable API key right now. Every one of those runs on the local "
+        "machine and makes no model call and no provider call: hardware "
+        "detection, catalogue ranking, and reading whether a key resolves. "
+        "Inference itself is reachable on the same port through the "
+        "OpenAI-compatible `/v1` routes, which are deliberately not MCP tools."
     ),
     exclude_operations=_INFERENCE_OPERATIONS,
 )

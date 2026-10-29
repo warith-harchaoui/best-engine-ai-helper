@@ -1014,7 +1014,35 @@ same command reports the totals, then a breakdown by user and by model;
 Local only, no network call. `BEST_ENGINE_NO_LEDGER=1` disables recording
 entirely, and `BEST_ENGINE_USER=alice` attributes calls to a named person on a
 shared machine. The library API behind it is `best_engine_ai_helper.observe`
-(`enable()`, `as_user(name)`, `Ledger.summary()`).
+(`enable()`, `as_user(name)`, `Ledger.summary()`, `Ledger.counterfactual()`).
+
+### What the free calls would have cost
+
+```sh
+best-engine-ai-helper activity --what-if --top 3
+```
+
+```
+What those 8 free call(s) would have cost at list price (~615 in / 912 out tokens, estimated from character counts):
+model              provider  cost_usd
+-----------------  --------  --------
+gemini-1.5-flash   gemini    0.00032
+open-mistral-nemo  mistral   0.000458
+gpt-4o-mini        openai    0.000639
+... 25 more; --top N to see further.
+An avoided bill, not a saving: a local run costs electricity, disk and the slower model's time, none of which this ledger measures.
+```
+
+Real output, printed under the ordinary tables rather than instead of them.
+Every local-versus-cloud break-even calculator asks this question and has to
+guess the input: you type in a monthly token volume before the workload exists.
+Here the volume is the ledger's own, and the prices are the ones the ledger
+already bills paid calls against — two things that were in the repository
+anyway, crossed. Read it as a bill avoided, never as money made: the
+electricity, the disk and the extra seconds a local model takes are real and
+unmeasured. `--format json` carries the same figures under a `what_if` key,
+present only when the flag was passed — a question nobody asked is different
+from one answered with zero.
 
 ## 8bis. Speak OpenAI to it
 
@@ -1417,7 +1445,7 @@ command; there is one name now, and this is it.
 | `pull` | pull the best model, then run both Ralph gates; `--keep-failed`, `--vllm`, `--application`, `--min-tps` | Ollama, network |
 | `validate` | re-run the Ralph gates on the configured model | Ollama |
 | `env` | print the env block for `~/.zshrc` | `pull` first |
-| `activity` | the local cost ledger; `--format` | — |
+| `activity` | the local cost ledger; `--format`, `--what-if`, `--top` | — |
 | `gui` | serve the browser GUI and the `/api` routes; `--host`, `--port` | — |
 | `serve` | the same port, plus an OpenAI-compatible `/v1`; `--host`, `--port` | Ollama, to answer |
 | `imagine plan` | rank the text-to-image models this machine can run; `--size`, `--json` | — |

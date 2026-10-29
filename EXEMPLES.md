@@ -757,6 +757,8 @@ best-engine-ai-helper lightweight status
   Known limits of this runtime:
   - the checkpoint has to publish safetensors; a repository that ships only a pickled pytorch_model.bin is refused, because reading one layer out of a pickle means reading the whole file once per layer
   - a sparse mixture-of-experts layer is materialised whole, so its resident figure is the full expert set rather than the few a token routes to
+
+  Repair the install:  pip install --upgrade --force-reinstall best-engine-ai-helper
 ```
 
 Cette sortie est réelle, puis elle montre une **installation cassée** :
@@ -1046,7 +1048,36 @@ Local uniquement, aucun appel réseau. `BEST_ENGINE_NO_LEDGER=1` désactive
 entièrement l'enregistrement, puis `BEST_ENGINE_USER=alice` attribue les appels à
 une personne nommée sur une machine partagée. L'API bibliothèque derrière tout
 cela est `best_engine_ai_helper.observe` (`enable()`, `as_user(name)`,
-`Ledger.summary()`).
+`Ledger.summary()`, `Ledger.counterfactual()`).
+
+### Ce que les appels gratuits auraient coûté
+
+```sh
+best-engine-ai-helper activity --what-if --top 3
+```
+
+```
+What those 8 free call(s) would have cost at list price (~615 in / 912 out tokens, estimated from character counts):
+model              provider  cost_usd
+-----------------  --------  --------
+gemini-1.5-flash   gemini    0.00032
+open-mistral-nemo  mistral   0.000458
+gpt-4o-mini        openai    0.000639
+... 25 more; --top N to see further.
+An avoided bill, not a saving: a local run costs electricity, disk and the slower model's time, none of which this ledger measures.
+```
+
+Sortie réelle, imprimée sous les tableaux ordinaires plutôt qu'à leur place.
+Tout calculateur de seuil de rentabilité local-contre-cloud pose cette question
+puis doit en deviner l'entrée : vous saisissez un volume mensuel de jetons avant
+que la charge n'existe. Ici le volume est celui du journal puis les tarifs sont
+ceux contre lesquels le journal facture déjà les appels payants — deux choses
+déjà présentes dans le dépôt, croisées. À lire comme une facture évitée, jamais
+comme de l'argent gagné : l'électricité, le disque puis les secondes
+supplémentaires d'un modèle local sont réels puis non mesurés. `--format json`
+porte les mêmes chiffres sous une clé `what_if`, présente seulement si le
+drapeau a été passé — une question que personne n'a posée diffère d'une question
+répondue par zéro.
 
 ## 8bis. Lui parler en OpenAI
 
@@ -1462,7 +1493,7 @@ qu'un seul nom, c'est celui-ci.
 | `pull` | tire le meilleur modèle puis passe les deux gardes Ralph ; `--keep-failed`, `--vllm`, `--application`, `--min-tps` | Ollama, réseau |
 | `validate` | repasse les gardes Ralph sur le modèle configuré | Ollama |
 | `env` | affiche le bloc d'environnement pour `~/.zshrc` | `pull` d'abord |
-| `activity` | le journal de coût local ; `--format` | — |
+| `activity` | le journal de coût local ; `--format`, `--what-if`, `--top` | — |
 | `gui` | sert la GUI navigateur puis les routes `/api` ; `--host`, `--port` | — |
 | `serve` | le même port, plus un `/v1` compatible OpenAI ; `--host`, `--port` | Ollama, pour répondre |
 | `imagine plan` | classe les modèles texte-vers-image que cette machine sait exécuter ; `--size`, `--json` | — |

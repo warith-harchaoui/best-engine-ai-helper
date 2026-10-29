@@ -245,6 +245,24 @@ def test_activity_empty_and_populated(runner: CliRunner, tmp_path: Path) -> None
     with_error = runner.invoke(cli, ["activity"])
     assert with_error.exit_code == 0
     assert "Recent errors:" in with_error.stdout
+
+    # --what-if prices the free calls already recorded against the paid
+    # catalog. It must never read as a saving: a local run costs electricity
+    # and time, and nothing in this ledger measures either.
+    what_if = runner.invoke(cli, ["activity", "--what-if", "--top", "2"])
+    assert what_if.exit_code == 0
+    assert "would have cost at list price" in what_if.stdout
+    assert "gemini-1.5-flash" in what_if.stdout, "the cheapest seed model leads the table"
+    assert "An avoided bill, not a saving" in what_if.stdout
+
+    what_if_json = runner.invoke(cli, ["activity", "--what-if", "--format", "json"])
+    payload = json.loads(what_if_json.stdout)["what_if"]
+    assert payload["free_calls"] >= 1
+    assert payload["models"], "a priced catalog yields at least one counterfactual row"
+
+    # Without the flag the key is absent rather than null: the question was
+    # not asked, which is different from having been asked and answered zero.
+    assert "what_if" not in json.loads(runner.invoke(cli, ["activity", "--format", "json"]).stdout)
     ledger.close()
 
 

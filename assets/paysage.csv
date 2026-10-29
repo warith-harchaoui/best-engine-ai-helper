@@ -1,6 +1,8 @@
 Sélection de modèle,Détection du matériel,Tenue en mémoire locale,Mesure la vitesse sur cette machine,Modèles payants dans la même décision,Route selon les clés présentes,Provenance des scores,Largeur du catalogue,Éprouve la qualité avant qu'on en dépende,API programmatique
 best-engine-ai-helper,5,5,5,5,5,5,4,5,5
 llmfit,5,5,5,1,1,4,5,2,4
+AMD Lemonade,5,4,2,3,2,1,4,2,5
+Passerelle IA ngrok,1,1,2,5,4,1,4,2,4
 RouteLLM,1,1,1,4,2,3,2,3,5
 LiteLLM,1,1,1,5,4,1,5,1,5
 OpenRouter,1,1,1,5,1,2,5,1,4
@@ -8,3 +10,4 @@ Not Diamond,1,1,1,5,2,2,3,3,4
 Ollama,2,3,3,1,1,1,4,1,4
 LM Studio,3,4,3,1,1,1,4,1,3
 Calculateurs VRAM en ligne,1,4,1,1,1,2,3,1,1
+Calculateurs de seuil de rentabilité,1,2,1,4,1,2,2,1,1

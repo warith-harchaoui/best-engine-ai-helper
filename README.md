@@ -2,9 +2,12 @@
 
 [🇫🇷](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/LISEZMOI.md) · [🇬🇧](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/README.md)
 
+[![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](#)
+
 Pick and pull the best local large language model (LLM) or vision-language model (VLM) for the hardware in the current machine.
 
-![Best Engine AI Helper glove logo](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/logo.png)
+[![Best Engine AI Helper glove logo](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/logo.png)](https://deraison.ai/ai-helpers)
 
 The tool detects available memory (Apple Silicon unified pool, NVIDIA VRAM, or system RAM), consults a bundled model catalog, and selects the highest-scoring model that fits within a configurable safety headroom. After selection, it pulls the model via Ollama and puts it through two quality gates before trusting it: does it catch and fix a known flaw seeded into a short text (the Ralph Loop), and does it spot an obvious visual defect seeded into a small test image (the Ralph Eyeball Loop)? Only a model that passes both gets its environment file written, the file downstream projects read to find the chosen model.
 
@@ -209,6 +212,13 @@ also reachable as MCP tools for any MCP-aware agent host:
 best-engine-ai-helper-mcp        # -> http://127.0.0.1:8000 (MCP at /mcp)
 ```
 
+An agent host reads one string before deciding whether to load these tools, so
+that string says both halves: hardware detection and the best local engine,
+**and** the best paid model for the same task plus which providers hold a
+usable key. All of it runs here and **makes no model call and no provider
+call** — which is exactly why the `/v1` inference routes are excluded from the
+tool list rather than published alongside.
+
 See [EXAMPLES.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXAMPLES.md) for runnable recipes with expected output, and [GUI.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/GUI.md) for the browser GUI.
 
 ## GUI
@@ -240,12 +250,26 @@ service.
 ```sh
 best-engine-ai-helper activity              # table
 best-engine-ai-helper activity --format json
+best-engine-ai-helper activity --what-if    # + what the free calls would have cost
 ```
+
+**`--what-if`: an avoided bill, not a saving.** The local-versus-cloud
+break-even calculators all ask the same question and all have to guess the
+same input — you type in a monthly token volume before the workload exists,
+and the payback period inherits the guess. This ledger already holds the
+workload, measured. `--what-if` crosses it with the same price table the
+ledger bills paid calls against, and prints what the **free calls you already
+made** would have cost at each paid model's list price, cheapest first. It is
+reported as an avoided bill and never as a saving: electricity, disk, and the
+time a slower model takes are real costs, and none of them is measured here.
+The token counts are approximate too — a local backend reports no `usage`
+block, so characters go through the same ~4-chars-per-token rule an unreported
+paid call does.
 
 The CLI, GUI, and MCP server all enable recording by default; opt out with
 `BEST_ENGINE_NO_LEDGER=1`. The GUI's **Activity** section and `GET /api/activity`
 read the same ledger. See `best_engine_ai_helper.observe` for the library API
-(`enable()`, `as_user(name)`, `Ledger.summary()`).
+(`enable()`, `as_user(name)`, `Ledger.summary()`, `Ledger.counterfactual()`).
 
 ## How selection works
 
@@ -998,6 +1022,13 @@ A project usually knows its job more precisely than a machine-wide default can, 
      Name PCA axis poles as schema-constrained JSON, write a short analysis in
      the table's own language, and sanity-check the rendered chart image.
    ```
+
+   `mode: local` is the default. `mode: cloud` resolves a paid provider plus a
+   local fallback from the same brief (paid to local on failure); see
+   [EXAMPLES.md's paid-model section](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXAMPLES.md#4-a-paid-model-only-when-you-hand-it-a-key)
+   for a complete `mode: cloud` brief. Retry/cache/pseudonymization need the
+   `[cloud]` extra, and the real NSFW classifiers behind `llm.chat(safety=...)`
+   need `[filtered]`: both degrade cleanly rather than failing when absent.
 
 2. **Resolve it, per machine**: writes a gitignored `llm.engine.yaml`:
 

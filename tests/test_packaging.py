@@ -40,7 +40,7 @@ import pytest
 import tomllib
 
 import best_engine_ai_helper
-from best_engine_ai_helper import catalog, cloud_catalog, hardware, i18n, observe, usages
+from best_engine_ai_helper import catalog, cloud_catalog, hardware, i18n, usages
 
 _PACKAGE_DIR = Path(best_engine_ai_helper.__file__).resolve().parent
 _REPO_ROOT = _PACKAGE_DIR.parent
@@ -52,8 +52,7 @@ _REPO_ROOT = _PACKAGE_DIR.parent
         ("models.yaml", catalog._SEED_PATH),
         ("hardware.yaml", hardware._SEED_PATH),
         ("usages.yaml", usages._SEED_PATH),
-        ("pricing.yaml", observe._PRICING_PATH),
-        ("pricing.yaml (cloud_catalog)", cloud_catalog._PRICING_PATH),
+        ("pricing.yaml", cloud_catalog._PRICING_PATH),
         ("locales/i18n.yaml", i18n._LOCALES_PATH),
     ],
 )

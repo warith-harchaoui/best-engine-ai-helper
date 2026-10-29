@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 840" width="1060" height="840"
+     role="img" aria-labelledby="tf-title tf-desc" font-family="Roboto, 'Helvetica Neue', Arial, sans-serif">
+  <title id="tf-title">Trois familles d'outils, puis la région qu'un seul occupe</title>
+  <desc id="tf-desc">Douze outils relevés le 29 octobre 2026, dessinés comme trois aptitudes qui
+  se recouvrent plutôt que comme un classement. La première aptitude est de savoir ce que la
+  machine devant soi sait exécuter : détecter sa mémoire puis y dimensionner un modèle. llmfit,
+  Ollama, LM Studio puis les calculateurs VRAM en ligne ont celle-là et rien d'autre. La deuxième
+  est de joindre les fournisseurs payants par une seule surface : LiteLLM, OpenRouter, Not Diamond,
+  RouteLLM puis la passerelle IA ngrok ont celle-là et rien d'autre — la passerelle sait viser un
+  point d'accès local, ce qui n'est pas savoir si un modèle y tient. La troisième est de chiffrer
+  les deux mondes l'un contre l'autre, que seuls les calculateurs de seuil de rentabilité font, à
+  partir d'un volume mensuel de jetons saisi à la main plutôt que mesuré. AMD Lemonade siège à
+  l'intersection des deux premières : il détecte processeur, carte graphique puis NPU, enfin un
+  réglage expérimental de déport cloud confie une requête à un fournisseur compatible OpenAI. Les
+  deux autres intersections à deux sont vides. Le centre, où les trois aptitudes se rejoignent,
+  n'abrite que best-engine-ai-helper. C'est une affirmation de couverture, pas de qualité : chaque
+  outil présent ici excelle dans le travail pour lequel il fut bâti.</desc>
+
+  <style>
+    .bg      { fill: #ffffff; }
+    .eyebrow { fill: #6b6b6b; font-size: 12px; font-weight: 700; letter-spacing: .12em; }
+    .h       { font-size: 19px; font-weight: 700; fill: #111111; }
+    .ring-h  { font-size: 14.5px; font-weight: 700; }
+    .ring-s  { font-size: 11.5px; }
+    .member  { font-size: 13px; fill: #2b2b2b; }
+    .star    { font-size: 14px; font-weight: 700; fill: #8a5600; }
+    .muted   { font-size: 11.5px; fill: #7e7e86; font-style: italic; }
+    .caption { font-size: 12.5px; fill: #5a5a5a; font-style: italic; }
+
+    .ring-a  { fill: #0072B2; fill-opacity: .13; stroke: #0072B2; stroke-width: 1.8; }
+    .ring-b  { fill: #009E73; fill-opacity: .13; stroke: #009E73; stroke-width: 1.8; }
+    .ring-c  { fill: #CC79A7; fill-opacity: .13; stroke: #CC79A7; stroke-width: 1.8; }
+    .key-a   { fill: #005a8d; }
+    .key-b   { fill: #00664b; }
+    .key-c   { fill: #9c4b7d; }
+
+    .chip    { fill: #ffffff; stroke: #E69F00; stroke-width: 2.2; }
+
+    @media (prefers-color-scheme: dark) {
+      .bg      { fill: #141416; }
+      .eyebrow { fill: #a0a0a6; }
+      .h       { fill: #f2f2f4; }
+      .member  { fill: #e9e9ee; }
+      .muted   { fill: #9a9aa2; }
+      .caption { fill: #a0a0a6; }
+      .star    { fill: #ffc85c; }
+
+      .ring-a  { fill: #4da2ff; fill-opacity: .16; stroke: #4da2ff; }
+      .ring-b  { fill: #3ec9a1; fill-opacity: .16; stroke: #3ec9a1; }
+      .ring-c  { fill: #e79ac4; fill-opacity: .16; stroke: #e79ac4; }
+      .key-a   { fill: #7ab8ff; }
+      .key-b   { fill: #5fd9b6; }
+      .key-c   { fill: #f0b7d8; }
+
+      .chip    { fill: #1b1b1d; stroke: #ffb52e; }
+    }
+  </style>
+
+  <rect class="bg" x="0" y="0" width="1060" height="840"/>
+
+  <text class="eyebrow" x="40" y="36">LE PAYSAGE, 29 OCTOBRE 2026</text>
+  <text class="h" x="40" y="64">Trois aptitudes. Douze outils. Une région à occupant unique.</text>
+  <text class="caption" x="40" y="88">Une affirmation de couverture, jamais de qualité : hors du centre, chaque outil excelle dans son propre travail.</text>
+
+  <!-- Les trois aptitudes. Rayons puis centres choisis pour que chacune des sept
+       régions d'un diagramme à trois cercles tienne le texte qui lui revient,
+       y compris les deux qui portent le mot « vide ». -->
+  <circle class="ring-a" cx="390" cy="330" r="200"/>
+  <circle class="ring-b" cx="650" cy="330" r="200"/>
+  <circle class="ring-c" cx="520" cy="560" r="200"/>
+
+  <!-- Les titres se posent hors de leur cercle, contre le cadre, pour ne jamais
+       se lire comme le nom d'une région. -->
+  <text class="ring-h key-a" x="40" y="196">Connaît cette machine</text>
+  <text class="ring-s key-a" x="40" y="214">détecte la mémoire,</text>
+  <text class="ring-s key-a" x="40" y="230">puis y dimensionne un modèle</text>
+
+  <text class="ring-h key-b" x="1020" y="196" text-anchor="end">Joint les fournisseurs</text>
+  <text class="ring-s key-b" x="1020" y="214" text-anchor="end">une seule surface pour</text>
+  <text class="ring-s key-b" x="1020" y="230" text-anchor="end">de nombreuses API payantes</text>
+
+  <text class="ring-h key-c" x="520" y="806" text-anchor="middle">Chiffre ici contre là-bas</text>
+  <text class="ring-s key-c" x="520" y="824" text-anchor="middle">ce que le même travail coûte gratuitement ici, puis facturé ailleurs</text>
+
+  <!-- Connaît la machine puis rien d'autre -->
+  <text class="member" x="272" y="278" text-anchor="middle">llmfit</text>
+  <text class="member" x="272" y="300" text-anchor="middle">Ollama</text>
+  <text class="member" x="272" y="322" text-anchor="middle">LM Studio</text>
+  <text class="member" x="272" y="344" text-anchor="middle">calculateurs</text>
+  <text class="member" x="272" y="362" text-anchor="middle">VRAM en ligne</text>
+
+  <!-- Joint les fournisseurs puis rien d'autre -->
+  <text class="member" x="768" y="278" text-anchor="middle">LiteLLM</text>
+  <text class="member" x="768" y="300" text-anchor="middle">OpenRouter</text>
+  <text class="member" x="768" y="322" text-anchor="middle">Not Diamond</text>
+  <text class="member" x="768" y="344" text-anchor="middle">RouteLLM</text>
+  <text class="member" x="768" y="366" text-anchor="middle">passerelle IA ngrok</text>
+
+  <!-- Machine + fournisseurs puis rien d'autre -->
+  <text class="member" x="520" y="292" text-anchor="middle">AMD Lemonade</text>
+  <text class="muted" x="520" y="310" text-anchor="middle">déport cloud,</text>
+  <text class="muted" x="520" y="326" text-anchor="middle">expérimental</text>
+
+  <!-- Chiffre les deux mondes puis rien d'autre -->
+  <text class="member" x="520" y="668" text-anchor="middle">calculateurs de rentabilité</text>
+  <text class="muted" x="520" y="686" text-anchor="middle">le volume est saisi, pas mesuré</text>
+
+  <!-- Les deux intersections à deux qui n'abritent rien, nommées plutôt que
+       laissées vides : une région sans étiquette se lit comme un oubli. -->
+  <text class="muted" x="412" y="492" text-anchor="middle">— vide —</text>
+  <text class="muted" x="628" y="492" text-anchor="middle">— vide —</text>
+
+  <!-- Le centre, au barycentre de la région à trois -->
+  <rect class="chip" x="459" y="396" width="122" height="46" rx="9"/>
+  <text class="star" x="520" y="416" text-anchor="middle">best-engine</text>
+  <text class="star" x="520" y="432" text-anchor="middle">-ai-helper</text>
+</svg>

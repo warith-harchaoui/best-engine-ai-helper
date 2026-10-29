@@ -1,11 +1,11 @@
 meta:
   reference: best-engine-ai-helper
-  rotation_deg: 28.924
+  rotation_deg: 24.482
   explained_variance_ratio:
-  - 0.4279
-  - 0.3221
-  cumulative_variance: 0.75
-  n_approaches: 9
+  - 0.4077
+  - 0.2931
+  cumulative_variance: 0.7008
+  n_approaches: 12
   attributes:
   - Détection du matériel
   - Tenue en mémoire locale
@@ -17,40 +17,41 @@ meta:
   - Éprouve la qualité avant qu'on en dépende
   - API programmatique
   lower_is_better: []
+  imputed_cells: []
 axes:
   axis_1:
     name: Richesse ↔ Efficacité
     pole_left: Richesse
     pole_right: Efficacité
     loadings:
-      Détection du matériel: 0.5096
-      Tenue en mémoire locale: 0.4977
-      Mesure la vitesse sur cette machine: 0.5079
-      Modèles payants dans la même décision: -0.2401
-      Route selon les clés présentes: 0.0509
-      Provenance des scores: 0.3395
-      Largeur du catalogue: 0.1518
-      Éprouve la qualité avant qu'on en dépende: 0.1883
-      API programmatique: -0.0255
+      Détection du matériel: 0.4929
+      Tenue en mémoire locale: 0.504
+      Mesure la vitesse sur cette machine: 0.4982
+      Modèles payants dans la même décision: -0.2876
+      Route selon les clés présentes: -0.0006
+      Provenance des scores: 0.3038
+      Largeur du catalogue: 0.1943
+      Éprouve la qualité avant qu'on en dépende: 0.1882
+      API programmatique: 0.0811
   axis_2:
-    name: Diversité ↔ Maîtrise
-    pole_bottom: Diversité
+    name: Simplicité ↔ Maîtrise
+    pole_bottom: Simplicité
     pole_top: Maîtrise
     loadings:
-      Détection du matériel: 0.047
-      Tenue en mémoire locale: -0.1893
-      Mesure la vitesse sur cette machine: 0.0136
-      Modèles payants dans la même décision: 0.5023
-      Route selon les clés présentes: 0.4687
-      Provenance des scores: 0.2866
-      Largeur du catalogue: -0.0549
-      Éprouve la qualité avant qu'on en dépende: 0.4401
-      API programmatique: 0.4593
+      Détection du matériel: 0.0381
+      Tenue en mémoire locale: -0.1935
+      Mesure la vitesse sur cette machine: 0.048
+      Modèles payants dans la même décision: 0.5025
+      Route selon les clés présentes: 0.5136
+      Provenance des scores: 0.2272
+      Largeur du catalogue: 0.0558
+      Éprouve la qualité avant qu'on en dépende: 0.4522
+      API programmatique: 0.4282
 approaches:
 - name: best-engine-ai-helper
   coordinates:
-    axis_1: 2.5032
-    axis_2: 1.9612
+    axis_1: 2.6835
+    axis_2: 1.9296
   role: best
   color: '#FF3B30'
   attributes:
@@ -63,10 +64,11 @@ approaches:
     Largeur du catalogue: 4.0
     Éprouve la qualité avant qu'on en dépende: 5.0
     API programmatique: 5.0
+  imputed_attributes: []
 - name: llmfit
   coordinates:
-    axis_1: 2.5032
-    axis_2: -0.123
+    axis_1: 2.6835
+    axis_2: -0.0326
   role: right
   color: '#007AFF'
   attributes:
@@ -79,12 +81,47 @@ approaches:
     Largeur du catalogue: 5.0
     Éprouve la qualité avant qu'on en dépende: 2.0
     API programmatique: 4.0
-- name: RouteLLM
+  imputed_attributes: []
+- name: AMD Lemonade
   coordinates:
-    axis_1: -2.116
-    axis_2: 1.9612
+    axis_1: 0.158
+    axis_2: 0.653
+  role: competitor
+  color: '#98CD7A'
+  attributes:
+    Détection du matériel: 5.0
+    Tenue en mémoire locale: 4.0
+    Mesure la vitesse sur cette machine: 2.0
+    Modèles payants dans la même décision: 3.0
+    Route selon les clés présentes: 2.0
+    Provenance des scores: 1.0
+    Largeur du catalogue: 4.0
+    Éprouve la qualité avant qu'on en dépende: 2.0
+    API programmatique: 5.0
+  imputed_attributes: []
+- name: Passerelle IA ngrok
+  coordinates:
+    axis_1: -2.3445
+    axis_2: 1.9296
   role: top
   color: '#AF52DE'
+  attributes:
+    Détection du matériel: 1.0
+    Tenue en mémoire locale: 1.0
+    Mesure la vitesse sur cette machine: 2.0
+    Modèles payants dans la même décision: 5.0
+    Route selon les clés présentes: 4.0
+    Provenance des scores: 1.0
+    Largeur du catalogue: 4.0
+    Éprouve la qualité avant qu'on en dépende: 2.0
+    API programmatique: 4.0
+  imputed_attributes: []
+- name: RouteLLM
+  coordinates:
+    axis_1: -2.2021
+    axis_2: 1.8127
+  role: competitor
+  color: '#00B09A'
   attributes:
     Détection du matériel: 1.0
     Tenue en mémoire locale: 1.0
@@ -95,12 +132,13 @@ approaches:
     Largeur du catalogue: 2.0
     Éprouve la qualité avant qu'on en dépende: 3.0
     API programmatique: 5.0
+  imputed_attributes: []
 - name: LiteLLM
   coordinates:
-    axis_1: -2.5032
-    axis_2: 1.6311
+    axis_1: -2.5919
+    axis_2: 1.8856
   role: competitor
-  color: '#00A7C6'
+  color: '#009EC8'
   attributes:
     Détection du matériel: 1.0
     Tenue en mémoire locale: 1.0
@@ -111,12 +149,13 @@ approaches:
     Largeur du catalogue: 5.0
     Éprouve la qualité avant qu'on en dépende: 1.0
     API programmatique: 5.0
+  imputed_attributes: []
 - name: OpenRouter
   coordinates:
-    axis_1: -2.3352
-    axis_2: 0.468
+    axis_1: -2.408
+    axis_2: 0.6371
   role: competitor
-  color: '#C0B7FF'
+  color: '#D099E9'
   attributes:
     Détection du matériel: 1.0
     Tenue en mémoire locale: 1.0
@@ -127,12 +166,13 @@ approaches:
     Largeur du catalogue: 5.0
     Éprouve la qualité avant qu'on en dépende: 1.0
     API programmatique: 4.0
+  imputed_attributes: []
 - name: Not Diamond
   coordinates:
-    axis_1: -2.3222
-    axis_2: 1.57
+    axis_1: -2.4759
+    axis_2: 1.66
   role: competitor
-  color: '#81C980'
+  color: '#8AA4F8'
   attributes:
     Détection du matériel: 1.0
     Tenue en mémoire locale: 1.0
@@ -143,12 +183,13 @@ approaches:
     Largeur du catalogue: 3.0
     Éprouve la qualité avant qu'on en dépende: 3.0
     API programmatique: 4.0
+  imputed_attributes: []
 - name: Ollama
   coordinates:
-    axis_1: -0.7124
-    axis_2: -0.9217
+    axis_1: -0.5804
+    axis_2: -0.9027
   role: competitor
-  color: '#C26383'
+  color: '#C36B42'
   attributes:
     Détection du matériel: 2.0
     Tenue en mémoire locale: 3.0
@@ -159,12 +200,13 @@ approaches:
     Largeur du catalogue: 4.0
     Éprouve la qualité avant qu'on en dépende: 1.0
     API programmatique: 4.0
+  imputed_attributes: []
 - name: LM Studio
   coordinates:
-    axis_1: -0.0808
-    axis_2: -1.3889
+    axis_1: -0.0328
+    axis_2: -1.3156
   role: competitor
-  color: '#D59741'
+  color: '#BE9C34'
   attributes:
     Détection du matériel: 3.0
     Tenue en mémoire locale: 4.0
@@ -175,12 +217,13 @@ approaches:
     Largeur du catalogue: 4.0
     Éprouve la qualité avant qu'on en dépende: 1.0
     API programmatique: 3.0
+  imputed_attributes: []
 - name: Calculateurs VRAM en ligne
   coordinates:
-    axis_1: -1.1882
-    axis_2: -1.9612
-  role: worst
-  color: '#A52A2A'
+    axis_1: -1.367
+    axis_2: -1.9296
+  role: competitor
+  color: '#FFA1C1'
   attributes:
     Détection du matériel: 1.0
     Tenue en mémoire locale: 4.0
@@ -191,3 +234,21 @@ approaches:
     Largeur du catalogue: 3.0
     Éprouve la qualité avant qu'on en dépende: 1.0
     API programmatique: 1.0
+  imputed_attributes: []
+- name: Calculateurs de seuil de rentabilité
+  coordinates:
+    axis_1: -2.6835
+    axis_2: -0.8804
+  role: worst
+  color: '#A52A2A'
+  attributes:
+    Détection du matériel: 1.0
+    Tenue en mémoire locale: 2.0
+    Mesure la vitesse sur cette machine: 1.0
+    Modèles payants dans la même décision: 4.0
+    Route selon les clés présentes: 1.0
+    Provenance des scores: 2.0
+    Largeur du catalogue: 2.0
+    Éprouve la qualité avant qu'on en dépende: 1.0
+    API programmatique: 1.0
+  imputed_attributes: []

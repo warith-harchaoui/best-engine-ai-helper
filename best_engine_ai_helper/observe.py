@@ -22,11 +22,18 @@ network call, no third-party service) and off by default.
 Cost is a **best-effort estimate**, not a provider-verified bill. Most
 providers report real token usage per call; when that field is present it is
 used directly, otherwise cost is estimated from character counts via a fixed
-chars-per-token ratio (see :data:`_CHARS_PER_TOKEN`) against the bundled
-``pricing.yaml`` table. Local backends (Ollama, vLLM) always cost ``0.0`` —
-there is no paid API call to price. A cloud-backend call for a model absent
-from ``pricing.yaml`` gets ``cost_usd: None`` (unknown), never a fabricated
-number.
+chars-per-token ratio (see :data:`_CHARS_PER_TOKEN`) against the paid price
+table, read through :func:`cloud_catalog.load_cloud_catalog` so that a
+``catalog update --cloud`` refresh reaches the bill and not only the ranking.
+Local backends (Ollama, vLLM) always cost ``0.0`` — there is no paid API call
+to price. A cloud-backend call for a model the table does not price gets
+``cost_usd: None`` (unknown), never a fabricated number.
+
+What a local ``0.0`` means is "nothing was billed", not "nothing was spent":
+electricity, disk and the slower model's time are real and this ledger has no
+way to measure them. :meth:`Ledger.counterfactual` answers the question that
+*is* answerable from what is recorded — what the same workload would have cost
+at a provider's list price.
 
 Author
 ------
@@ -43,8 +50,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from . import llm as _llm
 
 # ---------------------------------------------------------------------------
@@ -54,15 +59,11 @@ from . import llm as _llm
 _USER_DIR = Path.home() / ".best-engine-ai-helper"
 _DEFAULT_DB_PATH = _USER_DIR / "usage.db"
 
-# Root of the installed package; pricing.yaml sits next to pyproject.toml,
-# same convention as models.yaml / hardware.yaml / usages.yaml (see catalog.py).
-# Data lives INSIDE the package. These files used to sit beside it, next to
-# pyproject.toml, where `package-data` patterns — which resolve relative to a
-# package directory — could never reach them: the wheel shipped none of them,
-# and `load_catalog()` returned an EMPTY catalogue on any machine without a
-# populated user cache. A repo checkout and a populated cache both hid it.
-_PACKAGE_ROOT = Path(__file__).resolve().parent / "data"
-_PRICING_PATH = _PACKAGE_ROOT / "pricing.yaml"
+# No price-file path lives here. It used to, and having two modules each hold
+# their own `_PRICING_PATH` is how the ledger ended up reading a narrower table
+# than the ranker: one of the two learned to overlay the refresh cache and the
+# other did not. `cloud_catalog` owns where the prices are and what counts as
+# one; this module asks it (see `_load_pricing`).
 
 # Backends that never incur a per-call charge: local inference, whatever the
 # hardware. Any other backend name is treated as a paid API.
@@ -153,19 +154,45 @@ class as_user:
 
 def _load_pricing() -> dict[str, dict[str, float]]:
     """
-    Load ``pricing.yaml``: ``{model_id: {input_per_1m, output_per_1m}}`` (USD).
+    The paid price table, as ``{model_id: {input_per_1m, output_per_1m}}`` (USD).
+
+    Read through :func:`cloud_catalog.load_cloud_catalog`, not off
+    ``pricing.yaml`` directly. The two are not the same table: the loader
+    overlays ``~/.best-engine-ai-helper/pricing_cache.yaml``, which is where
+    ``catalog update --cloud`` writes the list prices it fetched and the models
+    it adopted. Reading the seed alone meant the ledger could not price the
+    very models a refresh had just fetched a price for — it recorded
+    ``cost_usd: None`` ("nobody priced this") about a figure sitting in the
+    cache — while ``report --cloud``, two modules away, ranked them on it. One
+    table now, so a refreshed price reaches the bill as well as the ranking.
 
     Returns
     -------
     dict
-        Empty dict if the file is absent or empty — an unpriced catalog
-        degrades to "cost unknown" for every cloud call, never a crash.
+        Empty dict when no catalog is readable — an unpriced catalog degrades
+        to "cost unknown" for every cloud call, never a crash.
+
+    Examples
+    --------
+    >>> table = _load_pricing()
+    >>> all({"input_per_1m", "output_per_1m"} <= set(v) for v in table.values())
+    True
     """
-    if not _PRICING_PATH.is_file():
-        return {}
-    raw = yaml.safe_load(_PRICING_PATH.read_text(encoding="utf-8")) or {}
-    models: dict[str, dict[str, float]] = raw.get("models", {})
-    return models
+    from . import cloud_catalog as _cloud_catalog
+
+    table: dict[str, dict[str, float]] = {}
+    for entry in _cloud_catalog.load_cloud_catalog():
+        model_id = str(entry.get("id") or "")
+        input_per_1m, output_per_1m = entry.get("input_per_1m"), entry.get("output_per_1m")
+        # A half-priced entry is as unusable as an unpriced one, and leaving it
+        # in with a missing side would bill its input at zero.
+        if not model_id or input_per_1m is None or output_per_1m is None:
+            continue
+        table[model_id] = {
+            "input_per_1m": float(input_per_1m),
+            "output_per_1m": float(output_per_1m),
+        }
+    return table
 
 
 def estimate_cost_usd(event: dict[str, Any]) -> float | None:
@@ -358,6 +385,102 @@ class Ledger:
                 {"ts": ts, "user": user, "model": model, "error": error}
                 for ts, user, model, error in recent_errors
             ],
+        }
+
+    def counterfactual(self) -> dict[str, Any]:
+        """
+        What the **free** calls in this ledger would have cost at list price.
+
+        The field around this project is full of local-versus-cloud break-even
+        calculators: type in a guessed monthly token volume, read back a
+        payback period. The guess is the weak part — nobody knows their volume
+        before they have run the workload, and the number that comes out
+        inherits whatever was typed in.
+
+        This ledger already holds the workload, measured. Crossing it with the
+        same price table :func:`estimate_cost_usd` bills paid calls against
+        turns the question around: not "what might you spend", but **"what did
+        the calls you already made avoid"**. Two sources, both already here,
+        and no invented volume.
+
+        Three things it deliberately does not claim:
+
+        * **It is not a saving.** Running locally costs electricity, disk and
+          the time a slower model takes. This figure is an avoided *bill*, not
+          a profit, and the ledger has no business inventing a watt.
+        * **It is not the same answer.** A paid model given the same prompts
+          would not emit the same tokens, so the output volume is this
+          machine's, carried across as the closest thing to a workload anyone
+          has measured.
+        * **The token counts are approximate.** A local backend reports no
+          ``usage`` block, so the characters recorded per call go through
+          :data:`_CHARS_PER_TOKEN` exactly as they do for an unreported paid
+          call.
+
+        Returns
+        -------
+        dict
+            ``free_calls``, ``in_tokens``, ``out_tokens`` (both estimated),
+            and ``models``: one row per priced catalog entry
+            (``model``, ``provider``, ``cost_usd``), cheapest first. Empty
+            ``models`` when nothing in the catalog carries a price.
+
+        Examples
+        --------
+        >>> led = Ledger(":memory:")
+        >>> led.record({"backend": "ollama", "model": "qwen3:8b", "kind": "llm",
+        ...             "in_chars": 4000, "out_chars": 4000, "latency_ms": 1.0,
+        ...             "ok": True})
+        >>> what_if = led.counterfactual()
+        >>> what_if["free_calls"], what_if["in_tokens"], what_if["out_tokens"]
+        (1, 1000, 1000)
+        >>> cheapest = what_if["models"][0]
+        >>> cheapest["cost_usd"] >= 0.0
+        True
+        >>> led.close()
+
+        An empty ledger has nothing to price, and says so with zeros rather
+        than with a catalog of zero-cost rows:
+
+        >>> empty = Ledger(":memory:")
+        >>> empty.counterfactual()["models"]
+        []
+        >>> empty.close()
+        """
+        row = self._conn.execute(
+            "SELECT COUNT(*), SUM(in_chars), SUM(out_chars) FROM calls "
+            "WHERE ok = 1 AND cost_usd = 0.0"
+        ).fetchone()
+        free_calls = int(row[0] or 0)
+        in_tokens = int((row[1] or 0) / _CHARS_PER_TOKEN)
+        out_tokens = int((row[2] or 0) / _CHARS_PER_TOKEN)
+
+        models: list[dict[str, Any]] = []
+        if free_calls:
+            from . import cloud_catalog as _cloud_catalog
+
+            for entry in _cloud_catalog.load_cloud_catalog():
+                input_per_1m, output_per_1m = entry.get("input_per_1m"), entry.get("output_per_1m")
+                if input_per_1m is None or output_per_1m is None:
+                    continue
+                models.append(
+                    {
+                        "model": str(entry.get("id") or "?"),
+                        "provider": str(entry.get("provider") or "?"),
+                        "cost_usd": round(
+                            in_tokens / 1_000_000 * float(input_per_1m)
+                            + out_tokens / 1_000_000 * float(output_per_1m),
+                            6,
+                        ),
+                    }
+                )
+            models.sort(key=lambda m: (m["cost_usd"], m["model"]))
+
+        return {
+            "free_calls": free_calls,
+            "in_tokens": in_tokens,
+            "out_tokens": out_tokens,
+            "models": models,
         }
 
     def close(self) -> None:

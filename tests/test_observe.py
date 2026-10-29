@@ -138,3 +138,71 @@ def test_ledger_record_summary_and_enable(tmp_path: Any) -> None:
     observe.disable()
     assert observe.is_enabled() is False
     assert observe.active_ledger() is None
+
+
+def test_a_refreshed_price_reaches_the_bill(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A model the refresh cache adopted must be priceable, not "cost unknown".
+
+    `catalog update --cloud` writes adopted entries to the pricing cache, and
+    the ledger used to read the seed file directly — so it answered "nobody
+    priced this" about a price sitting one module away, while `report --cloud`
+    ranked the same model on it.
+    """
+    from best_engine_ai_helper import cloud_catalog
+
+    cache = tmp_path / "pricing_cache.yaml"
+    cache.write_text(
+        "models:\n"
+        "  only-in-the-cache:\n"
+        "    provider: openai\n"
+        "    kind: llm\n"
+        "    benchmarks: {arena: 80.0}\n"
+        "    input_per_1m: 1.0\n"
+        "    output_per_1m: 2.0\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cloud_catalog, "_CLOUD_CACHE_PATH", cache)
+
+    cost = observe.estimate_cost_usd(
+        _event(backend="openai", model="only-in-the-cache", in_chars=4000, out_chars=4000)
+    )
+    assert cost is not None, "a cached price must reach the ledger"
+    # 1000 in-tokens at $1/M + 1000 out-tokens at $2/M.
+    assert cost == pytest.approx(0.003)
+
+
+def test_counterfactual_prices_the_free_calls_only(tmp_path: Any) -> None:
+    """The what-if answers for the local calls; a paid call already has a bill."""
+    ledger = observe.Ledger(str(tmp_path / "usage.db"))
+    ledger.record(_event(in_chars=4000, out_chars=4000))  # local, free
+    ledger.record(_event(backend="openai", model="gpt-4o", in_chars=8000, out_chars=8000))
+
+    what_if = ledger.counterfactual()
+    assert what_if["free_calls"] == 1
+    assert (what_if["in_tokens"], what_if["out_tokens"]) == (1000, 1000)
+
+    priced = {row["model"]: row["cost_usd"] for row in what_if["models"]}
+    # gpt-4o's seed price: $2.50 in / $10.00 out per 1M tokens.
+    assert priced["gpt-4o"] == pytest.approx(0.0125)
+    costs = [row["cost_usd"] for row in what_if["models"]]
+    assert costs == sorted(costs), "cheapest first, so the top row is the answer"
+    ledger.close()
+
+
+def test_counterfactual_says_nothing_rather_than_zero_when_the_ledger_is_empty(
+    tmp_path: Any,
+) -> None:
+    """No free call is not the same as a free workload."""
+    ledger = observe.Ledger(str(tmp_path / "usage.db"))
+    what_if = ledger.counterfactual()
+    assert what_if["free_calls"] == 0
+    assert what_if["models"] == [], "pricing an empty workload would print a wall of 0.0"
+    ledger.close()
+
+
+def test_a_failed_free_call_is_not_part_of_the_counterfactual(tmp_path: Any) -> None:
+    """A call that errored produced no answer, so a provider would not have been asked for one."""
+    ledger = observe.Ledger(str(tmp_path / "usage.db"))
+    ledger.record(_event(in_chars=4000, out_chars=0, ok=False, error="boom"))
+    assert ledger.counterfactual()["free_calls"] == 0
+    ledger.close()

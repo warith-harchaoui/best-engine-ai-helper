@@ -2123,15 +2123,40 @@ def env_cmd() -> None:
     show_default=True,
     help="What to print to stdout.",
 )
-def activity_cmd(fmt: str) -> None:
+@click.option(
+    "--what-if",
+    is_flag=True,
+    default=False,
+    help=(
+        "Also price the FREE calls already recorded against every paid model "
+        "in the catalog: what this machine's own workload would have cost at "
+        "list price. An avoided bill, not a saving -- running locally costs "
+        "electricity and time, and nothing here measures those."
+    ),
+)
+@click.option(
+    "--top",
+    type=click.IntRange(min=1),
+    default=5,
+    show_default=True,
+    help="With --what-if: how many of the cheapest paid models to print.",
+)
+def activity_cmd(fmt: str, what_if: bool, top: int) -> None:
     """Summarize the local activity/cost ledger (calls, cost, by user/model, errors).
 
     Reads ~/.best-engine-ai-helper/usage.db, populated by other commands in
     this session (or a prior one) that called a model — nothing to show until
     then. Disable recording with BEST_ENGINE_NO_LEDGER=1.
+
+    With --what-if, adds the counterfactual the local-versus-cloud calculators
+    in this field all ask for and have to guess at: what the calls you already
+    made locally would have cost at a provider's list price. The volume is
+    measured here rather than typed in, which is the whole difference.
     """
     ledger = _observe.active_ledger() or _observe.Ledger()
     summary = ledger.summary()
+    if what_if:
+        summary["what_if"] = ledger.counterfactual()
 
     if fmt == "json":
         click.echo(json.dumps(summary, indent=2))
@@ -2158,6 +2183,29 @@ def activity_cmd(fmt: str) -> None:
         click.echo()
         click.echo("Recent errors:")
         click.echo(_fmt_table(summary["recent_errors"], ["ts", "user", "model", "error"]))
+
+    if what_if:
+        what = summary["what_if"]
+        click.echo()
+        if not what["free_calls"]:
+            click.echo("What-if: no free call recorded yet, so there is nothing to price.")
+        elif not what["models"]:
+            click.echo(
+                "What-if: the paid catalog carries no price, so there is nothing to compare."
+            )
+        else:
+            click.echo(
+                f"What those {what['free_calls']} free call(s) would have cost at list price "
+                f"(~{what['in_tokens']:,} in / {what['out_tokens']:,} out tokens, estimated "
+                "from character counts):"
+            )
+            click.echo(_fmt_table(what["models"][:top], ["model", "provider", "cost_usd"]))
+            if len(what["models"]) > top:
+                click.echo(f"... {len(what['models']) - top} more; --top N to see further.")
+            click.echo(
+                "An avoided bill, not a saving: a local run costs electricity, disk and the "
+                "slower model's time, none of which this ledger measures."
+            )
 
 
 def main() -> None:
