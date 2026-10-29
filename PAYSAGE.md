@@ -499,3 +499,15 @@ D'où viennent les chiffres propres à ce projet :
   (`best_engine_ai_helper/data/models.yaml`, `pricing.yaml`) portent chacun leur propre
   champ `source:` puis `fetched_at` : c'est là qu'il faut chercher la provenance d'un
   chiffre précis, pas ici.
+
+## Idées à reprendre
+
+Étudié plutôt que deviné : ce que chaque voisin fait mieux, puis ce que cette bibliothèque devrait changer pour l'égaler. Rien ici n'est un engagement : c'est la liste de lecture dont part la version suivante.
+
+- **`RouteLLM` — router par requête, non une fois par machine** — Il apprend à envoyer les invites faciles vers un modèle bon marché puis les difficiles vers un modèle fort, en jugeant la difficulté avant de répondre. Cet assistant choisit le plus gros modèle qui tient dans la machine : la bonne question posée une fois. La question par requête en est une autre, complémentaire.
+
+- **`AMD Lemonade` — le NPU est une troisième destination** — Router entre processeur puis carte graphique couvre la plupart des machines aujourd'hui ; cela ne durera pas. Lemonade route processeur, carte graphique puis NPU ; un assistant dont tout le métier est « que possède réellement cette machine » devrait connaître la troisième.
+
+- **`LiteLLM` — budgets puis limites de débit dans le routeur lui-même** — Choisir un modèle puis gouverner sa dépense sont d'ordinaire deux bibliothèques. Pour le catalogue payant que cet assistant porte désormais, un budget par clé est la moitié manquante d'une recommandation consciente des prix.
+
+- **`OpenRouter` — publier le prix avec la latence derrière chaque choix** — Il montre le coût puis la vitesse par modèle au moment de choisir. Cet assistant croise déjà une table de prix avec un classement de qualité ; afficher les deux nombres sur la recommandation rend le choix vérifiable plutôt qu'asséné.

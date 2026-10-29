@@ -457,3 +457,15 @@ Where this project's own numbers come from:
   (`best_engine_ai_helper/data/models.yaml`, `pricing.yaml`) each carry their own `source:`
   and `fetched_at` field, which is where to look for the provenance of any single figure
   rather than here.
+
+## Ideas worth stealing
+
+Researched rather than guessed: what each neighbour does better, and what this library would have to change to match it. Nothing here is a commitment — it is the reading list the next version starts from.
+
+- **`RouteLLM` — route per request, not once per machine** — It learns to send easy prompts to a cheap model and hard ones to a strong model, judging difficulty before answering. This helper picks the largest model that fits the machine, which is the right question asked once; the per-request question is a different and complementary one.
+
+- **`AMD Lemonade` — the NPU is a third destination** — Routing across CPU and GPU covers most machines today and will not for long. Lemonade routes CPU, GPU and NPU, and a helper whose whole job is "what does this machine actually have" should know about the third one.
+
+- **`LiteLLM` — budgets and rate limits as part of the router** — Picking a model and governing its spend are usually two libraries. For the paid catalogue this helper now carries, a per-key budget is the missing half of a price-aware recommendation.
+
+- **`OpenRouter` — publish the price and latency behind each pick** — It shows cost and speed per model at the moment of choosing. This helper already crosses a price table with a quality board; surfacing both numbers on the recommendation makes the choice auditable rather than asserted.
