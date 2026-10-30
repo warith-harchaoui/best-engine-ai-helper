@@ -6,6 +6,29 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Added
 
+- **The test suite's isolation from `~/.best-engine-ai-helper` is discovered
+  rather than remembered, and now checked.** Iteration 6 redirected three
+  caches so the suite would describe the repository instead of the machine;
+  iteration 10 added a fourth after a failure that was green in CI and red for
+  the author. Both fixes were four `setattr` lines naming four stores, and a
+  hand-written list of stores is a list somebody has to remember.
+
+  Nobody did. A sweep of the package found **nineteen** module-level paths
+  under the user directory against four redirected. `conftest` now discovers
+  them instead: every module-level `Path` resolving under
+  `~/.best-engine-ai-helper` is moved into a temporary directory, relative
+  layout preserved. Two spellings made the hand-written version specially hard
+  to keep right — `catalog.CACHE_PATH` is a second name bound to the same path
+  as `catalog._CACHE_PATH`, and `from .pull import _USER_DIR` gives `config` a
+  third independent binding of a fourth — so the rule is "every attribute that
+  resolves under the user directory", never "every store".
+
+  `tests/test_cache_isolation.py` holds it: one assertion that nothing at all
+  reaches the user directory, one per known store that it was actually moved
+  (so a renamed attribute is loud rather than silently unswept), and one
+  proving isolation changes the answer — `load_catalog()` returns exactly the
+  bundled seed here, which is 31 rows where this developer's merged view is 51.
+
 - **Every documented command line is resolved against the real CLI.** Three
   gates judge the documents now, and each sees what the others cannot:
   `check_doc_parity.py` compares the two languages, `check_doc_examples.py`
@@ -164,6 +187,26 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Fixed
 
+- **Four user-state files the suite could still read.** Dormant, and only
+  because this machine has never written them: `usages._CACHE_PATH`, an
+  overlay on the bundled profiles read by `load_profiles` and `load_families`
+  exactly the way the catalogue caches are read; `config._PREFERENCES_YAML`,
+  the developer's saved preferences; `config._USER_DIR`, which `config.json`
+  (the persisted engine selection) is read from; and `pull._USER_DIR`, which
+  `write_env` writes to when no directory is passed. The failure was waiting
+  for the first developer who had written any of them, and it would have
+  arrived in the same disguise as last time: passing for the robot, failing
+  for the person.
+
+- **A count in the previous entry described this laptop, not this repository.**
+  That entry said a test "sweeps all 51 catalogue rows". The bundled catalogue
+  holds **31**; 51 is what `load_catalog()` returns once this machine's
+  `catalog_cache.yaml` is merged over it. Passing `catalog_path=` does not
+  help — it overrides the seed and leaves the merge in place — so the sweep
+  reads `models.yaml` itself now, and covers the same rows on every machine.
+  The irony is noted rather than hidden: the iteration that fixed a printed
+  number describing the developer's machine printed one.
+
 - **A documented command that does not run.** `README.md` and `LISEZMOI.md`
   both printed `best-engine-ai-helper lightweight plan --kind llm
   --compression 4bit --batch 8`, and `lightweight plan` has no
@@ -206,10 +249,10 @@ All notable changes to best-engine-ai-helper are documented here.
   copy" — and then prints one. Both figures are `8.0` now, with the equality
   stated in the comment beside them rather than left for a consumer to guess
   at: `ai-bunker` reads this descriptor, and a peak that merely *happens* to
-  match the steady figure would be budgeted for. A test now sweeps all 51
-  catalogue rows and asserts the two are equal for every one of them, so the
-  equality is demonstrably a property of the runtime rather than of the model
-  that happened to be in the example.
+  match the steady figure would be budgeted for. A test now sweeps every row
+  of the bundled catalogue and asserts the two are equal for all of them, so
+  the equality is demonstrably a property of the runtime rather than of the
+  model that happened to be in the example.
 
 - **The MCP tool description had become false by omission.** It said these
   tools detect hardware and recommend the best local engine "entirely on the

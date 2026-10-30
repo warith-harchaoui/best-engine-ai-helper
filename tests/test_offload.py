@@ -262,14 +262,23 @@ def test_peak_equals_steady_for_every_model_in_the_catalogue() -> None:
     descriptor, and a consumer holding two keys that happen to match has no way
     to tell whether to budget for a transient. Asserting it on one checkpoint
     (the test above) shows the function returns the same value twice; asserting
-    it on all 51 shows there is no entry shape -- no dtype, no mixture of
-    experts, no missing parameter count -- that makes them diverge.
+    it on every bundled row shows there is no entry shape -- no dtype, no
+    mixture of experts, no missing parameter count -- that makes them diverge.
+
+    The sweep reads `models.yaml` itself rather than going through
+    `load_catalog()`, and the difference is the whole lesson of iteration 10.
+    `load_catalog()` merges whatever this machine has cached under
+    `~/.best-engine-ai-helper/`, so it answers 51 on the author's laptop where
+    the repository holds 31 -- and `catalog_path=` does not help, because it
+    overrides the seed and leaves the merge in place. A sweep built on it would
+    be as wide as the developer's cache, which is a sweep nobody else runs.
+    Reading the seed is the only spelling that covers the same rows everywhere.
 
     Infinity is the honest answer for an unsized entry and has to stay equal
     too, which is why the comparison is written to survive it.
     """
-    rows = catalog.load_catalog()
-    assert len(rows) > 20, "the catalogue shrank; this test is no longer a sweep"
+    rows = catalog._load_yaml_file(catalog._SEED_PATH)
+    assert len(rows) > 20, "the bundled catalogue shrank; this is no longer a sweep"
     for row in rows:
         space = offload.disk_required_gb(row)
         peak, steady = space["peak_gb"], space["steady_gb"]

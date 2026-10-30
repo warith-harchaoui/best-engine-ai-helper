@@ -8,12 +8,81 @@ each test reads top-to-bottom without chasing indirection.
 
 from __future__ import annotations
 
+import importlib
+import pkgutil
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
 
-from best_engine_ai_helper import catalog, cloud_catalog, hardware, observe, throughput
+import best_engine_ai_helper as _package
+from best_engine_ai_helper import observe
+
+#: The directory every user-state file in this project lives under. Nothing in
+#: it belongs to the repository, so nothing in it may be read during a run.
+USER_ROOT = Path.home() / ".best-engine-ai-helper"
+
+
+def redirect_user_paths(monkeypatch: pytest.MonkeyPatch, destination: Path) -> list[str]:
+    """
+    Point every module-level path under :data:`USER_ROOT` at ``destination``.
+
+    Parameters
+    ----------
+    monkeypatch : pytest.MonkeyPatch
+        The patcher whose scope decides how long the redirection lasts.
+    destination : Path
+        An empty directory standing in for the user's own.
+
+    Returns
+    -------
+    list[str]
+        ``module.attribute`` for everything redirected, so a test can assert
+        the sweep actually reached the stores it was built for.
+
+    Notes
+    -----
+    This used to be four `setattr` lines naming four stores, and the list was
+    wrong twice. Iteration 10 found the fourth the hard way: a test asserting
+    that an undeclared context window stays unpublished passed in CI, where
+    nothing has been pulled, and failed for the author, whose
+    `measurements.yaml` held one. Green on the robot and red for the author is
+    the worst shape a test failure takes.
+
+    It was still wrong after that. A sweep of the package found **nineteen**
+    module-level paths under the user directory against four redirected, and
+    four of the gaps were live rather than theoretical: `usages._CACHE_PATH`
+    (an overlay on the bundled profiles, read by `load_profiles`),
+    `config._PREFERENCES_YAML`, `config._USER_DIR` (which `config.json` is read
+    from) and `pull._USER_DIR` (which `write_env` writes to by default). They
+    were dormant only because this particular machine has never written those
+    files -- which is to say, dormant until the first developer who had.
+
+    So the list is discovered rather than remembered. `catalog.CACHE_PATH` is
+    a second name bound to the same path as `catalog._CACHE_PATH`, and
+    `from .pull import _USER_DIR` makes `config._USER_DIR` a third independent
+    binding; patching one name never moves another, which is why the rule is
+    "every attribute that resolves under the user directory" rather than "every
+    store". Relative layout is preserved, so a path ending in
+    `catalog_cache.yaml` still does.
+    """
+    redirected: list[str] = []
+    modules = [_package] + [
+        importlib.import_module(info.name)
+        for info in pkgutil.walk_packages(_package.__path__, _package.__name__ + ".")
+    ]
+    for module in modules:
+        for name, value in list(vars(module).items()):
+            if name.startswith("__") or not isinstance(value, Path):
+                continue
+            try:
+                relative = value.relative_to(USER_ROOT)
+            except ValueError:
+                continue
+            monkeypatch.setattr(module, name, destination / relative)
+            redirected.append(f"{module.__name__}.{name}")
+    return redirected
 
 
 @pytest.fixture()
@@ -69,7 +138,4 @@ def _isolate_user_caches(
     only changes the default from "whatever is in $HOME" to "nothing".
     """
     empty = tmp_path_factory.mktemp("no-user-caches")
-    monkeypatch.setattr(catalog, "_CACHE_PATH", empty / "catalog_cache.yaml")
-    monkeypatch.setattr(cloud_catalog, "_CLOUD_CACHE_PATH", empty / "pricing_cache.yaml")
-    monkeypatch.setattr(hardware, "_HW_CACHE_PATH", empty / "hardware_cache.yaml")
-    monkeypatch.setattr(throughput, "_STORE_PATH", empty / "measurements.yaml")
+    redirect_user_paths(monkeypatch, empty)
