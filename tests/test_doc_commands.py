@@ -25,6 +25,13 @@ The same removed capability left the other fossil this repository fixed the
 day before: a `disk_peak_gb` twice the checkpoint, from the runtime that
 copied shards to scratch. One vanished feature, two surfaces, two prints.
 
+A second promise lives one line below in `CODING.md`: "`EXAMPLES.md` with one
+runnable recipe per public command, tested in CI". Nothing read `EXAMPLES.md`,
+so the promise held by the goodwill of whoever last added a command. Two had
+slipped: `catalog update`, documented only in a README table and a paragraph
+of prose, and `hardware update`, which had no copy-pasteable invocation in any
+root document at all. Both are checked here now, in both languages.
+
 Why this is a test rather than a stdlib script like its two siblings: a check
 of the command line has to import the command line. The dependency-free
 constraint those scripts keep exists so the lightest CI lane can run them
@@ -184,6 +191,46 @@ def check(path: Path) -> list[str]:
     return problems
 
 
+def leaf_commands(command: click.Command = ROOT, path: tuple[str, ...] = ()) -> list[str]:
+    """
+    Every public command that actually runs something, as a subcommand chain.
+
+    Groups are not included: `lightweight` on its own prints help, and a
+    recipe for it would demonstrate nothing. Hidden commands are skipped
+    because they are not part of the promise.
+
+    Parameters
+    ----------
+    command : click.Command
+        Where to start; the root group by default.
+    path : tuple[str, ...]
+        Subcommand names consumed so far, used by the recursion.
+
+    Returns
+    -------
+    list[str]
+        Space-joined chains such as ``"lightweight plan"``, sorted within
+        each level.
+    """
+    if isinstance(command, click.Group):
+        found: list[str] = []
+        for name, sub in sorted(command.commands.items()):
+            if not getattr(sub, "hidden", False):
+                found += leaf_commands(sub, (*path, name))
+        return found
+    return [" ".join(path)]
+
+
+def invoked_commands(path: Path) -> set[str]:
+    """Every leaf command one document actually demonstrates."""
+    found: set[str] = set()
+    for _, tokens in _invocations(path):
+        command, subpath, problems = _resolve(tokens)
+        if subpath and not problems and not isinstance(command, click.Group):
+            found.add(" ".join(subpath))
+    return found
+
+
 def documents() -> list[Path]:
     """Root Markdown files whose command lines are resolved, in a stable order."""
     return [path for path in sorted(_REPO.glob("*.md")) if path.name not in _EXCLUDED]
@@ -276,6 +323,29 @@ def test_every_documented_command_resolves(doc: Path) -> None:
     """The gate itself: a reader copying any line out of these files gets a run."""
     problems = check(doc)
     assert not problems, "command lines the CLI would refuse:\n" + "\n".join(problems)
+
+
+@pytest.mark.parametrize("doc", ["EXAMPLES.md", "EXEMPLES.md"])
+def test_every_public_command_has_a_runnable_recipe(doc: str) -> None:
+    """`CODING.md` promises one per public command. Nothing was checking.
+
+    Two had slipped, and the way they slipped is worth keeping: neither was
+    undocumented. `catalog update` had a README table cell and a paragraph of
+    prose describing all five of its flags; `hardware update` had a table cell.
+    What neither had was a line a reader could copy, which is what "runnable
+    recipe" means and what a table cell can never be.
+
+    Both languages, because a recipe present in one and absent in the other is
+    the drift the parity checker was built for -- and it would pass this one,
+    since a missing block in a section that has no block is not a difference it
+    can see without being told which blocks ought to exist.
+    """
+    missing = sorted(set(leaf_commands()) - invoked_commands(_REPO / doc))
+    assert not missing, (
+        f"{doc} has no runnable recipe for: {', '.join(missing)}. "
+        "A backticked name in a table is documentation; a line a reader can "
+        "copy is a recipe, and CODING.md promises the second."
+    )
 
 
 def test_the_gate_actually_reaches_the_command_lines() -> None:

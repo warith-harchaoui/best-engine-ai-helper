@@ -704,18 +704,46 @@ Apple M1 Max             apple   32         29                apple-specs
 ```
 
 Les deux sont la fusion d'un jeu de départ embarqué avec ce qui est en cache sous
-`~/.best-engine-ai-helper/` ; le jeu de départ n'est jamais modifié. Leur
-rafraîchissement n'a pas été lancé pour ce fichier : `catalog update` tire les
-spécifications des modèles à poids ouverts depuis ApXML, `catalog update --ollama`
-élargit à de vrais tags tirables depuis la bibliothèque officielle d'Ollama,
-`catalog update --arena` fusionne les notes de LM Arena quand un miroir assez
-frais existe puis le dit franchement quand aucun ne l'est, `catalog update
---cloud` retarife le catalogue PAYANT depuis la table publique de LiteLLM
-(prix puis longueurs de contexte seulement, jamais les scores de benchmark, que
-cette source ne publie pas), `catalog update --cloud --arena` *adopte* en plus
-les modèles payants que les deux sources nomment — un prix chez l'une, une note
-chez l'autre, deux citations sinon rien — enfin `hardware update` consigne la
-puce puis la mémoire de cette machine.
+`~/.best-engine-ai-helper/` ; le jeu de départ n'est jamais modifié. Rafraîchir
+la table des modèles passe par le réseau, donc `--limit` est ce qui en fait une
+recette plutôt qu'une attente :
+
+```sh
+best-engine-ai-helper catalog update --limit 5
+```
+
+```
+Fetching models from ApXML…
+Updated catalog cache with 5 model(s):
+	~/.best-engine-ai-helper/catalog_cache.yaml
+```
+
+`catalog update` tire les spécifications des modèles à poids ouverts depuis
+ApXML, `catalog update --ollama` élargit à de vrais tags tirables depuis la
+bibliothèque officielle d'Ollama, `catalog update --arena` fusionne les notes de
+LM Arena quand un miroir assez frais existe puis le dit franchement quand aucun
+ne l'est, `catalog update --cloud` retarife le catalogue PAYANT depuis la table
+publique de LiteLLM (prix puis longueurs de contexte seulement, jamais les
+scores de benchmark, que cette source ne publie pas), enfin `catalog update
+--cloud --arena` *adopte* en plus les modèles payants que les deux sources
+nomment — un prix chez l'une, une note chez l'autre, deux citations sinon rien.
+
+La table du matériel se rafraîchit autrement, parce qu'aucune API publique de
+spécifications ne couvre toutes les puces : la commande consigne la vérité de
+terrain de la machine où elle tourne.
+
+```sh
+best-engine-ai-helper hardware update
+```
+
+```
+Recorded this machine into the hardware cache:
+	Apple M2 Max — 96.0 GB (84.0 GB usable)
+	~/.best-engine-ai-helper/hardware_cache.yaml
+```
+
+Les deux impriment le chemin absolu, raccourci ici en `~` pour la largeur, puis
+aucune ne touche au jeu de départ embarqué.
 
 ## 7. Trop gros pour tenir, exécutable quand même
 

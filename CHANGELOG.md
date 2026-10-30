@@ -6,6 +6,29 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Added
 
+- **A runnable recipe for every public command, and a gate that says so.**
+  `CODING.md` promises "`EXAMPLES.md` with one runnable recipe per public
+  command, tested in CI". Nothing read `EXAMPLES.md`, so the promise held by
+  the goodwill of whoever last added a command, and two had slipped:
+  `catalog update` and `hardware update`. Measured against the Click tree: 26
+  public leaf commands, 24 with a recipe.
+
+  Neither was *undocumented*. `catalog update` had a README table cell and a
+  paragraph describing all five of its flags; `hardware update` had a table
+  cell. What neither had was a line a reader could copy, which is what a
+  recipe is and what a table cell can never be.
+
+  Both now carry one, with a real output panel beside it like every other
+  block in that file. §6 used to say "refreshing them was not run for this
+  file", which was honest and is no longer true: both were run, under a
+  throwaway `HOME` so the commands wrote into a temporary directory instead of
+  the author's own cache. That is how to regenerate these two panels without
+  disturbing your own machine.
+
+  `tests/test_doc_commands.py` checks the coverage in both languages. The
+  parity checker cannot: a block missing from a section that has no block is
+  not a difference it can see without being told which blocks ought to exist.
+
 - **The test suite's isolation from `~/.best-engine-ai-helper` is discovered
   rather than remembered, and now checked.** Iteration 6 redirected three
   caches so the suite would describe the repository instead of the machine;

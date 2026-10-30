@@ -685,16 +685,44 @@ Apple M1 Max             apple   32         29                apple-specs
 ```
 
 Both are the merge of a bundled seed with anything cached under
-`~/.best-engine-ai-helper/`; the seed itself is never modified. Refreshing them
-was not run for this file: `catalog update` pulls open-weight specs from ApXML,
-`catalog update --ollama` widens to real pull tags from the official Ollama
-library, `catalog update --arena` merges LM Arena ratings when a fresh enough
-mirror exists and says so plainly when none does, `catalog update --cloud`
-reprices the PAID catalogue from LiteLLM's public table (prices and context
-lengths only, never benchmark scores, which that source does not publish),
-`catalog update --cloud --arena` additionally *adopts* the paid models both
-sources name — a price from one, a rating from the other, two citations or no
-entry — and `hardware update` records this machine's own chip and memory.
+`~/.best-engine-ai-helper/`; the seed itself is never modified. Refreshing the
+model table reaches the network, so `--limit` is what makes it a recipe rather
+than a wait:
+
+```sh
+best-engine-ai-helper catalog update --limit 5
+```
+
+```
+Fetching models from ApXML…
+Updated catalog cache with 5 model(s):
+	~/.best-engine-ai-helper/catalog_cache.yaml
+```
+
+`catalog update` pulls open-weight specs from ApXML, `catalog update --ollama`
+widens to real pull tags from the official Ollama library, `catalog update
+--arena` merges LM Arena ratings when a fresh enough mirror exists and says so
+plainly when none does, `catalog update --cloud` reprices the PAID catalogue
+from LiteLLM's public table (prices and context lengths only, never benchmark
+scores, which that source does not publish), and `catalog update --cloud
+--arena` additionally *adopts* the paid models both sources name — a price from
+one, a rating from the other, two citations or no entry.
+
+The hardware table is refreshed differently, because no public specs API spans
+every chip: the command records ground truth for the machine it runs on.
+
+```sh
+best-engine-ai-helper hardware update
+```
+
+```
+Recorded this machine into the hardware cache:
+	Apple M2 Max — 96.0 GB (84.0 GB usable)
+	~/.best-engine-ai-helper/hardware_cache.yaml
+```
+
+Both print the absolute path, shortened to `~` here for width, and neither
+touches the bundled seed.
 
 ## 7. Too large to fit, still runnable: layer streaming
 
