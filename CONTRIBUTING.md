@@ -25,7 +25,7 @@ Every Python file follows the mandate in [CODING.md](CODING.md):
 4. No bare `print(...)` in library code; use `click.echo` or `sys.stderr.write` in the CLI layer.
 5. `EXAMPLES.md` stays runnable: every recipe is tested in CI.
 6. One shared core behind every surface: library, CLI (`cli.py`), GUI + HTTP API (`api.py`), and MCP (`mcp.py`) all delegate to the same application logic.
-7. Every GUI-visible string and human-language prompt resolves through [`locales/i18n.yaml`](locales/i18n.yaml).
+7. Every GUI-visible string and human-language prompt resolves through [`best_engine_ai_helper/locales/i18n.yaml`](best_engine_ai_helper/locales/i18n.yaml).
 
 Run the gate before opening a pull request:
 
@@ -64,9 +64,9 @@ demand. It builds and inspects; it publishes nothing.
 
 ## What the documentation gates check
 
-Three of the gate's tests judge the documents rather than the code, and they
+Four of the gate's tests judge the documents rather than the code, and they
 guard two axes: the two copies against each other, and the document against
-the program it describes.
+something outside it that can settle the question.
 
 ![Two axes a worked example can drift on: the two languages agree with each other, while the three numbers inside one block do not](assets/diagrams/two-axes.png)
 
@@ -104,11 +104,27 @@ Click refuses outright, while the README explains forty-four lines below that
 the flag does not exist. Parity compares shell flags, found the two blocks
 equal, and was right about that too.
 
-The two scripts run on their own:
+`scripts/check_doc_links.py` settles a third kind of claim: a link says
+something is *there*. Every relative path has to resolve to a file that
+exists, and every `#fragment` to a heading in the document that carries it,
+checked against the target document when the link crosses files. External
+URLs are left alone on purpose, because a gate that goes red when somebody
+else's server is down is a gate people learn to skip.
+
+It found two. `CONTRIBUTING.md` and `GUI.md` both linked `locales/i18n.yaml`,
+which has no existence at the repository root: the catalogue lives inside the
+package, and the changelog records the move that put it there. Both had
+returned a 404 ever since, in the two documents whose subject is where that
+file is, while a test in `tests/test_gui_i18n.py` asserted the file sits
+inside the package. A test and two documents disagreed about one path, and
+nothing compared them.
+
+The three scripts run on their own:
 
 ```sh
 python scripts/check_doc_parity.py      # exit 0 = the pairs agree
 python scripts/check_doc_examples.py    # exit 0 = the examples are coherent
+python scripts/check_doc_links.py       # exit 0 = every target exists
 ```
 
 ## Writing standards

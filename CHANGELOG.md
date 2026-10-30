@@ -6,6 +6,25 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Added
 
+- **Every link in the documents is resolved against the repository.**
+  `scripts/check_doc_links.py`, the third external standard after the parity
+  checker and the example checker. A link is a claim that something is
+  *there*, and nothing re-read those claims after things moved. Relative paths
+  must resolve to a file that exists; `#fragments` must match a heading, in
+  the target document when the link crosses files. External URLs are left
+  alone deliberately: a gate that goes red because somebody else's server is
+  down is a gate people learn to skip, and skipping this one skips the lint
+  and the tests with it.
+
+  Three conventions made earlier drafts lie, and each is now a test. GitHub
+  keeps accented letters in an anchor, so normalising through NFKD condemned
+  nineteen correct French links. French puts a space *before* a colon, so
+  dropping the colon leaves two spaces and the anchor genuinely carries `--`;
+  collapsing whitespace condemned two more. And `](#)` is a decorative badge
+  rather than an empty anchor. A checker that cannot tell a convention from a
+  defect is worse than none, because its noise is indistinguishable from its
+  signal.
+
 - **A runnable recipe for every public command, and a gate that says so.**
   `CODING.md` promises "`EXAMPLES.md` with one runnable recipe per public
   command, tested in CI". Nothing read `EXAMPLES.md`, so the promise held by
@@ -209,6 +228,21 @@ All notable changes to best-engine-ai-helper are documented here.
   with zero.
 
 ### Fixed
+
+- **Two links that had returned a 404 since the file moved.**
+  `CONTRIBUTING.md` and `GUI.md` both pointed at `locales/i18n.yaml`, and
+  there is no `locales/` at the repository root: the catalogue lives at
+  `best_engine_ai_helper/locales/i18n.yaml`, and this changelog records the
+  move that put it there. Both were in the two documents whose subject is
+  where that file is.
+
+  The detail worth keeping is that the repository already knew.
+  `tests/test_gui_i18n.py::test_the_catalogue_sits_inside_the_package`
+  asserts the file is in the package while two documents pointed outside it.
+  A test and two documents disagreed about one path, and nothing compared
+  them. `CODING.md`'s own bare mention of the path is corrected too, and a
+  new test pins the location so the two cannot drift apart again without one
+  of them going red.
 
 - **Four user-state files the suite could still read.** Dormant, and only
   because this machine has never written them: `usages._CACHE_PATH`, an

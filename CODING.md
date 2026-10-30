@@ -20,4 +20,4 @@ The standards that apply to every function and class in this codebase:
 - pytest test suite in `tests/`, CI gate on every push.
 - ruff for style (PEP 8, import order); violations block merges.
 - Multi-surface, one shared core: importable library (`best_engine_ai_helper`), CLI (`cli.py`, one command line built with Click), GUI + HTTP API (`api.py`, FastAPI), and MCP (`mcp.py`, fastapi-mcp) all delegate to the same application logic — no surface grows its own copy of business rules.
-- Every GUI-visible string and human-language prompt resolves through `locales/i18n.yaml`.
+- Every GUI-visible string and human-language prompt resolves through `best_engine_ai_helper/locales/i18n.yaml`.
