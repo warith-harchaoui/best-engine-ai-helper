@@ -6,6 +6,30 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Added
 
+- **The worked examples in the docs are checked against each other's
+  arithmetic.** `scripts/check_doc_parity.py` compares the two languages; it
+  cannot compare either of them against the code, and it is structurally blind
+  to the failure both can share — a block of output that was right when it was
+  pasted and has not been re-run since. Parity saw `disk_peak_gb: 16.8` on both
+  sides, called them identical, and was right.
+
+  `scripts/check_doc_examples.py` reads the fenced `yaml` and `json` blocks in
+  the shipped documents and checks the relations *between the numbers
+  inside one block*: `disk_steady_gb` is the `checkpoint_gb` printed beside it,
+  `disk_peak_gb` equals it, `seconds_per_token` inverts `est_tokens_per_s`, a
+  block claiming `streaming: true` shows a resident figure below the file, and
+  a `lightweight` backend publishes no port and no schema support. Every rule
+  holds on any hardware, which is the only kind a documented example can be
+  held to — nothing is re-run and nothing is compared against this machine.
+
+  Which documents it reads is *discovered*, not listed: every root Markdown
+  file except `CHANGELOG.md`, which records what the numbers were and where
+  correcting history would be the actual error. A hand-written list would have
+  been the same mistake in a different place. Stdlib only, like the parity
+  checker, and in the gate through `tests/test_doc_examples.py`.
+  `assets/diagrams/two-axes.svg` draws the two axes and the blind spot between
+  them, in `CONTRIBUTING.md`.
+
 - **Context length for local models, read rather than typed in.** Not one of
   the 31 local catalogue rows declares a `context_length`, so `/v1/models`
   published none for any of them — while the paid half gets a window free from
@@ -121,6 +145,37 @@ All notable changes to best-engine-ai-helper are documented here.
   with zero.
 
 ### Fixed
+
+- **Two declarations in the gate described things that were not there.** The
+  EN→FR name map in `check_doc_parity.py` carried `parity-skeleton` /
+  `parite-squelette`, a figure that was planned and never drawn; nothing
+  consumes a stale entry, which is exactly why nothing noticed. And
+  `tests/test_figures.py` held a `_LABEL_RATIO_MAX = 1.18` with a careful
+  docstring, plus the label extractor that would have used it, while the
+  comment at the foot of the same file explains at length why that invariant
+  was *withdrawn*. Anyone opening the file read an enforced rule that enforced
+  nothing. The entry is gone, the constant is gone, the 1.18 measurement is
+  recorded in the comment that explains the withdrawal, and a new test refuses
+  any map entry with no file behind it.
+
+- **The engine descriptor printed in the docs showed a disk peak this runtime
+  cannot produce.** `EXAMPLES.md` and `EXEMPLES.md` both published
+  `disk_peak_gb: 16.8` and `disk_steady_gb: 8.8` for a model whose
+  `checkpoint_gb: 8.0` was printed three lines above — three numbers, in five
+  consecutive lines, that cannot all be true. The 2.1x peak is a fossil of the
+  runtime that wrote per-layer shards beside the original before anything ran,
+  so the cache briefly held both; `streaming.py` stopped doing that and
+  `offload.disk_required_gb` has returned the checkpoint for both keys since.
+
+  The same document narrates the removal a hundred lines earlier — "it used to
+  be roughly double, because the previous runtime wrote a second per-layer
+  copy" — and then prints one. Both figures are `8.0` now, with the equality
+  stated in the comment beside them rather than left for a consumer to guess
+  at: `ai-bunker` reads this descriptor, and a peak that merely *happens* to
+  match the steady figure would be budgeted for. A test now sweeps all 51
+  catalogue rows and asserts the two are equal for every one of them, so the
+  equality is demonstrably a property of the runtime rather than of the model
+  that happened to be in the example.
 
 - **The MCP tool description had become false by omission.** It said these
   tools detect hardware and recommend the best local engine "entirely on the

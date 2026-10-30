@@ -932,8 +932,8 @@ llm:
   checkpoint_gb: 8.0      # what every token re-reads
   layers: 29
   layers_estimated: true
-  disk_peak_gb: 16.8
-  disk_steady_gb: 8.8
+  disk_peak_gb: 8.0       # equal to steady, always: nothing is copied
+  disk_steady_gb: 8.0     # beside the checkpoint, so no transient to budget
   disk_fits: true
   est_tokens_per_s: 0.425
   seconds_per_token: 2.4

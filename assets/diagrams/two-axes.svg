@@ -1,0 +1,132 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 520" width="1040" height="520"
+     role="img" aria-labelledby="ax-title ax-desc" font-family="Roboto, 'Helvetica Neue', Arial, sans-serif">
+  <title id="ax-title">Two axes a worked example can drift on, and the gate on each</title>
+  <desc id="ax-desc">A worked example in this repository can go wrong in two independent directions, and
+  until now only one of them was checked. Across the top, the same engine descriptor as printed in the
+  English EXAMPLES.md and the French EXEMPLES.md: checkpoint_gb 8.0, disk_peak_gb 16.8, disk_steady_gb
+  8.8, character for character the same in both. A double-headed arrow between them is the horizontal
+  axis, guarded by scripts/check_doc_parity.py, and its verdict is that the two halves agree — which is
+  correct, because both say 16.8. Below, the vertical axis: scripts/check_doc_examples.py compares the
+  numbers inside one block against each other and finds two breaches, disk_steady_gb 8.8 against the
+  checkpoint_gb 8.0 printed beside it, and disk_peak_gb 16.8 against that steady figure. The rule comes
+  from the code: offload.disk_required_gb returns the checkpoint's own size for both keys, because
+  streaming memory-maps the original safetensors and copies nothing, so there is no scratch peak to
+  budget for. The 16.8 is a fossil of an earlier runtime that did copy. The lesson of the picture is
+  that a defect identical in both languages is invisible to a gate that only compares the languages.</desc>
+
+  <style>
+    .panel      { fill: #ffffff; stroke: #e0e0e0; stroke-width: 1.5; }
+    .eyebrow    { fill: #6b6b6b; font-size: 12px; font-weight: 700; letter-spacing: .1em; }
+    .h          { font-size: 16px; font-weight: 700; fill: #111111; }
+    .sub        { font-size: 12.5px; fill: #5a5a5a; }
+    .muted      { font-size: 12px; fill: #8a8a8a; font-style: italic; }
+    .mono       { font-family: 'Roboto Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+    .flow       { fill: none; stroke: #9a9a9a; stroke-width: 2; }
+    .caption    { font-size: 12.5px; fill: #5a5a5a; font-style: italic; }
+
+    .doc        { fill: #ffffff; stroke: #bfbfbf; stroke-width: 1.8; }
+    .fence      { fill: #f4f4f5; stroke: #dcdcde; stroke-width: 1; }
+    .code       { font-size: 13px; fill: #3a3a3a; }
+    .wrong      { fill: #9c4400; font-weight: 700; }
+
+    .ok         { fill: #DFF2EC; stroke: #009E73; stroke-width: 1.8; }
+    .ok-k       { fill: #007254; }
+    .bad-k      { fill: #9c4400; }
+    .rule       { fill: #E5F1F8; stroke: #0072B2; stroke-width: 1.8; }
+    .rule-k     { fill: #0072B2; }
+    .breach     { fill: #FBEDE6; stroke: #D55E00; stroke-width: 1.8; }
+    .tick       { stroke: #007254; }
+    .cross      { stroke: #D55E00; }
+
+    @media (prefers-color-scheme: dark) {
+      .panel    { fill: #1b1b1d; stroke: #3a3a3d; }
+      .eyebrow  { fill: #a0a0a6; }
+      .h        { fill: #f2f2f4; }
+      .sub      { fill: #b4b4ba; }
+      .muted    { fill: #8f8f96; }
+      .flow     { stroke: #7a7a82; }
+      .caption  { fill: #a0a0a6; }
+
+      .doc      { fill: #1b1b1d; stroke: #4a4a4e; }
+      .fence    { fill: #121214; stroke: #34343a; }
+      .code     { fill: #d6d6db; }
+      .wrong    { fill: #ff9f63; }
+
+      .ok       { fill: #0d2a22; stroke: #3ec9a1; }
+      .ok-k     { fill: #5fd9b6; }
+      .bad-k    { fill: #ff9f63; }
+      .rule     { fill: #10243d; stroke: #4da2ff; }
+      .rule-k   { fill: #7ab8ff; }
+      .breach   { fill: #3a1f10; stroke: #ff8a3d; }
+      .tick     { stroke: #5fd9b6; }
+      .cross    { stroke: #ff9f63; }
+    }
+  </style>
+
+  <defs>
+    <marker id="ax-arrow" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#9a9a9a"/>
+    </marker>
+  </defs>
+
+  <!-- ===================== the two documents ===================== -->
+  <text class="eyebrow" x="28" y="34">THE SAME THREE NUMBERS, PRINTED TWICE</text>
+
+  <rect class="doc" x="28" y="60" width="360" height="186" rx="12"/>
+  <text class="eyebrow" x="50" y="88">ENGLISH</text>
+  <text class="h" x="50" y="112">EXAMPLES.md</text>
+  <rect class="fence" x="46" y="128" width="324" height="100" rx="8"/>
+  <text class="code mono" x="64" y="156">checkpoint_gb: 8.0</text>
+  <text class="code mono" x="64" y="184">disk_peak_gb: <tspan class="wrong">16.8</tspan></text>
+  <text class="code mono" x="64" y="212">disk_steady_gb: <tspan class="wrong">8.8</tspan></text>
+
+  <rect class="doc" x="652" y="60" width="360" height="186" rx="12"/>
+  <text class="eyebrow" x="674" y="88">FRENCH</text>
+  <text class="h" x="674" y="112">EXEMPLES.md</text>
+  <rect class="fence" x="670" y="128" width="324" height="100" rx="8"/>
+  <text class="code mono" x="688" y="156">checkpoint_gb: 8.0</text>
+  <text class="code mono" x="688" y="184">disk_peak_gb: <tspan class="wrong">16.8</tspan></text>
+  <text class="code mono" x="688" y="212">disk_steady_gb: <tspan class="wrong">8.8</tspan></text>
+
+  <!-- ===================== axis 1: across the languages ===================== -->
+  <text class="eyebrow" x="520" y="92" text-anchor="middle">AXIS 1 · ACROSS THE LANGUAGES</text>
+  <text class="sub mono" x="520" y="116" text-anchor="middle">check_doc_parity.py</text>
+  <path class="flow" d="M396 140 H644" marker-start="url(#ax-arrow)" marker-end="url(#ax-arrow)"/>
+
+  <rect class="ok" x="420" y="162" width="200" height="36" rx="18"/>
+  <g class="tick" fill="none" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M444 181 l5 5 l10 -12"/>
+  </g>
+  <text class="sub ok-k" x="470" y="186" font-weight="700">agree — identical</text>
+  <text class="muted" x="520" y="222" text-anchor="middle">and it is right: both say 16.8</text>
+
+  <!-- ===================== axis 2: inside one block ===================== -->
+  <path class="flow" d="M208 250 V292" marker-end="url(#ax-arrow)"/>
+
+  <rect class="breach" x="28" y="300" width="412" height="170" rx="12"/>
+  <text class="eyebrow bad-k" x="50" y="328">AXIS 2 · INSIDE ONE BLOCK</text>
+  <text class="sub mono" x="50" y="350">check_doc_examples.py</text>
+
+  <g class="cross" fill="none" stroke-width="2.6" stroke-linecap="round">
+    <path d="M52 376 l12 12 M64 376 l-12 12"/>
+    <path d="M52 412 l12 12 M64 412 l-12 12"/>
+  </g>
+  <text class="code mono" x="78" y="387">disk_steady_gb == checkpoint_gb  →  8.8 ≠ 8.0</text>
+  <text class="code mono" x="78" y="423">disk_peak_gb == disk_steady_gb  →  16.8 ≠ 8.8</text>
+  <text class="muted" x="50" y="452">Five consecutive lines of the file. They cannot all be true.</text>
+
+  <!-- ===================== where the rule comes from ===================== -->
+  <text class="sub mono" x="500" y="374" text-anchor="middle">guarantees</text>
+  <path class="flow" d="M556 390 H446" marker-end="url(#ax-arrow)"/>
+
+  <rect class="rule" x="560" y="300" width="452" height="170" rx="12"/>
+  <text class="eyebrow rule-k" x="582" y="328">THE RULE IS NOT A STYLE CHOICE</text>
+  <text class="sub mono rule-k" x="582" y="352">offload.disk_required_gb()</text>
+  <text class="sub" x="582" y="382">Returns the checkpoint's own size for both keys.</text>
+  <text class="sub" x="582" y="404">Streaming memory-maps the original safetensors and</text>
+  <text class="sub" x="582" y="426">copies nothing, so there is no scratch peak to budget.</text>
+  <text class="muted" x="582" y="452">16.8 is a fossil of the runtime that did copy.</text>
+
+  <text class="caption" x="28" y="502">A defect identical in both languages is invisible to a gate that only compares the languages.</text>
+</svg>

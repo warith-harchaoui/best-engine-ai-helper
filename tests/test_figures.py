@@ -35,18 +35,6 @@ import pytest
 _REPO = Path(__file__).resolve().parent.parent
 _DIAGRAMS = _REPO / "assets" / "diagrams"
 
-#: Longest a French label may be, as a multiple of its English twin. French runs
-#: longer, hand-authored boxes do not grow, and the overflow is silent: the text
-#: simply draws outside its rectangle and only a human looking at the render
-#: notices. Both figures translated on 2026-10-29 shipped a label over this
-#: ratio on the first draw. The number is the largest ratio that survived the
-#: eyeball loop, with no margin added — a margin would be a guess.
-_LABEL_RATIO_MAX = 1.18
-
-#: Labels that are a number, an identifier or a product name, where the ratio
-#: rule says nothing useful because neither side is prose.
-_NOT_PROSE = re.compile(r"^[\W\d_]*$|^[\w.:/-]+$")
-
 
 def _load_parity() -> ModuleType:
     """Import the parity checker, for its declared EN→FR name map."""
@@ -65,17 +53,6 @@ parity = _load_parity()
 
 def _svgs() -> list[Path]:
     return sorted(_DIAGRAMS.glob("*.svg"))
-
-
-def _labels(svg: str) -> list[str]:
-    """Every visible string in the drawing, in document order."""
-    body = re.sub(r"<desc\b.*?</desc>|<title\b.*?</title>", "", svg, flags=re.DOTALL)
-    out = []
-    for raw in re.findall(r"<text\b[^>]*>(.*?)</text>", body, flags=re.DOTALL):
-        text = re.sub(r"<[^>]+>", "", raw).strip()
-        if text:
-            out.append(text)
-    return out
 
 
 @pytest.mark.parametrize("svg", _svgs(), ids=lambda p: p.stem)
@@ -128,6 +105,32 @@ def test_no_root_document_still_draws_with_mermaid() -> None:
     )
 
 
+def test_every_declared_twin_name_points_at_a_real_pair() -> None:
+    """`MIRROR` is a promise about assets, and a promise can outlive its asset.
+
+    The map is what lets a French document point at `paysage.png` and still
+    count as agreeing with an English one pointing at `landscape.png`, so every
+    entry reads as a statement that both halves exist. One did not:
+    `parity-skeleton` / `parite-squelette` named a figure that was planned and
+    never drawn, and sat in the map for two iterations describing nothing.
+
+    Nothing consumes a stale entry, which is exactly why nothing noticed it.
+    An entry here is documentation for the next person reading the map, and
+    documentation that names a file nobody ships is the cheapest kind of lie.
+    """
+    missing = []
+    for english, french in parity.MIRROR.items():
+        if english.endswith(".md"):
+            for name in (english, french):
+                if not (_REPO / name).is_file():
+                    missing.append(f"MIRROR names {name}, which is not a root document")
+            continue
+        for stem in (english, french):
+            if not list((_REPO / "assets").rglob(f"{stem}.svg")):
+                missing.append(f"MIRROR names {stem}, and no {stem}.svg exists under assets/")
+    assert not missing, "declared twins with nothing behind them:\n" + "\n".join(missing)
+
+
 def test_every_figure_a_french_document_embeds_is_french() -> None:
     """The gap the parity checker cannot see, stated as a rule.
 
@@ -158,8 +161,11 @@ def test_every_figure_a_french_document_embeds_is_french() -> None:
 #   "no French label exceeds its English twin by more than N" -- a ratio cannot
 #   see how much slack a box has. `AUCUNE API PUBLIQUE` is 1.46x `NO PUBLIC
 #   API` and sits comfortably inside its pill; the two labels that genuinely
-#   overflowed on 2026-10-29 were at 1.24x and 1.11x. Any threshold that
-#   catches the second passes almost nothing and fails most of the first.
+#   overflowed on 2026-10-29 were at 1.24x and 1.11x. The largest ratio that
+#   survived the eyeball loop was 1.18, which is below both of them: any
+#   threshold that catches the second passes almost nothing and fails most of
+#   the first. The constant and its label extractor lived here unused for two
+#   iterations, reading like an enforced rule to anyone opening the file.
 #
 # Catching an overflow needs real text metrics, which means asking a renderer
 # rather than counting characters. Until that is worth building, the eyeball

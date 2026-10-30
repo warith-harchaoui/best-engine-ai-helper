@@ -96,7 +96,6 @@ MIRROR: dict[str, str] = {
     "streaming-triggers": "declencheurs-du-flux",
     "where-it-runs": "ou-ca-tourne",
     "virtual-model-name": "nom-de-modele-virtuel",
-    "parity-skeleton": "parite-squelette",
     "landscape": "paysage",
 }
 

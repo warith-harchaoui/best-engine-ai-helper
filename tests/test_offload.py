@@ -15,6 +15,7 @@ was never installed, which is most machines.
 
 from __future__ import annotations
 
+import math
 import types
 from typing import Any
 
@@ -252,6 +253,30 @@ def test_streaming_needs_the_checkpoint_and_no_scratch_space() -> None:
         "peak_gb": space["peak_gb"] / 4,
         "steady_gb": space["steady_gb"] / 4,
     }
+
+
+def test_peak_equals_steady_for_every_model_in_the_catalogue() -> None:
+    """The equality is a property of the runtime, not a coincidence of one model.
+
+    `ai-bunker` reads `disk_peak_gb` and `disk_steady_gb` out of the engine
+    descriptor, and a consumer holding two keys that happen to match has no way
+    to tell whether to budget for a transient. Asserting it on one checkpoint
+    (the test above) shows the function returns the same value twice; asserting
+    it on all 51 shows there is no entry shape -- no dtype, no mixture of
+    experts, no missing parameter count -- that makes them diverge.
+
+    Infinity is the honest answer for an unsized entry and has to stay equal
+    too, which is why the comparison is written to survive it.
+    """
+    rows = catalog.load_catalog()
+    assert len(rows) > 20, "the catalogue shrank; this test is no longer a sweep"
+    for row in rows:
+        space = offload.disk_required_gb(row)
+        peak, steady = space["peak_gb"], space["steady_gb"]
+        assert repr(peak) == repr(steady), f"{row.get('id')}: {peak} != {steady}"
+        checkpoint = offload.checkpoint_gb(row)
+        if math.isfinite(checkpoint):
+            assert steady == round(checkpoint, 1), row.get("id")
 
 
 def test_a_nearly_full_drive_blocks_a_model_that_fits_memory_easily() -> None:

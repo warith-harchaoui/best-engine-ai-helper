@@ -62,6 +62,40 @@ and none of those can be caused by editing a function body, so a separate
 `packaging` workflow runs it when a packaging input actually changes, and on
 demand. It builds and inspects; it publishes nothing.
 
+## What the documentation gates check
+
+Two of the gate's tests judge the documents rather than the code, and they
+guard two different axes.
+
+![Two axes a worked example can drift on: the two languages agree with each other, while the three numbers inside one block do not](assets/diagrams/two-axes.png)
+
+`scripts/check_doc_parity.py` compares `README.md`, `EXAMPLES.md` and
+`LANDSCAPE.md` against their French twins: headings, fenced blocks, shell
+flags, link targets, fence sizes, tables. It compares the *skeleton* and never
+the wording, so a translated argument is never a breach and a section promoted
+on one side only always is.
+
+`scripts/check_doc_examples.py` compares the numbers inside one fenced block
+against each other: `disk_steady_gb` against the `checkpoint_gb` printed beside
+it, `seconds_per_token` against `est_tokens_per_s`, a `lightweight` descriptor
+against the fact that the backend is a library with no port. Every rule holds
+on any machine. Nothing is re-run and nothing is measured here, because a
+worked example cannot be held to this developer's hardware.
+
+The second gate exists because the first cannot see a defect the two languages
+share. `EXAMPLES.md` and `EXEMPLES.md` both printed a `disk_peak_gb` of 16.8
+for a checkpoint of 8.0, which is the signature of a runtime that copies the
+file to scratch before running. This one has copied nothing since layer
+streaming began reading the original safetensors. Parity called the two blocks
+identical and was right.
+
+Either runs on its own:
+
+```sh
+python scripts/check_doc_parity.py      # exit 0 = the pairs agree
+python scripts/check_doc_examples.py    # exit 0 = the examples are coherent
+```
+
 ## Writing standards
 
 English prose (README, EXAMPLES, docstrings, comments) follows [references/WRITING.md](references/WRITING.md).

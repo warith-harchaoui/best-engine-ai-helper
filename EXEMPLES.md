@@ -962,8 +962,8 @@ llm:
   checkpoint_gb: 8.0      # ce que chaque jeton relit
   layers: 29
   layers_estimated: true
-  disk_peak_gb: 16.8
-  disk_steady_gb: 8.8
+  disk_peak_gb: 8.0       # pic toujours égal au régime : rien n'est copié
+  disk_steady_gb: 8.0     # à côté du checkpoint, donc aucun transitoire
   disk_fits: true
   est_tokens_per_s: 0.425
   seconds_per_token: 2.4
