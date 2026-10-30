@@ -1224,6 +1224,17 @@ The whole grammar, and where each name ends up:
 | `POST /v1/embeddings` | `float` or `base64` encoding, one vector per input, indices included |
 | `POST /v1/images/generations` | Local diffusion. `size: "auto"` (the default) uses the model's **native** resolution; `b64_json` is the default response format, since a local server has nowhere to host a file |
 
+**Context length is measured, not declared.** Not one of the 31 local
+catalogue rows carries a `context_length`, and none should: the window belongs
+to a particular quantisation of a particular checkpoint, so a figure typed into
+`models.yaml` would describe a file nobody here has opened. A model you have
+actually pulled knows its own, though — the GGUF metadata carries it and Ollama
+hands it over on `/api/show` — so `pull` and `validate` read it and write it
+to the same per-machine store the measured decode speed lives in. `/v1/models`
+then publishes a real window for the models this machine holds, and nothing at
+all for the ones it does not. The paid half needs none of this: the price
+source publishes a window, so a cloud entry simply declares one.
+
 `/v1` sits on the same app as the GUI, the `/api/*` routes and the MCP
 endpoint: one process, one port. The MCP surface deliberately does **not**
 publish the `/v1` routes — its description promises that no model call happens

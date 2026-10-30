@@ -371,6 +371,112 @@ def record(
     return _write_store(store, path)
 
 
+def record_context_length(
+    model: str,
+    window: int,
+    store_path: Path | None = None,
+) -> Path | None:
+    """
+    Persist the context window a daemon reported for *model* on this machine.
+
+    Deliberately NOT routed through :func:`record`, and the reason is the rule
+    that function exists to enforce. ``record`` keeps the **best** sample for a
+    pair because throughput is an observation of a ceiling, and a slower run
+    says more about what else was running than about the model. A context
+    window is not an observation of anything: it is a constant of the
+    checkpoint, read out of its own metadata. So it always overwrites, and a
+    re-pull at a different quantisation is allowed to change it — where routing
+    it through ``record`` would have silently dropped the new figure whenever
+    the run that carried it happened to be the slower one.
+
+    Parameters
+    ----------
+    model : str
+        The model tag the window belongs to.
+    window : int
+        Context length in tokens, as read from the daemon.
+    store_path : Path or None
+        Override the default location; for tests.
+
+    Returns
+    -------
+    Path or None
+        The file written, or None when *window* is not a usable figure — the
+        ordinary case for a daemon that is absent or a checkpoint that declares
+        nothing, neither of which is worth a row.
+
+    Examples
+    --------
+    >>> import tempfile, pathlib
+    >>> with tempfile.TemporaryDirectory() as d:
+    ...     store = pathlib.Path(d) / "m.yaml"
+    ...     _ = record_context_length("gemma3:12b", 131072, store)
+    ...     rows = load_measurements(store)
+    ...     next(iter(rows.values()))["context_length"]
+    131072
+
+    Nothing to record is not an error:
+
+    >>> record_context_length("gemma3:12b", 0) is None
+    True
+    """
+    try:
+        tokens = int(window)
+    except (TypeError, ValueError):
+        return None
+    if tokens <= 0:
+        return None
+
+    path = store_path if store_path is not None else _STORE_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    store = load_measurements(path)
+    key = f"{model}@{machine_id()}"
+    row = dict(store.get(key) or {"model": model, "measured_on": machine_id()})
+    row["context_length"] = tokens
+    store[key] = row
+    return _write_store(store, path)
+
+
+def measured_context_length(
+    model: str,
+    store_path: Path | None = None,
+) -> int | None:
+    """
+    The recorded context window for *model* on this machine, if one was read.
+
+    Parameters
+    ----------
+    model : str
+        Model tag.
+    store_path : Path or None
+        Override the default location; for tests.
+
+    Returns
+    -------
+    int or None
+        The window, or None when nothing has been recorded for this pair.
+
+    Examples
+    --------
+    >>> import tempfile, pathlib
+    >>> with tempfile.TemporaryDirectory() as d:
+    ...     store = pathlib.Path(d) / "m.yaml"
+    ...     _ = record_context_length("qwen3:8b", 32768, store)
+    ...     measured_context_length("qwen3:8b", store)
+    32768
+    >>> import tempfile, pathlib
+    >>> with tempfile.TemporaryDirectory() as d:
+    ...     measured_context_length("never-pulled", pathlib.Path(d) / "m.yaml") is None
+    True
+    """
+    row = load_measurements(store_path).get(f"{model}@{machine_id()}") or {}
+    try:
+        tokens = int(row.get("context_length") or 0)
+    except (TypeError, ValueError):
+        return None
+    return tokens or None
+
+
 def _write_store(store: dict[str, dict[str, Any]], path: Path) -> Path:
     """
     Write the store atomically.

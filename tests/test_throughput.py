@@ -581,3 +581,51 @@ def test_a_bare_tag_is_matched_when_the_daemon_reports_it(tmp_path, monkeypatch)
 
     ranked = score.rank(_ROOMY, catalog, kind="llm", installed={"ondisk:latest", "ondisk"})
     assert [e["id"] for e in ranked] == ["ondisk", "remote:8b"]
+
+
+def test_a_context_window_always_overwrites_where_a_speed_sample_does_not(
+    tmp_path: Any,
+) -> None:
+    """Throughput keeps its best sample; a window is a constant and replaces.
+
+    `record` deliberately keeps the FASTER of two throughput samples, because a
+    slow one says more about what else was running. Routing the context window
+    through that rule would have dropped a correct new figure whenever the run
+    carrying it happened to be the slower one — so it has its own door.
+    """
+    store = tmp_path / "m.yaml"
+    assert throughput.record_context_length("gemma3:12b", 131072, store)
+    assert throughput.measured_context_length("gemma3:12b", store) == 131072
+
+    # A re-pull at a different quantisation is allowed to change it.
+    assert throughput.record_context_length("gemma3:12b", 8192, store)
+    assert throughput.measured_context_length("gemma3:12b", store) == 8192
+
+
+def test_nothing_to_record_is_not_an_error(tmp_path: Any) -> None:
+    """A daemon that is absent, and a checkpoint that declares no window, are ordinary."""
+    store = tmp_path / "m.yaml"
+    assert throughput.record_context_length("x", 0, store) is None
+    assert throughput.record_context_length("x", -1, store) is None
+    assert throughput.record_context_length("x", "lots", store) is None  # type: ignore[arg-type]
+    assert throughput.measured_context_length("x", store) is None
+
+
+def test_a_window_survives_beside_a_throughput_sample(tmp_path: Any) -> None:
+    """The two facts share a row and neither erases the other."""
+    store = tmp_path / "m.yaml"
+    throughput.record(
+        "qwen3:8b",
+        {
+            "tokens_per_second": 15.2,
+            "tokens": 100,
+            "calls": 1,
+            "basis": "eval_duration",
+            "measured_on": throughput.machine_id(),
+        },
+        store_path=store,
+    )
+    throughput.record_context_length("qwen3:8b", 32768, store)
+
+    assert throughput.measured_context_length("qwen3:8b", store) == 32768
+    assert throughput.measured_tps("qwen3:8b", store_path=store) == 15.2

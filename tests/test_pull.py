@@ -189,3 +189,39 @@ def test_installed_tags_normalises_the_latest_suffix(monkeypatch: pytest.MonkeyP
     tags = pull.installed_tags("http://localhost:11434")
 
     assert {"gemma3", "gemma3:latest", "qwen3-vl:8b"} <= tags
+
+
+def test_context_length_is_read_from_the_daemon_not_the_catalogue() -> None:
+    """The window comes out of the checkpoint's own metadata.
+
+    Ollama names the key after the architecture — `gemma3.context_length`,
+    `llama.context_length` — so the lookup matches the suffix rather than a
+    fixed key, and a new family needs no change here.
+    """
+    from unittest.mock import patch
+
+    payload = {"model_info": {"general.architecture": "gemma3", "gemma3.context_length": 131072}}
+    with patch("requests.post") as post:
+        post.return_value.json.return_value = payload
+        post.return_value.raise_for_status.return_value = None
+        assert _pull.context_length("gemma3:12b") == 131072
+
+
+def test_an_absent_daemon_reports_nothing_rather_than_a_guess() -> None:
+    """Three ordinary cases, none of them worth inventing a number for."""
+    from unittest.mock import patch
+
+    # No daemon at all.
+    assert _pull.context_length("gemma3:12b", "http://127.0.0.1:1") is None
+
+    # A daemon that answers, for a checkpoint declaring no window.
+    with patch("requests.post") as post:
+        post.return_value.json.return_value = {"model_info": {"general.architecture": "x"}}
+        post.return_value.raise_for_status.return_value = None
+        assert _pull.context_length("x:1b") is None
+
+    # A daemon that answers with something unusable.
+    with patch("requests.post") as post:
+        post.return_value.json.return_value = {"model_info": {"x.context_length": "lots"}}
+        post.return_value.raise_for_status.return_value = None
+        assert _pull.context_length("x:1b") is None

@@ -100,6 +100,74 @@ def installed_tags(base_url: str | None = None, *, timeout: float = 1.5) -> set[
     return tags
 
 
+def context_length(tag: str, base_url: str | None = None, *, timeout: float = 5.0) -> int | None:
+    """
+    The context window this daemon reports for *tag*, read rather than assumed.
+
+    Not one of the 31 local catalogue rows declares a ``context_length``, and
+    none of them should: the number belongs to a particular quantisation of a
+    particular checkpoint, so a figure typed into ``models.yaml`` would be a
+    claim about a file nobody here has opened. The paid half gets it for free
+    because the price source publishes it; the local half has no such source.
+
+    It does have something better. A pulled model's GGUF metadata carries the
+    real figure, and Ollama hands it over on ``/api/show`` under a key named
+    after the architecture — ``gemma3.context_length``, ``llama.context_length``
+    — which is why this looks for the suffix rather than a fixed key. So the
+    number is measured on the machine that holds the weights, exactly like
+    decode speed is, and models you do not have report nothing at all instead
+    of a plausible guess.
+
+    Parameters
+    ----------
+    tag : str
+        Model tag as the daemon knows it, e.g. ``gemma3:12b``.
+    base_url : str or None
+        Daemon URL; ``SPREZZATURE_LLM_BASE_URL`` or localhost by default.
+    timeout : float
+        Seconds to wait. Longer than :func:`installed_tags`'s because this runs
+        after a pull rather than inside resolution, and ``/api/show`` has to
+        read the checkpoint header.
+
+    Returns
+    -------
+    int or None
+        The window in tokens, or None when the daemon is absent, the model is
+        not pulled, or its metadata declares no context length. All three are
+        ordinary, and none of them is worth a guess.
+
+    Examples
+    --------
+    A daemon that is not there is not an error:
+
+    >>> context_length("gemma3:12b", "http://127.0.0.1:1") is None
+    True
+    """
+    url = (
+        base_url or os.environ.get("SPREZZATURE_LLM_BASE_URL") or "http://localhost:11434"
+    ).rstrip("/")
+    try:
+        import requests
+
+        response = requests.post(f"{url}/api/show", json={"model": tag}, timeout=timeout)
+        response.raise_for_status()
+        info = response.json().get("model_info") or {}
+    except Exception as exc:  # noqa: BLE001 — no daemon, or no such model
+        osh.debug(f"Ollama /api/show unreachable for {tag} ({exc}); context length unknown.")
+        return None
+
+    for key, value in info.items():
+        if str(key).endswith(".context_length"):
+            try:
+                window = int(value)
+            except (TypeError, ValueError):
+                continue
+            if window > 0:
+                osh.debug(f"{tag}: {key} = {window}")
+                return window
+    return None
+
+
 def ollama_pull(tag: str, *, timeout: int = 600, out: IO[str] | None = None) -> bool:
     """
     Pull a model via ``ollama pull`` and stream progress to stdout.

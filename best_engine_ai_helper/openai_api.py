@@ -1037,7 +1037,13 @@ def list_models() -> dict[str, Any]:
 
 def _context_length(entry: dict[str, Any] | None) -> int | None:
     """
-    A catalogue entry's context length, when it declares a usable one.
+    A catalogue entry's context length: declared if it has one, measured if not.
+
+    The paid half of the catalogue carries a window because the price source
+    publishes one. The local half does not, and inventing one would be a claim
+    about a checkpoint nobody here has opened — so a *pulled* model's real
+    figure, read off the daemon by `pull` and stored per machine, is used
+    instead. A model this machine does not hold still publishes nothing.
 
     Examples
     --------
@@ -1059,8 +1065,21 @@ def _context_length(entry: dict[str, Any] | None) -> int | None:
     try:
         value = int(entry.get("context_length") or 0)
     except (TypeError, ValueError):
-        return None
-    return value or None
+        value = 0
+    if value:
+        return value
+
+    # Not one local catalogue row declares a window, and none should: the
+    # figure belongs to a particular quantisation of a particular checkpoint,
+    # so a number typed into models.yaml would describe a file nobody opened.
+    # A model that has actually been pulled has told us the real one, though,
+    # and `pull` wrote it down. Falling back to that is the difference between
+    # publishing nothing for every local model and publishing a measured figure
+    # for the ones this machine holds.
+    from . import throughput as _throughput
+
+    tag = str(entry.get("model") or entry.get("id") or "").strip()
+    return _throughput.measured_context_length(tag) if tag else None
 
 
 def _chat_once(

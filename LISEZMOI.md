@@ -1377,6 +1377,18 @@ Toute la grammaire, puis où chaque nom aboutit :
 | `POST /v1/embeddings` | Encodage `float` ou `base64`, un vecteur par entrée, indices compris |
 | `POST /v1/images/generations` | Diffusion locale. `size: "auto"` (le défaut) utilise la résolution **native** du modèle ; `b64_json` est le format de réponse par défaut, un serveur local n'ayant nulle part où héberger un fichier |
 
+**La longueur de contexte est mesurée, pas déclarée.** Aucune des 31 lignes du
+catalogue local ne porte de `context_length`, puis aucune ne le devrait : la
+fenêtre appartient à une quantification précise d'un checkpoint précis, donc un
+chiffre saisi dans `models.yaml` décrirait un fichier que personne ici n'a
+ouvert. Un modèle réellement téléchargé connaît la sienne, lui — les métadonnées
+GGUF la portent puis Ollama la livre sur `/api/show` — donc `pull` puis
+`validate` la lisent puis l'écrivent dans le même magasin par machine où vit la
+vitesse de décodage mesurée. `/v1/models` publie alors une vraie fenêtre pour
+les modèles que cette machine détient, puis rien du tout pour les autres. La
+moitié payante n'a besoin de rien de cela : la source de prix publie une
+fenêtre, donc une entrée cloud en déclare simplement une.
+
 `/v1` vit sur la même application que la GUI, les routes `/api/*` puis le point
 d'entrée MCP : un processus, un port. La surface MCP ne publie délibérément
 **pas** les routes `/v1` — sa description promet qu'aucun appel de modèle n'a

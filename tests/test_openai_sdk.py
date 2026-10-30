@@ -130,3 +130,29 @@ def test_the_sdk_raises_its_own_error_type_with_our_message(sdk: Any) -> None:
         sdk.chat.completions.create(model="best", messages=[{"role": "user", "content": "x"}], n=3)
 
     assert "n must be 1" in str(caught.value)
+
+
+def test_v1_models_publishes_a_measured_window_when_the_catalogue_declares_none(
+    tmp_path, monkeypatch
+) -> None:
+    """The local half of the catalogue has no context_length, and should not.
+
+    A window belongs to a particular quantisation of a particular checkpoint,
+    so a figure typed into models.yaml would describe a file nobody opened. A
+    model that has actually been pulled reported its real one, though, and
+    `pull` wrote it down — so `/v1/models` publishes that instead of nothing.
+    """
+    from best_engine_ai_helper import openai_api, throughput
+
+    store = tmp_path / "m.yaml"
+    monkeypatch.setattr(throughput, "_STORE_PATH", store)
+    throughput.record_context_length("gemma3:12b", 131072, store)
+
+    # Declared wins, when there is one.
+    assert openai_api._context_length({"id": "gpt-4o", "context_length": 128000}) == 128000
+
+    # Otherwise the measured figure stands in.
+    assert openai_api._context_length({"model": "gemma3:12b"}) == 131072
+
+    # A model this machine does not hold still publishes nothing.
+    assert openai_api._context_length({"model": "never-pulled:70b"}) is None

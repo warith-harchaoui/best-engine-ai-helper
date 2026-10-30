@@ -4,6 +4,29 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Context length for local models, read rather than typed in.** Not one of
+  the 31 local catalogue rows declares a `context_length`, so `/v1/models`
+  published none for any of them — while the paid half gets a window free from
+  the price source. Filling `models.yaml` by hand was never the fix: the window
+  belongs to a particular quantisation of a particular checkpoint, so the
+  figure would have described a file nobody here had opened.
+
+  A pulled model knows its own. The GGUF metadata carries it and Ollama hands
+  it over on `/api/show` under a key named after the architecture
+  (`gemma3.context_length`, `llama.context_length` — hence a suffix match, so a
+  new family needs no change). `pull.context_length()` reads it, `pull` and
+  `validate` record it through `throughput.record_context_length()` into the
+  same per-machine store the measured decode speed lives in, and
+  `/v1/models` serves it when the catalogue declares nothing. A model this
+  machine does not hold still publishes nothing at all.
+
+  It is stored outside `throughput.record`'s "keep the best sample" rule, on
+  purpose: that rule is right for an observation of a ceiling and wrong for a
+  constant of the checkpoint. Routed through it, a correct new window would
+  have been dropped whenever the run carrying it happened to be the slower one.
+
 ### Changed
 
 - **The last ten diagrams are hand-authored now; no Mermaid is left.** Five

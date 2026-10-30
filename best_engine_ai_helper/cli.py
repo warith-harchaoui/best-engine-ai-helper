@@ -185,6 +185,17 @@ def _report_measurement(meter: _throughput.Meter, tag: str) -> None:
     tag : str
         The model tag that was validated.
     """
+    from . import pull as _pull
+
+    # The window is read whether or not a throughput sample survived: it comes
+    # from the checkpoint's own metadata rather than from the run, so a gate
+    # that produced too few tokens to time still tells us how much context the
+    # model has. Free here and nowhere else -- the model is pulled and the
+    # daemon is up exactly once per `pull`.
+    window = _pull.context_length(tag)
+    if window and _throughput.record_context_length(tag, window):
+        click.echo(f"Context window for {tag}: {window:,} tokens (read from the daemon).")
+
     measurement = meter.measurement()
     if measurement is None:
         # Nothing worth storing: the backend reported no token counts, or the
