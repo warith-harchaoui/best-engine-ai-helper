@@ -717,7 +717,7 @@ best-engine-ai-helper lightweight status
 best-engine-ai-helper lightweight status --measure      # measure the disk, don't assume it
 
 # What could it stream, biggest runnable first?
-best-engine-ai-helper lightweight plan --kind llm --compression 4bit --batch 8
+best-engine-ai-helper lightweight plan --kind llm --context 32 --batch 8
 
 # Native or streamed, same answer length, both prices
 best-engine-ai-helper lightweight compare --tokens 300 --batch 8

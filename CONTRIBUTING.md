@@ -64,8 +64,9 @@ demand. It builds and inspects; it publishes nothing.
 
 ## What the documentation gates check
 
-Two of the gate's tests judge the documents rather than the code, and they
-guard two different axes.
+Three of the gate's tests judge the documents rather than the code, and they
+guard two axes: the two copies against each other, and the document against
+the program it describes.
 
 ![Two axes a worked example can drift on: the two languages agree with each other, while the three numbers inside one block do not](assets/diagrams/two-axes.png)
 
@@ -89,7 +90,21 @@ file to scratch before running. This one has copied nothing since layer
 streaming began reading the original safetensors. Parity called the two blocks
 identical and was right.
 
-Either runs on its own:
+`tests/test_doc_commands.py` is the second axis again, on the command line
+instead of the numbers: it walks every `best-engine-ai-helper ...` line in the
+root documents through the real Click tree, subcommand chain first, then every
+long option against the leaf command that would receive it. It is a test
+rather than a third script because a check of the command line has to import
+the command line, and the other two stay dependency-free so the lightest CI
+lane can run them with nothing installed.
+
+It found the same blind spot on the same day. Both `README.md` and
+`LISEZMOI.md` printed `lightweight plan --kind llm --compression 4bit`, a flag
+Click refuses outright, while the README explains forty-four lines below that
+the flag does not exist. Parity compares shell flags, found the two blocks
+equal, and was right about that too.
+
+The two scripts run on their own:
 
 ```sh
 python scripts/check_doc_parity.py      # exit 0 = the pairs agree

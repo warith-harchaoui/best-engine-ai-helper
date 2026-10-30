@@ -6,6 +6,24 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Added
 
+- **Every documented command line is resolved against the real CLI.** Three
+  gates judge the documents now, and each sees what the others cannot:
+  `check_doc_parity.py` compares the two languages, `check_doc_examples.py`
+  compares the numbers inside one block, and `tests/test_doc_commands.py`
+  walks every `best-engine-ai-helper …` line in the root documents through the
+  actual Click tree — subcommand chain first, then every long option against
+  the leaf command that would receive it.
+
+  It is a test rather than a third stdlib script because a check of the command
+  line has to import the command line, and the dependency-free constraint the
+  other two keep exists so the lightest CI lane can run them without installing
+  anything. It handles the idioms these documents actually use: backslash
+  continuations joined before parsing (otherwise every flag past a wrap escapes
+  the check), a leading `$` prompt, a trailing `#` comment, and a pipeline tail
+  that belongs to `jq` rather than to us. A separate assertion refuses to let
+  the parser go quietly blind: it counts the invocations it found and the
+  distinct commands it reached.
+
 - **The worked examples in the docs are checked against each other's
   arithmetic.** `scripts/check_doc_parity.py` compares the two languages; it
   cannot compare either of them against the code, and it is structurally blind
@@ -145,6 +163,22 @@ All notable changes to best-engine-ai-helper are documented here.
   with zero.
 
 ### Fixed
+
+- **A documented command that does not run.** `README.md` and `LISEZMOI.md`
+  both printed `best-engine-ai-helper lightweight plan --kind llm
+  --compression 4bit --batch 8`, and `lightweight plan` has no
+  `--compression`. Click answers "No such option" and does nothing else, so a
+  reader copying the line got a usage error instead of a plan — the sharpest
+  kind of documentation defect, because it is not a number that is wrong but a
+  line that fails outright.
+
+  Forty-four lines below it, the same README explains the flag's absence at
+  length: "There is no `--compression` knob, because there is nothing here
+  that could honour one. (An earlier version accepted such a flag and quoted a
+  3x speed-up the runtime never delivered.)" The document states the removal
+  and demonstrates the fossil. It is the same vanished capability that left
+  the stale `disk_peak_gb` fixed above: one removed feature, two surfaces, two
+  prints. Both lines now read `--kind llm --context 32 --batch 8`, which runs.
 
 - **Two declarations in the gate described things that were not there.** The
   EN→FR name map in `check_doc_parity.py` carried `parity-skeleton` /

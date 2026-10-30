@@ -766,7 +766,7 @@ best-engine-ai-helper lightweight status
 best-engine-ai-helper lightweight status --measure      # mesurer le disque au lieu de le supposer
 
 # Que pourrait-elle diffuser, le plus capable d'abord ?
-best-engine-ai-helper lightweight plan --kind llm --compression 4bit --batch 8
+best-engine-ai-helper lightweight plan --kind llm --context 32 --batch 8
 
 # Natif ou en flux, même longueur de réponse, les deux prix
 best-engine-ai-helper lightweight compare --tokens 300 --batch 8
