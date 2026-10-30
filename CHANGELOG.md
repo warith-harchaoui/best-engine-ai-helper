@@ -6,6 +6,28 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Added
 
+- **The Python half of the recipe promise is gated too.** Iteration 12 put
+  every `best-engine-ai-helper ...` line under a check against the real Click
+  tree and left the sixteen `python` fences unread, which is the half a
+  library user actually copies. `tests/test_doc_python.py` closes it: every
+  name imported from the package must exist, every attribute reached must
+  resolve, and every call must fit the signature it targets, in both languages
+  because the code inside a fence is not translated.
+
+  **It finds nothing today**, and that is stated rather than left implied. It
+  exists because its sibling found two defects in the shell half on the day it
+  was written, and because "nobody has renamed anything yet" is a property of
+  this week rather than of the code. It deliberately does not *execute* the
+  recipes: running them needs a daemon, a network, a GPU and in one case a
+  paid key, and a gate depending on four of those is a gate people learn to
+  skip.
+
+  One trap is now a test: a submodule is not an attribute of its package until
+  something imports it, so `from best_engine_ai_helper import llm` is valid
+  while `getattr(beah, "llm")` is None. Four drafts of various probes reported
+  that import as broken before the check asked the import system instead of
+  the namespace.
+
 - **Every link in the documents is resolved against the repository.**
   `scripts/check_doc_links.py`, the third external standard after the parity
   checker and the example checker. A link is a claim that something is
@@ -232,9 +254,12 @@ All notable changes to best-engine-ai-helper are documented here.
 - **Two links that had returned a 404 since the file moved.**
   `CONTRIBUTING.md` and `GUI.md` both pointed at `locales/i18n.yaml`, and
   there is no `locales/` at the repository root: the catalogue lives at
-  `best_engine_ai_helper/locales/i18n.yaml`, and this changelog records the
-  move that put it there. Both were in the two documents whose subject is
-  where that file is.
+  `best_engine_ai_helper/locales/i18n.yaml`, moved there by `ef1b769` on
+  2026-10-20: ten days of 404, in the two documents whose subject is where
+  that file is. The commit that broke them is worth naming — *"release: 1.6.1
+  — la roue n'embarquait aucune donnée du paquet"*. Moving the data files
+  **into** the package is what fixed the wheel, and it is the same motion that
+  left two links pointing at where they used to be.
 
   The detail worth keeping is that the repository already knew.
   `tests/test_gui_i18n.py::test_the_catalogue_sits_inside_the_package`
