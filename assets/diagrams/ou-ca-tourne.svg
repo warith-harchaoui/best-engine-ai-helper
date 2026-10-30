@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1360 640" width="1360" height="640"
+     role="img" aria-labelledby="wr-title wr-desc" font-family="Roboto, 'Helvetica Neue', Arial, sans-serif">
+  <title id="wr-title">Où tourne un modèle résolu, puis lequel des trois endroits coûte de l'argent</title>
+  <desc id="wr-desc">Chaque brief choisit un des deux modes. Le défaut, mode local, résout vers cette machine —
+  Ollama, vLLM ou le flux de couches — ou vers un serveur que vous opérez vous-même, nommé par
+  --endpoint ou base_url. Les deux ne coûtent rien par appel puis aucun ne quitte votre réseau. Le
+  mode cloud pose une question de plus avant de résoudre quoi que ce soit : la variable
+  d'environnement nommée par api_key_env est-elle réellement renseignée en ce moment ? Si elle ne
+  l'est pas, ce fournisseur n'est pas même un candidat, puis la commande providers dit lesquels
+  sont utilisables puis pourquoi les autres ne le sont pas. Seulement quand une clé se résout un
+  fournisseur payant entre dans la décision, tarifé au jeton. Sur lequel des trois qu'il atterrisse,
+  le fichier moteur a la même forme puis le site d'appel en aval reste le même
+  llm.chat(engine=…, kind=…) : seuls le transport puis le coût changent. Rien ici ne passe du local
+  au payant de lui-même ; la seule direction automatique est la direction sûre, le payant qui se
+  replie sur le local quand un appel payant échoue.</desc>
+
+  <style>
+    .bg{fill:#ffffff}
+    .eyebrow{fill:#6b6b6b;font-size:12px;font-weight:700;letter-spacing:.12em}
+    .h{font-size:19px;font-weight:700;fill:#111111}
+    .n-t{font-size:15px;font-weight:700}
+    .n-s{font-size:12.5px}
+    .mono{font-family:'Roboto Mono',ui-monospace,monospace}
+    .edge-l{font-size:12.5px;font-weight:700;fill:#5a5a5a}
+    .caption{font-size:12.5px;fill:#5a5a5a;font-style:italic}
+
+    .src{fill:#FCFAD9;stroke:#E69F00;stroke-width:1.8}
+    .gate{fill:#FDF0E3;stroke:#E69F00;stroke-width:2.2}
+    .hw{fill:#E5F1F8;stroke:#0072B2;stroke-width:1.8}
+    .paid{fill:#FBEDE6;stroke:#D55E00;stroke-width:1.8}
+    .aside{fill:#F7EDF3;stroke:#CC79A7;stroke-width:1.8}
+    .out{fill:#DFF2EC;stroke:#009E73;stroke-width:3}
+
+    .ink{fill:#1a1a1a}
+    .k-amber{fill:#8a5600} .k-blue{fill:#005a8d} .k-verm{fill:#9c4400}
+    .k-rose{fill:#9c4b7d} .k-green{fill:#007254}
+
+    .flow{fill:none;stroke:#9a9a9a;stroke-width:2}
+
+    @media (prefers-color-scheme: dark){
+      .bg{fill:#141416} .eyebrow{fill:#a0a0a6} .h{fill:#f2f2f4}
+      .edge-l{fill:#b4b4ba} .caption{fill:#a0a0a6} .ink{fill:#ececf0}
+      .src{fill:#33300d;stroke:#ffb52e} .gate{fill:#33250d;stroke:#ffb52e}
+      .hw{fill:#10243d;stroke:#4da2ff} .paid{fill:#3a1f0d;stroke:#ff8a3d}
+      .aside{fill:#2d1526;stroke:#e79ac4} .out{fill:#0d2a22;stroke:#3ec9a1}
+      .k-amber{fill:#ffc85c} .k-blue{fill:#7ab8ff} .k-verm{fill:#ffa972}
+      .k-rose{fill:#f0b7d8} .k-green{fill:#5fd9b6}
+      .flow{stroke:#7a7a82}
+    }
+  </style>
+
+  <defs>
+    <marker id="d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#9a9a9a"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1360" height="640"/>
+  <text class="eyebrow" x="40" y="36">OÙ TOURNE LE MODÈLE</text>
+  <text class="h" x="40" y="64">Trois endroits. Seul le troisième coûte ou quitte votre réseau.</text>
+
+  <!-- the brief -->
+  <rect class="src" x="40" y="286" width="150" height="68" rx="10"/>
+  <text class="n-t ink" x="115" y="326" text-anchor="middle">le brief</text>
+
+  <path class="flow" d="M190 320 L218 320" marker-end="url(#d)"/>
+
+  <!-- the mode -->
+  <rect class="gate" x="222" y="286" width="150" height="68" rx="10"/>
+  <text class="n-t k-amber mono" x="297" y="326" text-anchor="middle">mode:</text>
+
+  <!-- local, two shapes of it -->
+  <path class="flow" d="M372 306 Q420 306 420 162 L482 162" marker-end="url(#d)"/>
+  <text class="edge-l" x="380" y="152" text-anchor="start" font-size="11.5">local · défaut</text>
+
+  <rect class="hw" x="486" y="118" width="312" height="88" rx="10"/>
+  <text class="n-t ink" x="642" y="148" text-anchor="middle">cette machine</text>
+  <text class="n-s k-blue" x="642" y="170" text-anchor="middle">Ollama · vLLM · lightweight</text>
+  <text class="n-s k-blue" x="642" y="192" text-anchor="middle">0,00 $ l'appel, rien ne sort</text>
+
+  <path class="flow" d="M372 324 Q440 324 440 268 L482 268" marker-end="url(#d)"/>
+  <text class="edge-l" x="380" y="258" text-anchor="start" font-size="11.5">local + endpoint</text>
+
+  <rect class="hw" x="486" y="228" width="312" height="80" rx="10"/>
+  <text class="n-t ink" x="642" y="258" text-anchor="middle">votre propre serveur</text>
+  <text class="n-s k-blue mono" x="642" y="282" text-anchor="middle">--endpoint / base_url</text>
+
+  <!-- cloud, which asks one more question first -->
+  <path class="flow" d="M372 340 Q430 340 430 420 L482 420" marker-end="url(#d)"/>
+  <text class="edge-l" x="380" y="410" text-anchor="start" font-size="11.5">cloud</text>
+
+  <rect class="gate" x="486" y="376" width="312" height="90" rx="10"/>
+  <text class="n-t k-amber" x="642" y="406" text-anchor="middle">la variable nommée par</text>
+  <text class="n-t k-amber mono" x="642" y="430" text-anchor="middle">api_key_env</text>
+  <text class="n-t k-amber" x="642" y="452" text-anchor="middle">est-elle renseignée là ?</text>
+
+  <path class="flow" d="M642 466 L642 520" marker-end="url(#d)"/>
+  <text class="edge-l" x="654" y="500" text-anchor="start">non</text>
+
+  <rect class="aside" x="438" y="522" width="408" height="76" rx="10"/>
+  <text class="n-t ink" x="642" y="550" text-anchor="middle">pas même un candidat</text>
+  <text class="n-s k-rose" x="642" y="574" text-anchor="middle">providers dit lesquels sont utilisables puis pourquoi pas les autres</text>
+
+  <path class="flow" d="M798 420 L856 420" marker-end="url(#d)"/>
+  <text class="edge-l" x="827" y="408" text-anchor="middle">oui</text>
+
+  <rect class="paid" x="860" y="370" width="312" height="100" rx="10"/>
+  <text class="n-t ink" x="1016" y="400" text-anchor="middle">un fournisseur payant</text>
+  <text class="n-s k-verm" x="1016" y="422" text-anchor="middle">OpenAI · Mistral · Anthropic</text>
+  <text class="n-s k-verm" x="1016" y="442" text-anchor="middle">Gemini · OpenRouter …</text>
+  <text class="n-s k-verm" x="1016" y="462" text-anchor="middle">tarifé au jeton</text>
+
+  <!-- all three arrive at the same call site -->
+  <path class="flow" d="M798 162 Q900 162 900 230 L1016 230" marker-end="url(#d)"/>
+  <path class="flow" d="M798 268 Q880 268 880 240 L1016 240" marker-end="url(#d)"/>
+  <path class="flow" d="M1016 370 L1016 300" marker-end="url(#d)"/>
+
+  <rect class="out" x="860" y="196" width="312" height="100" rx="10"/>
+  <text class="n-t ink mono" x="1016" y="228" text-anchor="middle">llm.chat(engine=…, kind=…)</text>
+  <text class="n-s k-green" x="1016" y="254" text-anchor="middle">le même site d'appel en aval,</text>
+  <text class="n-s k-green" x="1016" y="274" text-anchor="middle">quel qu'ait été le choix</text>
+
+  <text class="caption" x="40" y="620">Rien ne passe du local au payant tout seul. La seule direction automatique est la sûre : le payant se replie sur le local quand un appel échoue.</text>
+</svg>

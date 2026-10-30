@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 800" width="1100" height="800"
+     role="img" aria-labelledby="st-title st-desc" font-family="Roboto, 'Helvetica Neue', Arial, sans-serif">
+  <title id="st-title">Quand le flux de couches s'active, puis pourquoi jamais par défaut</title>
+  <desc id="st-desc">Un arbre de décision à deux entrées puis une seule issue. La demande arrive du brief, du
+  drapeau --backend ou de la variable d'environnement BEST_ENGINE_LIGHTWEIGHT, puis se lit comme
+  l'un de trois réglages. « never » l'emporte sur tout puis envoie le travail à Ollama ou vLLM
+  comme d'habitude. « always » est un humain qui réclame le flux explicitement : ça diffuse.
+  « auto », le défaut, pose une question de plus : un moteur conventionnel résout-il quelque chose
+  qui tient sur cette machine pour ce genre de modèle ? Si oui, le moteur habituel sert ; seulement
+  si rien ne tient les couches sont lues en flux depuis le disque, tarifées en secondes par jeton
+  plutôt qu'en jetons par seconde. Dans les deux cas la réponse est écrite dans le descripteur de
+  moteur, par genre, avec sa raison — y compris les cas où la réponse fut non. Comme la décision
+  est par genre plutôt que par machine, Ollama pour le modèle de langage puis le flux pour le
+  modèle de vision font un fichier moteur honnête, pas une contradiction.</desc>
+
+  <style>
+    .bg      { fill:#ffffff }
+    .eyebrow { fill:#6b6b6b; font-size:12px; font-weight:700; letter-spacing:.12em }
+    .h       { font-size:19px; font-weight:700; fill:#111111 }
+    .n-t     { font-size:15px; font-weight:700 }
+    .n-s     { font-size:12.5px }
+    .edge-l  { font-size:12.5px; font-weight:700; fill:#5a5a5a }
+    .caption { font-size:12.5px; fill:#5a5a5a; font-style:italic }
+
+    .src     { fill:#FCFAD9; stroke:#E69F00; stroke-width:1.8 }
+    .gate    { fill:#FDF0E3; stroke:#E69F00; stroke-width:2.2 }
+    .ok      { fill:#DFF2EC; stroke:#009E73; stroke-width:1.8 }
+    .out     { fill:#DFF2EC; stroke:#009E73; stroke-width:3 }
+    .stream  { fill:#FBEDE6; stroke:#D55E00; stroke-width:1.8 }
+    .opt     { fill:#E5F1F8; stroke:#56B4E9; stroke-width:1.8 }
+
+    .k-amber { fill:#8a5600 } .k-green { fill:#007254 }
+    .k-verm  { fill:#9c4400 } .k-blue  { fill:#0a6a9e }
+    .ink     { fill:#1a1a1a }
+
+    .flow    { fill:none; stroke:#9a9a9a; stroke-width:2 }
+    .dotted  { fill:none; stroke:#9a9a9a; stroke-width:2; stroke-dasharray:6 5 }
+
+    @media (prefers-color-scheme: dark) {
+      .bg{fill:#141416} .eyebrow{fill:#a0a0a6} .h{fill:#f2f2f4}
+      .edge-l{fill:#b4b4ba} .caption{fill:#a0a0a6} .ink{fill:#ececf0}
+      .src{fill:#33300d;stroke:#ffb52e} .gate{fill:#33250d;stroke:#ffb52e}
+      .ok{fill:#0d2a22;stroke:#3ec9a1} .out{fill:#0d2a22;stroke:#3ec9a1}
+      .stream{fill:#3a1f0d;stroke:#ff8a3d} .opt{fill:#10243d;stroke:#4da2ff}
+      .k-amber{fill:#ffc85c} .k-green{fill:#5fd9b6}
+      .k-verm{fill:#ffa972} .k-blue{fill:#7ab8ff}
+      .flow{stroke:#7a7a82} .dotted{stroke:#7a7a82}
+    }
+  </style>
+
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#9a9a9a"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1100" height="800"/>
+  <text class="eyebrow" x="40" y="36">LE FLUX DE COUCHES</text>
+  <text class="h" x="40" y="64">Jamais par défaut. Deux déclencheurs, rien d'autre.</text>
+
+  <!-- the request -->
+  <rect class="src" x="390" y="104" width="320" height="64" rx="10"/>
+  <text class="n-t ink" x="550" y="128" text-anchor="middle">la demande</text>
+  <text class="n-s k-amber" x="550" y="150" text-anchor="middle">le brief · --backend · BEST_ENGINE_LIGHTWEIGHT</text>
+
+  <path class="flow" d="M550 168 L550 206" marker-end="url(#a)"/>
+
+  <!-- the three-way setting -->
+  <rect class="gate" x="450" y="208" width="200" height="56" rx="10"/>
+  <text class="n-t k-amber" x="550" y="243" text-anchor="middle">lightweight: ?</text>
+
+  <!-- never -> usual -->
+  <path class="flow" d="M450 236 L250 236 Q230 236 230 256 L230 470" marker-end="url(#a)"/>
+  <text class="edge-l" x="338" y="226" text-anchor="middle">never · l'emporte sur tout</text>
+
+  <!-- always -> stream -->
+  <path class="flow" d="M650 236 L850 236 Q870 236 870 256 L870 470" marker-end="url(#a)"/>
+  <text class="edge-l" x="762" y="226" text-anchor="middle">always · un humain l'a demandé</text>
+
+  <!-- auto -> the only real question -->
+  <path class="flow" d="M550 264 L550 322" marker-end="url(#a)"/>
+  <text class="edge-l" x="562" y="298" text-anchor="start">auto · le défaut</text>
+
+  <rect class="gate" x="378" y="324" width="344" height="76" rx="10"/>
+  <text class="n-t k-amber" x="550" y="352" text-anchor="middle">un moteur conventionnel tient-il</text>
+  <text class="n-t k-amber" x="550" y="376" text-anchor="middle">ce genre, sur cette machine ?</text>
+
+  <path class="flow" d="M378 362 L300 362 Q280 362 280 382 L280 470" marker-end="url(#a)"/>
+  <text class="edge-l" x="326" y="352" text-anchor="middle">oui</text>
+  <path class="flow" d="M722 362 L800 362 Q820 362 820 382 L820 470" marker-end="url(#a)"/>
+  <text class="edge-l" x="776" y="352" text-anchor="middle">non</text>
+
+  <!-- the two outcomes -->
+  <rect class="ok" x="110" y="472" width="300" height="78" rx="10"/>
+  <text class="n-t ink" x="260" y="500" text-anchor="middle">Ollama ou vLLM,</text>
+  <text class="n-t ink" x="260" y="524" text-anchor="middle">comme d'habitude</text>
+
+  <rect class="stream" x="700" y="472" width="320" height="78" rx="10"/>
+  <text class="n-t ink" x="860" y="500" text-anchor="middle">lire les couches en flux</text>
+  <text class="n-s k-verm" x="860" y="524" text-anchor="middle">tarifé en secondes par jeton</text>
+
+  <!-- both are recorded, including the no -->
+  <path class="flow" d="M260 550 L260 586 Q260 606 280 606 L376 606" marker-end="url(#a)"/>
+  <path class="flow" d="M860 550 L860 586 Q860 606 840 606 L744 606" marker-end="url(#a)"/>
+
+  <rect class="out" x="378" y="572" width="344" height="92" rx="10"/>
+  <text class="n-t ink" x="550" y="602" text-anchor="middle">consigné dans le descripteur,</text>
+  <text class="n-t ink" x="550" y="624" text-anchor="middle">par genre, avec sa raison</text>
+  <text class="n-s k-green" x="550" y="648" text-anchor="middle">y compris quand la réponse fut non</text>
+
+  <!-- the consequence of "per kind" -->
+  <path class="dotted" d="M550 664 L550 694"/>
+  <rect class="opt" x="330" y="696" width="440" height="68" rx="10"/>
+  <text class="n-s k-blue" x="550" y="722" text-anchor="middle">donc Ollama pour le LLM puis le flux pour le VLM</text>
+  <text class="n-s k-blue" x="550" y="744" text-anchor="middle">font un fichier moteur honnête, pas une contradiction</text>
+
+  <text class="caption" x="40" y="784">La seule voie automatique est le sauvetage : le flux est proposé quand rien de conventionnel ne tient, jamais pour remplacer ce qui tient.</text>
+</svg>

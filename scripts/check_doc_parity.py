@@ -91,6 +91,11 @@ MIRROR: dict[str, str] = {
     "measurement-loop": "boucle-de-mesure",
     "memory-budget": "budget-memoire",
     "arena-staleness": "obsolescence-arena",
+    "selection-pipeline": "pipeline-de-selection",
+    "streamed-forward-pass": "passe-avant-en-flux",
+    "streaming-triggers": "declencheurs-du-flux",
+    "where-it-runs": "ou-ca-tourne",
+    "virtual-model-name": "nom-de-modele-virtuel",
     "parity-skeleton": "parite-squelette",
     "landscape": "paysage",
 }

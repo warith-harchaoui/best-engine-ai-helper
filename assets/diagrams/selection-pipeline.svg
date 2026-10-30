@@ -1,0 +1,156 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 780" width="1500" height="780"
+     role="img" aria-labelledby="sp-title sp-desc" font-family="Roboto, 'Helvetica Neue', Arial, sans-serif">
+  <title id="sp-title">How selection works: two filters, then two rankings, against a measured budget</title>
+  <desc id="sp-desc">The catalogue of every language, vision and embedding model enters on the
+  left and passes through four stages. The first two are filters. Stage one asks whether a schema
+  can drive the model: one that cannot honour structured output is ranked lower and never
+  auto-picked, though it remains findable on request. Stage two asks whether it fits the budget,
+  and the budget is not the number on the spec sheet — it is measured below, from the unified pool,
+  VRAM or RAM, the memory bandwidth and the chip, and optionally derated by --live, which weighs
+  what is already running on the machine right now. A model too large for that budget drops out,
+  and only when nothing at all fits is layer streaming proposed, with its cost stated in seconds
+  per token. What survives both filters is ranked twice: first on the benchmark axis the task
+  points at, then on throughput, where a lighter model within a few points of the best is preferred
+  over the largest that merely fits. The pick carries every number that produced it.</desc>
+
+  <style>
+    .bg      { fill:#ffffff }
+    .eyebrow { fill:#6b6b6b; font-size:12px; font-weight:700; letter-spacing:.12em }
+    .h       { font-size:19px; font-weight:700; fill:#111111 }
+    .stage   { font-size:11.5px; font-weight:700; letter-spacing:.1em; fill:#8a8a93 }
+    .n-t     { font-size:15px; font-weight:700 }
+    .n-s     { font-size:12.5px }
+    .edge-l  { font-size:12.5px; font-weight:700; fill:#5a5a5a }
+    .panel-l { font-size:12px; font-weight:700; letter-spacing:.1em; fill:#6b6b6b }
+    .caption { font-size:12.5px; fill:#5a5a5a; font-style:italic }
+
+    .panel   { fill:#F7F7F8; stroke:#c9c9d0; stroke-width:1.5 }
+    .src     { fill:#FCFAD9; stroke:#E69F00; stroke-width:1.8 }
+    .gate    { fill:#FDF0E3; stroke:#E69F00; stroke-width:2.2 }
+    .rank    { fill:#DFF2EC; stroke:#009E73; stroke-width:1.8 }
+    .out     { fill:#DFF2EC; stroke:#009E73; stroke-width:3 }
+    .hw      { fill:#E5F1F8; stroke:#0072B2; stroke-width:1.8 }
+    .opt     { fill:#EFF7FC; stroke:#56B4E9; stroke-width:1.6 }
+    .aside   { fill:#F7EDF3; stroke:#CC79A7; stroke-width:1.8 }
+    .stream  { fill:#FBEDE6; stroke:#D55E00; stroke-width:1.8 }
+
+    .ink     { fill:#1a1a1a }
+    .k-amber { fill:#8a5600 } .k-green{ fill:#007254 } .k-blue{ fill:#005a8d }
+    .k-rose  { fill:#9c4b7d } .k-verm { fill:#9c4400 }
+
+    .flow    { fill:none; stroke:#9a9a9a; stroke-width:2 }
+    .dotted  { fill:none; stroke:#9a9a9a; stroke-width:2; stroke-dasharray:6 5 }
+
+    @media (prefers-color-scheme: dark) {
+      .bg{fill:#141416} .eyebrow{fill:#a0a0a6} .h{fill:#f2f2f4} .stage{fill:#8f8f96}
+      .edge-l{fill:#b4b4ba} .panel-l{fill:#a0a0a6} .caption{fill:#a0a0a6} .ink{fill:#ececf0}
+      .panel{fill:#1b1b1d;stroke:#3a3a3d}
+      .src{fill:#33300d;stroke:#ffb52e} .gate{fill:#33250d;stroke:#ffb52e}
+      .rank{fill:#0d2a22;stroke:#3ec9a1} .out{fill:#0d2a22;stroke:#3ec9a1}
+      .hw{fill:#10243d;stroke:#4da2ff} .opt{fill:#132a40;stroke:#56B4E9}
+      .aside{fill:#2d1526;stroke:#e79ac4} .stream{fill:#3a1f0d;stroke:#ff8a3d}
+      .k-amber{fill:#ffc85c} .k-green{fill:#5fd9b6} .k-blue{fill:#7ab8ff}
+      .k-rose{fill:#f0b7d8} .k-verm{fill:#ffa972}
+      .flow{stroke:#7a7a82} .dotted{stroke:#7a7a82}
+    }
+  </style>
+
+  <defs>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#9a9a9a"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1500" height="780"/>
+  <text class="eyebrow" x="40" y="36">HOW SELECTION WORKS</text>
+  <text class="h" x="40" y="64">Two filters, then two rankings — against a budget nobody typed in.</text>
+
+  <!-- what drops out, above the filters that drop it -->
+  <rect class="aside" x="248" y="118" width="226" height="96" rx="10"/>
+  <text class="n-s k-rose" x="361" y="146" text-anchor="middle">ranked lower,</text>
+  <text class="n-s k-rose" x="361" y="167" text-anchor="middle">never auto-picked —</text>
+  <text class="n-s k-rose" x="361" y="196" text-anchor="middle">still findable on request</text>
+
+  <rect class="stream" x="516" y="118" width="150" height="96" rx="10"/>
+  <text class="n-t ink" x="591" y="160" text-anchor="middle">too large</text>
+  <text class="n-s k-verm" x="591" y="188" text-anchor="middle">for the budget</text>
+
+  <rect class="stream" x="706" y="106" width="258" height="120" rx="10"/>
+  <text class="caption" x="835" y="132" text-anchor="middle" font-size="11.5">only if nothing at all fits</text>
+  <text class="n-t ink" x="835" y="158" text-anchor="middle">lightweight</text>
+  <text class="n-s k-verm" x="835" y="182" text-anchor="middle">layers streamed off disk,</text>
+  <text class="n-s k-verm" x="835" y="204" text-anchor="middle">at seconds per token</text>
+
+  <path class="dotted" d="M666 166 L700 166" marker-end="url(#b)"/>
+
+  <!-- the pipeline -->
+  <rect class="src" x="40" y="310" width="182" height="86" rx="10"/>
+  <text class="n-t ink" x="131" y="344" text-anchor="middle">the catalogue</text>
+  <text class="n-s k-amber" x="131" y="366" text-anchor="middle">every LLM, VLM,</text>
+  <text class="n-s k-amber" x="131" y="386" text-anchor="middle">embedder</text>
+
+  <path class="flow" d="M222 353 L244 353" marker-end="url(#b)"/>
+
+  <text class="stage" x="248" y="298">1 · FILTER</text>
+  <rect class="gate" x="248" y="310" width="226" height="86" rx="10"/>
+  <text class="n-t k-amber" x="361" y="346" text-anchor="middle">can a schema</text>
+  <text class="n-t k-amber" x="361" y="370" text-anchor="middle">drive it?</text>
+  <path class="flow" d="M361 310 L361 222" marker-end="url(#b)"/>
+  <text class="edge-l" x="374" y="268" text-anchor="start">no</text>
+
+  <path class="flow" d="M474 353 L508 353" marker-end="url(#b)"/>
+  <text class="edge-l" x="491" y="340" text-anchor="middle">yes</text>
+
+  <text class="stage" x="512" y="298">2 · FILTER</text>
+  <rect class="gate" x="512" y="310" width="226" height="86" rx="10"/>
+  <text class="n-t k-amber" x="625" y="346" text-anchor="middle">does it fit</text>
+  <text class="n-t k-amber" x="625" y="370" text-anchor="middle">the budget?</text>
+  <path class="flow" d="M591 310 L591 222" marker-end="url(#b)"/>
+  <text class="edge-l" x="604" y="268" text-anchor="start">no</text>
+
+  <path class="flow" d="M738 353 L772 353" marker-end="url(#b)"/>
+  <text class="edge-l" x="755" y="340" text-anchor="middle">yes</text>
+
+  <text class="stage" x="776" y="298">3 · RANK</text>
+  <rect class="rank" x="776" y="310" width="226" height="86" rx="10"/>
+  <text class="n-t ink" x="889" y="346" text-anchor="middle">best benchmark on</text>
+  <text class="n-t ink" x="889" y="370" text-anchor="middle">the task's axis</text>
+
+  <path class="flow" d="M1002 353 L1026 353" marker-end="url(#b)"/>
+
+  <text class="stage" x="1030" y="298">4 · RANK</text>
+  <rect class="rank" x="1030" y="310" width="236" height="86" rx="10"/>
+  <text class="n-t ink" x="1148" y="340" text-anchor="middle">tokens/s — and a</text>
+  <text class="n-t ink" x="1148" y="362" text-anchor="middle">lighter near-equal</text>
+  <text class="n-s k-green" x="1148" y="384" text-anchor="middle">when there is one</text>
+
+  <path class="flow" d="M1266 353 L1290 353" marker-end="url(#b)"/>
+
+  <rect class="out" x="1294" y="310" width="166" height="86" rx="10"/>
+  <text class="n-t ink" x="1377" y="346" text-anchor="middle">the pick</text>
+  <text class="n-s k-green" x="1377" y="370" text-anchor="middle">every number printed</text>
+
+  <!-- the budget, measured rather than quoted -->
+  <rect class="panel" x="420" y="470" width="420" height="246" rx="12"/>
+  <text class="panel-l" x="444" y="498">THIS MACHINE, MEASURED</text>
+
+  <rect class="hw" x="444" y="512" width="372" height="74" rx="9"/>
+  <text class="n-t ink" x="630" y="540" text-anchor="middle">unified pool · VRAM · RAM</text>
+  <text class="n-s k-blue" x="630" y="564" text-anchor="middle">bandwidth · chip</text>
+
+  <path class="flow" d="M630 586 L630 612" marker-end="url(#b)"/>
+
+  <rect class="hw" x="516" y="614" width="228" height="56" rx="9"/>
+  <text class="n-t ink" x="630" y="649" text-anchor="middle">usable budget</text>
+
+  <rect class="opt" x="860" y="614" width="236" height="56" rx="9"/>
+  <text class="n-s k-blue" x="978" y="640" text-anchor="middle">--live: what is running</text>
+  <text class="n-s k-blue" x="978" y="659" text-anchor="middle">on it right now</text>
+  <path class="dotted" d="M856 642 L752 642" marker-end="url(#b)"/>
+  <text class="edge-l" x="804" y="630" text-anchor="middle" font-size="11">derates</text>
+
+  <!-- the budget is what filter 2 asks against -->
+  <path class="flow" d="M516 642 Q396 642 396 600 L396 420 Q396 400 416 400 L625 400" marker-end="url(#b)"/>
+
+  <text class="caption" x="40" y="762">Nothing here is the number on the spec sheet: the budget is what the accelerator will actually hand to a model, and the ranking prefers the leanest model within a few points of the best.</text>
+</svg>

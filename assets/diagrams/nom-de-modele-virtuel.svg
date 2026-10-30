@@ -1,0 +1,150 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1420 760" width="1420" height="760"
+     role="img" aria-labelledby="vm-title vm-desc" font-family="Roboto, 'Helvetica Neue', Arial, sans-serif">
+  <title id="vm-title">Comment le nom de modèle virtuel « best » se résout, puis ce que la réponse nomme</title>
+  <desc id="vm-desc">N'importe quel SDK OpenAI peut envoyer model « best », puis le serveur le résout. Le
+  « best » nu est automatique : si la requête porte une image il résout vers le meilleur modèle de
+  vision, sinon vers le meilleur modèle de langage. Le nom sait aussi être explicite — best-llm
+  refuse une image plutôt que de la laisser tomber en silence, best-vlm force la vision,
+  best-embed classe les embarqueurs sur MTEB, best-image choisit un modèle texte-vers-image, enfin
+  tout ce qui suit un deux-points, comme dans best:write SQL, se lit comme la tâche puis choisit
+  l'axe de benchmark sur lequel classer. Un mode sait préfixer chacun d'eux, comme dans
+  best-cloud-llm ou best-local-vlm. Chacun est ensuite classé contre cette machine : seul ce qui
+  tient vraiment est proposé. Un nom qui n'est aucun de ceux-là passe tel quel : qwen3:14b veut
+  toujours dire qwen3:14b. Dans les deux cas la réponse nomme le modèle qui a réellement tourné,
+  donc l'appelant sait toujours qui a répondu.</desc>
+
+  <style>
+    .bg{fill:#ffffff}
+    .eyebrow{fill:#6b6b6b;font-size:12px;font-weight:700;letter-spacing:.12em}
+    .h{font-size:19px;font-weight:700;fill:#111111}
+    .n-t{font-size:14.5px;font-weight:700}
+    .n-s{font-size:12px}
+    .mono{font-family:'Roboto Mono',ui-monospace,monospace}
+    .edge-l{font-size:11.5px;font-weight:700;fill:#5a5a5a;font-family:'Roboto Mono',ui-monospace,monospace}
+    .caption{font-size:12.5px;fill:#5a5a5a;font-style:italic}
+
+    .src{fill:#FCFAD9;stroke:#E69F00;stroke-width:1.8}
+    .gate{fill:#FDF0E3;stroke:#E69F00;stroke-width:2.4}
+    .ok{fill:#DFF2EC;stroke:#009E73;stroke-width:1.8}
+    .out{fill:#DFF2EC;stroke:#009E73;stroke-width:3}
+    .hw{fill:#E5F1F8;stroke:#0072B2;stroke-width:1.8}
+    .opt{fill:#EFF7FC;stroke:#56B4E9;stroke-width:1.6}
+    .aside{fill:#F7EDF3;stroke:#CC79A7;stroke-width:1.8}
+
+    .ink{fill:#1a1a1a}
+    .k-amber{fill:#8a5600} .k-green{fill:#007254} .k-blue{fill:#005a8d} .k-rose{fill:#9c4b7d}
+
+    .flow{fill:none;stroke:#9a9a9a;stroke-width:1.8}
+    .dotted{fill:none;stroke:#9a9a9a;stroke-width:1.8;stroke-dasharray:6 5}
+
+    @media (prefers-color-scheme: dark){
+      .bg{fill:#141416} .eyebrow{fill:#a0a0a6} .h{fill:#f2f2f4}
+      .edge-l{fill:#b4b4ba} .caption{fill:#a0a0a6} .ink{fill:#ececf0}
+      .src{fill:#33300d;stroke:#ffb52e} .gate{fill:#33250d;stroke:#ffb52e}
+      .ok{fill:#0d2a22;stroke:#3ec9a1} .out{fill:#0d2a22;stroke:#3ec9a1}
+      .hw{fill:#10243d;stroke:#4da2ff} .opt{fill:#132a40;stroke:#56B4E9}
+      .aside{fill:#2d1526;stroke:#e79ac4}
+      .k-amber{fill:#ffc85c} .k-green{fill:#5fd9b6} .k-blue{fill:#7ab8ff} .k-rose{fill:#f0b7d8}
+      .flow{stroke:#7a7a82} .dotted{stroke:#7a7a82}
+    }
+  </style>
+
+  <defs>
+    <marker id="e" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#9a9a9a"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1420" height="760"/>
+  <text class="eyebrow" x="40" y="36">UN NOM DE MODÈLE VIRTUEL</text>
+  <text class="h" x="40" y="64">Demandez <tspan class="mono">"best"</tspan>. La réponse nomme qui a tourné.</text>
+
+  <!-- the request -->
+  <rect class="src" x="40" y="330" width="190" height="86" rx="10"/>
+  <text class="n-t ink" x="135" y="362" text-anchor="middle">tout SDK OpenAI</text>
+  <text class="n-s k-amber mono" x="135" y="388" text-anchor="middle">model: "best"</text>
+
+  <path class="flow" d="M230 373 L256 373" marker-end="url(#e)"/>
+
+  <!-- the one place the name is read -->
+  <rect class="gate" x="260" y="330" width="160" height="86" rx="10"/>
+  <text class="n-t k-amber" x="340" y="368" text-anchor="middle">le nom</text>
+  <text class="n-s k-amber" x="340" y="392" text-anchor="middle">est lu une fois</text>
+
+  <!-- a mode may prefix any of it -->
+  <path class="dotted" d="M340 330 L340 288"/>
+  <rect class="opt" x="238" y="208" width="204" height="80" rx="9"/>
+  <text class="n-s k-blue" x="340" y="234" text-anchor="middle">un mode sait le préfixer</text>
+  <text class="n-s k-blue mono" x="340" y="256" text-anchor="middle">best-cloud-llm</text>
+  <text class="n-s k-blue mono" x="340" y="274" text-anchor="middle">best-local-vlm</text>
+
+  <!-- automatic: the image decides -->
+  <path class="flow" d="M420 352 L494 352" marker-end="url(#e)"/>
+  <text class="edge-l" x="457" y="342" text-anchor="middle">best</text>
+  <rect class="gate" x="498" y="316" width="198" height="72" rx="10"/>
+  <text class="n-t k-amber" x="597" y="344" text-anchor="middle">porte-t-elle</text>
+  <text class="n-t k-amber" x="597" y="366" text-anchor="middle">une image ?</text>
+
+  <path class="flow" d="M696 332 L794 332 L794 128 L856 128" marker-end="url(#e)"/>
+  <text class="edge-l" x="740" y="322" text-anchor="middle">oui</text>
+  <path class="flow" d="M696 372 L776 372 L776 212 L856 212" marker-end="url(#e)"/>
+  <text class="edge-l" x="736" y="390" text-anchor="middle">non</text>
+
+  <!-- explicit names, each going straight to its kind -->
+  <path class="flow" d="M420 396 Q470 396 470 460 L856 460" marker-end="url(#e)"/>
+  <text class="edge-l" x="560" y="450" text-anchor="middle">best-embed</text>
+  <path class="flow" d="M420 406 Q450 406 450 544 L856 544" marker-end="url(#e)"/>
+  <text class="edge-l" x="560" y="534" text-anchor="middle">best-image</text>
+  <path class="flow" d="M420 414 Q432 414 432 628 L856 628" marker-end="url(#e)"/>
+  <text class="edge-l" x="566" y="618" text-anchor="middle">best:write SQL</text>
+
+  <path class="flow" d="M420 340 Q452 340 452 212 L856 212" marker-end="url(#e)"/>
+  <text class="edge-l" x="610" y="202" text-anchor="middle">best-llm · une image est refusée</text>
+  <path class="flow" d="M420 334 Q462 334 462 128 L856 128" marker-end="url(#e)"/>
+  <text class="edge-l" x="548" y="118" text-anchor="middle">best-vlm</text>
+
+  <!-- the four kinds -->
+  <rect class="ok" x="860" y="100" width="246" height="56" rx="9"/>
+  <text class="n-t ink" x="983" y="134" text-anchor="middle">le meilleur VLM</text>
+  <rect class="ok" x="860" y="184" width="246" height="56" rx="9"/>
+  <text class="n-t ink" x="983" y="218" text-anchor="middle">le meilleur LLM</text>
+  <rect class="ok" x="860" y="432" width="246" height="56" rx="9"/>
+  <text class="n-t ink" x="983" y="466" text-anchor="middle">le meilleur embarqueur</text>
+  <rect class="ok" x="860" y="516" width="246" height="56" rx="9"/>
+  <text class="n-t ink" x="983" y="550" text-anchor="middle">le meilleur modèle d'image</text>
+  <rect class="ok" x="860" y="600" width="246" height="56" rx="9"/>
+  <text class="n-t ink" x="983" y="628" text-anchor="middle">la tâche choisit</text>
+  <text class="n-s k-green" x="983" y="648" text-anchor="middle">l'axe de benchmark</text>
+
+  <!-- everything above is ranked against the machine -->
+  <path class="flow" d="M1106 128 Q1160 128 1160 300 L1206 300" marker-end="url(#e)"/>
+  <path class="flow" d="M1106 212 Q1150 212 1150 306 L1206 306" marker-end="url(#e)"/>
+  <path class="flow" d="M1106 460 Q1150 460 1150 322 L1206 322" marker-end="url(#e)"/>
+  <path class="flow" d="M1106 544 Q1160 544 1160 328 L1206 328" marker-end="url(#e)"/>
+  <path class="flow" d="M1106 628 Q1172 628 1172 334 L1206 334" marker-end="url(#e)"/>
+
+  <rect class="hw" x="1210" y="262" width="176" height="110" rx="10"/>
+  <text class="n-t ink" x="1298" y="292" text-anchor="middle">classé contre</text>
+  <text class="n-t ink" x="1298" y="314" text-anchor="middle">cette machine</text>
+  <text class="n-s k-blue" x="1298" y="338" text-anchor="middle">seul ce qui tient</text>
+  <text class="n-s k-blue" x="1298" y="356" text-anchor="middle">est proposé</text>
+
+  <!-- the escape hatch -->
+  <path class="flow" d="M420 410 Q436 410 436 706 L856 706" marker-end="url(#e)"/>
+  <text class="edge-l" x="566" y="696" text-anchor="middle">tout le reste</text>
+  <rect class="aside" x="860" y="676" width="420" height="58" rx="9"/>
+  <text class="n-s k-rose mono" x="1070" y="700" text-anchor="middle">qwen3:14b veut toujours dire qwen3:14b</text>
+  <text class="n-s k-rose" x="1070" y="720" text-anchor="middle">passé tel quel, jamais réinterprété</text>
+
+  <!-- and the one promise that holds either way -->
+  <path class="flow" d="M1298 372 L1298 420" marker-end="url(#e)"/>
+  <path class="flow" d="M1280 706 Q1340 706 1340 500 L1340 478" marker-end="url(#e)"/>
+
+  <rect class="out" x="1180" y="422" width="236" height="100" rx="10"/>
+  <text class="n-t ink mono" x="1298" y="454" text-anchor="middle">"model":</text>
+  <text class="n-t ink mono" x="1298" y="476" text-anchor="middle">"qwen3:14b"</text>
+  <text class="n-s k-green" x="1298" y="500" text-anchor="middle">la réponse nomme</text>
+  <text class="n-s k-green" x="1298" y="516" text-anchor="middle">qui a tourné</text>
+
+  <text class="caption" x="40" y="744">L'appelant ne choisit jamais de modèle puis n'en perd jamais la trace : la requête demande un besoin, la réponse rend un nom.</text>
+</svg>

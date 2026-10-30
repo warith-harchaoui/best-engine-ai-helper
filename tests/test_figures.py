@@ -104,6 +104,30 @@ def test_every_figure_ships_a_png(svg: Path) -> None:
     assert png.stat().st_size > 1000, f"{png.name} is suspiciously small"
 
 
+def test_no_root_document_still_draws_with_mermaid() -> None:
+    """Every diagram in this repository is hand-authored, and that is a rule.
+
+    A Mermaid fence has no mechanism for a text alternative at all: the ten
+    diagrams that used to live in the two READMEs were, between them, invisible
+    to any reader who could not see them. Hand-authored SVG carries a
+    ``<title>`` and a ``<desc>``, lays out where the geometry actually allows
+    rather than where a solver puts it, and is reviewable as text in a diff.
+
+    This is the preference made mechanical, which is the only form a preference
+    survives in.
+    """
+    offenders = [
+        name
+        for name in sorted(p.name for p in _REPO.glob("*.md"))
+        if "```mermaid" in (_REPO / name).read_text(encoding="utf-8")
+    ]
+    assert not offenders, (
+        "Mermaid fences found in " + ", ".join(offenders) + ". Draw it by hand "
+        "under assets/diagrams/ instead: a Mermaid block cannot carry a <desc>, "
+        "so it is a picture one reader simply does not get."
+    )
+
+
 def test_every_figure_a_french_document_embeds_is_french() -> None:
     """The gap the parity checker cannot see, stated as a rule.
 

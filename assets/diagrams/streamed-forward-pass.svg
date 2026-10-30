@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1220 560" width="1220" height="560"
+     role="img" aria-labelledby="sf-title sf-desc" font-family="Roboto, 'Helvetica Neue', Arial, sans-serif">
+  <title id="sf-title">How a streamed forward pass runs: one decoder layer resident at a time</title>
+  <desc id="sf-desc">The checkpoint stays on disk as memory-mapped safetensors, one entry per
+  decoder layer. Resident memory holds only two things: the embeddings, the final norm and the
+  output head, loaded once and kept; and exactly one decoder layer. A pre-hook reads the layer it
+  is about to compute straight out of the checkpoint, the next layer is prefetched while the
+  current one computes, and a post-hook returns the finished layer to the meta device. Nothing is
+  copied to a scratch directory first, so a streamed run needs no spare disk at all. What has to
+  fit in memory is therefore the widest single layer, not the checkpoint — which is why a 70
+  billion parameter model runs in a few gigabytes instead of 141. The cost is time: every token
+  re-reads the whole checkpoint, which puts the run at seconds per token rather than tokens per
+  second.</desc>
+
+  <style>
+    .bg{fill:#ffffff}
+    .eyebrow{fill:#6b6b6b;font-size:12px;font-weight:700;letter-spacing:.12em}
+    .h{font-size:19px;font-weight:700;fill:#111111}
+    .panel-l{font-size:12px;font-weight:700;letter-spacing:.09em;fill:#6b6b6b}
+    .n-t{font-size:15px;font-weight:700}
+    .n-s{font-size:12.5px}
+    .edge-l{font-size:12px;font-weight:700;fill:#5a5a5a}
+    .caption{font-size:12.5px;fill:#5a5a5a;font-style:italic}
+
+    .panel{fill:#F7F7F8;stroke:#c9c9d0;stroke-width:1.5}
+    .w{fill:#E5F1F8;stroke:#0072B2;stroke-width:1.8}
+    .r{fill:#DFF2EC;stroke:#009E73;stroke-width:1.8}
+    .cur{fill:#FDF0E3;stroke:#E69F00;stroke-width:2.6}
+    .f{fill:#FBEDE6;stroke:#D55E00;stroke-width:1.8}
+    .o{fill:#F7EDF3;stroke:#CC79A7;stroke-width:2.4}
+
+    .ink{fill:#1a1a1a}
+    .k-blue{fill:#005a8d} .k-green{fill:#007254} .k-amber{fill:#8a5600}
+    .k-verm{fill:#9c4400} .k-rose{fill:#9c4b7d}
+
+    .flow{fill:none;stroke:#9a9a9a;stroke-width:2}
+    .dotted{fill:none;stroke:#9a9a9a;stroke-width:1.8;stroke-dasharray:6 5}
+
+    @media (prefers-color-scheme: dark){
+      .bg{fill:#141416} .eyebrow{fill:#a0a0a6} .h{fill:#f2f2f4} .panel-l{fill:#a0a0a6}
+      .edge-l{fill:#b4b4ba} .caption{fill:#a0a0a6} .ink{fill:#ececf0}
+      .panel{fill:#1b1b1d;stroke:#3a3a3d}
+      .w{fill:#10243d;stroke:#4da2ff} .r{fill:#0d2a22;stroke:#3ec9a1}
+      .cur{fill:#33250d;stroke:#ffb52e} .f{fill:#3a1f0d;stroke:#ff8a3d}
+      .o{fill:#2d1526;stroke:#e79ac4}
+      .k-blue{fill:#7ab8ff} .k-green{fill:#5fd9b6} .k-amber{fill:#ffc85c}
+      .k-verm{fill:#ffa972} .k-rose{fill:#f0b7d8}
+      .flow{stroke:#7a7a82} .dotted{stroke:#7a7a82}
+    }
+  </style>
+
+  <defs>
+    <marker id="c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#9a9a9a"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1220" height="560"/>
+  <text class="eyebrow" x="40" y="36">A STREAMED FORWARD PASS</text>
+  <text class="h" x="40" y="64">Exactly one decoder layer is ever resident.</text>
+
+  <!-- the checkpoint, which never moves -->
+  <rect class="panel" x="40" y="104" width="330" height="330" rx="12"/>
+  <text class="panel-l" x="62" y="132">CHECKPOINT ON DISK</text>
+  <text class="panel-l" x="62" y="150" font-weight="400" letter-spacing="0">safetensors, memory-mapped</text>
+
+  <rect class="w" x="64" y="168" width="282" height="56" rx="9"/>
+  <text class="n-t ink" x="205" y="202" text-anchor="middle">layer 0</text>
+  <rect class="w" x="64" y="238" width="282" height="56" rx="9"/>
+  <text class="n-t ink" x="205" y="272" text-anchor="middle">layer 1</text>
+  <text class="n-t k-blue" x="205" y="322" text-anchor="middle">⋮</text>
+  <rect class="w" x="64" y="344" width="282" height="56" rx="9"/>
+  <text class="n-t ink" x="205" y="378" text-anchor="middle">layer N</text>
+
+  <text class="caption" x="205" y="424" text-anchor="middle" font-size="11.5">no scratch copy — read in place</text>
+
+  <!-- resident memory, which is the whole point -->
+  <rect class="panel" x="470" y="104" width="380" height="330" rx="12"/>
+  <text class="panel-l" x="492" y="132">RESIDENT MEMORY</text>
+
+  <rect class="r" x="494" y="150" width="332" height="78" rx="9"/>
+  <text class="n-t ink" x="660" y="180" text-anchor="middle">embeddings + final norm + head</text>
+  <text class="n-s k-green" x="660" y="204" text-anchor="middle">loaded once, kept</text>
+
+  <rect class="cur" x="494" y="268" width="332" height="86" rx="9"/>
+  <text class="n-t k-amber" x="660" y="300" text-anchor="middle">exactly ONE</text>
+  <text class="n-t k-amber" x="660" y="324" text-anchor="middle">decoder layer</text>
+
+  <text class="caption" x="660" y="402" text-anchor="middle" font-size="11.5">the next layer loads while this one computes;</text>
+  <text class="caption" x="660" y="422" text-anchor="middle" font-size="11.5">the widest single layer is the requirement</text>
+
+  <!-- what the hooks do -->
+  <path class="dotted" d="M346 196 Q420 196 420 290 L486 290" marker-end="url(#c)"/>
+  <text class="edge-l" x="404" y="186" text-anchor="middle">pre-hook reads</text>
+
+  <path class="dotted" d="M346 266 Q430 266 430 300 L486 300" marker-end="url(#c)"/>
+  <text class="edge-l" x="412" y="248" text-anchor="middle">prefetched</text>
+
+  <path class="dotted" d="M346 372 Q440 372 440 316 L486 316" marker-end="url(#c)"/>
+
+  <!-- and what happens after -->
+  <path class="flow" d="M826 290 L944 290" marker-end="url(#c)"/>
+  <text class="edge-l" x="885" y="278" text-anchor="middle">post-hook frees it</text>
+  <rect class="f" x="948" y="262" width="232" height="58" rx="9"/>
+  <text class="n-t ink" x="1064" y="297" text-anchor="middle">back to meta</text>
+
+  <path class="flow" d="M660 228 L660 252" marker-end="url(#c)"/>
+
+  <path class="flow" d="M826 190 Q900 190 900 160 L944 160" marker-end="url(#c)"/>
+  <path class="flow" d="M826 340 Q900 340 900 172 L944 172" marker-end="url(#c)"/>
+  <rect class="o" x="948" y="132" width="232" height="58" rx="9"/>
+  <text class="n-t ink" x="1064" y="167" text-anchor="middle">logits</text>
+
+  <text class="caption" x="40" y="490">Memory stops being the constraint and time becomes one: every token re-reads the whole checkpoint, so the unit is seconds per token.</text>
+  <text class="caption" x="40" y="514">That is the trade this backend exists to offer, and the reason it is never chosen for a model that already fits.</text>
+</svg>

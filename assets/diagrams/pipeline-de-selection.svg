@@ -1,0 +1,157 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 780" width="1500" height="780"
+     role="img" aria-labelledby="sp-title sp-desc" font-family="Roboto, 'Helvetica Neue', Arial, sans-serif">
+  <title id="sp-title">Comment la sélection fonctionne : deux filtres, puis deux classements, contre un budget mesuré</title>
+  <desc id="sp-desc">Le catalogue de tout modèle de langage, de vision puis d'embarquement entre à gauche puis
+  traverse quatre étapes. Les deux premières filtrent. L'étape un demande si un schéma peut piloter
+  le modèle : celui qui ne sait pas honorer une sortie structurée est classé plus bas puis n'est
+  jamais choisi automatiquement, tout en restant trouvable sur demande. L'étape deux demande s'il
+  tient dans le budget, puis le budget n'est pas le chiffre de la fiche technique : il est mesuré
+  en dessous, depuis le réservoir unifié, la VRAM ou la RAM, la bande passante mémoire puis la
+  puce, enfin réduit à la demande par --live, qui pèse ce qui tourne déjà sur la machine. Un modèle
+  trop gros pour ce budget sort, puis seulement quand rien ne tient le flux de couches est proposé,
+  son coût énoncé en secondes par jeton. Ce qui survit aux deux filtres est classé deux fois :
+  d'abord sur l'axe de benchmark que la tâche désigne, ensuite sur le débit, où un modèle plus
+  léger à quelques points du meilleur est préféré au plus gros qui ne fait que tenir. Le choix
+  porte chaque nombre qui l'a produit.</desc>
+
+  <style>
+    .bg      { fill:#ffffff }
+    .eyebrow { fill:#6b6b6b; font-size:12px; font-weight:700; letter-spacing:.12em }
+    .h       { font-size:19px; font-weight:700; fill:#111111 }
+    .stage   { font-size:11.5px; font-weight:700; letter-spacing:.1em; fill:#8a8a93 }
+    .n-t     { font-size:15px; font-weight:700 }
+    .n-s     { font-size:12.5px }
+    .edge-l  { font-size:12.5px; font-weight:700; fill:#5a5a5a }
+    .panel-l { font-size:12px; font-weight:700; letter-spacing:.1em; fill:#6b6b6b }
+    .caption { font-size:12.5px; fill:#5a5a5a; font-style:italic }
+
+    .panel   { fill:#F7F7F8; stroke:#c9c9d0; stroke-width:1.5 }
+    .src     { fill:#FCFAD9; stroke:#E69F00; stroke-width:1.8 }
+    .gate    { fill:#FDF0E3; stroke:#E69F00; stroke-width:2.2 }
+    .rank    { fill:#DFF2EC; stroke:#009E73; stroke-width:1.8 }
+    .out     { fill:#DFF2EC; stroke:#009E73; stroke-width:3 }
+    .hw      { fill:#E5F1F8; stroke:#0072B2; stroke-width:1.8 }
+    .opt     { fill:#EFF7FC; stroke:#56B4E9; stroke-width:1.6 }
+    .aside   { fill:#F7EDF3; stroke:#CC79A7; stroke-width:1.8 }
+    .stream  { fill:#FBEDE6; stroke:#D55E00; stroke-width:1.8 }
+
+    .ink     { fill:#1a1a1a }
+    .k-amber { fill:#8a5600 } .k-green{ fill:#007254 } .k-blue{ fill:#005a8d }
+    .k-rose  { fill:#9c4b7d } .k-verm { fill:#9c4400 }
+
+    .flow    { fill:none; stroke:#9a9a9a; stroke-width:2 }
+    .dotted  { fill:none; stroke:#9a9a9a; stroke-width:2; stroke-dasharray:6 5 }
+
+    @media (prefers-color-scheme: dark) {
+      .bg{fill:#141416} .eyebrow{fill:#a0a0a6} .h{fill:#f2f2f4} .stage{fill:#8f8f96}
+      .edge-l{fill:#b4b4ba} .panel-l{fill:#a0a0a6} .caption{fill:#a0a0a6} .ink{fill:#ececf0}
+      .panel{fill:#1b1b1d;stroke:#3a3a3d}
+      .src{fill:#33300d;stroke:#ffb52e} .gate{fill:#33250d;stroke:#ffb52e}
+      .rank{fill:#0d2a22;stroke:#3ec9a1} .out{fill:#0d2a22;stroke:#3ec9a1}
+      .hw{fill:#10243d;stroke:#4da2ff} .opt{fill:#132a40;stroke:#56B4E9}
+      .aside{fill:#2d1526;stroke:#e79ac4} .stream{fill:#3a1f0d;stroke:#ff8a3d}
+      .k-amber{fill:#ffc85c} .k-green{fill:#5fd9b6} .k-blue{fill:#7ab8ff}
+      .k-rose{fill:#f0b7d8} .k-verm{fill:#ffa972}
+      .flow{stroke:#7a7a82} .dotted{stroke:#7a7a82}
+    }
+  </style>
+
+  <defs>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#9a9a9a"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1500" height="780"/>
+  <text class="eyebrow" x="40" y="36">COMMENT LA SÉLECTION FONCTIONNE</text>
+  <text class="h" x="40" y="64">Deux filtres, deux classements — contre un budget que personne n'a saisi.</text>
+
+  <!-- what drops out, above the filters that drop it -->
+  <rect class="aside" x="248" y="118" width="226" height="96" rx="10"/>
+  <text class="n-s k-rose" x="361" y="146" text-anchor="middle">classé plus bas,</text>
+  <text class="n-s k-rose" x="361" y="167" text-anchor="middle">jamais choisi d'office —</text>
+  <text class="n-s k-rose" x="361" y="196" text-anchor="middle">trouvable sur demande</text>
+
+  <rect class="stream" x="516" y="118" width="150" height="96" rx="10"/>
+  <text class="n-t ink" x="591" y="160" text-anchor="middle">trop gros</text>
+  <text class="n-s k-verm" x="591" y="188" text-anchor="middle">pour le budget</text>
+
+  <rect class="stream" x="706" y="106" width="258" height="120" rx="10"/>
+  <text class="caption" x="835" y="132" text-anchor="middle" font-size="11.5">seulement si rien ne tient</text>
+  <text class="n-t ink" x="835" y="158" text-anchor="middle">lightweight</text>
+  <text class="n-s k-verm" x="835" y="182" text-anchor="middle">couches lues en flux,</text>
+  <text class="n-s k-verm" x="835" y="204" text-anchor="middle">à des secondes par jeton</text>
+
+  <path class="dotted" d="M666 166 L700 166" marker-end="url(#b)"/>
+
+  <!-- the pipeline -->
+  <rect class="src" x="40" y="310" width="182" height="86" rx="10"/>
+  <text class="n-t ink" x="131" y="344" text-anchor="middle">le catalogue</text>
+  <text class="n-s k-amber" x="131" y="366" text-anchor="middle">tout LLM, VLM,</text>
+  <text class="n-s k-amber" x="131" y="386" text-anchor="middle">embarqueur</text>
+
+  <path class="flow" d="M222 353 L244 353" marker-end="url(#b)"/>
+
+  <text class="stage" x="248" y="298">1 · FILTRE</text>
+  <rect class="gate" x="248" y="310" width="226" height="86" rx="10"/>
+  <text class="n-t k-amber" x="361" y="346" text-anchor="middle">un schéma peut-il</text>
+  <text class="n-t k-amber" x="361" y="370" text-anchor="middle">le piloter ?</text>
+  <path class="flow" d="M361 310 L361 222" marker-end="url(#b)"/>
+  <text class="edge-l" x="374" y="268" text-anchor="start">non</text>
+
+  <path class="flow" d="M474 353 L508 353" marker-end="url(#b)"/>
+  <text class="edge-l" x="491" y="340" text-anchor="middle">oui</text>
+
+  <text class="stage" x="512" y="298">2 · FILTRE</text>
+  <rect class="gate" x="512" y="310" width="226" height="86" rx="10"/>
+  <text class="n-t k-amber" x="625" y="346" text-anchor="middle">tient-il dans</text>
+  <text class="n-t k-amber" x="625" y="370" text-anchor="middle">le budget ?</text>
+  <path class="flow" d="M591 310 L591 222" marker-end="url(#b)"/>
+  <text class="edge-l" x="604" y="268" text-anchor="start">non</text>
+
+  <path class="flow" d="M738 353 L772 353" marker-end="url(#b)"/>
+  <text class="edge-l" x="755" y="340" text-anchor="middle">oui</text>
+
+  <text class="stage" x="776" y="298">3 · CLASSE</text>
+  <rect class="rank" x="776" y="310" width="226" height="86" rx="10"/>
+  <text class="n-t ink" x="889" y="346" text-anchor="middle">meilleur score sur</text>
+  <text class="n-t ink" x="889" y="370" text-anchor="middle">l'axe de la tâche</text>
+
+  <path class="flow" d="M1002 353 L1026 353" marker-end="url(#b)"/>
+
+  <text class="stage" x="1030" y="298">4 · CLASSE</text>
+  <rect class="rank" x="1030" y="310" width="236" height="86" rx="10"/>
+  <text class="n-t ink" x="1148" y="340" text-anchor="middle">jetons/s — puis un</text>
+  <text class="n-t ink" x="1148" y="362" text-anchor="middle">plus léger presque égal</text>
+  <text class="n-s k-green" x="1148" y="384" text-anchor="middle">s'il en existe un</text>
+
+  <path class="flow" d="M1266 353 L1290 353" marker-end="url(#b)"/>
+
+  <rect class="out" x="1294" y="310" width="166" height="86" rx="10"/>
+  <text class="n-t ink" x="1377" y="346" text-anchor="middle">le choix</text>
+  <text class="n-s k-green" x="1377" y="370" text-anchor="middle">chaque nombre imprimé</text>
+
+  <!-- the budget, measured rather than quoted -->
+  <rect class="panel" x="420" y="470" width="420" height="246" rx="12"/>
+  <text class="panel-l" x="444" y="498">CETTE MACHINE, MESURÉE</text>
+
+  <rect class="hw" x="444" y="512" width="372" height="74" rx="9"/>
+  <text class="n-t ink" x="630" y="540" text-anchor="middle">réservoir unifié · VRAM · RAM</text>
+  <text class="n-s k-blue" x="630" y="564" text-anchor="middle">bande passante · puce</text>
+
+  <path class="flow" d="M630 586 L630 612" marker-end="url(#b)"/>
+
+  <rect class="hw" x="516" y="614" width="228" height="56" rx="9"/>
+  <text class="n-t ink" x="630" y="649" text-anchor="middle">budget utilisable</text>
+
+  <rect class="opt" x="860" y="614" width="236" height="56" rx="9"/>
+  <text class="n-s k-blue" x="978" y="640" text-anchor="middle">--live : ce qui tourne</text>
+  <text class="n-s k-blue" x="978" y="659" text-anchor="middle">dessus en ce moment</text>
+  <path class="dotted" d="M856 642 L752 642" marker-end="url(#b)"/>
+  <text class="edge-l" x="804" y="630" text-anchor="middle" font-size="11">réduit</text>
+
+  <!-- the budget is what filter 2 asks against -->
+  <path class="flow" d="M516 642 Q396 642 396 600 L396 420 Q396 400 416 400 L625 400" marker-end="url(#b)"/>
+
+  <text class="caption" x="40" y="762">Rien ici n'est le chiffre de la fiche technique : le budget est ce que l'accélérateur confie vraiment à un modèle, puis le classement préfère le plus sobre à quelques points du meilleur.</text>
+</svg>

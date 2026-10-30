@@ -4,6 +4,26 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **The last ten diagrams are hand-authored now; no Mermaid is left.** Five
+  flowcharts lived in each README as Mermaid fences, and a Mermaid fence has no
+  mechanism for a text alternative at all — between them, ten diagrams were
+  invisible to any reader who could not see them, in a repository whose other
+  figures all carry a `<title>` and a `<desc>`.
+
+  `selection-pipeline`, `streamed-forward-pass`, `streaming-triggers`,
+  `where-it-runs` and `virtual-model-name`, each with its French twin, built
+  from the corrected English geometry rather than redrawn. Okabe-Ito, light and
+  dark, full accessible descriptions. `tests/test_figures.py` now refuses a
+  Mermaid fence in any root Markdown file, which is the only form a preference
+  survives in.
+
+  The eyeball loop earned its place again: an arrow routed through the box it
+  was meant to pass behind, two edge labels wider than the gap they sat in and
+  clipped by the nodes they pointed at, and one label that read as belonging to
+  a different edge entirely. None of that is visible in the markup.
+
 ### Added
 
 - **A 52-second launch film, and the spec that keeps it honest.**
