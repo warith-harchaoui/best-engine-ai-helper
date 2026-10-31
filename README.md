@@ -418,9 +418,9 @@ Three things follow, and the third is the interesting one:
    **28.3**. That ratio is applied to every subsequent estimate on this
    machine, including for models that were never pulled.
 
-   That claim is tested rather than asserted: `scripts/validate_calibration.py` calibrates on one model, predicts another, and reports whether it beat the raw estimate. It did, in every direction tried, cutting the error from **64-118% down to 17-25%**.
+   That claim is tested rather than asserted: `scripts/validate_calibration.py` calibrates on one model, predicts another, and reports whether it beat the raw estimate. It did, in every direction tried, cutting the error from **64-118% down to 17-25%** — **a large correction, and still not precision.**
 
-**Both halves are worth stating: the correction is large, and it is not precision.** Ratios ranged about **0.46 to 0.61** across models and across repeated runs of the same model — which is why the factor is a median over several measurements rather than one, and why a real measurement still outranks a calibrated estimate wherever one exists.
+Both halves of that sentence carry weight. Ratios ranged about **0.46 to 0.61** across models and across repeated runs of the same model — which is why the factor is a median over several measurements rather than one, and why a real measurement still outranks a calibrated estimate wherever one exists.
 
 Calibration moves an estimate from wrong by a factor of two to wrong by about a fifth. It does not make it right.
 

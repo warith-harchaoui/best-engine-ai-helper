@@ -419,9 +419,9 @@ Trois conséquences, dont la troisième est la plus intéressante :
    prédisait **28,3**. Ce rapport s'applique ensuite à chaque estimation sur
    cette machine, y compris pour des modèles jamais tirés.
 
-   Cette affirmation est **éprouvée** plutôt que posée : `scripts/validate_calibration.py` calibre sur un modèle, prédit un autre, puis dit si le résultat bat l'estimation brute. C'est le cas dans toutes les directions essayées, l'erreur tombant de **64-118 % à 17-25 %**.
+   Cette affirmation est **éprouvée** plutôt que posée : `scripts/validate_calibration.py` calibre sur un modèle, prédit un autre, puis dit si le résultat bat l'estimation brute. C'est le cas dans toutes les directions essayées, l'erreur tombant de **64-118 % à 17-25 %** — **une grande correction, qui n'est toujours pas de la précision.**
 
-**Les deux moitiés méritent d'être dites : la correction est grande, puis elle n'est pas de la précision.** Les rapports s'étalent d'environ **0,46 à 0,61** selon le modèle, puis d'une exécution à l'autre du même modèle — ce qui explique pourquoi le facteur est une **médiane** sur plusieurs mesures plutôt qu'une seule, puis pourquoi une vraie mesure l'emporte toujours sur une estimation corrigée quand elle existe.
+Les deux moitiés de cette phrase comptent. Les rapports s'étalent d'environ **0,46 à 0,61** selon le modèle, puis d'une exécution à l'autre du même modèle — ce qui explique pourquoi le facteur est une **médiane** sur plusieurs mesures plutôt qu'une seule, puis pourquoi une vraie mesure l'emporte toujours sur une estimation corrigée quand elle existe.
 
 La calibration fait passer une estimation de « fausse d'un facteur deux » à « fausse d'un cinquième ». Elle ne la rend pas juste.
 
