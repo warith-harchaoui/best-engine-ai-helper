@@ -1091,9 +1091,10 @@ best-engine-ai-helper catalog update --cloud --arena
 **An entry is adopted only where both sources name the same model.** That is
 two citations, neither of them invented, and it is the whole admission test. A
 priced model nobody rated is still not adopted; a rated model nobody prices
-still cannot be billed. Measured on 2026-10-28, 18 models pass, 164 are priced
-without a rating and stay on the triage list, and the catalogue goes from 10
-entries to 28.
+still cannot be billed. Measured on 2026-10-28 by
+[`scripts/measure_arena_coverage.py`](scripts/measure_arena_coverage.py), which
+you can re-run: 18 models pass, 164 are priced without a rating and stay on the
+triage list, and the catalogue goes from 10 entries to 28.
 
 What an adopted entry deliberately does **not** carry is a `general`, `code`,
 `math`, `ocr` or `vision` score. Those stay null. The leaderboard measures

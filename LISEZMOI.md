@@ -1234,7 +1234,9 @@ best-engine-ai-helper catalog update --cloud --arena
 Cela fait deux citations, dont aucune n'est inventée, puis c'est tout le test
 d'admission. Un modèle tarifé que personne n'a noté n'est toujours pas adopté ;
 un modèle noté que personne ne tarife ne peut toujours pas être facturé. Au
-relevé du 2026-10-28, 18 modèles passent, 164 sont tarifés sans note puis
+relevé du 2026-10-28 par
+[`scripts/measure_arena_coverage.py`](scripts/measure_arena_coverage.py), que
+vous pouvez relancer : 18 modèles passent, 164 sont tarifés sans note puis
 restent sur la liste de triage, le catalogue passant de 10 entrées à 28.
 
 Ce qu'une entrée adoptée ne porte délibérément **pas**, c'est un score
