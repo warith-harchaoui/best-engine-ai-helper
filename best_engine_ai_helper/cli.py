@@ -71,6 +71,52 @@ from .recommend import write_report as _write_report
 # ---------------------------------------------------------------------------
 
 
+def _ellipsise(text: str, limit: int) -> str:
+    """
+    Shorten to ``limit`` characters on a word boundary, and say that it happened.
+
+    A column that silently drops the end of a sentence is worse than a narrow
+    one: the reader cannot tell a value that was cut from one that really ends
+    there. Every table below used a bare ``[:n]`` slice, and running the
+    commands showed what that costs — a streaming candidate's blocker reads
+    ``the checkpoint is 28 GB and only 21 GB i``, losing ``s free`` and ending
+    on an orphan letter, and all 31 catalogue notes were shown at 52 characters
+    out of as many as 158.
+
+    Parameters
+    ----------
+    text : str
+        The full value.
+    limit : int
+        Width the column can afford, ellipsis included.
+
+    Returns
+    -------
+    str
+        ``text`` unchanged when it fits, otherwise its first whole words
+        followed by a single ``…``.
+
+    Examples
+    --------
+    >>> _ellipsise("short enough", 40)
+    'short enough'
+    >>> _ellipsise("the checkpoint is 28 GB and only 21 GB is free", 40)
+    'the checkpoint is 28 GB and only 21 GB…'
+    >>> _ellipsise("supercalifragilistic", 8)          # no space to break on
+    'superca…'
+    """
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+    cut = text[: limit - 1]
+    # Only back up to the previous boundary when the cut landed *inside* a
+    # word. Doing it unconditionally drops a word that was already whole,
+    # which the doctest below caught before this comment existed.
+    if not cut.endswith(" ") and " " in cut:
+        cut = cut.rsplit(" ", 1)[0]
+    return f"{cut.rstrip()}…"
+
+
 def _fmt_table(rows: list[dict[str, Any]], columns: list[str]) -> str:
     """
     Format a list of dicts as a plain-text table with aligned columns.
@@ -268,7 +314,7 @@ def _streaming_rows(plans: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "s/token": plan["seconds_per_token"] if plan["seconds_per_token"] else "-",
                 "disk_gb": plan["disk"]["peak_gb"],
                 "runs": "yes" if plan["usable"] else "NO",
-                "notes": note[:52],
+                "notes": _ellipsise(note, 52),
             }
         )
     return rows
@@ -453,7 +499,7 @@ def recommend_cmd(
                         else "-"
                     ),
                     "comfy": "yes" if comfy else "NO",
-                    "notes": (e.get("notes") or "")[:40],
+                    "notes": _ellipsise(e.get("notes") or "", 40),
                 }
             )
         click.echo(_fmt_table(rows, ["id", "ram_gb", "score", "fits", "tok/s", "comfy", "notes"]))
@@ -692,7 +738,7 @@ def usages_list() -> None:
             "id": f["id"],
             "name": f["name"],
             "members": ", ".join(f["members"]),
-            "summary": f["summary"][:48],
+            "summary": _ellipsise(f["summary"], 48),
         }
         for f in _usages.list_families()
     ]
@@ -704,7 +750,7 @@ def usages_list() -> None:
             "name": p["name"],
             "family": p["family"] or "-",
             "status": p["status"],
-            "summary": p["summary"][:52],
+            "summary": _ellipsise(p["summary"], 52),
         }
         for p in _usages.list_usages()
     ]
@@ -1402,7 +1448,14 @@ def providers_cmd(as_json: bool) -> None:
                     "key_env": r["key_env"],
                     "usable": "yes" if r["available"] else "NO",
                     "models": len(r["models"]),
-                    "why not": r["reason"][:60],
+                    # The finding, not the remedy. `reason` carries both --
+                    # "no API key found. Set X in settings.yaml, a .env file,
+                    # …" -- and the remedy is printed once, in full, under the
+                    # table. Slicing it to 60 characters repeated that remedy
+                    # per row AND cut it mid-word, so the column said "a .en".
+                    # The first sentence is what this row knows; the footer
+                    # says what to do about it. `--json` still carries both.
+                    "why not": _ellipsise(r["reason"].partition(". ")[0], 60),
                 }
                 for r in rows
             ],
@@ -1412,7 +1465,7 @@ def providers_cmd(as_json: bool) -> None:
     usable = sum(1 for r in rows if r["available"])
     click.echo(f"\n{usable} of {len(rows)} provider(s) usable.")
     if usable < len(rows):
-        click.echo("Set a key in settings.yaml, a .env file, the environment, or the keychain.")
+        click.echo("Set a key in settings.yaml, a .env file, the environment, or the OS keychain.")
 
 
 @cli.command("doctor")
@@ -1864,7 +1917,7 @@ def airllm_compare(
     for row in streamed["rows"][:6]:
         rows.append(
             {
-                "model": (row["model"] or "")[:40],
+                "model": _ellipsise(row["model"] or "", 40),
                 "backend": "lightweight",
                 "score": f"{row['score']:.0f}" if row.get("score") else "-",
                 "resident": f"{row['resident_gb']:.1f}" if row["resident_gb"] else "-",
@@ -1977,7 +2030,7 @@ def imagine_plan(size: str, as_json: bool) -> None:
             "offload": "yes" if plan["offload"] else "no",
             "s/image": plan["seconds_per_image"] if plan["seconds_per_image"] else "-",
             "runs": "yes" if plan["usable"] else "NO",
-            "notes": (plan["blockers"][0] if plan["blockers"] else "")[:40],
+            "notes": _ellipsise(plan["blockers"][0] if plan["blockers"] else "", 40),
         }
         for plan in plans
     ]
