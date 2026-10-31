@@ -28,7 +28,7 @@ dependencies = [
     # Cap at <4, not <3: os-helper 3.0.0 dropped its own command line and
     # nothing here ever called it, so the major bump is not breaking for
     # this package.
-    "os-helper>=2.9.0,<4",
+    "os-helper>=2.9.0,<5",
     # detect.py imports this directly for the running-vLLM-process scan
     # (server_load()); already a transitive os-helper dep, declared directly
     # here too since the code imports it by name, not just by luck.
