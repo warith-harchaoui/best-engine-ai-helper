@@ -4,6 +4,8 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-10-31
+
 ### Added
 
 - **The handover file is no longer the one document with no gate.**
