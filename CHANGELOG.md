@@ -4,6 +4,25 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+## [1.11.1] - 2026-10-31
+
+### Fixed
+
+- **The published page linked a film that this release stops shipping.** The
+  render left the index — `assets/film/film.yaml` is a ledger of what the film
+  is rebuilt *from*, so 1.6 MB of derived bytes in every clone forever bought
+  nothing, and no test opens the file. The README's poster therefore pointed at
+  a raw URL that was about to 404, and 1.11.0's PyPI page still carries it.
+  This release replaces that link with the browsable `assets/film/` tree, and
+  `tests/test_no_rendered_video_is_tracked.py` holds the two halves together:
+  no render reaches the index, **and** what the film is rebuilt from stays
+  tracked, so dropping the output cannot quietly drop the means to remake it.
+
+- **A link in README and LISEZMOI was relative, which PyPI renders dead.**
+  `scripts/measure_arena_coverage.py` is now an absolute GitHub URL. The
+  package page is the one reader for whom a repository-relative path resolves
+  to nothing.
+
 ## [1.11.0] - 2026-10-31
 
 ### Added
