@@ -9,7 +9,14 @@ Pick and pull the best local large language model (LLM) or vision-language model
 
 [![Best Engine AI Helper glove logo](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/logo.png)](https://deraison.ai/ai-helpers)
 
-The tool detects available memory (Apple Silicon unified pool, NVIDIA VRAM, or system RAM), consults a bundled model catalog, and selects the highest-scoring model that fits within a configurable safety headroom. After selection, it pulls the model via Ollama and puts it through two quality gates before trusting it: does it catch and fix a known flaw seeded into a short text (the Ralph Loop), and does it spot an obvious visual defect seeded into a small test image (the Ralph Eyeball Loop)? Only a model that passes both gets its environment file written, the file downstream projects read to find the chosen model.
+The tool detects available memory (Apple Silicon unified pool, NVIDIA VRAM, or system RAM), consults a bundled model catalogue, and selects the highest-scoring model that fits within a configurable safety headroom.
+
+After selection it pulls the model via Ollama and puts it through **two quality gates** before trusting it:
+
+- does it catch and fix a known flaw seeded into a short text? (the Ralph Loop)
+- does it spot an obvious visual defect seeded into a small test image? (the Ralph Eyeball Loop)
+
+Only a model that passes both gets its environment file written — the file downstream projects read to find the chosen model.
 
 ## The film
 
@@ -54,7 +61,11 @@ English via `/gui?lang=en`, with a header link to switch. See
 
 ## In production
 
-This package sits at the base of the AI Helpers suite's model-selection layer, and the suite's rule is that **any member needing an LLM or VLM resolves it through this package rather than hardcoding a model name** — three published members (`md2star`, `standpoint`, `vocal-helper`) already do, and `md2star` is the reference implementation to copy. A model name written as a literal in another package is a bug there, not a shortcut: it survives the machine it was chosen on and nothing re-decides when the hardware changes. It ships on PyPI with a green CI gate on every push (ruff, mypy, and a pytest suite held above 90% coverage), and every release is a semantic-version tag on GitHub.
+This package sits at the base of the AI Helpers suite's model-selection layer, and the suite's rule is that **any member needing an LLM or VLM resolves it through this package rather than hardcoding a model name**. Three published members already do — `md2star`, `standpoint`, `vocal-helper` — and `md2star` is the reference implementation to copy.
+
+A model name written as a literal in another package is a bug there, not a shortcut: it survives the machine it was chosen on, and nothing re-decides when the hardware changes.
+
+It ships on PyPI with a green CI gate on every push (ruff, mypy, and a pytest suite held above 90% coverage), and every release is a semantic-version tag on GitHub.
 
 ## Documentation
 
@@ -72,13 +83,11 @@ This package sits at the base of the AI Helpers suite's model-selection layer, a
   PyYAML, click, requests, langdetect and the FastAPI/MCP surfaces (`fastapi`,
   `uvicorn`, `fastapi-mcp`). The CLI, GUI, HTTP API and MCP server are all part
   of the default install. **It is a few megabytes and it installs in seconds.**
-- **Running a model is opt-in; choosing one is not.** The deep-learning runtime
-  — torch, transformers, accelerate, safetensors, and diffusers for images —
-  lives behind `[lightweight]` and `[imagine]`. It was core for three days and
-  the measurement is why it is not any more: that stack is 196 MB on a
-  processor-only wheel and gigabytes of `nvidia-*` payload when pip takes the
-  CUDA build, which on Linux it does by default. Somebody asking which model
-  fits their laptop should not download a deep-learning stack to be told.
+- **Running a model is opt-in; choosing one is not.** The deep-learning runtime — torch, transformers, accelerate, safetensors, and diffusers for images — lives behind `[lightweight]` and `[imagine]`.
+
+  It was core for three days, and the measurement is why it is not any more: that stack is 196 MB on a processor-only wheel, and gigabytes of `nvidia-*` payload when pip takes the CUDA build — which on Linux it does by default.
+
+  Somebody asking which model fits their laptop should not download a deep-learning stack to be told.
 
   Nothing above that line needs it. The catalogues, the scoring, the hardware
   probe and the footprint and timing arithmetic behind `rank`, `imagine_rank`
@@ -272,18 +281,11 @@ best-engine-ai-helper activity --format json
 best-engine-ai-helper activity --what-if    # + what the free calls would have cost
 ```
 
-**`--what-if`: an avoided bill, not a saving.** The local-versus-cloud
-break-even calculators all ask the same question and all have to guess the
-same input — you type in a monthly token volume before the workload exists,
-and the payback period inherits the guess. This ledger already holds the
-workload, measured. `--what-if` crosses it with the same price table the
-ledger bills paid calls against, and prints what the **free calls you already
-made** would have cost at each paid model's list price, cheapest first. It is
-reported as an avoided bill and never as a saving: electricity, disk, and the
-time a slower model takes are real costs, and none of them is measured here.
-The token counts are approximate too — a local backend reports no `usage`
-block, so characters go through the same ~4-chars-per-token rule an unreported
-paid call does.
+**`--what-if`: an avoided bill, not a saving.** The local-versus-cloud break-even calculators all ask the same question, and all have to guess the same input: you type in a monthly token volume before the workload exists, so the payback period inherits the guess.
+
+This ledger already holds the workload, measured. `--what-if` crosses it with the same price table the ledger bills paid calls against, and prints what the **free calls you already made** would have cost at each paid model's list price, cheapest first.
+
+It is reported as an avoided bill, never as a saving. Electricity, disk, and the time a slower model takes are real costs, and none of them is measured here. The token counts are approximate too: a local backend reports no `usage` block, so characters go through the same ~4-chars-per-token rule an unreported paid call does.
 
 The CLI, GUI, and MCP server all enable recording by default; opt out with
 `BEST_ENGINE_NO_LEDGER=1`. The GUI's **Activity** section and `GET /api/activity`
@@ -321,19 +323,13 @@ Available memory comes from the highest-priority probe that succeeds: Apple
 Silicon unified memory (`system_profiler`), NVIDIA VRAM (`nvidia-smi`), AMD VRAM
 (`rocm-smi`), else half of system RAM as a conservative CPU-only estimate.
 
-The usable budget is **not** the whole pool. On Apple Silicon, Metal caps GPU
-allocations at about **66%** of unified memory at or below 36 GB and about
-**75%** above it (`recommendedMaxWorkingSetSize`); past that, work spills to the
-CPU and slows sharply. An extra safety `headroom` (default **0.5**, the hard
-ceiling: a larger value is clamped down to it) is applied
-on top, reserving room for the OS, your own application, and a model's own
-working memory: as a conversation or prompt gets longer, a model keeps a
-running cache of everything it has already read so it does not recompute it
-on every new word (the KV cache), and that cache keeps growing as context
-fills. A catalog entry's `ram_gb` is already a peak-inference estimate
-(weights plus a moderate KV cache; roughly weights ÷ 0.7, since weights are only
-about 70% of runtime memory and can approach 2× at long context). A model fits
-when that `ram_gb` is at most the budget.
+The usable budget is **not** the whole pool. Three deductions stand between the memory a machine has and the memory a model may use.
+
+- **The driver's own cap.** On Apple Silicon, Metal caps GPU allocations at about **66%** of unified memory at or below 36 GB, and about **75%** above it (`recommendedMaxWorkingSetSize`). Past that, work spills to the CPU and slows sharply.
+- **A safety `headroom`** (default **0.5**, which is also the hard ceiling — a larger value is clamped down to it), reserving room for the OS and your own application.
+- **The model's own working memory.** As a conversation or prompt gets longer, a model keeps a running cache of everything it has already read so it does not recompute it on every new word — the KV cache — and that cache keeps growing as context fills.
+
+A catalogue entry's `ram_gb` already accounts for the last one: it is a peak-inference estimate, weights plus a moderate KV cache, roughly weights ÷ 0.7, since weights are only about 70% of runtime memory and can approach 2× at long context.
 
 On the machine this was written on, that arithmetic comes out like this:
 
@@ -367,16 +363,11 @@ streaming its layers (see [below](#too-large-to-load-still-runnable-layer-stream
 
 ### 5. Live server load (optional, `--live`)
 
-The four factors above describe the machine's *theoretical* capacity. Add
-`--live` (`recommend`/`report`; `live: true` on `POST /api/recommend`) to also
-weigh what else is happening on it *right now*: current free RAM, CPU/GPU/disk
-usage, and how many engines (Ollama models, vLLM servers) are already running.
-A busy or already-loaded machine gets a smaller, more realistic budget than an
-idle one with identical hardware. Off by default: it adds a short live probe
-(~0.1-0.5s: `nvidia-smi`/`ioreg`, a local Ollama ping, a `psutil` sample) and
-makes the recommendation depend on this exact moment rather than being a
-deterministic function of the hardware alone, which matters for reproducible
-reports and CI.
+The four factors above describe the machine's *theoretical* capacity. Add `--live` (`recommend`/`report`; `live: true` on `POST /api/recommend`) to also weigh what else is happening on it *right now*: current free RAM, CPU/GPU/disk usage, and how many engines — Ollama models, vLLM servers — are already running.
+
+A busy or already-loaded machine then gets a smaller, more realistic budget than an idle one with identical hardware.
+
+It is off by default for two reasons. It adds a short live probe (~0.1-0.5 s: `nvidia-smi`/`ioreg`, a local Ollama ping, a `psutil` sample), and it makes the recommendation depend on this exact moment rather than being a deterministic function of the hardware alone — which matters for reproducible reports and for CI.
 
 **Sources.** Apple Metal working-set cap (Apple developer docs / apple-specs);
 inference-memory breakdown weights + KV (15-20%) + overhead (5-10%) (local-LLM
@@ -405,15 +396,11 @@ produced it, and only the daemon's clock is allowed to disqualify a model: wall
 time understates decode speed, and understating is what would reject a model
 that runs perfectly well.
 
-Re-measuring the same model keeps the **fastest** sample rather than the latest,
-which is a correctness requirement rather than optimism. The quantity being
-calibrated is a memory-bandwidth *ceiling*, and a busy machine can only ever
-make an observation look slower than the hardware really is. This was learned
-from the behaviour itself: `gemma3:12b` measured 15.2 tok/s on an idle machine
-and 8.7 tok/s with three test suites running — and the contended sample alone
-would have yielded a correction of 0.31 against the idle run's 0.54, skewing
-every estimate on the machine. `samples` records how much evidence stands behind
-the stored figure.
+Re-measuring the same model keeps the **fastest** sample rather than the latest, which is a correctness requirement rather than optimism. The quantity being calibrated is a memory-bandwidth *ceiling*, and a busy machine can only ever make an observation look slower than the hardware really is.
+
+This was learned from the behaviour itself. `gemma3:12b` measured 15.2 tok/s on an idle machine and 8.7 tok/s with three test suites running — and the contended sample alone would have yielded a correction of 0.31 against the idle run's 0.54, skewing every estimate on the machine.
+
+`samples` records how much evidence stands behind the stored figure.
 
 Three things follow, and the third is the interesting one:
 
@@ -431,16 +418,11 @@ Three things follow, and the third is the interesting one:
    **28.3**. That ratio is applied to every subsequent estimate on this
    machine, including for models that were never pulled.
 
-   That claim is tested rather than asserted — `scripts/validate_calibration.py`
-   calibrates on one model, predicts another, and reports whether it beat the
-   raw estimate. It did, in every direction tried, cutting the error from
-   **64-118% down to 17-25%**. Worth stating both halves: the correction is
-   large and it is not precision. Ratios ranged about **0.46 to 0.61** across
-   models and across repeated runs of the same model, which is why the factor
-   is a median over several measurements rather than one, and why a real
-   measurement still outranks a calibrated estimate wherever one exists.
-   Calibration moves an estimate from wrong by a factor of two to wrong by
-   about a fifth; it does not make it right.
+   That claim is tested rather than asserted: `scripts/validate_calibration.py` calibrates on one model, predicts another, and reports whether it beat the raw estimate. It did, in every direction tried, cutting the error from **64-118% down to 17-25%**.
+
+**Both halves are worth stating: the correction is large, and it is not precision.** Ratios ranged about **0.46 to 0.61** across models and across repeated runs of the same model — which is why the factor is a median over several measurements rather than one, and why a real measurement still outranks a calibrated estimate wherever one exists.
+
+Calibration moves an estimate from wrong by a factor of two to wrong by about a fifth. It does not make it right.
 
 Point 3 is also why the comfort floor mattered more than it looked: `COMFORT_TPS`
 is 15 tok/s, so an uncorrected estimate of 28.3 sails past it while the real
@@ -597,14 +579,13 @@ the dense trend would predict twice as many), so a MoE entry that does not
 declare its `layers` is **refused** rather than guessed at — a guess there is
 wrong by a factor of two, in the direction that over-promises.
 
-Read the second column first. **Disk space, not memory, is what usually refuses
-a model** — but only the checkpoint's own size. Layers are read out of the
-original safetensors, memory-mapped and tensor-indexed, so nothing is copied and
-there is no scratch space to find: a 405B model is an 810 GB download, and then
-it is ready. (The previous runtime wrote a second per-layer copy beside the
-first, which is why this column used to read 1701 GB and why almost every row of
-`lightweight plan` used to say `runs: NO`.) Memory is the easy half of
-streaming.
+Read the second column first. **Disk space, not memory, is what usually refuses a model** — but only the checkpoint's own size.
+
+Layers are read out of the original safetensors, memory-mapped and tensor-indexed, so nothing is copied and there is no scratch space to find. A 405B model is an 810 GB download, and then it is ready.
+
+The previous runtime wrote a second per-layer copy beside the first. That is why this column used to read 1701 GB, and why almost every row of `lightweight plan` used to say `runs: NO`.
+
+Memory is the easy half of streaming.
 
 These figures were checked against airllm's published numbers, and the check
 is worth stating precisely because the headline "70B on a 4 GB GPU" is true at a
@@ -647,15 +628,11 @@ Read the `runs` column: the 72B that scores 89 is right there in the Ollama
 catalog and **does not fit** this 24 GB card. Streaming is what puts the same
 class of model within reach, at the price in the `answer` column.
 
-Each side is ranked by its own backend's rules, and the streamed side inverts
-the usual one. Everywhere else this package picks the **leanest** model within a
-few benchmark points of the best, because a gigabyte of residency is paid on
-every run and competes with your own workload. Streaming breaks that premise:
-residency is one shard whatever the model's size, so leanness buys nothing and
-the anti-greed rule lands on an 8B model — the one senseless outcome, since an
-8B model runs natively a hundred times faster. The streamed pick is instead the
-**most capable** model that runs, by benchmark score, with parameter count
-deciding only where no benchmark does.
+Each side is ranked by its own backend's rules, and the streamed side inverts the usual one.
+
+Everywhere else this package picks the **leanest** model within a few benchmark points of the best, because a gigabyte of residency is paid on every run and competes with your own workload.
+
+Streaming breaks that premise: residency is one shard whatever the model's size, so leanness buys nothing — and the anti-greed rule lands on an 8B model, the one senseless outcome, since an 8B model runs natively a hundred times faster. The streamed pick is instead the **most capable** model that runs, by benchmark score, with parameter count deciding only where no benchmark does.
 
 Not simply the biggest, and the difference is not academic: the first rule here
 *was* "biggest that runs", and this very table showed what it cost — a 141B
@@ -675,14 +652,11 @@ Never by default. Two triggers, and nothing else:
 
 ![When layer streaming switches on, and why it never does by default](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/streaming-triggers.png)
 
-**Automatic** — the conventional backend resolved nothing that *fits* this
-machine for a kind your brief needs. Streaming is then the difference between a
-model and no model, so `resolve` proposes it with its cost stated. The rescue is
-**per kind**: if your LLM fits and no VLM does, only the VLM falls back, and the
-engine file is honestly mixed (Ollama for one kind, `lightweight` for the other —
-`model_for()` reads the per-kind backend first). The descriptor records the
-decision and its reason under `lightweight:`, *including when the answer was no*, so
-a machine that cannot stream says why instead of staying silent.
+**Automatic** — the conventional backend resolved nothing that *fits* this machine for a kind your brief needs. Streaming is then the difference between a model and no model, so `resolve` proposes it with its cost stated.
+
+The rescue is **per kind**. If your LLM fits and no VLM does, only the VLM falls back, and the engine file is honestly mixed: Ollama for one kind, `lightweight` for the other (`model_for()` reads the per-kind backend first).
+
+The descriptor records the decision and its reason under `lightweight:`, *including when the answer was no* — so a machine that cannot stream says why instead of staying silent.
 
 **Manual** — you ask:
 
@@ -726,15 +700,11 @@ best-engine-ai-helper lightweight compare --tokens 300 --batch 8
 best-engine-ai-helper lightweight prepare --model meta-llama/Llama-3.3-70B-Instruct
 ```
 
-`--measure` is worth knowing about. The drive sets the entire speed of this
-backend, so assuming its class (Apple internal NVMe, generic NVMe, SATA SSD,
-spinning disk) is a weaker input than measuring it. The measurement writes and
-reads back ~256 MB **with the page cache bypassed** (`F_NOCACHE` on macOS,
-`O_DIRECT` on Linux); without that step the read is served from RAM and reports
-the memory bus — which is how this probe first claimed 13 GB/s on a drive whose
-own specification tops out near 7. On a platform with no way to bypass the cache
-it returns nothing rather than a flattering number, and every surface labels the
-figure `measured` or `declared`.
+`--measure` is worth knowing about. The drive sets the entire speed of this backend, so assuming its class (Apple internal NVMe, generic NVMe, SATA SSD, spinning disk) is a weaker input than measuring it.
+
+The measurement writes and reads back ~256 MB **with the page cache bypassed** (`F_NOCACHE` on macOS, `O_DIRECT` on Linux). Without that step the read is served from RAM and reports the memory bus — which is how this probe first claimed 13 GB/s on a drive whose own specification tops out near 7.
+
+On a platform with no way to bypass the cache it returns nothing rather than a flattering number, and every surface labels the figure `measured` or `declared`.
 
 ### Limits, stated plainly
 
@@ -769,14 +739,11 @@ figure `measured` or `declared`.
   is named explicitly rather than guessed. A CPU-only machine is still not
   *offered* streaming automatically, because the rate it would get is below the
   batch floor; it can be asked for.
-- **The context is 4096 tokens unless you ask for more.** A tokenizer left at
-  its own default *truncates* past it, so the runtime always configures
-  `max_seq_len` explicitly — set to the same 4k the footprint above is priced
-  at. The two
-  numbers are deliberately the same one: a tool that quotes memory for a 4k
-  context and then quietly runs a 512-token one would be lying in the direction
-  where you lose the end of your prompt. Raise it with `max_seq_len=` and the
-  KV term rises exactly as the formula says.
+- **The context is 4096 tokens unless you ask for more.** A tokenizer left at its own default *truncates* past it, so the runtime always configures `max_seq_len` explicitly — set to the same 4k the footprint above is priced at.
+
+  The two numbers are deliberately the same one: a tool that quotes memory for a 4k context and then quietly runs a 512-token one would be lying in the direction where you lose the end of your prompt.
+
+  Raise it with `max_seq_len=` and the KV term rises exactly as the formula says.
 
 ### Why this runtime is our own rather than an import
 
@@ -784,14 +751,12 @@ A fair question, and the answer changed. The technique was demonstrated by
 [airllm](https://github.com/lyogavin/airllm) (Apache-2.0), which this package
 imported at first. Three measurements moved it in-house:
 
-1. **It did not work on Apple Silicon at all.** airllm's `AutoModel` dispatches
-   on architecture everywhere except macOS, where it hard-returns a hand-written
-   Llama transformer in MLX with `bias=False` throughout. Qwen carries attention
-   biases; Llama 3.2 ties its embeddings, so there is no `lm_head` tensor; older
-   exports persist `rotary_emb.inv_freq`. Three different crashes, on the
-   platform this suite is developed on — and `generate()` never got that far
-   anyway, raising `AttributeError: 'AirLLMLlamaMlx' object has no attribute
-   'device'` on the first call on every Mac.
+1. **It did not work on Apple Silicon at all.** airllm's `AutoModel` dispatches on architecture everywhere except macOS, where it hard-returns a hand-written Llama transformer in MLX with `bias=False` throughout. Three different crashes follow:
+   - Qwen carries attention biases;
+   - Llama 3.2 ties its embeddings, so there is no `lm_head` tensor;
+   - older exports persist `rotary_emb.inv_freq`.
+
+   On the platform this suite is developed on, no less. And `generate()` never got that far anyway, raising `AttributeError: 'AirLLMLlamaMlx' object has no attribute 'device'` on the first call on every Mac.
 2. **It wrote a second copy of every checkpoint to disk.** Per-layer shards,
    written before anything ran, so a 70B needed ~294 GB free rather than ~140.
    That is what made almost every row of `lightweight plan` read `runs: NO` on a
@@ -896,7 +861,11 @@ The bundled seed catalog (`models.yaml`) covers the Qwen 3, Qwen 2.5, Qwen 2.5-C
 
 `catalog update` refreshes the cache from the [ApXML LLM directory](https://apxml.com/models?modelType=open_weight) (open-weight models with their per-quant VRAM needs, consulted regularly). It fetches the specs, normalizes them to catalog entries, and merges them into `~/.best-engine-ai-helper/catalog_cache.yaml` by id (the bundled seed is never modified). Use `--limit N` for a quick partial refresh. ApXML's static pages carry specs but no numeric leaderboard scores, so refreshed entries keep null benchmarks (and rank low) until a scored source, such as the Open LLM Leaderboard v2 or the OpenVLM Leaderboard, fills them.
 
-`--ollama` widens the catalog from the [official Ollama library](https://ollama.com/library) instead of ApXML, and it exists because the servable catalog was stuck at twenty models for a reason that was never about scoring. ApXML can add hundreds of entries, but it names them by the paper's slug (`qwen36-35b-a3b`), which is a HuggingFace repo name that `ollama pull` cannot resolve — so those entries are vLLM-only. The library instead publishes families, their capabilities, and the sizes each one ships, and a family plus a size **is** a pull tag: `qwen3` plus `8b` is `qwen3:8b`, exactly the spelling the seed already uses. 256 families expand to roughly 420 pull tags, from a single request.
+`--ollama` widens the catalog from the [official Ollama library](https://ollama.com/library) instead of ApXML, and it exists because the servable catalogue was stuck at twenty models for a reason that was never about scoring.
+
+ApXML can add hundreds of entries, but it names them by the paper's slug (`qwen36-35b-a3b`) — a HuggingFace repo name that `ollama pull` cannot resolve, so those entries are vLLM-only.
+
+The library instead publishes families, their capabilities, and the sizes each one ships. A family plus a size **is** a pull tag: `qwen3` plus `8b` is `qwen3:8b`, exactly the spelling the seed already uses. 256 families expand to roughly 420 pull tags, from a single request.
 
 These entries carry **no benchmark scores**, because the library publishes sizes and descriptions rather than leaderboard results. They therefore rank *below* every scored model until a scored source fills them in. That is the point rather than a limitation: it widens what the tool can size and pull without changing what it recommends, and an invented score would be worse than an absent one — a null ranks low and is honest, a guess ranks wrongly and looks authoritative.
 
@@ -908,11 +877,19 @@ Sizes are derived from a constant **measured** against the seed's own fourteen Q
 
 **It rates hosted frontier endpoints, and nothing else.** Arena rates what its voters can chat with, which today means names like `claude-opus-5.5-max`, `gpt-6-astra-max` and `gemini-4-argon-high`. Re-surveyed 2026-10-28, that is **37 models** across three boards of twenty. Against the *local* catalogue that is almost nothing — **1 of 51**, `kimi-k3` — because nobody votes on an open-weight Ollama tag. Against the *paid* one it is most of it: **18 of 28**, once `catalog update --cloud` has put current models in the file. That asymmetry is the axis's defining property, not a defect in it.
 
-A board name carries a reasoning-effort suffix an API model id never does: `claude-opus-5.5-max` and `claude-opus-5.5-high` are one billable model served at two efforts, billed once at one rate per token. Both ratings therefore belong to the same catalogue entry, and the one taken is the **lowest** of them — the higher one describes a mode you have to ask for and pay more output tokens for, so attributing it to the bare id would promise what a default call does not deliver. When the board also rates the unsuffixed name (`claude-opus-4-6` sits next to its `-high`), that one wins outright: it *is* the default mode. A different serving *product* — `claude-3-5-sonnet-20250219-thinking-32k` — still matches nothing, on purpose.
+A board name carries a reasoning-effort suffix an API model id never does: `claude-opus-5.5-max` and `claude-opus-5.5-high` are one billable model served at two efforts, billed once at one rate per token.
+
+Both ratings therefore belong to the same catalogue entry, and the one taken is the **lowest** of them. The higher one describes a mode you have to ask for and pay more output tokens for, so attributing it to the bare id would promise what a default call does not deliver.
+
+When the board also rates the unsuffixed name — `claude-opus-4-6` sits next to its `-high` — that one wins outright: it *is* the default mode. A different serving *product*, such as `claude-3-5-sonnet-20250219-thinking-32k`, still matches nothing, on purpose.
 
 Embedding models cannot match by construction either: nobody chats with an embedder, so no leaderboard of chat preferences will ever rate one. The command prints its own `matched/total` every run, so you never have to take this paragraph's word for it.
 
-**It is a third-party scrape, and the mirrors rot in ways that look like outages.** Arena publishes no API. One mirror stopped updating 524 days ago. The other runs daily and keeps producing a directory even on days its own scrape returns nothing — so its index names an empty one, and the adapter used to read that, report "no usable data", and stop. It now walks back to the newest snapshot that *has* data, and reads the board names from the mirror's own index rather than guessing them: two of the four names it used to guess (`overall`, `coding`) were never published, so the code axis was silently empty against a mirror that was serving it as `code`. That is the difference between 0 ratings and 37.
+**It is a third-party scrape, and the mirrors rot in ways that look like outages.** Arena publishes no API. One mirror stopped updating 524 days ago. The other runs daily and keeps producing a directory even on days its own scrape returns nothing — so its index names an empty one, and the adapter used to read that, report "no usable data", and stop.
+
+It now does two things instead. It walks back to the newest snapshot that *has* data. And it reads the board names from the mirror's own index rather than guessing them: two of the four names it used to guess (`overall`, `coding`) were never published, so the code axis was silently empty against a mirror that was serving it as `code`.
+
+That is the difference between 0 ratings and 37.
 
 Past `MAX_SNAPSHOT_AGE_DAYS` the adapter still refuses and names the reason, because an Elo from a previous generation would rank 2025's models above 2026's — strictly worse than no Elo. It never reports a success that enriched nothing.
 
@@ -972,7 +949,11 @@ A project usually knows its job more precisely than a machine-wide default can, 
    - **CPU-only (Linux or macOS) -> Ollama.** vLLM's CPU-only path — notably on Linux — is its own reported weak spot; Ollama's CPU path is the well-trodden one.
    - **Discrete GPU (NVIDIA/AMD) on Linux — the real production case -> vLLM**, chiefly for the request-batching/concurrency handling it offers under real load, which Ollama does not match.
 
-   Windows falls back to Ollama too (no native vLLM wheel, WSL-only), so in short: **vLLM only on Linux with a discrete GPU; Ollama everywhere else.** The pick is deliberately conservative in other ways too: the memory headroom is capped at 0.5, and among models within a few benchmark points of the best it takes the leanest and fastest, not the largest that merely fits. vLLM picks are sized against full FP16 weights (heavier than the Ollama Q4 estimate), so a vLLM pick is realistic on the real GPU. The output is hardware-specific; add it to `.gitignore`:
+   Windows falls back to Ollama too (no native vLLM wheel, WSL-only), hence the short version: **vLLM only on Linux with a discrete GPU, Ollama everywhere else.**
+
+The pick is deliberately conservative in other ways too. The memory headroom is capped at 0.5, and among models within a few benchmark points of the best it takes the leanest and fastest — not the largest that merely fits.
+
+vLLM picks are sized against full FP16 weights, heavier than the Ollama Q4 estimate, so a vLLM pick is realistic on the real GPU. The output is hardware-specific; add it to `.gitignore`:
 
    ```yaml
    backend: ollama
@@ -1025,12 +1006,21 @@ Local mode does not mean *this* box. `--endpoint URL` (or `base_url` in the brie
 
 ### On a paid provider (opt-in, and only once you supply a key)
 
-A paid call never happens by accident. It takes a brief that says `mode: cloud`, **and** an `api_key_env` naming an environment variable that is actually set — `api_key_env` holds the variable's NAME, never the key itself, and the key is never persisted into the engine file. When the brief pins no provider, the auto-pick only considers providers whose key resolves **right now** — holding one Mistral key and no Gemini key, you get Mistral, even where Gemini scores higher — and `best-engine-ai-helper providers` lists exactly which ones are usable and why the others are not. A *pinned* provider is still honoured without a key, because `api_key_env` holds a variable name and a descriptor is meant to be written where the secret is absent and executed where it is present; the engine file records `api_key_present: true|false` so you can tell the two apart. That is also how `report` prices a paid model it never calls. Nothing in this package escalates from local to paid on its own; the only automatic direction is the safe one, paid → local, when a paid call fails.
+A paid call never happens by accident. It takes a brief that says `mode: cloud`, **and** an `api_key_env` naming an environment variable that is actually set.
+
+`api_key_env` holds the variable's NAME, never the key itself, and the key is never persisted into the engine file.
+
+- **When the brief pins no provider**, the auto-pick only considers providers whose key resolves *right now*. Holding one Mistral key and no Gemini key, you get Mistral — even where Gemini scores higher. `best-engine-ai-helper providers` lists exactly which ones are usable, and why the others are not.
+- **A pinned provider is still honoured without a key**, because `api_key_env` holds a variable name: a descriptor is meant to be written where the secret is absent and executed where it is present. The engine file records `api_key_present: true|false` so you can tell the two apart.
 
 `mode: cloud` routes through a paid provider instead: OpenAI, Mistral, OpenRouter, Together, or Azure OpenAI (all OpenAI-compatible), plus Anthropic and Gemini (their own wire formats), while keeping the exact same `llm.chat(engine=..., kind=...)` call site downstream. Two ways to pick the model:
 
 - **Pin it**: name `provider` and `model` explicitly in the brief, exactly as before.
-- **Auto-pick it**: omit `model` (and `provider`, to search every provider) and best-engine picks the best paid model from a small bundled catalog (`pricing.yaml`, extended with benchmark scores per model), the same way local mode auto-picks from `models.yaml`, except that the resource being budgeted is **price**, not memory, since every paid model fits on any machine. A `quality_vs_cost` knob (0..1, default 0.7) tips the pick: `1.0` picks purely on benchmark score, `0.0` picks purely on price, and the default leans quality with price as a tiebreaker.
+- **Auto-pick it**: omit `model` — and `provider`, to search every provider — and best-engine picks the best paid model from a small bundled catalogue (`pricing.yaml`, extended with benchmark scores per model).
+
+  It is the same mechanism local mode uses on `models.yaml`, with one difference: the resource being budgeted is **price**, not memory, since every paid model fits on any machine.
+
+  A `quality_vs_cost` knob (0..1, default 0.7) tips the pick: `1.0` picks purely on benchmark score, `0.0` purely on price, and the default leans quality with price as a tiebreaker.
 
 Azure is pinned only, never auto-picked, and the reason is structural rather than a preference: it is the one provider with no universal base URL to route to. Its endpoint is `https://<your-resource>.openai.azure.com` and the id a request carries is a *deployment name* you chose, not the model name a price table lists — so an auto-picked Azure entry would resolve to an empty `base_url` and call nothing. Pin `provider`, `model` and `base_url` and it works exactly as it always did.
 
@@ -1088,16 +1078,9 @@ best-engine-ai-helper catalog update --cloud --arena
 
 ![How the paid catalogue grows: a public price table knows 188 chat models you can buy and no quality score; a leaderboard mirror knows 37 rated names and no price; a model is adopted only where both name it — 18 today, with 164 priced-but-unrated printed for triage and 4 catalogue entries unknown to the price source left exactly as they were](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/two-sources.png)
 
-**An entry is adopted only where both sources name the same model.** That is
-two citations, neither of them invented, and it is the whole admission test. A
-priced model nobody rated is still not adopted; a rated model nobody prices
-still cannot be billed. Measured on 2026-10-28 by
-[`scripts/measure_arena_coverage.py`](scripts/measure_arena_coverage.py): 18
-models pass, 164 are priced without a rating and stay on the triage list, and
-the catalogue goes from 10 entries to 28. Re-running that script prints
-**today's** count, not this one — the price source gains models (190 of them on
-2026-10-31) while the board's snapshot ages, so the figures above are a dated
-reading and are labelled as one.
+**An entry is adopted only where both sources name the same model.** That is two citations, neither of them invented, and it is the whole admission test. A priced model nobody rated is still not adopted; a rated model nobody prices still cannot be billed.
+
+Measured on 2026-10-28 by [`scripts/measure_arena_coverage.py`](scripts/measure_arena_coverage.py): 18 models pass, 164 are priced without a rating and stay on the triage list, and the catalogue goes from 10 entries to 28. **Re-running that script prints today's count, not these figures** — the price source gains models (190 of them on 2026-10-31) while the board's snapshot ages, so the numbers above are a dated reading, and are labelled as one.
 
 What an adopted entry deliberately does **not** carry is a `general`, `code`,
 `math`, `ocr` or `vision` score. Those stay null. The leaderboard measures
@@ -1115,13 +1098,11 @@ Two consequences worth knowing before you read the ranking:
   leaderboard are both printed out of 100 and are *not the same quantity*. The
   cloud table names the axis behind every row for exactly that reason, and a
   few points between two rows measured differently is not a result.
-- **A model can be rated and still show `?`.** The mirror publishes a top
-  twenty per board, so a model can be rated for code and absent from text —
-  censored, not weak. Those candidates rank last on quality *and* are left out
-  of the quality range, so one of them cannot flatten the scale for everyone
-  else. (It could: before this, four such entries turned a 68–88 quality spread
-  into 0–88, and the quality-led default started behaving like a price-led
-  one.)
+- **A model can be rated and still show `?`.** The mirror publishes a top twenty per board, so a model can be rated for code and absent from text: censored, not weak.
+
+  Those candidates rank last on quality *and* are left out of the quality range, so one of them cannot flatten the scale for everyone else.
+
+  It could: before this, four such entries turned a 68–88 quality spread into 0–88, and the quality-led default started behaving like a price-led one.
 
 Re-derive any of these numbers yourself — the script is in the repository and
 reads through the package's own loaders, so it cannot drift from what the code
@@ -1228,16 +1209,11 @@ The whole grammar, and where each name ends up:
 | `POST /v1/embeddings` | `float` or `base64` encoding, one vector per input, indices included |
 | `POST /v1/images/generations` | Local diffusion. `size: "auto"` (the default) uses the model's **native** resolution; `b64_json` is the default response format, since a local server has nowhere to host a file |
 
-**Context length is measured, not declared.** Not one of the 31 local
-catalogue rows carries a `context_length`, and none should: the window belongs
-to a particular quantisation of a particular checkpoint, so a figure typed into
-`models.yaml` would describe a file nobody here has opened. A model you have
-actually pulled knows its own, though — the GGUF metadata carries it and Ollama
-hands it over on `/api/show` — so `pull` and `validate` read it and write it
-to the same per-machine store the measured decode speed lives in. `/v1/models`
-then publishes a real window for the models this machine holds, and nothing at
-all for the ones it does not. The paid half needs none of this: the price
-source publishes a window, so a cloud entry simply declares one.
+**Context length is measured, not declared.** Not one of the 31 local catalogue rows carries a `context_length`, and none should: the window belongs to a particular quantisation of a particular checkpoint, so a figure typed into `models.yaml` would describe a file nobody here has opened.
+
+A model you have actually pulled knows its own, though — the GGUF metadata carries it, and Ollama hands it over on `/api/show`. So `pull` and `validate` read it and write it to the same per-machine store the measured decode speed lives in. `/v1/models` then publishes a real window for the models this machine holds, and nothing at all for the ones it does not.
+
+The paid half needs none of this: the price source publishes a window, so a cloud entry simply declares one.
 
 `/v1` sits on the same app as the GUI, the `/api/*` routes and the MCP
 endpoint: one process, one port. The MCP surface deliberately does **not**
@@ -1301,14 +1277,11 @@ A diffusion model is not one stack of layers but **three or four networks that
 take turns** — text encoders, a denoiser (UNet or transformer), a VAE — and two
 consequences of that run through the whole feature:
 
-**Memory depends on how they take turns.** All resident, the footprint is their
-sum. Handed to `diffusers`' `enable_model_cpu_offload()`, only the component
-computing stays resident and the peak becomes the *largest* one — the same trade
-layer streaming makes for an LLM, at a far smaller penalty, because the
-components swap a few times per image rather than once per token. That is the
-`offload` column above, and it is tried automatically before a model is rejected
-for memory: on FLUX, where 8.4B of 16.9B is a T5 text encoder used once per
-image, it is the difference between running it and not.
+**Memory depends on how they take turns.** All resident, the footprint is their sum. Handed to `diffusers`' `enable_model_cpu_offload()`, only the component computing stays resident and the peak becomes the *largest* one.
+
+That is the same trade layer streaming makes for an LLM, at a far smaller penalty, because the components swap a few times per image rather than once per token.
+
+It is the `offload` column above, and it is tried automatically before a model is rejected for memory. On FLUX, where 8.4B of 16.9B is a T5 text encoder used once per image, it is the difference between running it and not.
 
 **Time is steps, not tokens.** The sampling loop runs a fixed number of
 denoising steps, each a full pass through the denoiser, so the honest unit is

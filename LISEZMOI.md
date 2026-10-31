@@ -9,14 +9,14 @@ Choisit et télécharge le meilleur modèle de langage (LLM, *large language mod
 de vision-langage (VLM, *vision-language model*) local adapté au matériel de la machine
 courante.
 
-L'outil détecte la mémoire disponible (mémoire unifiée Apple Silicon, mémoire vidéo NVIDIA
-ou RAM système), consulte un catalogue de modèles intégré et sélectionne le modèle au
-meilleur score qui tient dans une marge de sécurité configurable. Après la sélection, il
-télécharge le modèle via Ollama et le soumet à deux contrôles avant de lui faire confiance :
-sait-il repérer et corriger un défaut connu glissé dans un court texte (la boucle Ralph), et
-sait-il repérer un défaut visuel évident glissé dans une petite image de test (la boucle
-Ralph Eyeball) ? Seul un modèle qui réussit les deux voit son fichier d'environnement
-écrit, le fichier que les projets en aval viennent lire pour trouver le modèle choisi.
+L'outil détecte la mémoire disponible (mémoire unifiée Apple Silicon, mémoire vidéo NVIDIA ou RAM système), consulte un catalogue de modèles intégré, puis sélectionne le modèle au meilleur score qui tient dans une marge de sécurité configurable.
+
+Après la sélection, il télécharge le modèle via Ollama puis le soumet à **deux contrôles** avant de lui faire confiance :
+
+- sait-il repérer puis corriger un défaut connu glissé dans un court texte ? (la boucle Ralph)
+- sait-il repérer un défaut visuel évident glissé dans une petite image de test ? (la boucle Ralph Eyeball)
+
+Seul un modèle qui réussit les deux voit son fichier d'environnement écrit — le fichier que les projets en aval viennent lire pour trouver le modèle choisi.
 
 [![logo](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/logo.png)](https://deraison.ai/ai-helpers)
 
@@ -65,7 +65,11 @@ défaut, anglais via `/gui?lang=en`, avec un lien d'en-tête pour basculer. Voir
 
 ## En production
 
-Ce paquet est à la base de la couche de sélection de modèles de la suite AI Helpers, puis la règle de la suite est que **tout membre ayant besoin d'un LLM ou d'un VLM le résout par ce paquet plutôt que de coder en dur un nom de modèle** — trois membres publiés (`md2star`, `standpoint`, `vocal-helper`) le font déjà, `md2star` servant d'implémentation de référence à recopier. Un nom de modèle écrit en littéral dans un autre paquet est un défaut là-bas, pas un raccourci : il survit à la machine sur laquelle il a été choisi puis rien ne redécide quand le matériel change. Il est publié sur PyPI avec une intégration continue verte à chaque envoi (ruff, mypy et une suite de tests maintenue au-dessus de 90 % de couverture). Chaque version est un tag sémantique sur GitHub.
+Ce paquet est à la base de la couche de sélection de modèles de la suite AI Helpers, puis la règle de la suite est que **tout membre ayant besoin d'un LLM ou d'un VLM le résout par ce paquet plutôt que de coder en dur un nom de modèle**. Trois membres publiés le font déjà — `md2star`, `standpoint`, `vocal-helper` — `md2star` servant d'implémentation de référence à recopier.
+
+Un nom de modèle écrit en littéral dans un autre paquet est un défaut là-bas, pas un raccourci : il survit à la machine sur laquelle il a été choisi, puis rien ne redécide quand le matériel change.
+
+Il est publié sur PyPI avec une intégration continue verte à chaque envoi (ruff, mypy, une suite de tests maintenue au-dessus de 90 % de couverture). Chaque version est un tag sémantique sur GitHub.
 
 ## Documentation
 
@@ -85,14 +89,11 @@ Ce paquet est à la base de la couche de sélection de modèles de la suite AI H
   `uvicorn`, `fastapi-mcp`). La CLI, la GUI, l'API HTTP puis le serveur MCP
   font tous partie de l'installation par défaut. **Quelques mégaoctets, et
   quelques secondes.**
-- **Exécuter un modèle s'active ; en choisir un, non.** Le moteur
-  d'apprentissage profond — torch, transformers, accelerate, safetensors, puis
-  diffusers pour les images — vit derrière `[lightweight]` et `[imagine]`. Il a
-  été central trois jours ; c'est la mesure qui explique qu'il ne le soit
-  plus : cette pile pèse 196 Mo en roue processeur seul, puis des gigaoctets de
-  charge `nvidia-*` quand pip prend la version CUDA — ce qu'il fait par défaut
-  sous Linux. Qui demande quel modèle tient dans son portable ne devrait pas
-  télécharger une pile d'apprentissage profond pour l'apprendre.
+- **Exécuter un modèle s'active ; en choisir un, non.** Le moteur d'apprentissage profond — torch, transformers, accelerate, safetensors, puis diffusers pour les images — vit derrière `[lightweight]` puis `[imagine]`.
+
+  Il a été central trois jours ; c'est la mesure qui explique qu'il ne le soit plus. Cette pile pèse 196 Mo en roue processeur seul, puis des gigaoctets de charge `nvidia-*` quand pip prend la version CUDA — ce qu'il fait par défaut sous Linux.
+
+  Qui demande quel modèle tient dans son portable ne devrait pas télécharger une pile d'apprentissage profond pour l'apprendre.
 
   Rien au-dessus de cette ligne n'en a besoin. Les catalogues, le score, la
   sonde matérielle puis l'arithmétique d'empreinte et de durée derrière `rank`,
@@ -100,18 +101,11 @@ Ce paquet est à la base de la couche de sélection de modèles de la suite AI H
   répondent sur un interpréteur qui n'a jamais entendu parler de torch.
   `detect`, `recommend` puis `report` sont aussi rapides qu'avant, et
   l'installation l'est devenue aussi.
-- Optionnel : `[cloud]` pour le mode fournisseur cloud (retry, cache,
-  pseudonymisation, repli sur le trousseau OS pour les clés API) et
-  `[filtered]` pour de vrais classifieurs NSFW (un modèle DistilBERT pour le
-  texte ; le détecteur d'image basé sur CLIP de LAION, via `transformers`
-  pour l'encodeur CLIP et un modèle `onnxruntime` embarqué pour la tête de
-  classification). Voir [Où tourne le
-  modèle](#où-tourne-le-modèle) plus bas et [la
-  section « modèle
-  payant » d'EXEMPLES.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXEMPLES.md#4-un-modèle-payant-seulement-si-vous-donnez-une-clé)
-  pour le déroulé complet ; les deux se dégradent proprement (une
-  heuristique par mots-clés ou un verdict « indisponible ») en leur
-  absence, jamais un échec brutal.
+- Optionnel, deux extras supplémentaires :
+  - `[cloud]` pour le mode fournisseur cloud : retry, cache, pseudonymisation, repli sur le trousseau OS pour les clés API ;
+  - `[filtered]` pour de vrais classifieurs NSFW : un modèle DistilBERT pour le texte, puis le détecteur d'image basé sur CLIP de LAION — `transformers` pour l'encodeur CLIP, un modèle `onnxruntime` embarqué pour la tête de classification.
+
+  Les deux se dégradent proprement : sans eux, une heuristique par mots-clés prend le relais. Voir [Où tourne le modèle](#où-tourne-le-modèle) plus bas, puis [la section « modèle payant » d'EXEMPLES.md](https://github.com/warith-harchaoui/best-engine-ai-helper/blob/main/EXEMPLES.md#4-un-modèle-payant-seulement-si-vous-donnez-une-clé) pour le déroulé complet.
 
 ## Comment ça marche
 
@@ -278,16 +272,11 @@ d'icônes (favicon / touch-icon) est généré à partir de `assets/logo.png`.
 
 ## Journal d'activité
 
-Chaque appel `llm.chat()` (depuis les contrôles `pull`/`validate` de cet outil,
-ou depuis tout projet en aval qui importe `best_engine_ai_helper.llm`) peut
-être enregistré dans un journal SQLite local, en ajout seul
-(`~/.best-engine-ai-helper/usage.db`) : qui a appelé (variable d'environnement
-`BEST_ENGINE_USER`, sinon le nom de connexion du système), quel modèle et
-backend, la latence, le succès ou l'échec et un coût estimé pour les backends
-payants (toujours `0,0` pour Ollama/vLLM en local). Pensé pour le cas « une
-entreprise, plusieurs utilisateurs sur une machine partagée » : répondre à
-« qui appelle quoi, combien de fois, à quel coût » sans pile de télémétrie
-séparée. Local uniquement : aucun appel réseau, aucun service tiers.
+Chaque appel `llm.chat()` peut être enregistré dans un journal SQLite local, en ajout seul (`~/.best-engine-ai-helper/usage.db`). Cela vaut depuis les contrôles `pull`/`validate` de cet outil comme depuis tout projet en aval qui importe `best_engine_ai_helper.llm`.
+
+Ce qui est consigné : qui a appelé (variable d'environnement `BEST_ENGINE_USER`, sinon le nom de connexion du système), quel modèle puis quel backend, la latence, le succès ou l'échec, enfin un coût estimé pour les backends payants — toujours `0,0` pour Ollama puis vLLM en local.
+
+C'est pensé pour le cas « une entreprise, plusieurs utilisateurs sur une machine partagée » : répondre à « qui appelle quoi, combien de fois, à quel coût » sans pile de télémétrie séparée. Local uniquement : aucun appel réseau, aucun service tiers.
 
 ```sh
 best-engine-ai-helper activity              # tableau
@@ -295,19 +284,11 @@ best-engine-ai-helper activity --format json
 best-engine-ai-helper activity --what-if    # + ce que les appels gratuits auraient coûté
 ```
 
-**`--what-if` : une facture évitée, pas une économie.** Les calculateurs de
-seuil de rentabilité local-contre-cloud posent tous la même question puis
-doivent tous deviner la même entrée — vous saisissez un volume mensuel de
-jetons avant que la charge n'existe, puis la durée d'amortissement hérite de la
-devinette. Ce journal tient déjà la charge, mesurée. `--what-if` la croise avec
-la table de prix contre laquelle le journal facture les appels payants, puis
-affiche ce que les **appels gratuits déjà faits** auraient coûté au tarif public
-de chaque modèle payant, du moins cher au plus cher. C'est rapporté comme une
-facture évitée, jamais comme une économie : l'électricité, le disque puis le
-temps d'un modèle plus lent sont des coûts réels dont aucun n'est mesuré ici.
-Les comptes de jetons sont approximatifs aussi — un backend local ne rend aucun
-bloc `usage`, donc les caractères passent par la même règle d'environ 4
-caractères par jeton qu'un appel payant sans compte rendu.
+**`--what-if` : une facture évitée, pas une économie.** Les calculateurs de seuil de rentabilité local-contre-cloud posent tous la même question, puis doivent tous deviner la même entrée : vous saisissez un volume mensuel de jetons avant que la charge n'existe, si bien que la durée d'amortissement hérite de la devinette.
+
+Ce journal tient déjà la charge, mesurée. `--what-if` la croise avec la table de prix contre laquelle le journal facture les appels payants, puis affiche ce que les **appels gratuits déjà faits** auraient coûté au tarif public de chaque modèle payant, du moins cher au plus cher.
+
+C'est rapporté comme une facture évitée, jamais comme une économie : l'électricité, le disque puis le temps d'un modèle plus lent sont des coûts réels, dont aucun n'est mesuré ici. Les comptes de jetons sont approximatifs aussi — un backend local ne rend aucun bloc `usage`, donc les caractères passent par la même règle de ~4 caractères par jeton qu'un appel payant non rapporté.
 
 Le CLI, la GUI et le serveur MCP activent l'enregistrement par défaut ;
 désactivable avec `BEST_ENGINE_NO_LEDGER=1`. La section **Activité** de la GUI
@@ -343,14 +324,11 @@ entrées sans ce marqueur sont supposées capables.
 
 ### 2. Adéquation mémoire
 
-La mémoire disponible vient de la première sonde qui réussit : mémoire unifiée Apple Silicon
-(`system_profiler`), mémoire vidéo NVIDIA (`nvidia-smi`), mémoire vidéo AMD (`rocm-smi`),
-sinon la moitié de la RAM système comme estimation conservative sur CPU. Le budget utilisable
-n'est pas tout le pool : sur Apple Silicon, Metal plafonne l'allocation GPU à environ 66 %
-de la mémoire unifiée jusqu'à 36 Go et environ 75 % au-delà (`recommendedMaxWorkingSetSize`),
-puis une marge de sécurité `headroom` (par défaut 0,5, le plafond dur : une valeur plus
-grande est ramenée à ce plafond) s'applique par-dessus. Un modèle
-tient quand son `ram_gb` (pic d'inférence estimé) reste au plus égal à ce budget.
+La mémoire disponible vient de la première sonde qui réussit : mémoire unifiée Apple Silicon (`system_profiler`), mémoire vidéo NVIDIA (`nvidia-smi`), mémoire vidéo AMD (`rocm-smi`), sinon la moitié de la RAM système comme estimation conservative sur CPU.
+
+Le budget utilisable n'est pas tout le pool. Sur Apple Silicon, Metal plafonne l'allocation GPU à environ 66 % de la mémoire unifiée jusqu'à 36 Go, environ 75 % au-delà (`recommendedMaxWorkingSetSize`). Une marge de sécurité `headroom` s'applique par-dessus (par défaut 0,5, qui est aussi le plafond dur : une valeur plus grande y est ramenée).
+
+Un modèle tient quand son `ram_gb` — pic d'inférence estimé — reste au plus égal à ce budget.
 
 Sur la machine où ceci s'écrit, cette arithmétique donne ceci :
 
@@ -370,14 +348,11 @@ les modèles qui tiennent, le meilleur score sur cet axe l'emporte.
 
 ### 4. Débit
 
-La génération est bornée par la bande passante mémoire : chaque jeton lit une fois le modèle
-actif en mémoire, donc le plafond est `bande passante ÷ taille`, réduit à environ 65 % pour
-la mémoire de travail que le modèle garde en cours de génération (le *cache KV*, la trace
-de tout ce qu'il a déjà lu, pour ne pas le relire à chaque nouveau mot) et pour les autres
-surcoûts. `report` estime les jetons/s par candidat et propose une
-alternative plus légère et plus rapide quand elle est presque aussi forte. Plus gros n'est
-pas toujours mieux : un modèle 72B qui tient tout juste peut tourner à quelques jetons/s,
-là où un modèle 8-14B laisse de la marge et va plusieurs fois plus vite.
+La génération est bornée par la bande passante mémoire : chaque jeton lit une fois le modèle actif en mémoire, donc le plafond est `bande passante ÷ taille`.
+
+Ce plafond est réduit à environ 65 % pour tenir compte de la mémoire de travail que le modèle garde en cours de génération — le *cache KV*, la trace de tout ce qu'il a déjà lu, pour ne pas le relire à chaque nouveau mot — puis des autres surcoûts.
+
+`report` estime les jetons/s par candidat, puis propose une alternative plus légère avec plus rapide quand elle est presque aussi forte. Plus gros n'est pas toujours mieux : un modèle 72B qui tient tout juste peut tourner à quelques jetons/s, là où un 8-14B laisse de la marge puis va plusieurs fois plus vite.
 
 Quand aucun modèle ne tient, l'outil sélectionne le plus petit du catalogue puis
 le signale — puis, sur une machine qui a le disque pour cela, propose d'exécuter
@@ -386,14 +361,11 @@ bas](#trop-gros-pour-tenir-en-mémoire-exécutable-quand-même--le-flux-de-couch
 
 ### 5. Charge serveur en direct (optionnel, `--live`)
 
-Les quatre facteurs ci-dessus décrivent la capacité *théorique* de la machine. Ajouter
-`--live` (`recommend`/`report` ; `live: true` sur `POST /api/recommend`) pèse aussi ce qui
-s'y passe *en ce moment* : RAM libre actuelle, usage CPU/GPU/disque et le nombre de moteurs
-déjà lancés (modèles Ollama, serveurs vLLM). Une machine chargée obtient un budget plus
-réaliste qu'une machine identique mais inactive. Désactivé par défaut : cela ajoute une
-sonde en direct (~0,1-0,5 s : `nvidia-smi`/`ioreg`, un ping Ollama local, un échantillon
-`psutil`) et rend la recommandation dépendante de cet instant précis plutôt que d'être une
-fonction déterministe du seul matériel, ce qui compte pour des rapports reproductibles et la CI.
+Les quatre facteurs ci-dessus décrivent la capacité *théorique* de la machine. Ajouter `--live` (`recommend`/`report` ; `live: true` sur `POST /api/recommend`) pèse aussi ce qui s'y passe *en ce moment* : RAM libre actuelle, usage CPU/GPU/disque, nombre de moteurs déjà lancés (modèles Ollama, serveurs vLLM).
+
+Une machine chargée obtient alors un budget plus réaliste qu'une machine identique mais inactive.
+
+C'est désactivé par défaut pour deux raisons. Cela ajoute une sonde en direct (~0,1-0,5 s : `nvidia-smi`/`ioreg`, un ping Ollama local, un échantillon `psutil`). Puis cela rend la recommandation dépendante de cet instant précis plutôt que fonction déterministe du seul matériel — ce qui compte pour des rapports reproductibles comme pour la CI.
 
 **Sources.** Le plafond de l'ensemble de travail Metal d'Apple (documentation
 développeur Apple / apple-specs) ; la décomposition de la mémoire d'inférence
@@ -424,16 +396,11 @@ mesure retient de quelle horloge elle vient et seule celle du démon peut
 disqualifier un modèle : le temps mural sous-estime la vitesse de décodage, et
 sous-estimer est précisément ce qui rejetterait un modèle qui tourne très bien.
 
-Remesurer le même modèle conserve l'échantillon **le plus rapide** plutôt que le
-plus récent, ce qui est une exigence de correction et non de l'optimisme. La
-grandeur que l'on calibre est un **plafond** de bande passante mémoire et une
-machine occupée ne peut que faire paraître une observation plus lente que le
-matériel ne l'est réellement. La leçon vient du comportement lui-même :
-`gemma3:12b` a mesuré 15,2 jetons/s sur une machine au repos puis 8,7 jetons/s
-avec trois suites de tests en cours — et l'échantillon sous contention aurait
-donné à lui seul une correction de 0,31 contre 0,54 pour la machine au repos,
-faussant toutes les estimations de la machine. Le champ `samples` indique sur
-combien d'observations repose le chiffre retenu.
+Remesurer le même modèle conserve l'échantillon **le plus rapide** plutôt que le plus récent, ce qui est une exigence de correction, non de l'optimisme. La grandeur que l'on calibre est un **plafond** de bande passante mémoire, puis une machine occupée ne peut que faire paraître une observation plus lente que le matériel ne l'est réellement.
+
+La leçon vient du comportement lui-même. `gemma3:12b` a mesuré 15,2 jetons/s sur une machine au repos, puis 8,7 jetons/s avec trois suites de tests en cours — et l'échantillon sous contention aurait donné à lui seul une correction de 0,31 contre 0,54 pour la machine au repos, faussant toutes les estimations de la machine.
+
+Le champ `samples` indique sur combien d'observations repose le chiffre retenu.
 
 Trois conséquences, dont la troisième est la plus intéressante :
 
@@ -452,18 +419,11 @@ Trois conséquences, dont la troisième est la plus intéressante :
    prédisait **28,3**. Ce rapport s'applique ensuite à chaque estimation sur
    cette machine, y compris pour des modèles jamais tirés.
 
-   Cette affirmation est **éprouvée** plutôt que posée :
-   `scripts/validate_calibration.py` calibre sur un modèle, prédit un autre,
-   puis dit si le résultat bat l'estimation brute. C'est le cas dans toutes les
-   directions essayées, l'erreur tombant de **64-118 % à 17-25 %**. Les deux
-   moitiés méritent d'être dites : la correction est grande puis elle n'est pas
-   de la précision. Les rapports s'étalent d'environ **0,46 à 0,61** selon le
-   modèle puis d'une exécution à l'autre du même modèle, ce qui explique
-   pourquoi le facteur est une **médiane** sur plusieurs mesures et non une
-   seule et pourquoi une vraie mesure l'emporte toujours sur une estimation
-   corrigée quand elle existe. La calibration fait passer une estimation de
-   « fausse d'un facteur deux » à « fausse d'un cinquième » ; elle ne la rend
-   pas juste.
+   Cette affirmation est **éprouvée** plutôt que posée : `scripts/validate_calibration.py` calibre sur un modèle, prédit un autre, puis dit si le résultat bat l'estimation brute. C'est le cas dans toutes les directions essayées, l'erreur tombant de **64-118 % à 17-25 %**.
+
+**Les deux moitiés méritent d'être dites : la correction est grande, puis elle n'est pas de la précision.** Les rapports s'étalent d'environ **0,46 à 0,61** selon le modèle, puis d'une exécution à l'autre du même modèle — ce qui explique pourquoi le facteur est une **médiane** sur plusieurs mesures plutôt qu'une seule, puis pourquoi une vraie mesure l'emporte toujours sur une estimation corrigée quand elle existe.
+
+La calibration fait passer une estimation de « fausse d'un facteur deux » à « fausse d'un cinquième ». Elle ne la rend pas juste.
 
 Le point 3 explique aussi pourquoi le plancher de confort comptait plus qu'il
 n'y paraissait : `COMFORT_TPS` vaut 15 jetons/s, donc une estimation non corrigée
@@ -477,13 +437,11 @@ Tout ce qui précède répond à une question : **quel modèle tient ?** Cette
 section traite de la question suivante, celle qui vient quand la réponse
 honnête est *aucun des bons*.
 
-Un transformeur n'a jamais besoin de toutes ses couches en mémoire à la fois. Le
-décodage lit la couche 1, puis la couche 2, puis la couche 3 ; seule la couche
-en cours de calcul doit être résidente. En gardant une tranche de couche en
-mémoire puis en lisant les autres depuis le disque, la mémoire qu'exige un
-modèle cesse d'être proportionnelle à son nombre de paramètres : elle devient
-proportionnelle à sa **plus large couche**. Un modèle de 70 milliards de
-paramètres passe ainsi de 141 Go à environ **4 Go résidents**.
+Un transformeur n'a jamais besoin de toutes ses couches en mémoire à la fois. Le décodage lit la couche 1, puis la couche 2, puis la couche 3 : seule la couche en cours de calcul doit être résidente.
+
+En gardant une tranche de couche en mémoire puis en lisant les autres depuis le disque, la mémoire qu'exige un modèle cesse d'être proportionnelle à son nombre de paramètres. Elle devient proportionnelle à sa **plus large couche**.
+
+Un modèle de 70 milliards de paramètres passe ainsi de 141 Go à environ **4 Go résidents**.
 
 Le moteur qui fait cela est **celui de ce paquet**
 (`best_engine_ai_helper.streaming`), à un extra de distance.
@@ -565,14 +523,11 @@ jeton N+1 exige son propre parcours de toutes les couches. C'est de là que vien
 le chiffre en secondes par jeton, puis c'est pourquoi une longue *réponse* coûte
 cher.
 
-**2. Le prompt est quasi gratuit.** Un prompt de 2000 jetons est traité dans la
-même passe unique qu'un prompt de 10 jetons. Aucun autre moteur n'offre cette
-propriété : sous Ollama ou sous vLLM, un long prompt est du vrai travail de
-préremplissage. Le flux de couches est donc comparativement bon pour « long
-document en entrée, verdict court en sortie » : classification, extraction,
-jugement, une réponse d'une ligne sur un long contexte. Au-delà de quelques
-milliers de jetons, le calcul par couche commence à compter puis l'estimation le
-signale au lieu de faire comme si de rien n'était.
+**2. Le prompt est quasi gratuit.** Un prompt de 2000 jetons est traité dans la même passe unique qu'un prompt de 10 jetons. Aucun autre moteur n'offre cette propriété : sous Ollama comme sous vLLM, un long prompt est du vrai travail de préremplissage.
+
+Le flux de couches est donc comparativement bon pour « long document en entrée, verdict court en sortie » : classification, extraction, jugement, une réponse d'une ligne sur un long contexte.
+
+Au-delà de quelques milliers de jetons, le calcul par couche commence à compter, puis l'estimation le signale au lieu de faire comme si de rien n'était.
 
 **3. Un lot de B prompts coûte une passe, pas B.** B questions indépendantes
 traitées ensemble vont B fois plus vite par réponse. La compression apporte
@@ -636,23 +591,19 @@ dense en prédirait le double — donc une entrée MoE qui ne déclare pas ses
 `layers` est **refusée** plutôt que devinée : une devinette s'y trompe d'un
 facteur deux, dans le sens qui promet trop.
 
-Lisez la deuxième colonne en premier. **C'est l'espace disque, pas la mémoire,
-qui refuse d'ordinaire un modèle** — mais seulement à la taille du checkpoint
-lui-même. Les couches sont lues dans les safetensors d'origine, mémoire-mappés
-puis indexés tenseur par tenseur : rien n'est recopié, donc il n'y a aucun
-espace de travail à trouver. Un modèle de 405 milliards de paramètres, c'est
-810 Go de téléchargement, puis il est prêt. (Le moteur précédent écrivait une
-seconde copie par couche à côté de la première : c'est pourquoi cette colonne
-affichait 1701 Go, puis pourquoi presque chaque ligne de `lightweight plan`
-disait `runs: NO`.) La mémoire est la moitié facile du problème.
+Lisez la deuxième colonne en premier. **C'est l'espace disque, pas la mémoire, qui refuse d'ordinaire un modèle** — mais seulement à la taille du checkpoint lui-même.
 
-Ces chiffres ont été vérifiés contre ceux que publie airllm, puis la
-vérification mérite d'être énoncée précisément, parce que le « 70B sur un GPU de
-4 Go » de l'affiche est vrai à une longueur de contexte que personne ne
-mentionne : le même modèle fait 3,0 Go en série à 1k de contexte — la démo —
-3,9 Go en série à 4k puis 6,1 Go à 4k avec le préchargement. Les poids sont
-identiques dans les trois cas. Ce qui bouge, c'est le cache qui n'est pas
-diffusé.
+Les couches sont lues dans les safetensors d'origine, mémoire-mappés puis indexés tenseur par tenseur : rien n'est recopié, donc il n'y a aucun espace de travail à trouver. Un modèle de 405 milliards de paramètres, c'est 810 Go de téléchargement, puis il est prêt.
+
+Le moteur précédent écrivait une seconde copie par couche à côté de la première. C'est pourquoi cette colonne affichait 1701 Go, puis pourquoi presque chaque ligne de `lightweight plan` disait `runs: NO`.
+
+La mémoire est la moitié facile du problème.
+
+Ces chiffres ont été vérifiés contre ceux que publie airllm, puis la vérification mérite d'être énoncée précisément : le « 70B sur un GPU de 4 Go » de l'affiche est vrai à une longueur de contexte que personne ne mentionne.
+
+Le même modèle fait 3,0 Go en série à 1k de contexte — la démo — 3,9 Go en série à 4k, puis 6,1 Go à 4k avec le préchargement.
+
+Les poids sont identiques dans les trois cas. Ce qui bouge, c'est le cache qui n'est pas diffusé.
 
 ### Modèle natif ou modèle en flux ? `lightweight compare` répond en un écran
 
@@ -691,16 +642,11 @@ est bien présent dans le catalogue Ollama puis **il ne tient pas** sur cette
 carte de 24 Go. Le flux de couches est ce qui met la même classe de modèle à
 portée, au prix affiché dans la colonne `answer`.
 
-Chaque côté est classé selon les règles de son propre moteur, puis le côté en
-flux inverse la règle habituelle. Partout ailleurs, ce paquet choisit le modèle
-le **plus léger** à quelques points de référence du meilleur, parce qu'un
-gigaoctet de résidence se paie à chaque exécution puis entre en concurrence avec
-votre propre charge. Le flux de couches brise cette prémisse : la résidence est
-une tranche quelle que soit la taille du modèle, donc la légèreté n'achète rien
-puis la règle anti-gourmandise atterrit sur un modèle de 8 milliards de
-paramètres — le seul résultat absurde, puisqu'un 8B tourne nativement cent fois
-plus vite. Le choix en flux est donc le modèle le **plus capable** qui s'exécute,
-au score de référence, la taille ne tranchant que là où aucun score ne le fait.
+Chaque côté est classé selon les règles de son propre moteur, puis le côté en flux inverse la règle habituelle.
+
+Partout ailleurs, ce paquet choisit le modèle le **plus léger** à quelques points de référence du meilleur, parce qu'un gigaoctet de résidence se paie à chaque exécution puis entre en concurrence avec votre propre charge.
+
+Le flux de couches brise cette prémisse : la résidence est une tranche quelle que soit la taille du modèle, donc la légèreté n'achète rien — puis la règle anti-gourmandise atterrit sur un modèle de 8 milliards de paramètres, le seul résultat absurde, puisqu'un 8B tourne nativement cent fois plus vite. Le choix en flux est donc le modèle le **plus capable** qui s'exécute, au score de référence, la taille ne tranchant que là où aucun score ne le fait.
 
 Pas simplement le plus gros, puis la différence n'est pas académique : la
 première règle ici *était* « le plus gros qui s'exécute », puis ce tableau même a
@@ -721,16 +667,11 @@ Jamais par défaut. Deux déclencheurs, rien d'autre :
 
 ![Quand le flux de couches s'active, puis pourquoi jamais par défaut](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/declencheurs-du-flux.png)
 
-**Automatique** — le moteur conventionnel n'a rien résolu qui *tienne* sur cette
-machine pour un genre que votre cahier des charges demande. Le flux de couches
-est alors la différence entre un modèle puis aucun, donc `resolve` le propose
-avec son coût énoncé. Le secours est **par genre** : si votre LLM tient puis
-qu'aucun VLM ne tient, seul le VLM bascule, puis le fichier moteur est
-honnêtement mixte (Ollama pour un genre, `lightweight` pour l'autre —
-`model_for()` lit d'abord le moteur du genre). Le descripteur enregistre la
-décision puis sa raison sous `lightweight:`, *y compris quand la réponse est non*,
-pour qu'une machine qui ne peut pas diffuser dise pourquoi au lieu de rester
-muette.
+**Automatique** — le moteur conventionnel n'a rien résolu qui *tienne* sur cette machine pour un genre que votre cahier des charges demande. Le flux de couches est alors la différence entre un modèle puis aucun, donc `resolve` le propose avec son coût énoncé.
+
+Le secours est **par genre**. Si votre LLM tient puis qu'aucun VLM ne tient, seul le VLM bascule, puis le fichier moteur est honnêtement mixte : Ollama pour un genre, `lightweight` pour l'autre (`model_for()` lit d'abord le moteur du genre).
+
+Le descripteur enregistre la décision puis sa raison sous `lightweight:`, *y compris quand la réponse est non* — pour qu'une machine qui ne peut pas diffuser dise pourquoi au lieu de rester muette.
 
 **Manuelle** — vous le demandez :
 
@@ -775,16 +716,11 @@ best-engine-ai-helper lightweight compare --tokens 300 --batch 8
 best-engine-ai-helper lightweight prepare --model meta-llama/Llama-3.3-70B-Instruct
 ```
 
-`--measure` mérite d'être connu. Le disque fixe toute la vitesse de ce moteur,
-donc supposer sa classe (NVMe interne Apple, NVMe générique, SSD SATA, disque à
-plateaux) est une entrée plus faible que la mesurer. La mesure écrit puis relit
-environ 256 Mo **en contournant le cache de pages** (`F_NOCACHE` sur macOS,
-`O_DIRECT` sur Linux) ; sans cette étape, la lecture est servie depuis la RAM
-puis rapporte la bande passante mémoire — c'est ainsi que cette sonde a d'abord
-annoncé 13 Go/s sur un disque dont la fiche technique plafonne près de 7. Sur une
-plateforme sans moyen de contourner le cache, elle ne renvoie rien plutôt qu'un
-chiffre flatteur, puis chaque surface étiquette la valeur `measured` ou
-`declared`.
+`--measure` mérite d'être connu. Le disque fixe toute la vitesse de ce moteur, donc supposer sa classe (NVMe interne Apple, NVMe générique, SSD SATA, disque à plateaux) est une entrée plus faible que la mesurer.
+
+La mesure écrit puis relit environ 256 Mo **en contournant le cache de pages** (`F_NOCACHE` sur macOS, `O_DIRECT` sur Linux). Sans cette étape, la lecture est servie depuis la RAM puis rapporte la bande passante mémoire — c'est ainsi que cette sonde a d'abord annoncé 13 Go/s sur un disque dont la fiche technique plafonne près de 7.
+
+Sur une plateforme sans moyen de contourner le cache, elle ne renvoie rien plutôt qu'un chiffre flatteur, puis chaque surface étiquette la valeur `measured` ou `declared`.
 
 ### Les limites, énoncées franchement
 
@@ -823,14 +759,11 @@ chiffre flatteur, puis chaque surface étiquette la valeur `measured` ou
   machine sans accélérateur ne se voit toujours pas *proposer* le flux
   automatiquement, parce que le débit qu'elle obtiendrait passe sous le
   plancher de lot ; elle peut le demander.
-- **Le contexte vaut 4096 jetons sauf demande contraire.** Un tokeniseur laissé
-  à son propre défaut *tronque* au-delà, donc le moteur configure toujours
-  `max_seq_len` explicitement — réglé sur les mêmes 4k que ceux auxquels
-  l'empreinte ci-dessus est tarifée. Les deux nombres sont délibérément le même
-  : un outil qui annonce la mémoire d'un contexte de 4k puis exécute en silence
-  un contexte de 512 mentirait dans le sens où vous perdez la fin de votre
-  prompt. Montez-le avec `max_seq_len=` puis le terme de cache KV monte
-  exactement comme la formule le dit.
+- **Le contexte vaut 4096 jetons sauf demande contraire.** Un tokeniseur laissé à son propre défaut *tronque* au-delà, donc le moteur configure toujours `max_seq_len` explicitement — réglé sur les mêmes 4k que ceux auxquels l'empreinte ci-dessus est tarifée.
+
+  Les deux nombres sont délibérément le même : un outil qui annonce la mémoire d'un contexte de 4k puis exécute en silence un contexte de 512 mentirait dans le sens où vous perdez la fin de votre prompt.
+
+  Montez-le avec `max_seq_len=` puis le terme de cache KV monte exactement comme la formule le dit.
 
 ### Pourquoi ce moteur est le nôtre plutôt qu'un import
 
@@ -838,15 +771,12 @@ Question légitime, puis la réponse a changé. La technique a été démontrée
 [airllm](https://github.com/lyogavin/airllm) (Apache-2.0), que ce paquet
 importait au départ. Trois mesures l'ont fait rentrer à la maison :
 
-1. **Ça ne marchait pas du tout sur Apple Silicon.** L'`AutoModel` d'airllm
-   dispatche sur l'architecture partout sauf sur macOS, où il rend d'office un
-   transformeur Llama écrit à la main en MLX, avec `bias=False` partout. Qwen
-   porte des biais d'attention ; Llama 3.2 lie ses embeddings, donc il n'y a
-   pas de tenseur `lm_head` ; les vieux exports persistent
-   `rotary_emb.inv_freq`. Trois plantages différents, sur la plateforme où
-   cette suite se développe — puis `generate()` n'arrivait de toute façon
-   jamais jusque-là, levant `AttributeError: 'AirLLMLlamaMlx' object has no
-   attribute 'device'` au premier appel sur tous les Mac.
+1. **Ça ne marchait pas du tout sur Apple Silicon.** L'`AutoModel` d'airllm dispatche sur l'architecture partout sauf sur macOS, où il rend d'office un transformeur Llama écrit à la main en MLX, avec `bias=False` partout. Trois plantages différents en découlent :
+   - Qwen porte des biais d'attention ;
+   - Llama 3.2 lie ses embeddings, donc il n'y a pas de tenseur `lm_head` ;
+   - les vieux exports persistent `rotary_emb.inv_freq`.
+
+   Sur la plateforme où cette suite se développe, donc. Puis `generate()` n'arrivait de toute façon jamais jusque-là, levant `AttributeError: 'AirLLMLlamaMlx' object has no attribute 'device'` au premier appel sur tous les Mac.
 2. **Il écrivait une seconde copie de chaque checkpoint sur le disque.** Des
    tranches par couche, écrites avant que rien ne tourne, donc un 70B
    réclamait ~294 Go libres au lieu de ~140. C'est ce qui faisait lire
@@ -857,14 +787,9 @@ importait au départ. Trois mesures l'ont fait rentrer à la maison :
    Qwen, DeepSeek, Mixtral, ChatGLM, Kimi — chacune réécrite à la sortie de la
    famille. Tout cela est parti avec lui.
 
-Ce qui le remplace est plus petit, pas plus gros : construire le modèle sur
-l'appareil `meta`, accrocher sur chaque couche de décodeur un pré-crochet qui
-matérialise ses poids depuis les safetensors mémoire-mappés du checkpoint, puis
-un post-crochet qui libère exactement ceux-là. **`transformers` garde la passe
-avant**, donc l'architecture est celle que `transformers` connaît, puis la pile
-de décodeurs est *découverte* — la `ModuleList` dont la longueur vaut le nombre
-de couches de la config — au lieu d'être nommée dans une table par famille que
-quelqu'un doit tenir à jour.
+Ce qui le remplace est plus petit, pas plus gros : construire le modèle sur l'appareil `meta`, accrocher sur chaque couche de décodeur un pré-crochet qui matérialise ses poids depuis les safetensors mémoire-mappés du checkpoint, puis un post-crochet qui libère exactement ceux-là.
+
+**`transformers` garde la passe avant**, donc l'architecture est celle que `transformers` connaît. Puis la pile de décodeurs est *découverte* — la `ModuleList` dont la longueur vaut le nombre de couches de la config — au lieu d'être nommée dans une table par famille que quelqu'un doit tenir à jour.
 
 Le partage du travail à l'intérieur du paquet n'a pas bougé : `streaming.py`
 possède la passe avant, puis `offload.py` possède toutes les questions de
@@ -952,9 +877,17 @@ outil MCP, comme tous les autres points d'entrée.
 
 Le catalogue de base intégré (`models.yaml`) couvre les familles Qwen 3, Qwen 2.5, Qwen 2.5-Coder et Gemma 3 (de 3B à 72B paramètres, en Q4_K_M et Q8_0), plus un petit ensemble d'*embedders* textuels (`kind: embed`) pour l'index de recherche. Le catalogue suit la taille sur disque, la RAM de pic estimée et les scores de benchmark issus de l'Open LLM Leaderboard v2, de l'OpenVLM Leaderboard, d'EvalPlus (code) et de MTEB (recherche par *embedding*). C'est l'*espace de recherche* dans lequel best-engine choisit, jamais un choix propre à un usage.
 
-`catalog update` rafraîchit le cache depuis l'[annuaire LLM ApXML](https://apxml.com/models?modelType=open_weight) (modèles à poids ouverts avec leurs besoins VRAM par quantification, consulté régulièrement). Il récupère les fiches, les normalise en entrées de catalogue et les fusionne dans `~/.best-engine-ai-helper/catalog_cache.yaml` par identifiant (le catalogue de base intégré n'est jamais modifié). Utilisez `--limit N` pour un rafraîchissement partiel rapide. Les pages statiques d'ApXML portent des caractéristiques mais aucun score de classement numérique, donc les entrées rafraîchies gardent des benchmarks nuls (et un rang bas) jusqu'à ce qu'une source notée, comme l'Open LLM Leaderboard v2 ou l'OpenVLM Leaderboard, les remplisse.
+`catalog update` rafraîchit le cache depuis l'[annuaire LLM ApXML](https://apxml.com/models?modelType=open_weight) : des modèles à poids ouverts avec leurs besoins VRAM par quantification, consulté régulièrement.
 
-`--ollama` élargit le catalogue depuis la [bibliothèque officielle Ollama](https://ollama.com/library) plutôt que depuis ApXML. Il existe parce que le catalogue *servable* plafonnait à vingt modèles pour une raison qui n'a jamais été une question de notation. ApXML peut ajouter des centaines d'entrées, mais il les nomme d'après le papier (`qwen36-35b-a3b`), un nom de dépôt HuggingFace qu'`ollama pull` ne résout pas : ces entrées sont donc réservées à vLLM. La bibliothèque publie au contraire les familles, leurs capacités puis les tailles livrées — et une famille plus une taille **est** un tag de tirage : `qwen3` plus `8b` donne `qwen3:8b`, exactement l'orthographe déjà utilisée par le catalogue de base. 256 familles donnent environ 420 tags, en une seule requête.
+Il récupère les fiches, les normalise en entrées de catalogue, puis les fusionne dans `~/.best-engine-ai-helper/catalog_cache.yaml` par identifiant — le catalogue de base intégré n'est jamais modifié. `--limit N` donne un rafraîchissement partiel rapide.
+
+Une réserve : les pages statiques d'ApXML portent des caractéristiques mais aucun score de classement numérique. Les entrées rafraîchies gardent donc des benchmarks nuls, avec un rang bas, jusqu'à ce qu'une source notée comme l'Open LLM Leaderboard v2 ou l'OpenVLM Leaderboard les remplisse.
+
+`--ollama` élargit le catalogue depuis la [bibliothèque officielle Ollama](https://ollama.com/library) plutôt que depuis ApXML. Il existe parce que le catalogue *servable* plafonnait à vingt modèles, pour une raison qui n'a jamais été une question de notation.
+
+ApXML peut ajouter des centaines d'entrées, mais il les nomme d'après le papier (`qwen36-35b-a3b`) : un nom de dépôt HuggingFace qu'`ollama pull` ne résout pas, donc ces entrées sont réservées à vLLM.
+
+La bibliothèque publie au contraire les familles, leurs capacités puis les tailles livrées. Une famille plus une taille **est** un tag de tirage : `qwen3` plus `8b` donne `qwen3:8b`, exactement l'orthographe déjà utilisée par le catalogue de base. 256 familles donnent environ 420 tags, en une seule requête.
 
 Ces entrées ne portent **aucune note de benchmark**, parce que la bibliothèque publie des tailles puis des descriptions, pas des résultats de classement. Elles se classent donc **sous** tout modèle noté, jusqu'à ce qu'une source notée les remplisse. C'est le but plutôt qu'une limite : cela élargit ce que l'outil sait dimensionner puis tirer sans changer ce qu'il recommande ; une note inventée vaudrait moins qu'une note absente — un `null` se classe bas puis reste honnête, une invention se classe mal tout en ayant l'air d'une autorité.
 
@@ -964,13 +897,27 @@ Les tailles viennent d'une constante **mesurée** sur les quatorze entrées Q4 d
 
 ![Chaque source Arena essayée tour à tour : le tableau officiel n'a aucune API publique, un miroir communautaire répond désormais avec 37 modèles d'un instantané vieux de 21 jours, un collecteur payant est refusé par principe, puis l'historique en vrac a 524 jours](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/obsolescence-arena.png)
 
-**Elle note des points d'accès hébergés de pointe, puis rien d'autre.** L'Arena note ce avec quoi ses votants peuvent discuter, ce qui donne aujourd'hui des noms comme `claude-opus-5.5-max`, `gpt-6-astra-max` puis `gemini-4-argon-high`. Au relevé du 2026-10-28, cela fait **37 modèles** sur trois tableaux de vingt. Face au catalogue *local*, c'est presque rien — **1 sur 51**, `kimi-k3` — parce que personne ne vote sur un tag Ollama à poids ouverts. Face au catalogue *payant*, c'est l'essentiel : **18 sur 28**, dès que `catalog update --cloud` a mis des modèles actuels dans le fichier. Cette asymétrie est la propriété qui définit l'axe, pas un défaut dedans.
+**Elle note des points d'accès hébergés de pointe, puis rien d'autre.** L'Arena note ce avec quoi ses votants peuvent discuter, ce qui donne aujourd'hui des noms comme `claude-opus-5.5-max`, `gpt-6-astra-max` puis `gemini-4-argon-high`. Au relevé du 2026-10-28, cela fait **37 modèles** sur trois tableaux de vingt.
 
-Un nom de tableau porte un suffixe d'effort de raisonnement qu'un identifiant d'API ne porte jamais : `claude-opus-5.5-max` puis `claude-opus-5.5-high` sont un seul modèle facturable servi à deux efforts, facturé une fois au même tarif par jeton. Les deux notes appartiennent donc à la même entrée de catalogue, puis celle qui est retenue est la **plus basse** — la plus haute décrit un mode qu'il faut demander, qui coûte davantage de jetons de sortie, donc l'attribuer à l'identifiant nu promettrait ce qu'un appel par défaut ne rend pas. Quand le tableau note aussi le nom sans suffixe (`claude-opus-4-6` voisine avec son `-high`), c'est celui-là qui gagne d'emblée : il *est* le mode par défaut. Un *produit* de service différent — `claude-3-5-sonnet-20250219-thinking-32k` — continue de n'apparier rien, exprès.
+Face au catalogue *local*, c'est presque rien : **1 sur 51**, `kimi-k3` — parce que personne ne vote sur un tag Ollama à poids ouverts.
+
+Face au catalogue *payant*, c'est l'essentiel : **18 sur 28**, dès que `catalog update --cloud` a mis des modèles actuels dans le fichier.
+
+Cette asymétrie est la propriété qui définit l'axe, pas un défaut dedans.
+
+Un nom de tableau porte un suffixe d'effort de raisonnement qu'un identifiant d'API ne porte jamais : `claude-opus-5.5-max` puis `claude-opus-5.5-high` sont un seul modèle facturable servi à deux efforts, facturé une fois au même tarif par jeton.
+
+Les deux notes appartiennent donc à la même entrée de catalogue, puis celle qui est retenue est la **plus basse**. La plus haute décrit un mode qu'il faut demander, qui coûte davantage de jetons de sortie : l'attribuer à l'identifiant nu promettrait ce qu'un appel par défaut ne rend pas.
+
+Quand le tableau note aussi le nom sans suffixe — `claude-opus-4-6` voisine avec son `-high` — c'est celui-là qui gagne d'emblée : il *est* le mode par défaut. Un *produit* de service différent, tel que `claude-3-5-sonnet-20250219-thinking-32k`, continue de n'apparier rien, exprès.
 
 Les modèles d'embedding ne peuvent pas s'apparier par construction : personne ne discute avec un encodeur, donc aucun classement de préférences conversationnelles n'en notera jamais un. La commande imprime son propre `apparié/total` à chaque passage, vous n'avez donc jamais à croire ce paragraphe sur parole.
 
-**C'est le scrape d'un tiers, puis les miroirs pourrissent d'une façon qui ressemble à une panne.** L'Arena ne publie aucune API. Un miroir a cessé d'être mis à jour il y a 524 jours. L'autre tourne tous les jours puis continue de produire un répertoire même les jours où son propre scrape ne rend rien — son index nomme donc un répertoire vide, puis l'adaptateur lisait celui-là, annonçait « aucune donnée utilisable » et s'arrêtait. Il remonte désormais jusqu'au plus récent instantané qui *contient* des données, puis il lit les noms des tableaux dans l'index du miroir au lieu de les deviner : deux des quatre noms devinés (`overall`, `coding`) n'ont jamais été publiés, donc l'axe code restait vide en silence face à un miroir qui le servait sous `code`. C'est la différence entre 0 note puis 37.
+**C'est le scrape d'un tiers, puis les miroirs pourrissent d'une façon qui ressemble à une panne.** L'Arena ne publie aucune API. Un miroir a cessé d'être mis à jour il y a 524 jours. L'autre tourne tous les jours puis continue de produire un répertoire même les jours où son propre scrape ne rend rien — son index nomme donc un répertoire vide, puis l'adaptateur lisait celui-là, annonçait « aucune donnée utilisable », enfin s'arrêtait.
+
+Il fait désormais deux choses à la place. Il remonte jusqu'au plus récent instantané qui *contient* des données. Puis il lit les noms des tableaux dans l'index du miroir au lieu de les deviner : deux des quatre noms devinés (`overall`, `coding`) n'ont jamais été publiés, donc l'axe code restait vide en silence face à un miroir qui le servait sous `code`.
+
+C'est la différence entre 0 note puis 37.
 
 Passé `MAX_SNAPSHOT_AGE_DAYS`, l'adaptateur refuse toujours puis nomme la raison, parce qu'un Elo d'une génération précédente classerait les modèles de 2025 au-dessus de ceux de 2026 — strictement pire que pas d'Elo du tout. Il n'annonce jamais un succès qui n'a rien enrichi.
 
@@ -1003,14 +950,11 @@ Les projets qui utilisent le modèle sélectionné sourcent ce fichier ou lisent
 
 ### Modèle B : un moteur par projet, résolu depuis un brief ajusté
 
-Un projet connaît en général sa tâche plus précisément qu'un défaut valable pour toute la
-machine et la qualité du choix dépend de la précision avec laquelle cette tâche est décrite :
-c'est le texte de la tâche qui se traduit en axe de score et qui décide si un VLM est
-nécessaire (voir [Comment fonctionne la sélection](#comment-fonctionne-la-sélection)). Le
-projet garde donc un **brief** versionné qui décrit son travail et le résout, par machine,
-en un **fichier moteur** gitignoré qui nomme le backend et le modèle à utiliser. Aucune
-constante `DEFAULT_MODEL` ne vit dans le projet : le modèle se lit toujours depuis le fichier
-moteur résolu.
+Un projet connaît en général sa tâche plus précisément qu'un défaut valable pour toute la machine, puis la qualité du choix dépend de la précision avec laquelle cette tâche est décrite : c'est le texte de la tâche qui se traduit en axe de score, puis qui décide si un VLM est nécessaire (voir [Comment fonctionne la sélection](#comment-fonctionne-la-sélection)).
+
+Le projet garde donc un **brief** versionné qui décrit son travail, puis le résout, par machine, en un **fichier moteur** gitignoré qui nomme le backend avec le modèle à utiliser.
+
+Aucune constante `DEFAULT_MODEL` ne vit dans le projet : le modèle se lit toujours depuis le fichier moteur résolu.
 
 1. **Versionner le brief** : `llm.brief.yaml` dans le dépôt, indépendant du matériel :
 
@@ -1048,13 +992,11 @@ moteur résolu.
      pour sa gestion de la concurrence et du batching de requêtes sous charge réelle, qu'Ollama
      n'égale pas.
 
-   Windows retombe aussi sur Ollama (pas de wheel vLLM natif, WSL uniquement), donc en
-   résumé : **vLLM uniquement sous Linux avec un GPU discret ; Ollama partout ailleurs.** Le
-   choix reste prudent par ailleurs : la marge mémoire est plafonnée à 0,5 et parmi les modèles
-   à quelques points de benchmark du meilleur, il prend le plus léger et le plus rapide, pas le
-   plus gros qui tient tout juste. Les choix vLLM sont dimensionnés sur les poids FP16 complets
-   (plus lourds que l'estimation Ollama Q4), pour qu'un choix vLLM soit réaliste sur le vrai
-   GPU. La sortie est spécifique au matériel ; ajoutez-la au `.gitignore` :
+   Windows retombe aussi sur Ollama (pas de wheel vLLM natif, WSL uniquement), d'où le résumé : **vLLM uniquement sous Linux avec un GPU discret, Ollama partout ailleurs.**
+
+Le choix reste prudent par ailleurs. La marge mémoire est plafonnée à 0,5, puis parmi les modèles à quelques points de benchmark du meilleur, il prend le plus léger avec le plus rapide — pas le plus gros qui tient tout juste.
+
+Les choix vLLM sont dimensionnés sur les poids FP16 complets, plus lourds que l'estimation Ollama Q4, pour qu'un choix vLLM soit réaliste sur le vrai GPU. La sortie est spécifique au matériel ; ajoutez-la au `.gitignore` :
 
    ```yaml
    backend: ollama
@@ -1123,30 +1065,20 @@ chiffrer.
 
 ### Sur votre propre serveur (toujours sans qu'aucun tiers facture)
 
-Le mode local ne veut pas dire *cette* machine-ci. `--endpoint URL` — ou `base_url` dans le
-brief — pointe le même moteur résolu vers un serveur que vous opérez : typiquement vLLM sur
-une machine à GPU au bout du couloir, avec `--backend vllm` pour le forcer. La sélection
-reste faite pour le matériel qui servira le modèle, le journal chiffre toujours chaque appel
-à `0,0 $`, puis rien ne quitte une infrastructure que vous contrôlez. C'est l'option
-intermédiaire, celle qu'on oublie : « pas sur mon portable » n'oblige pas à « sur le compte
-de quelqu'un d'autre ».
+Le mode local ne veut pas dire *cette* machine-ci. `--endpoint URL` — ou `base_url` dans le brief — pointe le même moteur résolu vers un serveur que vous opérez : typiquement vLLM sur une machine à GPU au bout du couloir, avec `--backend vllm` pour le forcer.
+
+La sélection reste faite pour le matériel qui servira le modèle, le journal chiffre toujours chaque appel à `0,0 $`, puis rien ne quitte une infrastructure que vous contrôlez.
+
+C'est l'option intermédiaire, celle qu'on oublie : « pas sur mon portable » n'oblige pas à « sur le compte de quelqu'un d'autre ».
 
 ### Chez un fournisseur payant (sur demande, puis seulement si vous fournissez une clé)
 
-Un appel payant n'arrive jamais par accident. Il exige un brief qui dit `mode: cloud`
-**puis** un `api_key_env` nommant une variable d'environnement réellement renseignée :
-`api_key_env` porte le NOM de la variable, jamais la clé elle-même, puis la clé n'est jamais
-écrite dans le fichier moteur. Quand le brief n'épingle aucun fournisseur, le choix
-automatique ne considère que ceux dont la clé se résout **à l'instant** — avec une clé
-Mistral puis aucune clé Gemini, vous obtenez Mistral, même là où Gemini marque plus haut —
-puis `best-engine-ai-helper providers` liste exactement lesquels sont utilisables puis
-pourquoi les autres ne le sont pas. Un fournisseur *épinglé* reste honoré sans clé, parce
-qu'`api_key_env` porte un nom de variable : un descripteur s'écrit là où le secret est
-absent puis s'exécute là où il est présent. Le fichier moteur consigne
-`api_key_present: true|false` pour distinguer les deux cas ; c'est aussi ainsi que `report`
-tarife un modèle payant qu'il n'appelle jamais. Rien dans ce paquet ne passe du local au
-payant de lui-même ; la seule direction automatique est la direction sûre, payant → local,
-quand un appel payant échoue.
+Un appel payant n'arrive jamais par accident. Il exige un brief qui dit `mode: cloud` **puis** un `api_key_env` nommant une variable d'environnement réellement renseignée.
+
+`api_key_env` porte le NOM de la variable, jamais la clé elle-même, puis la clé n'est jamais écrite dans le fichier moteur.
+
+- **Quand le brief n'épingle aucun fournisseur**, le choix automatique ne considère que ceux dont la clé se résout *à l'instant*. Avec une clé Mistral puis aucune clé Gemini, vous obtenez Mistral — même là où Gemini marque plus haut. `best-engine-ai-helper providers` liste exactement lesquels sont utilisables, puis pourquoi les autres ne le sont pas.
+- **Un fournisseur *épinglé* reste honoré sans clé**, parce qu'`api_key_env` porte un nom de variable : un descripteur s'écrit là où le secret est absent, puis s'exécute là où il est présent. Le fichier moteur consigne `api_key_present: true|false` pour distinguer les deux cas.
 
 `mode: cloud` route plutôt vers un fournisseur payant : OpenAI, Mistral, OpenRouter, Together
 ou Azure OpenAI (tous compatibles OpenAI), plus Anthropic et Gemini (formats propres à chacun),
@@ -1155,14 +1087,11 @@ choisir le modèle :
 
 - **Le fixer** : nommer `provider` et `model` explicitement dans le brief, exactement comme
   avant.
-- **Le choisir automatiquement** : omettre `model` (et `provider`, pour chercher chez tous les
-  fournisseurs) et best-engine choisit le meilleur modèle payant depuis un petit catalogue
-  embarqué (`pricing.yaml`, enrichi de scores de benchmark par modèle), de la même façon que le
-  mode local choisit depuis `models.yaml`, sauf que la ressource budgétée est le **prix**, pas
-  la mémoire, puisque tout modèle payant tourne sur n'importe quelle machine. Un curseur
-  `quality_vs_cost` (0 à 1, défaut 0,7) oriente le choix : `1.0` choisit uniquement sur le
-  score, `0.0` uniquement sur le prix et le défaut privilégie la qualité avec le prix en
-  départage.
+- **Le choisir automatiquement** : omettez `model` — puis `provider`, pour chercher chez tous les fournisseurs — et best-engine choisit le meilleur modèle payant depuis un petit catalogue embarqué (`pricing.yaml`, enrichi de scores de benchmark par modèle).
+
+  C'est la même mécanique que le mode local depuis `models.yaml`, à une différence près : la ressource budgétée est le **prix**, pas la mémoire, puisque tout modèle payant tourne sur n'importe quelle machine.
+
+  Un curseur `quality_vs_cost` (0 à 1, défaut 0,7) oriente le choix : `1.0` choisit uniquement sur le score, `0.0` uniquement sur le prix, puis le défaut privilégie la qualité avec le prix en départage.
 
 Azure se fixe à la main, ne se choisit jamais automatiquement, puis la raison
 est structurelle plutôt qu'une préférence : c'est le seul fournisseur sans
@@ -1230,26 +1159,15 @@ best-engine-ai-helper catalog update --cloud --arena
 
 ![Comment le catalogue payant s'agrandit : une table de prix publique connaît 188 modèles de dialogue achetables sans aucune note de qualité, un miroir de classement connaît 37 noms notés sans aucun prix, puis un modèle n'est adopté que si les deux le nomment — 18 aujourd'hui, avec 164 tarifés non notés affichés pour triage puis 4 entrées du catalogue inconnues de la source de prix laissées exactement en l'état](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/diagrams/deux-sources.png)
 
-**Une entrée n'est adoptée que si les deux sources nomment le même modèle.**
-Cela fait deux citations, dont aucune n'est inventée, puis c'est tout le test
-d'admission. Un modèle tarifé que personne n'a noté n'est toujours pas adopté ;
-un modèle noté que personne ne tarife ne peut toujours pas être facturé. Au
-relevé du 2026-10-28 par
-[`scripts/measure_arena_coverage.py`](scripts/measure_arena_coverage.py) : 18
-modèles passent, 164 sont tarifés sans note puis restent sur la liste de triage,
-le catalogue passant de 10 entrées à 28. Relancer ce script imprime le compte
-**du jour**, pas celui-ci : la source de prix gagne des modèles (190 au
-2026-10-31) pendant que l'instantané du tableau vieillit, donc les chiffres
-ci-dessus sont une lecture datée puis étiquetée comme telle.
+**Une entrée n'est adoptée que si les deux sources nomment le même modèle.** Cela fait deux citations, dont aucune n'est inventée, puis c'est tout le test d'admission. Un modèle tarifé que personne n'a noté n'est toujours pas adopté ; un modèle noté que personne ne tarife ne peut toujours pas être facturé.
 
-Ce qu'une entrée adoptée ne porte délibérément **pas**, c'est un score
-`general`, `code`, `math`, `ocr` ou `vision`. Ceux-là restent nuls. Le classement
-mesure une préférence conversationnelle ; en synthétiser un nombre façon MMLU
-serait la fiction même que le reste de ce fichier existe pour éviter. Le
-classeur lit directement les axes Arena, donc un nul n'y coûte rien — puis
-chaque entrée adoptée enregistre le nom de tableau derrière chaque axe retenu,
-si bien que `85.2` se retrace jusqu'à `claude-opus-5.5-high` sur l'instantané
-`2026-10-07` au lieu d'être un nombre sans provenance.
+Au relevé du 2026-10-28 par [`scripts/measure_arena_coverage.py`](scripts/measure_arena_coverage.py) : 18 modèles passent, 164 sont tarifés sans note puis restent sur la liste de triage, le catalogue passant de 10 entrées à 28. **Relancer ce script imprime le compte du jour, pas ces chiffres-ci** — la source de prix gagne des modèles (190 au 2026-10-31) pendant que l'instantané du tableau vieillit, donc les nombres ci-dessus sont une lecture datée, étiquetée comme telle.
+
+Ce qu'une entrée adoptée ne porte délibérément **pas**, c'est un score `general`, `code`, `math`, `ocr` ou `vision`. Ceux-là restent nuls.
+
+Le classement mesure une préférence conversationnelle ; en synthétiser un nombre façon MMLU serait la fiction même que le reste de ce fichier existe pour éviter.
+
+Le classeur lit directement les axes Arena, donc un nul n'y coûte rien. Puis chaque entrée adoptée enregistre le nom de tableau derrière chaque axe retenu, si bien que `85.2` se retrace jusqu'à `claude-opus-5.5-high` sur l'instantané `2026-10-07`, au lieu d'être un nombre sans provenance.
 
 Deux conséquences à connaître avant de lire le classement :
 
@@ -1259,14 +1177,11 @@ Deux conséquences à connaître avant de lire le classement :
   table cloud nomme l'axe derrière chaque ligne exactement pour ça, puis
   quelques points entre deux lignes mesurées différemment ne sont pas un
   résultat.
-- **Un modèle peut être noté puis afficher `?`.** Le miroir publie les vingt
-  premiers par tableau, donc un modèle peut être noté en code puis absent du
-  texte — censuré, pas faible. Ces candidats se classent derniers en qualité
-  *puis* sortent de l'étendue de qualité, afin que l'un d'eux ne puisse pas
-  aplatir l'échelle de tous les autres. (Il le pouvait : avant cela, quatre
-  entrées de ce genre transformaient un écart de qualité de 68 à 88 en 0 à 88,
-  puis le défaut orienté qualité se mettait à se comporter comme un défaut
-  orienté prix.)
+- **Un modèle peut être noté puis afficher `?`.** Le miroir publie les vingt premiers par tableau, donc un modèle peut être noté en code puis absent du texte : censuré, pas faible.
+
+  Ces candidats se classent derniers en qualité, *puis* sortent de l'étendue de qualité, afin que l'un d'eux ne puisse pas aplatir l'échelle de tous les autres.
+
+  Il le pouvait : avant cela, quatre entrées de ce genre transformaient un écart de qualité de 68 à 88 en 0 à 88, puis le défaut orienté qualité se mettait à se comporter comme un défaut orienté prix.
 
 Refaites vous-même n'importe lequel de ces nombres — le script est dans le
 dépôt puis il lit à travers les chargeurs du paquet, il ne peut donc pas diverger
@@ -1382,17 +1297,11 @@ Toute la grammaire, puis où chaque nom aboutit :
 | `POST /v1/embeddings` | Encodage `float` ou `base64`, un vecteur par entrée, indices compris |
 | `POST /v1/images/generations` | Diffusion locale. `size: "auto"` (le défaut) utilise la résolution **native** du modèle ; `b64_json` est le format de réponse par défaut, un serveur local n'ayant nulle part où héberger un fichier |
 
-**La longueur de contexte est mesurée, pas déclarée.** Aucune des 31 lignes du
-catalogue local ne porte de `context_length`, puis aucune ne le devrait : la
-fenêtre appartient à une quantification précise d'un checkpoint précis, donc un
-chiffre saisi dans `models.yaml` décrirait un fichier que personne ici n'a
-ouvert. Un modèle réellement téléchargé connaît la sienne, lui — les métadonnées
-GGUF la portent puis Ollama la livre sur `/api/show` — donc `pull` puis
-`validate` la lisent puis l'écrivent dans le même magasin par machine où vit la
-vitesse de décodage mesurée. `/v1/models` publie alors une vraie fenêtre pour
-les modèles que cette machine détient, puis rien du tout pour les autres. La
-moitié payante n'a besoin de rien de cela : la source de prix publie une
-fenêtre, donc une entrée cloud en déclare simplement une.
+**La longueur de contexte est mesurée, pas déclarée.** Aucune des 31 lignes du catalogue local ne porte de `context_length`, puis aucune ne le devrait : la fenêtre appartient à une quantification précise d'un checkpoint précis, donc un chiffre saisi dans `models.yaml` décrirait un fichier que personne ici n'a ouvert.
+
+Un modèle réellement téléchargé connaît la sienne, lui : les métadonnées GGUF la portent, puis Ollama la livre sur `/api/show`. `pull` puis `validate` la lisent, ensuite l'écrivent dans le même magasin par machine où vit la vitesse de décodage mesurée. `/v1/models` publie alors une vraie fenêtre pour les modèles que cette machine détient, puis rien du tout pour les autres.
+
+La moitié payante n'a besoin de rien de cela : la source de prix publie une fenêtre, donc une entrée cloud en déclare simplement une.
 
 `/v1` vit sur la même application que la GUI, les routes `/api/*` puis le point
 d'entrée MCP : un processus, un port. La surface MCP ne publie délibérément
@@ -1459,44 +1368,30 @@ réseaux qui se relaient** — encodeurs de texte, un dénoiseur (UNet ou
 transformeur), un VAE — puis deux conséquences traversent toute la
 fonctionnalité :
 
-**La mémoire dépend de la façon dont ils se relaient.** Tous résidents,
-l'empreinte est leur somme. Confiés à `enable_model_cpu_offload()` de
-`diffusers`, seul le composant qui calcule reste résident puis le pic devient le
-*plus gros* — le même marché que la lecture des couches en flux pour un LLM, à
-une pénalité bien moindre, parce que les composants se relaient quelques fois
-par image au lieu d'une fois par jeton. C'est la colonne `offload` ci-dessus,
-puis elle est essayée automatiquement avant qu'un modèle soit rejeté pour cause
-de mémoire : sur FLUX, où 8,4B des 16,9B sont un encodeur T5 utilisé une fois
-par image, c'est la différence entre l'exécuter puis ne pas l'exécuter.
+**La mémoire dépend de la façon dont ils se relaient.** Tous résidents, l'empreinte est leur somme. Confiés à `enable_model_cpu_offload()` de `diffusers`, seul le composant qui calcule reste résident, puis le pic devient le *plus gros*.
 
-**Le temps, ce sont des étapes, pas des jetons.** La boucle d'échantillonnage
-exécute un nombre fixe d'étapes de débruitage, chacune une passe complète du
-dénoiseur, donc l'unité honnête est la seconde par image — puis le plus gros
-levier est le nombre d'étapes, qui est une propriété des *poids*, pas une
-préférence. SDXL-Turbo puis FLUX.1-schnell sont distillés pour 1 à 4 étapes là
-où SDXL en veut 28 ; exécuter un checkpoint distillé à 28 étapes est plus lent
-**puis** moins bon. Le nombre d'étapes vient donc du catalogue, ce qui est ce
-qui rend utilisable un modèle d'image choisi automatiquement.
+C'est le même marché que la lecture des couches en flux pour un LLM, à une pénalité bien moindre, parce que les composants se relaient quelques fois par image au lieu d'une fois par jeton.
 
-Deux autres choses que le catalogue porte pour la même raison. **La résolution
-native**, parce que c'est la seule taille où un modèle de diffusion est bon :
-demander 1024×1024 à un modèle 512px duplique les sujets au lieu d'ajouter du
-détail, d'où `size: "auto"` qui résout vers le chiffre du modèle. Puis **la
-licence diffère selon le modèle** — SD 1.5 puis SDXL sont en CreativeML
-OpenRAIL-M, SD 3.5 sous la licence communautaire Stability, FLUX.1-schnell en
-Apache-2.0 (son frère `[dev]` non) — vérifiez donc celle du modèle choisi avant
-de publier sa sortie.
+C'est la colonne `offload` ci-dessus, puis elle est essayée automatiquement avant qu'un modèle soit rejeté pour cause de mémoire. Sur FLUX, où 8,4B des 16,9B sont un encodeur T5 utilisé une fois par image, c'est la différence entre l'exécuter puis ne pas l'exécuter.
+
+**Le temps, ce sont des étapes, pas des jetons.** La boucle d'échantillonnage exécute un nombre fixe d'étapes de débruitage, chacune une passe complète du dénoiseur, donc l'unité honnête est la seconde par image.
+
+Le plus gros levier est le nombre d'étapes, qui est une propriété des *poids* plutôt qu'une préférence. SDXL-Turbo puis FLUX.1-schnell sont distillés pour 1 à 4 étapes là où SDXL en veut 28 ; exécuter un checkpoint distillé à 28 étapes est plus lent **puis** moins bon.
+
+Le nombre d'étapes vient donc du catalogue, ce qui est ce qui rend utilisable un modèle d'image choisi automatiquement.
+
+Deux autres choses que le catalogue porte pour la même raison.
+
+- **La résolution native**, parce que c'est la seule taille où un modèle de diffusion est bon : demander 1024×1024 à un modèle 512px duplique les sujets au lieu d'ajouter du détail. D'où `size: "auto"`, qui résout vers le chiffre du modèle.
+- **La licence, qui diffère selon le modèle** — SD 1.5 puis SDXL en CreativeML OpenRAIL-M, SD 3.5 sous la licence communautaire Stability, FLUX.1-schnell en Apache-2.0 (son frère `[dev]` non). Vérifiez celle du modèle choisi avant de publier sa sortie.
 
 ## Usages / profils de tâche
 
-Là où un *brief* est écrit par dépôt, les huit charges de travail récurrentes de la suite
-sont nommées une fois dans un **catalogue d'usages** intégré (`usages.yaml`). Chaque
-**profil** (`text2sql`, `rag-answer`, `embeddings`, `text2sql-figures`, `report-bluf`,
-`classification`, `pii-rgpd`, `persona`) n'énonce que ses **besoins** : type de tâche
-(texte / code / vision / *embeddings*), besoin ou non de sortie structurée (*structured
-output*), plancher de débit, marge mémoire, seuil de qualité indicatif et longueur de
-contexte. Un profil est, au fond, un *brief* nommé : il est donc résolu par le **même moteur
-à quatre critères** que n'importe quel *brief*.
+Là où un *brief* est écrit par dépôt, les huit charges de travail récurrentes de la suite sont nommées une fois dans un **catalogue d'usages** intégré (`usages.yaml`).
+
+Chaque **profil** — `text2sql`, `rag-answer`, `embeddings`, `text2sql-figures`, `report-bluf`, `classification`, `pii-rgpd`, `persona` — n'énonce que ses **besoins** : type de tâche (texte / code / vision / *embeddings*), besoin ou non de sortie structurée, plancher de débit, marge mémoire, seuil de qualité indicatif, longueur de contexte.
+
+Un profil est, au fond, un *brief* nommé : il est donc résolu par le **même moteur à quatre critères** que n'importe quel *brief*.
 
 Un profil **ne nomme jamais de modèle.** best-engine est le seul décideur : il lit les
 besoins, sonde la machine et choisit le modèle local concret, en n'écrivant ce choix que
