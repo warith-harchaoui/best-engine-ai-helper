@@ -6,6 +6,31 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ### Added
 
+- **The handover file is no longer the one document with no gate.**
+  `.private/die.md` was read by a human and believed, while parity, worked
+  examples, links, commands and Python recipes each had a script reading them.
+  That asymmetry is where the one false premise of iterations 11 to 17 came
+  from: a sentence saying another project read a field it does not read,
+  inherited, acted on, and written into this changelog before anyone opened
+  that repository.
+
+  `tests/test_handoff_claims.py` fires on exactly one shape — a sentence
+  saying what *another* project does, with no command beside it that would
+  settle the question. It ignores prose, paths and anything about this
+  repository. A cross-reference ("that project being X") stays silent; a
+  behavioural claim does not; a claim already marked false stays silent too,
+  because striking a sentence through and saying why is the correct repair and
+  a rule that keeps firing on it pushes the author toward silent deletion
+  instead. Verified by putting the real sentence back and watching it name the
+  line.
+
+  Two honest limits, stated rather than discovered later. `.private/` is
+  gitignored, so the repository assertion **skips on every CI run** and the
+  unit tests carry the coverage. And this is the one check added after the
+  loop was declared converged: the probes of iterations 15 and 16 found five
+  of their own bugs per real defect, while this targets a defect that happened
+  and reached a published file.
+
 - **The Python half of the recipe promise is gated too.** Iteration 12 put
   every `best-engine-ai-helper ...` line under a check against the real Click
   tree and left the sixteen `python` fences unread, which is the half a
