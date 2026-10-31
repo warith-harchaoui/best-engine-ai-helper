@@ -11,12 +11,12 @@ Public API (importable without invoking the CLI):
   from best_engine_ai_helper import airllm_decide, airllm_plan  # layer streaming
   from best_engine_ai_helper import airllm_compare  # streamed vs native, timed
   from best_engine_ai_helper import imagine_plan, imagine_generate  # text-to-image
+  from best_engine_ai_helper import text_model, vision_model  # cheap tag resolvers
 
 An OpenAI-compatible HTTP surface sits on the same app as the GUI and the MCP
 endpoint (``best-engine-ai-helper serve``): point any OpenAI SDK at
 ``/v1`` and ask for the model named ``best``. See
 :mod:`best_engine_ai_helper.openai_api`.
-  from best_engine_ai_helper import text_model, vision_model  # cheap tag resolvers
 
 The CLI entry point is ``best-engine-ai-helper`` (see cli.py). Importing this
 package does not trigger any CLI parsing or subprocess calls.

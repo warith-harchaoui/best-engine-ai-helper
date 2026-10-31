@@ -7,6 +7,10 @@ Exposes the two calls the GUI needs:
 - ``GET /api/lightweight``    — whether layer streaming is available/warranted here,
   and which too-large models it would unlock (see
   :mod:`best_engine_ai_helper.offload`).
+- ``POST /api/recommend`` — a free-text task -> the same report ``recommend()``
+  produces for the CLI's ``report`` command, as JSON, plus the best PAID model
+  under ``"cloud"`` (reference only, on by default; see ``cli.py``'s
+  ``report --cloud``).
 
 It also mounts the **OpenAI-compatible** surface from
 :mod:`best_engine_ai_helper.openai_api` on the same app: ``/v1/models``,
@@ -15,10 +19,6 @@ It also mounts the **OpenAI-compatible** surface from
 any OpenAI SDK at ``http://127.0.0.1:8000/v1`` and ask for the model named
 ``best`` — from the outside this package then behaves like an OpenAI endpoint,
 while inside it is choosing the model this machine should actually run.
-- ``POST /api/recommend`` — a free-text task -> the same report ``recommend()``
-  produces for the CLI's ``report`` command, as JSON, plus the best PAID model
-  under ``"cloud"`` (reference only, on by default; see ``cli.py``'s
-  ``report --cloud``).
 
 A minimal single-page GUI is served at ``GET /gui`` (``GET /`` redirects
 there): it shows the machine's characteristics and lets you type a task
