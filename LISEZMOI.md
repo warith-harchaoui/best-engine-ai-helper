@@ -22,9 +22,12 @@ Seul un modèle qui réussit les deux voit son fichier d'environnement écrit �
 
 ## Le film
 
-[![Le film de lancement : un nom de modèle écrit en dur n'a raison qu'une seule fois](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/film/poster.jpg)](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/film/best-engine-ai-helper.mp4)
+[![Le film de lancement : un nom de modèle écrit en dur n'a raison qu'une seule fois](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/film/poster.jpg)](https://github.com/warith-harchaoui/best-engine-ai-helper/tree/main/assets/film)
 
-Cinquante-deux secondes, dans `assets/film/`. Ce qu'il *affirme* vit dans
+Cinquante-deux secondes, dans `assets/film/`. Le **rendu n'est pas suivi** :
+l'affiche, les sous-titres, la composition puis le registre le sont, enfin
+`film.yaml` dit pourquoi — le film se reconstruit depuis un clone au lieu
+d'être livré en 1,6 Mo d'octets dérivés. Ce qu'il *affirme* vit dans
 `film.yaml` plutôt que dans les images, puis c'est la seule raison pour
 laquelle on peut le vérifier :
 

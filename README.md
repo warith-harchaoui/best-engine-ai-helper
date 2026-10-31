@@ -20,10 +20,13 @@ Only a model that passes both gets its environment file written — the file dow
 
 ## The film
 
-[![The launch film: a hardcoded model name is right exactly once](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/film/poster.jpg)](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/film/best-engine-ai-helper.mp4)
+[![The launch film: a hardcoded model name is right exactly once](https://raw.githubusercontent.com/warith-harchaoui/best-engine-ai-helper/main/assets/film/poster.jpg)](https://github.com/warith-harchaoui/best-engine-ai-helper/tree/main/assets/film)
 
-Fifty-two seconds, in `assets/film/`. What it *asserts* lives in `film.yaml`
-rather than inside the frames, which is the only reason it can be checked:
+Fifty-two seconds, in `assets/film/`. The **render is not tracked** — the
+poster, the captions, the composition and the ledger are, and `film.yaml` says
+why: the film is rebuilt from a clone rather than shipped as 1.6 MB of derived
+bytes. What it *asserts* lives in `film.yaml` rather than inside the frames,
+which is the only reason it can be checked:
 
 ```sh
 make-film verify assets/film/film.yaml --root .   # claims vs the code
