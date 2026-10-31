@@ -330,8 +330,14 @@ All notable changes to best-engine-ai-helper are documented here.
   be roughly double, because the previous runtime wrote a second per-layer
   copy" — and then prints one. Both figures are `8.0` now, with the equality
   stated in the comment beside them rather than left for a consumer to guess
-  at: `ai-bunker` reads this descriptor, and a peak that merely *happens* to
-  match the steady figure would be budgeted for. A test now sweeps every row
+  at: two keys that merely *happen* to match invite a consumer to budget for a
+  transient that cannot occur. (An earlier draft of this entry justified the
+  work by naming `ai-bunker` as the consumer reading these fields. That was
+  inherited from a handover note and was never checked. Verified since: zero
+  occurrences of either field anywhere in that repository, and
+  `llm.engine*.yaml` appears there only in `.gitignore`. The correction is
+  recorded rather than quietly deleted, because a wrong reason for correct
+  work is the same defect this entry is about.) A test now sweeps every row
   of the bundled catalogue and asserts the two are equal for all of them, so
   the equality is demonstrably a property of the runtime rather than of the
   model that happened to be in the example.
