@@ -24,6 +24,27 @@ from best_engine_ai_helper import observe
 USER_ROOT = Path.home() / ".best-engine-ai-helper"
 
 
+def _raise(name: str) -> None:
+    """
+    Make an unimportable module loud instead of invisible.
+
+    Read the stdlib before claiming what this protects, because the obvious
+    reading is wrong. `walk_packages` consults `onerror` **only** when
+    `info.ispkg` -- it imports a package to find what is inside it, and yields
+    plain modules without importing them at all. So this covers exactly one
+    case: a subpackage (`sources`) that stops importing, whose submodules
+    would otherwise be skipped in silence while the sweep still reported
+    success.
+
+    Plain modules are imported by the caller below, where a failure already
+    propagates and is loud. The remaining gap -- a module missed for any other
+    reason -- is covered by comparing the walk against what is on disk, in
+    `tests/test_cache_isolation.py`. One guard is narrower than it looks;
+    saying so is what keeps the other two from being skipped.
+    """
+    raise ImportError(f"{name} could not be imported, so the sweep would silently skip it")
+
+
 def redirect_user_paths(monkeypatch: pytest.MonkeyPatch, destination: Path) -> list[str]:
     """
     Point every module-level path under :data:`USER_ROOT` at ``destination``.
@@ -70,7 +91,7 @@ def redirect_user_paths(monkeypatch: pytest.MonkeyPatch, destination: Path) -> l
     redirected: list[str] = []
     modules = [_package] + [
         importlib.import_module(info.name)
-        for info in pkgutil.walk_packages(_package.__path__, _package.__name__ + ".")
+        for info in pkgutil.walk_packages(_package.__path__, _package.__name__ + ".", _raise)
     ]
     for module in modules:
         for name, value in list(vars(module).items()):

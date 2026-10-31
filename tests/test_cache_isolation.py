@@ -49,14 +49,14 @@ from pathlib import Path
 import pytest
 
 import best_engine_ai_helper as package
-from tests.conftest import USER_ROOT
+from tests.conftest import USER_ROOT, _raise
 
 
 def _user_paths() -> list[tuple[str, str, Path]]:
     """Every module-level ``Path`` in the package that resolves under USER_ROOT."""
     modules = [package] + [
         importlib.import_module(info.name)
-        for info in pkgutil.walk_packages(package.__path__, package.__name__ + ".")
+        for info in pkgutil.walk_packages(package.__path__, package.__name__ + ".", _raise)
     ]
     found: list[tuple[str, str, Path]] = []
     for module in modules:
@@ -69,6 +69,37 @@ def _user_paths() -> list[tuple[str, str, Path]]:
                 continue
             found.append((module.__name__, name, value))
     return found
+
+
+def test_the_sweep_sees_every_module_on_disk() -> None:
+    """A sweep that covers less than the package still reports success.
+
+    `_raise` covers one narrow case -- `walk_packages` consults `onerror` only
+    for *packages*, so a subpackage that stops importing takes its submodules
+    out of the sweep in silence. It does nothing for a plain module, which the
+    walk never imports. This test covers the rest, and does not care why: it
+    compares what the walk yields against what is on disk, so a module missed
+    for any reason at all shows up here, including reasons nobody has thought
+    of yet.
+
+    The lesson is borrowed, from a concurrent session that nearly shipped a
+    crash-dump guard calling `py-spy` -- which needs root on macOS and would
+    have written "This program requires root" instead of a stack trace on the
+    one day it mattered. A guard that looks armed is worse than none.
+    """
+    walked = {
+        info.name.rsplit(".", 1)[-1]
+        for info in pkgutil.walk_packages(package.__path__, package.__name__ + ".", _raise)
+    }
+    on_disk = {
+        path.stem for path in Path(package.__path__[0]).rglob("*.py") if path.stem != "__init__"
+    }
+    missed = sorted(on_disk - walked)
+    assert not missed, (
+        f"{len(missed)} module(s) on disk the sweep never reached: {missed}. "
+        "Their user-directory paths would not be redirected, and nothing else "
+        "would say so."
+    )
 
 
 def test_no_module_level_path_still_points_at_the_developers_home() -> None:
