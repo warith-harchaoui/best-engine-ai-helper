@@ -878,7 +878,7 @@ outil MCP, comme tous les autres points d'entrée.
 
 ## Catalogue de modèles
 
-Le catalogue de base intégré (`models.yaml`) couvre les familles Qwen 3, Qwen 2.5, Qwen 2.5-Coder et Gemma 3 (de 3B à 72B paramètres, en Q4_K_M et Q8_0), plus un petit ensemble d'*embedders* textuels (`kind: embed`) pour l'index de recherche. Le catalogue suit la taille sur disque, la RAM de pic estimée et les scores de benchmark issus de l'Open LLM Leaderboard v2, de l'OpenVLM Leaderboard, d'EvalPlus (code) et de MTEB (recherche par *embedding*). C'est l'*espace de recherche* dans lequel best-engine choisit, jamais un choix propre à un usage.
+Le catalogue de base intégré (`models.yaml`, 31 entrées) couvre les familles Qwen 3, Qwen 3-VL, Qwen 2.5, Qwen 2.5-Coder et Gemma 3 de 3B à 72B (Q4_K_M et Q8_0), les grands modèles ouverts pour lesquels la lecture en flux est dimensionnée (Llama 3.3 70B, Qwen2.5-VL 72B, Mixtral 8x22B, Qwen3 235B, Llama 3.1 405B, DeepSeek-V3 671B), cinq chaînes texte-vers-image (`kind: image`) puis quatre *embedders* textuels (`kind: embed`) pour l'index de recherche. Le catalogue suit la taille sur disque, la RAM de pic estimée et les scores de benchmark issus de l'Open LLM Leaderboard v2, de l'OpenVLM Leaderboard, d'EvalPlus (code) et de MTEB (recherche par *embedding*). C'est l'*espace de recherche* dans lequel best-engine choisit, jamais un choix propre à un usage.
 
 `catalog update` rafraîchit le cache depuis l'[annuaire LLM ApXML](https://apxml.com/models?modelType=open_weight) : des modèles à poids ouverts avec leurs besoins VRAM par quantification, consulté régulièrement.
 

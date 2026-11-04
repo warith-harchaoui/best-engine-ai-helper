@@ -34,9 +34,10 @@ machine.
 pip install best-engine-ai-helper
 ```
 
-Comptez environ 2 Go puis quelques minutes : ce paquet est en Python pur et
-minuscule, mais le moteur de lecture des couches en flux amène torch avec lui.
-Une seule ligne de commande est installée, plus un serveur :
+L'installation de base est en Python pur et légère ; la lecture des couches en
+flux puis la génération d'images sont des extras (`[lightweight]`,
+`[imagine]`) qui amènent torch, environ 2 Go. Une seule ligne de commande est
+installée, plus un serveur :
 
 ```sh
 best-engine-ai-helper --version     # best-engine-ai-helper, version 1.9.0
@@ -755,9 +756,8 @@ au lieu de 140. La facture arrive en temps : chaque jeton relit tout le
 checkpoint, ce qui place l'affaire à des **secondes par jeton** plutôt qu'à des
 jetons par seconde.
 
-Le moteur est `best_engine_ai_helper.streaming`, une dépendance de
-plein droit, ce qui explique l'essentiel des quelque 2 Go d'installation de ce
-paquet. Trois des quatre sous-commandes sont de l'arithmétique pure sur le
+Le moteur est `best_engine_ai_helper.streaming`, derrière l'extra
+`[lightweight]` (environ 2 Go, torch compris). Trois des quatre sous-commandes sont de l'arithmétique pure sur le
 matériel puis le catalogue, puis ne l'importent jamais : elles répondent donc
 juste — instantanément, même — dans un environnement où il refuserait de se
 charger.
@@ -785,21 +785,14 @@ best-engine-ai-helper lightweight status
   Known limits of this runtime:
   - the checkpoint has to publish safetensors; a repository that ships only a pickled pytorch_model.bin is refused, because reading one layer out of a pickle means reading the whole file once per layer
   - a sparse mixture-of-experts layer is materialised whole, so its resident figure is the full expert set rather than the few a token routes to
-
-  Repair the install:  pip install --upgrade --force-reinstall best-engine-ai-helper
 ```
 
-Cette sortie est réelle, puis elle montre une **installation cassée** :
-l'environnement où ces exemples ont tourné avait le paquet sans sa dépendance
-lightweight. Le panneau n'en est que plus instructif. `runtime import` est la version
-honnête d'une question qui demandait avant « est-ce que l'extra est installé » —
-lightweight est livré avec le paquet, donc toute valeur autre qu'`ok` signale une
-installation incomplète, puis la ligne le dit et imprime la commande de
-réparation au lieu d'un échec plus vague plus tard. `runtime here : mlx` est un
-fait distinct, toujours vrai : ce matériel *saurait* lire en flux, sur MLX.
-Remarquez aussi `would activate : no` avec `trigger: not-needed` — l'échec
-d'import n'est pas la raison du refus. Un modèle tient déjà, donc le flux n'a
-jamais été souhaité.
+`runtime import : ok` dit que l'extra `[lightweight]` est installé et se
+charge ; sans lui la ligne affiche `FAILS` puis le panneau se termine par la
+commande d'installation. `runtime here : mps` est un fait distinct : ce
+matériel *saurait* lire en flux, sur Metal. Remarquez aussi `would activate :
+no` avec `trigger: not-needed` : un modèle tient déjà, donc le flux n'a jamais
+été souhaité.
 
 `--measure` remplace la classe de stockage déclarée par une vraie mesure de ce
 disque (environ 256 Mo écrits puis relus en contournant le cache de pages, une à
@@ -817,27 +810,27 @@ best-engine-ai-helper lightweight status --json --request always
 ```json
 {
   "decision": {
-    "activate": false,
+    "activate": true,
     "request": "always",
     "trigger": "manual",
-    "reason": "Layer streaming cannot run here: the lightweight runtime cannot be imported, though it is a dependency of this package — the install looks incomplete: pip install --upgrade --force-reinstall best-engine-ai-helper",
-    "installed": false,
-    "runtime": "mlx",
-    "blockers": [
-      "the lightweight runtime cannot be imported, though it is a dependency of this package — the install looks incomplete: pip install --upgrade --force-reinstall best-engine-ai-helper"
-    ]
+    "reason": "Layer streaming was requested explicitly and runs here on mps.",
+    "installed": true,
+    "runtime": "mps",
+    "disk": {"storage": "apple-internal", "read_gbs": 4.0, "basis": "declared", "free_gb": 19.9},
+    "blockers": [],
+    "caveats": ["the checkpoint has to publish safetensors; …", "a sparse mixture-of-experts layer is materialised whole, …"]
   },
   "compute": {"accelerator": "gpu-metal", "chip": "Apple M2 Max", "bandwidth_gbs": 400.0},
-  "disk": {"storage": "apple-internal", "read_gbs": 4.0, "basis": "declared", "free_gb": 22.1},
+  "disk": {"storage": "apple-internal", "read_gbs": 4.0, "basis": "declared", "free_gb": 19.9},
   "memory_budget_gb": 72.0,
-  "install": "pip install --upgrade --force-reinstall best-engine-ai-helper"
+  "install": "pip install --upgrade 'best-engine-ai-helper[lightweight]'"
 }
 ```
 
-`--request always` a forcé la question puis a obtenu quand même
-`activate: false`, le bloqueur étant nommé. `install` est une commande de
-**réparation**, pas d'activation : c'est ce qu'il faut lancer quand `installed`
-revient à faux.
+`--request always` a forcé la question puis a obtenu `activate: true`, avec
+`trigger: manual` : demandé explicitement, le flux tourne ici. Sans l'extra,
+`installed` revient à faux, le bloqueur le dit puis `activate` reste faux
+quelle que soit la demande ; `install` est la commande qui répare.
 
 ### Que pourrait-elle lire en flux, à quel prix ?
 
@@ -1624,10 +1617,9 @@ plafond.
 débit confortable, pas au test mémoire. Regardez la colonne `comfy`, puis
 `min_tps` dans le brief.
 
-**`lightweight status` dit `runtime import : FAILS (install incomplete)`.** lightweight est
-une dépendance de plein droit : c'est donc une installation cassée plutôt qu'un
-extra manquant : un conteneur allégé, une roue qui n'a pas pu se construire.
-Le panneau imprime la commande de réparation. `status`, `plan` puis `compare`
+**`lightweight status` dit `runtime import : FAILS (install incomplete)`.** Le
+moteur vit derrière l'extra `[lightweight]` : le plus souvent, cet extra n'a
+pas été installé. Le panneau imprime la commande d'installation. `status`, `plan` puis `compare`
 continuent de fonctionner de toute façon ; seule la génération réelle exige le
 moteur.
 

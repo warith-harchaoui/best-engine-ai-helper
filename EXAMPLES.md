@@ -34,9 +34,9 @@ machine.
 pip install best-engine-ai-helper
 ```
 
-Expect about 2 GB and a few minutes: this package is pure Python and tiny, but
-the layer-streaming runtime brings torch with it. One command line is
-installed, plus a server:
+The base install is pure Python and small; layer streaming and text-to-image
+are extras (`[lightweight]`, `[imagine]`), and they bring torch, about 2 GB.
+One command line is installed, plus a server:
 
 ```sh
 best-engine-ai-helper --version     # best-engine-ai-helper, version 1.9.0
@@ -733,8 +733,8 @@ of gigabytes instead of 140. The bill arrives in time: every token re-reads the
 whole checkpoint, which puts this at **seconds per token** rather than tokens
 per second.
 
-The runtime is `best_engine_ai_helper.streaming`, a core dependency,
-which is most of why this package's install is around 2 GB. Three of the four
+The runtime is `best_engine_ai_helper.streaming`, behind the `[lightweight]`
+extra (about 2 GB, torch included). Three of the four
 subcommands are pure arithmetic over the hardware and the catalogue and never
 import it, so they answer correctly, and instantly, even in an environment
 where it would fail to load.
@@ -763,19 +763,13 @@ best-engine-ai-helper lightweight status
   - the checkpoint has to publish safetensors; a repository that ships only a pickled pytorch_model.bin is refused, because reading one layer out of a pickle means reading the whole file once per layer
   - a sparse mixture-of-experts layer is materialised whole, so its resident figure is the full expert set rather than the few a token routes to
 
-  Repair the install:  pip install --upgrade --force-reinstall best-engine-ai-helper
 ```
 
-That output is real, and it is showing a **broken install**: the environment
-these examples ran in had the package without its lightweight dependency. It is the
-more instructive panel for it. `runtime import` is the honest version of a
-question that used to read "is the extra installed" — lightweight ships with the
-package, so anything other than `ok` means an incomplete install, and the line
-says so and prints the repair command instead of a vaguer failure later.
-`runtime here : mlx` is a separate fact and still true: this hardware *would*
-stream, on MLX. Note also `would activate : no` with `trigger: not-needed` —
-the import failure is not the reason it declined. A model already fits, so
-streaming was never wanted.
+`runtime import : ok` says the `[lightweight]` extra is installed and loads;
+without it the line reads `FAILS` and the panel ends with the install command.
+`runtime here : mps` is a separate fact: this hardware *would* stream, on
+Metal. Note also `would activate : no` with `trigger: not-needed`: a model
+already fits, so streaming was never wanted.
 
 `--measure` replaces the declared storage class with a real measurement of this
 drive (about 256 MB written and read back with the page cache bypassed, one or
@@ -792,26 +786,27 @@ best-engine-ai-helper lightweight status --json --request always
 ```json
 {
   "decision": {
-    "activate": false,
+    "activate": true,
     "request": "always",
     "trigger": "manual",
-    "reason": "Layer streaming cannot run here: the lightweight runtime cannot be imported, though it is a dependency of this package — the install looks incomplete: pip install --upgrade --force-reinstall best-engine-ai-helper",
-    "installed": false,
-    "runtime": "mlx",
-    "blockers": [
-      "the lightweight runtime cannot be imported, though it is a dependency of this package — the install looks incomplete: pip install --upgrade --force-reinstall best-engine-ai-helper"
-    ]
+    "reason": "Layer streaming was requested explicitly and runs here on mps.",
+    "installed": true,
+    "runtime": "mps",
+    "disk": {"storage": "apple-internal", "read_gbs": 4.0, "basis": "declared", "free_gb": 19.9},
+    "blockers": [],
+    "caveats": ["the checkpoint has to publish safetensors; …", "a sparse mixture-of-experts layer is materialised whole, …"]
   },
   "compute": {"accelerator": "gpu-metal", "chip": "Apple M2 Max", "bandwidth_gbs": 400.0},
-  "disk": {"storage": "apple-internal", "read_gbs": 4.0, "basis": "declared", "free_gb": 22.1},
+  "disk": {"storage": "apple-internal", "read_gbs": 4.0, "basis": "declared", "free_gb": 19.9},
   "memory_budget_gb": 72.0,
-  "install": "pip install --upgrade --force-reinstall best-engine-ai-helper"
+  "install": "pip install --upgrade 'best-engine-ai-helper[lightweight]'"
 }
 ```
 
-`--request always` forced the question and still got `activate: false`, with
-the blocker named. `install` is a **repair** command, not an opt-in one: it is
-what to run when `installed` comes back false.
+`--request always` forced the question and got `activate: true`, with
+`trigger: manual`: asked for explicitly, streaming runs here. Without the
+extra, `installed` comes back false, the blocker says so and `activate` stays
+false whatever was requested; `install` is the command that fixes it.
 
 ### What could it stream, and at what price?
 
@@ -1571,10 +1566,9 @@ the number. `--headroom` only ever tightens it; values above 0.5 are clamped.
 floor, not the memory test. Look at the `comfy` column, and at `min_tps` in the
 brief.
 
-**`lightweight status` says `runtime import : FAILS (install incomplete)`.** lightweight
-is a core dependency, so this is a broken install rather than a missing extra —
-a stripped container, or a wheel that failed to build. The panel prints the
-repair command. `status`, `plan` and `compare` keep working regardless; only
+**`lightweight status` says `runtime import : FAILS (install incomplete)`.** The
+runtime lives behind the `[lightweight]` extra, so this usually means the extra
+was not installed. The panel prints the install command. `status`, `plan` and `compare` keep working regardless; only
 actually generating needs the runtime.
 
 **`lightweight plan` refuses almost everything on `disk_gb`.** That column is

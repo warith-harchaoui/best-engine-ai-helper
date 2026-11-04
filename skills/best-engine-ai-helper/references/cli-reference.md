@@ -5,20 +5,24 @@ extra, so nothing has to be installed to get it. Every command below is
 spelled `best-engine-ai-helper <command>`; `-h` and `-V` work everywhere
 `--help` and `--version` do.
 
-Ollama is required for `pull`, `validate` and `env`; **not** for `detect`,
+Ollama is required for `pull` and `validate`; **not** for `detect`,
 `recommend` or `report`.
 
 ## Hardware
 
 ```bash
-best-engine-ai-helper detect [--live] [--json]
-best-engine-ai-helper hardware
+best-engine-ai-helper detect                 # JSON
+best-engine-ai-helper hardware show          # the merged chip table
+best-engine-ai-helper hardware update        # record this machine's chip
+best-engine-ai-helper storage [--backend ollama|vllm]
 ```
 
 `detect` reports the memory actually usable for a model: the Apple Silicon
-unified pool, NVIDIA VRAM, or system RAM, whichever applies. `--live` adds the
-current load (CPU percent, available RAM, running vLLM processes) so the
-recommendation accounts for what is already occupying the machine.
+unified pool, NVIDIA VRAM, or system RAM, whichever applies. `--live` (on
+`recommend` and `report`) adds the current load (CPU percent, available RAM,
+running vLLM processes) so the recommendation accounts for what is already
+occupying the machine. `storage` plans capacity: what fits on disk, and what
+fits in memory.
 
 All raw probing is delegated to `os-helper` — this package does not read
 `sysctl` or `nvidia-smi` itself.
@@ -26,22 +30,28 @@ All raw probing is delegated to `os-helper` — this package does not read
 ## Recommendation
 
 ```bash
-best-engine-ai-helper recommend "summarise long French meeting transcripts" [--json]
+best-engine-ai-helper recommend [--kind llm|vlm|both] [--application code|math|ocr|vision|chat|generalist] \
+    [--headroom F] [--min-tps F] [--live] [--backend ollama|vllm|lightweight]
+best-engine-ai-helper report --task "summarise long French meeting transcripts" [--format md|json] [--out STEM]
 ```
 
-The task description is **parsed** (`parse_task`, with offline language ID),
-so plain words beat keywords. Output: the ranked engines that fit, with the
-reason each was chosen or rejected.
+`recommend` ranks the candidates for this hardware (a dry run, nothing is
+pulled). A free-text task goes to `report --task`: it is **parsed**
+(`parse_task`, with offline language ID), so plain words beat keywords.
+Output: the ranked engines that fit, with the reason each was chosen or
+rejected.
 
 ```bash
-best-engine-ai-helper list                  # the catalogue
-best-engine-ai-helper show MODEL            # one entry: footprint, scores, tags
-best-engine-ai-helper usages                # known task families and usages
-best-engine-ai-helper catalog update        # refresh from the network (optional)
+best-engine-ai-helper catalog show                  # the merged catalogue, as a table
+best-engine-ai-helper catalog update [--ollama] [--arena] [--cloud] [--limit N]
+best-engine-ai-helper usages list                   # usage profiles and families
+best-engine-ai-helper usages show NAME              # one profile's needs
+best-engine-ai-helper usages resolve NAME [--family F1] [--out FILE]
+best-engine-ai-helper providers [--json]            # which cloud providers are usable
 ```
 
-The bundled catalogue is enough for everyday use; `update` is the only other
-online call besides `pull`.
+The bundled catalogue is enough for everyday use; `catalog update` is the only
+other online call besides `pull`.
 
 ## The headroom model
 
@@ -59,18 +69,19 @@ A model that fits exactly is the wrong choice; that is the point of the gap.
 
 ```bash
 best-engine-ai-helper lightweight status [--measure] [--json] [--request auto|always|never]
-best-engine-ai-helper lightweight plan [--kind llm|vlm|both] [--compression 4bit|8bit] [--context K] [--batch B] [--tokens N]
-best-engine-ai-helper lightweight compare [--tokens N] [--batch B] [--prompt-tokens P] [--application AXIS]
-best-engine-ai-helper lightweight prepare --model REPO [--compression 4bit] [--shards-path DIR] [--delete-original]
+best-engine-ai-helper lightweight plan [--kind llm|vlm|both] [--context K] [--batch B] [--tokens N] [--measure] [--json]
+best-engine-ai-helper lightweight compare [--kind llm|vlm] [--tokens N] [--batch B] [--prompt-tokens P] \
+    [--application AXIS] [--native-backend ollama|vllm] [--measure] [--json]
+best-engine-ai-helper lightweight prepare --model REPO
 best-engine-ai-helper recommend --backend lightweight
 best-engine-ai-helper resolve --brief llm.brief.yaml --backend lightweight
 ```
 
-The lightweight runtime is a core dependency, so nothing has to be installed first
-(it is most of why this package's install is ~2 GB). The three read-only
-commands never import it, so they answer correctly even where it would fail to
-load — and `lightweight status` reports that failure as an incomplete install, since
-at that point it is one.
+The lightweight runtime lives behind an extra:
+`pip install 'best-engine-ai-helper[lightweight]'` (about 2 GB, torch
+included). The three read-only commands never import it, so they answer
+correctly without it — and `lightweight status` prints `runtime import :
+FAILS` with that install command when it is missing.
 
 **The model, in four numbers.** Resident memory is one layer shard — the
 checkpoint over its decoder depth, ×1.25 (the embedding layer is the widest
@@ -84,8 +95,8 @@ which would reject every candidate.
 
 **Two levers, both worth quoting to a user who says it is too slow.** A batch
 of B prompts shares each pass, so B answers arrive in the time of one;
-4-bit compression divides the bytes read, worth ~3× net of dequantisation. The
-prompt itself is nearly free — a 2000-token prompt rides through each layer in
+there is no compression flag: the runtime reads the checkpoint at the dtype
+it ships in. The prompt itself is nearly free — a 2000-token prompt rides through each layer in
 the same pass as a 10-token one, which no other backend can say.
 
 **Activation.** Never automatic unless the conventional backend found nothing
@@ -147,40 +158,51 @@ does not.
 ## Pull, validate, write
 
 ```bash
-best-engine-ai-helper pull [MODEL]
+best-engine-ai-helper pull [--application AXIS] [--min-tps F] [--keep-failed] [--vllm]
 best-engine-ai-helper validate
 best-engine-ai-helper env
-best-engine-ai-helper resolve
+best-engine-ai-helper resolve --brief llm.brief.yaml [--out FILE] [--backend …] [--endpoint URL]
+best-engine-ai-helper doctor [--directory .]
 ```
 
-The order matters:
-
-1. **`pull`** downloads the weights through Ollama (online, once).
-2. **`validate`** runs the two quality gates:
+1. **`pull`** picks the best model for this machine (it takes no model name),
+   downloads it through Ollama (online, once) and runs the two quality gates:
    - the **Ralph Loop** — a known flaw is seeded into a short text; does the
      model catch and fix it?
    - the **Ralph Eyeball Loop** — an obvious visual defect is seeded into a
      small image; does the model see it?
-3. **`env`** writes the environment file **only for a model that passed
-   both**. That file is what downstream projects read.
-4. **`resolve`** prints what the current environment resolves to.
+   Only a model that passes both is written to
+   `~/.best-engine-ai-helper/env.sh`; a failed one is removed unless
+   `--keep-failed`.
+2. **`validate`** re-runs the gates on the model already configured
+   (`BEST_LLM_TEXT` / `BEST_LLM_VISION`), e.g. after a manual `ollama pull`.
+3. **`env`** prints that env file, ready to source; it writes nothing and
+   exits 1 if `pull` has not written it yet.
+4. **`resolve`** turns a project's committed usage brief into a
+   machine-specific engine file; `doctor` compares that file with what the
+   daemon actually serves.
 
-A pulled model is not a trusted model until step 2 passes.
+A pulled model is not a trusted model until the gates pass.
 
 ## Reporting and activity
 
 ```bash
-best-engine-ai-helper report [-o report.md]
-best-engine-ai-helper activity
-best-engine-ai-helper gui [--port N]        # browser, read-only half
+best-engine-ai-helper report [--task TEXT] [--out STEM] [--format md|json] [--cloud]
+best-engine-ai-helper activity [--format table|json] [--what-if]
+best-engine-ai-helper gui [--host H] [--port N]
 ```
 
-`report` renders the hardware snapshot and the recommendation as Markdown.
-`activity` shows what is running right now.
+`report` renders the hardware snapshot and the recommendation as Markdown
+(`--out STEM` writes `STEM.md` and `STEM.json`). `activity` summarises the
+local call ledger: calls, cost, by user and by model.
 
 ## Output contract
 
-- Every reporting command takes `--json`; prefer it when parsing.
-- `detect` and `recommend` work without Ollama; the others fail fast with a
-  clear message if Ollama is absent.
-- Failures are logged through `os_helper` and exit non-zero.
+- Machine-readable output: `detect` prints JSON; `report --format json`,
+  `activity --format json`, `providers --json`, and `--json` on the
+  `lightweight` and `imagine plan` subcommands. `recommend` and
+  `catalog show` print tables only.
+- `detect`, `recommend` and `report` work without Ollama; `pull` and
+  `validate` fail fast with a clear message if it is absent.
+- `-v` / `-vv` (before the subcommand) raise the log level; failures exit
+  non-zero.

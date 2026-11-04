@@ -788,7 +788,7 @@ instantly even where the runtime itself would not load.
 ### From Python
 
 ```python
-import best_engine_ai_helper as beah  # lightweight is a dependency, nothing to install
+import best_engine_ai_helper as beah  # the arithmetic needs no extra; generating needs [lightweight]
 
 hw, disk = beah.available_memory(), beah.disk_profile()
 
@@ -860,7 +860,7 @@ tool like every other endpoint.
 
 ## Model catalog
 
-The bundled seed catalog (`models.yaml`) covers the Qwen 3, Qwen 2.5, Qwen 2.5-Coder, and Gemma 3 families (from 3B to 72B parameters, across Q4_K_M and Q8_0), plus a small set of `kind: embed` text embedders for the retrieval index. The catalog tracks on-disk size, estimated peak RAM, and benchmark scores from the Open LLM Leaderboard v2, the OpenVLM Leaderboard, EvalPlus (code), and MTEB (embedding retrieval). This is the *search space* best-engine picks from: it is never a per-usage choice.
+The bundled seed catalog (`models.yaml`, 31 entries) covers the Qwen 3, Qwen 3-VL, Qwen 2.5, Qwen 2.5-Coder and Gemma 3 families from 3B to 72B (Q4_K_M and Q8_0), the large open-weight models layer streaming is sized for (Llama 3.3 70B, Qwen2.5-VL 72B, Mixtral 8x22B, Qwen3 235B, Llama 3.1 405B, DeepSeek-V3 671B), five `kind: image` text-to-image pipelines, and four `kind: embed` text embedders for the retrieval index. The catalog tracks on-disk size, estimated peak RAM, and benchmark scores from the Open LLM Leaderboard v2, the OpenVLM Leaderboard, EvalPlus (code), and MTEB (embedding retrieval). This is the *search space* best-engine picks from: it is never a per-usage choice.
 
 `catalog update` refreshes the cache from the [ApXML LLM directory](https://apxml.com/models?modelType=open_weight) (open-weight models with their per-quant VRAM needs, consulted regularly). It fetches the specs, normalizes them to catalog entries, and merges them into `~/.best-engine-ai-helper/catalog_cache.yaml` by id (the bundled seed is never modified). Use `--limit N` for a quick partial refresh. ApXML's static pages carry specs but no numeric leaderboard scores, so refreshed entries keep null benchmarks (and rank low) until a scored source, such as the Open LLM Leaderboard v2 or the OpenVLM Leaderboard, fills them.
 

@@ -67,23 +67,24 @@ pip install best-engine-ai-helper
 pip install 'best-engine-ai-helper[cloud]'     # + hosted-model price lookups
 ```
 
-[Ollama](https://ollama.com) is required for `pull`, `validate` and `env`; not
-for `detect`, `recommend` or `report`.
+[Ollama](https://ollama.com) is required for `pull` and `validate`; not for
+`detect`, `recommend` or `report`.
 
 ## What it does, and how to invoke it
 
 | Intent | Command | Library |
 |---|---|---|
-| What hardware is this | `detect`, `hardware` | `compute_profile`, `available_memory` |
-| Which model for this task | `recommend "task description"` | `recommend_engines`, `parse_task` |
-| Rank / inspect the catalogue | `list`, `show`, `catalog` | `load_catalog`, `rank`, `select` |
-| Pull the chosen model | `pull` | `ensure` |
-| Run the quality gates | `validate` | — |
-| Write the env file projects read | `env` | `write_engine`, `load_engine` |
-| Resolve the model to use now | `resolve` | `model_for`, `resolved_models` |
+| What hardware is this | `detect`, `hardware show` | `compute_profile`, `available_memory` |
+| Which model fits this machine | `recommend` | `recommend_engines`, `rank` |
+| Which model for this task, in words | `report --task "task description"` | `recommend_engines`, `parse_task` |
+| Rank / inspect the catalogue | `catalog show`, `catalog update` | `load_catalog`, `rank`, `select` |
+| Pull the chosen model, gate it, write env.sh | `pull` | `ensure` |
+| Re-run the quality gates | `validate` | — |
+| Print the env file projects read | `env` | `load_engine` |
+| Turn a brief into an engine file | `resolve --brief llm.brief.yaml` | `resolve`, `write_engine`, `model_for` |
 | A written report | `report` | `to_markdown`, `write_report` |
-| What is running right now | `activity` | — |
-| Task families and usages | `usages` | `list_usages`, `resolve_usage` |
+| The call and cost ledger | `activity` | — |
+| Task families and usages | `usages list`, `usages show`, `usages resolve` | `list_usages`, `resolve_usage` |
 | Browser version of the read-only half | `gui` | — |
 | Could this machine stream a too-large model | `lightweight status` | `lightweight_decide`, `disk_profile` |
 | What it could stream, and at what price | `lightweight plan` | `lightweight_rank`, `lightweight_pick` |
@@ -97,9 +98,10 @@ Quick examples:
 
 ```bash
 best-engine-ai-helper detect
-best-engine-ai-helper recommend "summarise long French meeting transcripts"
-best-engine-ai-helper pull && best-engine-ai-helper validate
-best-engine-ai-helper env                 # writes the file downstream reads
+best-engine-ai-helper recommend
+best-engine-ai-helper report --task "summarise long French meeting transcripts"
+best-engine-ai-helper pull                # gates the model, writes env.sh
+best-engine-ai-helper env                 # prints the file downstream reads
 best-engine-ai-helper lightweight compare --tokens 300   # when nothing good fits
 ```
 
@@ -112,12 +114,12 @@ read `references/triggers.md`.
 
 - **Detect before you recommend.** The whole point is fitting the machine;
   a recommendation made without `detect` is a guess.
-- **Describe the task in words.** `recommend` parses a natural-language task
-  description (`parse_task`), so "summarise long French transcripts" produces
+- **Describe the task in words.** `report --task` parses a natural-language
+  task description (`parse_task`), so "summarise long French transcripts" produces
   a better answer than "give me a good model".
 - **Headroom is not pessimism.** `MAX_HEADROOM` leaves room for the OS and the
   context window; a model that fits exactly will swap and crawl.
-- **A pulled model is not yet a trusted model.** `validate` runs the two gates
+- **A pulled model is not yet a trusted model.** `pull` runs the two gates
   — the Ralph Loop (a seeded textual flaw) and the Ralph Eyeball Loop (a
   seeded visual defect). Only a model that passes both gets written to the
   env file.
@@ -126,8 +128,8 @@ read `references/triggers.md`.
 - **Offline after the download.** `pull` and `catalog update` are the only
   online operations, and the bundled catalogue is enough for everyday use.
 - **"Nothing fits" has two answers, and the second one is slow.** A model too
-  large to load can still be run by streaming its layers off disk — the lightweight
-  runtime ships with the package, so there is nothing to install first.
+  large to load can still be run by streaming its layers off disk — the
+  runtime is the `[lightweight]` extra (about 2 GB, torch included).
   Resident memory becomes one layer shard — a 70B in about 4 GB instead of 141
   — and the price is **seconds per token**, because every
   token re-reads the whole checkpoint. Reach for it when the user needs a
@@ -158,7 +160,9 @@ read `references/triggers.md`.
   otherwise). Quote `imagine plan` rather than guessing: a diffusion model's
   footprint depends on whether its components take turns, and its quality
   depends on asking for its native resolution.
-- **This package chooses; it does not infer.** It will not run a prompt for
-  you, and serving is Ollama's job.
+- **This package mostly chooses.** Text inference is Ollama's (or vLLM's)
+  job; `serve` only routes OpenAI-shaped requests to it. The exceptions run
+  locally in-process: layer streaming (`lightweight_generate`) and image
+  generation (`imagine generate`).
 - **After running, report the chosen model, the memory it needs and the
   headroom left** — those three numbers are the decision.

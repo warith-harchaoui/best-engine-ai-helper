@@ -109,7 +109,7 @@ def main() -> None:
 
     host = os.environ.get("BEST_ENGINE_HOST", "127.0.0.1")
     port = int(os.environ.get("BEST_ENGINE_PORT", "8000"))
-    # Local-only activity/cost ledger (see observe.py, GET /api/usage); opt out
+    # Local-only activity/cost ledger (see observe.py, GET /api/activity); opt out
     # with BEST_ENGINE_NO_LEDGER=1.
     if not os.environ.get("BEST_ENGINE_NO_LEDGER"):
         observe.enable()

@@ -2,7 +2,9 @@
 
 Unlike the rest of the suite, **the CLI, GUI, HTTP API and MCP server are all
 in the default install**. There are no `[api]` / `[mcp]` extras to opt into;
-the only extra is `[cloud]` (hosted-model price lookups).
+the extras are for what runs a model or reaches a paid one: `[cloud]`
+(hosted providers), `[lightweight]` (layer streaming), `[imagine]`
+(text-to-image), `[filtered]` (CLIP safety screening) and `[generate]`.
 
 ## 1. Library — the surface other packages use
 
@@ -56,12 +58,16 @@ best-engine-ai-helper gui           # serves the app, GUI included
 | GET | `/` | redirect to the GUI |
 | GET | `/gui` | the bilingual browser page |
 | GET | `/api/system` | hardware snapshot |
+| GET / POST | `/api/preferences` | read / save `~/.best-engine-ai-helper/preferences.yaml` |
+| GET | `/api/providers` | which cloud providers are usable (never a key) |
 | POST | `/api/recommend` | task description → ranked engines |
-| GET | `/api/activity` | what is running now |
+| GET | `/api/lightweight` | layer-streaming decision, plans and comparison |
+| GET | `/api/activity` | the call and cost ledger summary |
+| … | `/v1/*` | the OpenAI-compatible inference routes (see `cli-reference.md`, `serve`) |
 
-The HTTP surface covers the **read-only half** of the flow — detection and
-recommendation. Pulling weights and writing the environment file stay on the
-CLI deliberately: they change the machine.
+The `/api/*` routes cover detection and recommendation, plus saving
+preferences. Pulling weights and writing the environment file stay on the CLI
+deliberately: they change the machine.
 
 ## 4. MCP — `fastapi-mcp` over the *same* app (default install)
 
@@ -79,8 +85,10 @@ Register it with Claude Code:
 claude mcp add best-engine --transport http http://127.0.0.1:8000/mcp
 ```
 
-Because only the read-only routes are exposed, an agent holding these tools
-can advise but cannot download weights or rewrite the environment file.
+Every `/api/*` route is a tool, `POST /api/preferences` included (it writes
+`preferences.yaml`, never `settings.yaml`); the `/v1` inference routes are
+not. An agent holding these tools can advise and save preferences, but cannot
+download weights or rewrite the environment file.
 
 ## 5. Bilingual GUI
 

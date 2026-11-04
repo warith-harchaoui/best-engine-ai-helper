@@ -88,9 +88,10 @@ mechanism. The panel is deliberately four lines rather than a table, because
 only four things decide the question:
 
 - whether this machine has a runtime for it at all (a CUDA/ROCm GPU, or Apple
-  Silicon through MLX), and whether the lightweight runtime actually imports — it is
-  a core dependency, so a failure there means an incomplete install, and the
-  panel prints the repair command rather than leaving a dead end;
+  Silicon through MLX), and whether the lightweight runtime actually imports — it
+  lives behind the `[lightweight]` extra, so a failure there usually means the
+  extra is not installed, and the panel prints the install command rather than
+  leaving a dead end;
 - the **storage class and its read bandwidth**, labelled `measured` or
   `declared`, because the drive sets the entire speed of this backend;
 - the **layer budget**: how much resident memory one decoder layer may occupy
@@ -177,7 +178,7 @@ another tool, or `curl`):
 | `POST` | `/api/preferences` | any of `quality_vs_cost`, `headroom`, `min_tps`, `local_only`, `live_load` | the full set as now saved, to `~/.best-engine-ai-helper/preferences.yaml` — never `settings.yaml`, which holds keys |
 | `GET`  | `/api/providers` | (none) | one row per cloud provider: `provider`, `key_env`, `available`, `reason`, `models`. Never a key value |
 | `GET`  | `/api/activity` | (none) | ledger summary: `total_calls`, `total_cost_usd`, `error_rate`, `by_user`, `by_model`, `recent_errors` |
-| `GET`  | `/api/lightweight` | query: `measure` (bool, default false), `kind` (`llm`/`vlm`), `compression` (`4bit`/`8bit`), `answer_tokens` (int, default 300), `batch` (int, default 1) | layer streaming: `decision` (activate / trigger / reason / blockers), `disk` (class, read GB/s, basis, free GB), `memory_budget_gb`, `chosen`, ranked `plans`, and `comparison` — native model vs streamed model priced in seconds for the same answer |
+| `GET`  | `/api/lightweight` | query: `measure` (bool, default false), `kind` (`llm`/`vlm`), `answer_tokens` (int, default 300), `batch` (int, default 1) | layer streaming: `decision` (activate / trigger / reason / blockers), `disk` (class, read GB/s, basis, free GB), `memory_budget_gb`, `chosen`, ranked `plans`, and `comparison` — native model vs streamed model priced in seconds for the same answer |
 
 ```sh
 curl -s http://127.0.0.1:8000/api/system | python3 -m json.tool

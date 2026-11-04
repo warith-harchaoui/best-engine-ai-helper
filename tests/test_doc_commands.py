@@ -102,6 +102,10 @@ def _invocations(path: Path) -> list[tuple[int, list[str]]]:
             pending = line[:-1].strip()
             continue
         pending = ""
+        # A box-drawing arrow marks a dependency diagram that happens to start
+        # with the program's name (skills/.../surfaces.md), not a command.
+        if "\u25c4" in line or "\u2500\u2500" in line:
+            continue
         if line.startswith(f"{_PROGRAM} ") or line == _PROGRAM:
             joined.append((start, line))
 
@@ -232,8 +236,15 @@ def invoked_commands(path: Path) -> set[str]:
 
 
 def documents() -> list[Path]:
-    """Root Markdown files whose command lines are resolved, in a stable order."""
-    return [path for path in sorted(_REPO.glob("*.md")) if path.name not in _EXCLUDED]
+    """Markdown files whose command lines are resolved, in a stable order.
+
+    The root documents, and the agent skill under ``skills/``. The skill was
+    left out at first, and it is the copy an agent actually reads: by 1.11.1
+    its CLI reference listed ``list``, ``show MODEL``, ``recommend "task"`` and
+    a ``pull MODEL`` that no version of the program accepts.
+    """
+    root = [path for path in sorted(_REPO.glob("*.md")) if path.name not in _EXCLUDED]
+    return root + sorted((_REPO / "skills").rglob("*.md"))
 
 
 def _doc(tmp_path: Path, body: str) -> Path:
