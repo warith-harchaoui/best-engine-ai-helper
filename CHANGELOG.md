@@ -4,6 +4,14 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+## [1.11.3] - 2026-11-05
+
+### Fixed
+
+- **The package no longer quotes a machine path.** `data/usages.yaml` located
+  ann-router and sprezzature-figures by a home-directory path; it now names
+  the projects.
+
 ## [1.11.2] - 2026-11-05
 
 ### Fixed
