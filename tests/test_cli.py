@@ -102,6 +102,7 @@ def test_the_command_inventory_and_every_help_screen(runner: CliRunner) -> None:
         assert "best-engine-ai-helper" in version.output, flag
 
 
+@pytest.mark.slow
 def test_read_only_and_report_commands(runner: CliRunner, tmp_path: Path) -> None:
     cases = [
         (["detect"], "platform"),
@@ -698,6 +699,7 @@ def test_storage_and_doctor_commands(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 def test_airllm_status_reports_the_decision_and_how_to_act_on_it(
     runner: CliRunner, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -758,6 +760,7 @@ def test_airllm_prepare_fails_readably_without_the_runtime(
     assert "lightweight" in res.output
 
 
+@pytest.mark.slow
 def test_recommend_backend_airllm_switches_the_table_and_the_floor(runner: CliRunner) -> None:
     """Streaming candidates are a different table, not the same one relabelled."""
     plain = runner.invoke(cli, ["recommend", "--kind", "llm"])

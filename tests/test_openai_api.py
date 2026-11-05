@@ -91,6 +91,7 @@ def test_the_model_name_grammar_is_small_and_total() -> None:
     assert openai_api.parse_model("")["virtual"] is True
 
 
+@pytest.mark.slow
 def test_models_lists_the_aliases_and_only_what_fits(client: TestClient) -> None:
     """A client's model picker should not offer a 72B model to a laptop."""
     from best_engine_ai_helper import catalog, detect, score

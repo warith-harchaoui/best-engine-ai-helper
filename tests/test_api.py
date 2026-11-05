@@ -20,6 +20,7 @@ def client() -> TestClient:
     return TestClient(app)
 
 
+@pytest.mark.slow
 def test_system_and_recommend_endpoints(client: TestClient) -> None:
     system = client.get("/api/system")
     assert system.status_code == 200
@@ -170,6 +171,7 @@ def test_activity_gui_and_static_endpoints(client: TestClient, tmp_path: Path) -
     assert manifest.status_code == 200 and manifest.json()["name"] == "Best Engine AI Helper"
 
 
+@pytest.mark.slow
 def test_the_airllm_endpoint_answers_the_status_and_plan_questions_at_once(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

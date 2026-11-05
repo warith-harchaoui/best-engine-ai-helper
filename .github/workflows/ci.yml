@@ -1,27 +1,31 @@
 name: ci
 
-# The light lane: lint, types, tests, and the two consistency checks that cost
-# nothing. Every step shells out to scripts/gate.sh, the same script the
-# pre-push hook runs, so "it passed locally" and "it passed in CI" are claims
-# about one set of commands rather than two that happen to resemble each other.
+# The light lane: lint, the fast tests, and the two consistency checks that
+# cost nothing, in one job that holds under a minute. The stages come from
+# scripts/gate.sh, the same script the pre-push hook runs; the hook runs it
+# whole (`gate.sh all`), so what CI leaves out is still checked before every
+# push rather than dropped.
 #
-# What is deliberately NOT here:
+# What is deliberately NOT here, and runs in the pre-push hook instead:
 #
-#   Git LFS. Only the wheel inspection reads the real ONNX bytes, and that
-#   moved to packaging.yml. A plain checkout leaves a pointer stub, which the
-#   test suite never opens (onnxruntime is mocked, not installed).
+#   mypy (strict). Re-reading the dependency stubs was the largest single
+#   step of the old job, and the hook runs the same `gate.sh types`.
 #
-#   Building a distribution. Installing build + twine and producing a wheel on
-#   every commit spends minutes on an artifact that only the packaging inputs
-#   can invalidate -- so packaging.yml watches those inputs instead, and also
-#   runs on tags and on demand.
+#   The coverage floor, and the deep-learning runtime. The [imagine,
+#   lightweight] extras (torch, transformers, diffusers) cost more to restore
+#   and install than the whole test suite takes; the tests that need them
+#   carry the `runtime` marker, the four modules' doctests live in
+#   streaming.py, and the 90 % floor is only meaningful with them in. The hook
+#   runs all of it, coverage floor included.
+#
+#   Tests over ~2 s each, marked `slow` (full CLI / API sweeps).
+#
+#   Git LFS and building a distribution: packaging.yml, on packaging inputs.
 #
 #   The [cloud] / [filtered] extras. The tests exercise their "installed" and
-#   "not installed" branches by monkeypatching sys.modules, not by pulling in
-#   the real (heavy) packages.
+#   "not installed" branches by monkeypatching sys.modules.
 #
-#   Ollama. No test calls a live model daemon; the pull / validate loops are
-#   covered by mocked and fall-through tests.
+#   Ollama. No test calls a live model daemon.
 
 "on":
   push:
@@ -42,21 +46,14 @@ env:
 
 jobs:
   gate:
+    name: gate (3.12)
     runs-on: ubuntu-latest
-    # The sweep takes about a minute. The cap is there so a hung job is
-    # cancelled by the clock instead of holding a runner for six hours.
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        # Super-light gate: one Python; the full 3.10-3.12 sweep runs locally
-        # before push.
-        python-version: ["3.12"]
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.12"
           cache: pip
           # Without this the pip cache is keyed on requirements*.txt alone, so
           # a dependency edit in pyproject.toml restores a stale wheel set.
@@ -64,50 +61,18 @@ jobs:
             pyproject.toml
             requirements-dev.txt
       - name: Install
-        run: |
-          python -m pip install --upgrade pip
-          # torch arrives through `[imagine,lightweight]` below -- the gate
-          # installs the runtime extras on purpose, because the modules that
-          # need them are modules this suite tests and a lane that skipped
-          # them would hold a 90% coverage floor by not looking. PyPI's Linux
-          # torch wheel is the CUDA build: gigabytes of nvidia-* payload for a
-          # runner with no GPU that never loads a model. Pre-installing the CPU
-          # build satisfies the requirement first, so the project install below
-          # resolves against it instead of fetching the CUDA one.
-          #
-          # `--index-url`, not `--extra-index-url`: with two indexes offering
-          # the same version, which one pip picks is not a documented
-          # guarantee, and a CI lane whose download size depends on resolver
-          # luck is a CI lane that gets slow again without anyone editing it.
-          # This is PyTorch's own published install command, and their index
-          # also serves torch's dependencies, so it stands alone.
-          pip install --index-url https://download.pytorch.org/whl/cpu torch
-          pip install -e ".[imagine,lightweight]" -r requirements-dev.txt
-      # mypy spends most of its time re-reading the dependency stubs it read
-      # last run: a cold cache cost 13s of a 69s job, which is the second
-      # largest item after installing. The key carries the commit so every run
-      # writes a fresh entry (GitHub will not overwrite an existing key), and
-      # the restore-keys prefix is what actually hands the previous run's
-      # cache over. Pinned to the dependency set, because stubs are what is
-      # cached: a dependency edit must not restore a cache describing the
-      # versions before it.
-      - name: Cache mypy
-        uses: actions/cache@v6
-        with:
-          path: .mypy_cache
-          key: mypy-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('pyproject.toml', 'requirements-dev.txt') }}-${{ github.sha }}
-          restore-keys: |
-            mypy-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('pyproject.toml', 'requirements-dev.txt') }}-
-      # One stage per step so a failure is named by the step that failed,
-      # rather than buried in one long log. The commands live in the script.
+        run: pip install -e . -r requirements-dev.txt
+      # One stage per step so a failure is named by the step that failed.
       - name: Dependencies
         run: ./scripts/gate.sh deps
       - name: Lint
         run: ./scripts/gate.sh lint
-      - name: Types
-        run: ./scripts/gate.sh types
-      - name: Tests
-        run: ./scripts/gate.sh tests
+      - name: Tests (fast, no runtime)
+        # streaming.py's doctests drive torch itself: ignored here, run by the
+        # hook. tests/test_streaming.py skips on its own without torch.
+        run: >-
+          python -m pytest -q -m "not slow and not runtime"
+          --ignore=best_engine_ai_helper/streaming.py --timeout=300
       - name: Version / CHANGELOG consistency
         run: ./scripts/gate.sh version
 

@@ -176,3 +176,12 @@ ignore_missing_imports = true
 # runnable Example on every function, so `--doctest-modules` keeps them honest.
 testpaths = ["best_engine_ai_helper", "tests"]
 addopts = "--doctest-modules"
+# Two markers keep the CI lane under a minute; scripts/gate.sh, run by the
+# pre-push hook, selects neither and runs everything.
+#   slow:    over ~2 s each (full CLI / API sweeps over the catalogue).
+#   runtime: needs the real [imagine,lightweight] runtime (torch, diffusers),
+#            which CI no longer installs.
+markers = [
+    "slow: over ~2 s; deselected by CI, run by the pre-push hook",
+    "runtime: needs torch / diffusers installed; deselected by CI, run by the pre-push hook",
+]

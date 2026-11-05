@@ -818,11 +818,13 @@ def test_the_context_length_configured_is_the_one_that_was_priced(
     )
 
 
+@pytest.mark.runtime
 def test_generate_strips_the_echoed_prompt(fake_runtime: dict[str, Any]) -> None:
     """transformers returns prompt + continuation; `chat` wants the answer."""
     assert offload.generate("Hello", model="x/y") == "the streamed answer"
 
 
+@pytest.mark.runtime
 def test_generate_uses_one_contract_for_every_runtime(
     fake_runtime: dict[str, Any],
 ) -> None:
@@ -842,6 +844,7 @@ def test_generate_uses_one_contract_for_every_runtime(
     assert call["use_cache"] is True
 
 
+@pytest.mark.runtime
 def test_an_unimportable_runtime_raises_the_repair_command() -> None:
     """lightweight is a core dependency, so this path means a broken install.
 
@@ -857,6 +860,7 @@ def test_an_unimportable_runtime_raises_the_repair_command() -> None:
         offload.load("meta-llama/Llama-3.3-70B-Instruct")
 
 
+@pytest.mark.runtime
 def test_the_chat_transport_refuses_images_and_schemas_rather_than_faking_them(
     fake_runtime: dict[str, Any],
 ) -> None:
@@ -891,6 +895,7 @@ def test_the_chat_transport_refuses_images_and_schemas_rather_than_faking_them(
     assert usage == {"in_tokens": None, "out_tokens": None}
 
 
+@pytest.mark.runtime
 def test_the_loaded_model_is_reused_across_calls(fake_runtime: dict[str, Any]) -> None:
     """Splitting a 141 GB checkpoint per call would make the transport unusable."""
     from best_engine_ai_helper import llm

@@ -370,6 +370,7 @@ def test_offload_is_requested_on_the_pipeline_when_asked(
     assert pipeline_cls.offloaded is True
 
 
+@pytest.mark.runtime
 def test_a_missing_runtime_raises_the_repair_command() -> None:
     """diffusers is a core dependency, so this path means a broken install."""
     if imagine.available():  # pragma: no cover - the normal case
