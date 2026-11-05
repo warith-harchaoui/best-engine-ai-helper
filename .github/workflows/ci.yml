@@ -106,6 +106,11 @@ jobs:
         with:
           python-version: "3.10"
           cache: pip
+          # Keyed on pyproject.toml, not the default requirements*.txt: those
+          # never changed, so the default key kept restoring a 3 GB cache saved
+          # back when this lane installed torch -- 53 s spent restoring wheels
+          # a plain install never reads.
+          cache-dependency-path: pyproject.toml
       - run: pip install .
       - run: python -c "import best_engine_ai_helper"
       # Here this says the weaker thing -- nothing heavy is installed on this
