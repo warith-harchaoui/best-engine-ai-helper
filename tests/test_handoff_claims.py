@@ -134,7 +134,7 @@ def test_the_same_claim_with_its_check_is_silent() -> None:
     assert (
         check(
             "`ai-bunker` reads this descriptor "
-            "(`grep -rn disk_peak_gb ~/ai-bunker` → 3 hits in engine.py)."
+            "(`grep -rn disk_peak_gb ai-bunker/` → 3 hits in engine.py)."
         )
         == []
     )
@@ -142,7 +142,7 @@ def test_the_same_claim_with_its_check_is_silent() -> None:
 
 def test_a_fenced_command_counts_as_the_check() -> None:
     """Most verifications in this handover are fenced, not inline."""
-    assert check("`ai-bunker` reads this descriptor.\n\n```sh\ngrep -rn x ~/ai-bunker\n```") == []
+    assert check("`ai-bunker` reads this descriptor.\n\n```sh\ngrep -rn x ai-bunker/\n```") == []
 
 
 def test_a_paragraph_reporting_a_claim_as_false_is_not_making_one() -> None:

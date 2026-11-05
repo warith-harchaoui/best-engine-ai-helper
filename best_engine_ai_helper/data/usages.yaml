@@ -181,7 +181,7 @@ profiles:
   description: >-
     The retrieval half of recherche documentaire. A local embedding model builds
     the multi-granular index (word / keyphrase / sentence / paragraph / page)
-    that feeds ~/ann-router. It must be multilingual (French and English in the
+    that feeds ann-router. It must be multilingual (French and English in the
     same space), handle long paragraph/page spans, and be cheap enough to embed a
     whole corpus offline. This is not a generative benchmark pick, so it is
     resolved by memory fit over the embedders in the model catalog, ranked by
@@ -201,7 +201,7 @@ profiles:
 - name: text2sql-figures
   summary: "Question + table -> structured figure spec that sprezzature-figures renders to SVG (a venir)."
   description: >-
-    The figures extension of text2sql, arriving via ~/sprezzature-figures. From a
+    The figures extension of text2sql, arriving via sprezzature-figures. From a
     question and the tabular result of a query, the model emits a *structured*
     figure description -- plot type plus encodings and parameters -- as JSON,
     which sprezzature-figures then turns into a house-styled SVG figure. The
