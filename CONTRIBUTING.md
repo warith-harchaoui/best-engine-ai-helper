@@ -34,13 +34,11 @@ pip install -e "." -r requirements-dev.txt
 ./scripts/gate.sh
 ```
 
-That script *is* the gate. CI calls it one stage at a time (`deps`, `lint`,
-`types`, `tests`, `version`) so a failure is named by the step that failed, and
-the pre-push hook calls it whole. There is no second list of commands to keep
-in sync with it, which there used to be: this file, the hook and the workflow
-each described the gate in their own words until they disagreed, and a hook
-that promises "a red local state never reaches CI" is worth nothing once it
-runs something CI does not.
+That script *is* the gate, and the pre-push hook calls it whole: `lint`,
+`types`, `tests` (with the coverage floor), then `version`. There is no second
+list of commands to keep in sync with it, which there used to be: this file,
+the hook and the workflow each described the gate in their own words until
+they disagreed.
 
 Individual stages, when you want one:
 
@@ -51,9 +49,26 @@ Individual stages, when you want one:
 ./scripts/gate.sh package    # build a wheel + sdist and inspect them
 ```
 
-CI runs the gate on Python 3.12 (a deliberately super-light single-version
-lane; run the full 3.10-3.12 sweep locally before pushing). A failing check or
-a coverage drop below the floor blocks the merge.
+CI is the light half of the same gate. Apart from `deps` (`pip check`, a sharp
+question only in CI's clean environment), it runs a subset of what the hook
+already ran. The `gate` job, on Python 3.12, calls `gate.sh deps`,
+`gate.sh lint` and `gate.sh version` one stage at a time, so a failure is named
+by its own step, and runs the fast tests only:
+
+```sh
+python -m pytest -q -m "not slow and not runtime" --ignore=best_engine_ai_helper/streaming.py
+```
+
+Two markers, declared in `pyproject.toml`, draw that line. `slow` marks a test
+over about 2 s (full CLI and API sweeps over the catalogue); `runtime` marks one
+that needs the real torch / diffusers runtime, which CI does not install.
+`streaming.py` is left out for the same reason: its doctests import that
+runtime. mypy and the 90% coverage floor are not in CI either: both run in the
+hook, on every push. So the push is what a failing type check or a coverage
+drop blocks, not the merge. A second job, `floor`, installs the package on
+Python 3.10 and checks it imports without pulling in torch, the promise
+`requires-python = ">=3.10"` makes. Run the full 3.10-3.12 sweep locally before
+pushing when a change could depend on the Python version.
 
 `package` is not part of the default sweep and not part of the per-commit CI
 lane. Building a distribution catches packaging faults (missing package data,
@@ -146,8 +161,9 @@ Releases live in [CHANGELOG.md](CHANGELOG.md), tagged `vX.Y.Z` in git, and publi
 ## Pre-push hook
 
 A git `pre-push` hook runs `scripts/gate.sh` and blocks the push outright if
-any stage fails: a red local state never reaches CI. It decides *where* the
-gate runs, not what it checks, so it cannot drift away from the workflow.
+any stage fails: a red local state never reaches CI. It runs what CI
+runs, `deps` aside, plus what CI leaves out: mypy, the `slow` and `runtime`
+tests, the coverage floor.
 One-time setup per clone:
 
 ```bash

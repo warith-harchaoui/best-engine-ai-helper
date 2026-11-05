@@ -72,7 +72,7 @@ Ce paquet est à la base de la couche de sélection de modèles de la suite AI H
 
 Un nom de modèle écrit en littéral dans un autre paquet est un défaut là-bas, pas un raccourci : il survit à la machine sur laquelle il a été choisi, puis rien ne redécide quand le matériel change.
 
-Il est publié sur PyPI avec une intégration continue verte à chaque envoi (ruff, mypy, une suite de tests maintenue au-dessus de 90 % de couverture). Chaque version est un tag sémantique sur GitHub.
+Il est publié sur PyPI avec une intégration continue verte à chaque envoi (ruff puis les tests rapides), derrière un hook pre-push qui exécute le reste : mypy puis toute la suite pytest, maintenue au-dessus de 90 % de couverture. Chaque version est un tag sémantique sur GitHub.
 
 ## Documentation
 
@@ -248,6 +248,8 @@ sont aussi accessibles comme outils MCP pour tout hôte agentique compatible :
 ```sh
 best-engine-ai-helper-mcp        # -> http://127.0.0.1:8000 (MCP sur /mcp)
 ```
+
+`BEST_ENGINE_HOST` et `BEST_ENGINE_PORT` déplacent cette adresse.
 
 Un hôte agentique lit une seule phrase avant de décider s'il charge ces outils,
 donc cette phrase dit les deux moitiés : la détection du matériel puis le

@@ -68,7 +68,7 @@ This package sits at the base of the AI Helpers suite's model-selection layer, a
 
 A model name written as a literal in another package is a bug there, not a shortcut: it survives the machine it was chosen on, and nothing re-decides when the hardware changes.
 
-It ships on PyPI with a green CI gate on every push (ruff, mypy, and a pytest suite held above 90% coverage), and every release is a semantic-version tag on GitHub.
+It ships on PyPI with a green CI gate on every push (ruff and the fast tests), behind a pre-push hook that runs the rest: mypy and the whole pytest suite, held above 90% coverage. Every release is a semantic-version tag on GitHub.
 
 ## Documentation
 
@@ -242,6 +242,8 @@ also reachable as MCP tools for any MCP-aware agent host:
 ```sh
 best-engine-ai-helper-mcp        # -> http://127.0.0.1:8000 (MCP at /mcp)
 ```
+
+`BEST_ENGINE_HOST` and `BEST_ENGINE_PORT` move that address.
 
 An agent host reads one string before deciding whether to load these tools, so
 that string says both halves: hardware detection and the best local engine,
