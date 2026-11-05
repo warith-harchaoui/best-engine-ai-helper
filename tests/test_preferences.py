@@ -87,3 +87,13 @@ def test_a_mutated_result_cannot_corrupt_the_next_read(store: Path) -> None:
     prefs["quality_vs_cost"] = 999
 
     assert config.load_preferences()["quality_vs_cost"] == 0.7
+
+
+@pytest.mark.parametrize("raw", ["nan", "inf", float("nan"), float("-inf")])
+def test_a_non_finite_number_is_skipped_not_stored(store: Path, raw: object) -> None:
+    """float("nan") succeeds, and `.nan` in the YAML is exactly "stored broken"."""
+    saved = config.save_preferences({"headroom": raw, "min_tps": 20})
+
+    assert saved["headroom"] == 0.5
+    assert saved["min_tps"] == 20.0
+    assert config.load_preferences()["headroom"] == 0.5

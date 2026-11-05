@@ -39,11 +39,12 @@ Warith Harchaoui <warithmetics@deraison.ai>
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any
 
 import os_helper as osh
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -168,7 +169,18 @@ def preferences_set(body: PreferencesRequest) -> dict[str, Any]:
     """
     from . import config as _config
 
-    return _config.save_preferences(body.model_dump(exclude_none=True))
+    values = body.model_dump(exclude_none=True)
+    # Python's JSON parser accepts the non-standard `NaN` and `Infinity`, and
+    # pydantic's float coerces the strings "nan" and "inf". Either reached the
+    # file, and then came back from GET as `null`: FastAPI encodes a non-finite
+    # float that way, so a field documented as a number stopped being one, on
+    # every read, until somebody edited the YAML by hand. Checked here rather
+    # than with pydantic's `allow_inf_nan=False`, whose 422 echoes the input
+    # back and so cannot itself be encoded: the refusal turned into a 500.
+    for key, value in values.items():
+        if isinstance(value, float) and not math.isfinite(value):
+            raise HTTPException(status_code=422, detail=f"{key} must be a finite number")
+    return _config.save_preferences(values)
 
 
 @app.get("/api/providers")

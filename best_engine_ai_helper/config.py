@@ -27,6 +27,7 @@ Warith Harchaoui <warithmetics@deraison.ai>
 from __future__ import annotations
 
 import json
+import math
 import os
 from typing import Any
 
@@ -256,8 +257,15 @@ def load_preferences() -> dict[str, Any]:
         return prefs
     if isinstance(saved, dict):
         for key in prefs:
-            if saved.get(key) is not None:
-                prefs[key] = saved[key]
+            value = saved.get(key)
+            if value is None:
+                continue
+            # A file written before 1.11.2 can hold `.nan`: the default is the
+            # only usable reading of it, and serving it would hand GET a null.
+            if isinstance(value, float) and not math.isfinite(value):
+                osh.warning(f"Preference {key!r} is not a finite number, using the default")
+                continue
+            prefs[key] = value
     return prefs
 
 
@@ -290,11 +298,18 @@ def save_preferences(values: dict[str, Any]) -> dict[str, Any]:
             continue
         default = _PREFERENCE_DEFAULTS[key]
         try:
-            prefs[key] = bool(raw) if isinstance(default, bool) else type(default)(raw)
+            value = bool(raw) if isinstance(default, bool) else type(default)(raw)
+            # float("nan") and float("inf") succeed, and a non-finite number
+            # is exactly the "stored broken" this function promises to skip:
+            # it lands in the YAML as `.nan` and every later read serves it.
+            if isinstance(value, float) and not math.isfinite(value):
+                raise ValueError("not a finite number")
         except (TypeError, ValueError):
             osh.warning(
                 f"Preference {key!r} could not be read as {type(default).__name__}: {raw!r}"
             )
+            continue
+        prefs[key] = value
 
     _PREFERENCES_YAML.parent.mkdir(parents=True, exist_ok=True)
     _PREFERENCES_YAML.write_text(

@@ -4,6 +4,29 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+## [1.11.2] - 2026-11-05
+
+### Fixed
+
+- **A preference posted as `NaN` or `Infinity` was stored, then served back as
+  `null` on every read.** Python's JSON parser takes the non-standard literals
+  and pydantic's float coerces the strings `"nan"` and `"inf"`, so
+  `POST /api/preferences` answered 200, wrote `.nan` to `preferences.yaml`,
+  and FastAPI encoded it as `null` for a field documented as a number, until
+  somebody edited the file by hand. The route now answers 422 and leaves the
+  file alone; `save_preferences` skips a non-finite value with a warning like
+  any other value it cannot read; a `.nan` already on disk reads as the
+  default. Pydantic's own `allow_inf_nan=False` was not used: its 422 echoes
+  the input, which cannot itself be encoded, so the refusal became a 500.
+
+### Added
+
+- **The two HTTP preference routes had no test.** `tests/test_api_preferences.py`
+  covers the defaults, the round trip, the partial save, persistence through
+  the YAML, refused types and shapes, the non-finite case above, and that every
+  field the GUI saves is one the route accepts. Each test was watched going red
+  against a deliberately broken route before it was kept.
+
 ## [1.11.1] - 2026-10-31
 
 ### Fixed
