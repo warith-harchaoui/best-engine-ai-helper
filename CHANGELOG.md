@@ -4,6 +4,8 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+## [1.11.4] - 2026-11-05
+
 ### Fixed
 
 - **`best-engine-ai-helper-mcp --help` started a server and never returned.**
