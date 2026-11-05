@@ -93,28 +93,36 @@ else:  # pragma: no cover - legacy fastapi-mcp
     mcp.mount()
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     """Console entry point (``best-engine-ai-helper-mcp``): serve the API + MCP endpoint.
 
     Boots the FastAPI app (now serving both the ``/api/...`` routes, the
     ``/gui`` page, and the ``/mcp`` MCP endpoint) with uvicorn in a single
     worker. Local-first: binds to loopback by default (override with
-    ``BEST_ENGINE_HOST`` / ``BEST_ENGINE_PORT``).
+    ``--host`` / ``--port`` or ``BEST_ENGINE_HOST`` / ``BEST_ENGINE_PORT``).
+    A click command, so ``--help`` answers instead of starting the server.
     """
     import os
 
-    import uvicorn
+    import click
 
-    from . import observe
+    @click.command(context_settings={"help_option_names": ["-h", "--help"]})
+    @click.option("--host", envvar="BEST_ENGINE_HOST", default="127.0.0.1", show_default=True)
+    @click.option("--port", envvar="BEST_ENGINE_PORT", default=8000, type=int, show_default=True)
+    def serve(host: str, port: int) -> None:
+        """Serve the best-engine-ai-helper API, GUI and MCP endpoint (/mcp)."""
+        import uvicorn
 
-    host = os.environ.get("BEST_ENGINE_HOST", "127.0.0.1")
-    port = int(os.environ.get("BEST_ENGINE_PORT", "8000"))
-    # Local-only activity/cost ledger (see observe.py, GET /api/activity); opt out
-    # with BEST_ENGINE_NO_LEDGER=1.
-    if not os.environ.get("BEST_ENGINE_NO_LEDGER"):
-        observe.enable()
-    print(f"best-engine-ai-helper API + MCP -> http://{host}:{port}  (MCP at /mcp)")
-    uvicorn.run(app, host=host, port=port, workers=1)
+        from . import observe
+
+        # Local-only activity/cost ledger (see observe.py, GET /api/activity); opt out
+        # with BEST_ENGINE_NO_LEDGER=1.
+        if not os.environ.get("BEST_ENGINE_NO_LEDGER"):
+            observe.enable()
+        print(f"best-engine-ai-helper API + MCP -> http://{host}:{port}  (MCP at /mcp)")
+        uvicorn.run(app, host=host, port=port, workers=1)
+
+    serve.main(args=argv, prog_name="best-engine-ai-helper-mcp")
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -4,6 +4,18 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`best-engine-ai-helper-mcp --help` started a server and never returned.**
+  The entry point read its bind from `BEST_ENGINE_HOST` / `BEST_ENGINE_PORT`
+  and ignored its arguments. It is now a click command: `--help` answers,
+  `--host` / `--port` override the bind, and the same environment variables
+  and defaults (`127.0.0.1:8000`) apply when no option is given. A test runs
+  every console script with `--help`.
+- `scripts/check_triggers.py` and the skill test now fail when `TRIGGERS.md`
+  and the skill's `references/triggers.md` differ; they were identical, but
+  nothing kept them so.
+
 ## [1.11.3] - 2026-11-05
 
 ### Fixed

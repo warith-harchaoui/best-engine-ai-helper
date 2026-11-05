@@ -36,7 +36,11 @@ def test_mcp_mounted_api_served_and_main_boots(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr("uvicorn.run", lambda app, **kw: calls.update(app=app, **kw))
     monkeypatch.setenv("BEST_ENGINE_HOST", "0.0.0.0")
     monkeypatch.setenv("BEST_ENGINE_PORT", "9100")
-    mcp_module.main()
+    # A click command: given no arguments it reads the env vars, serves, and
+    # exits 0 once uvicorn returns.
+    with pytest.raises(SystemExit) as stop:
+        mcp_module.main([])
+    assert stop.value.code == 0
     assert calls["app"] is mcp_module.app
     assert (calls["host"], calls["port"]) == ("0.0.0.0", 9100)
 
