@@ -189,19 +189,19 @@ narration:
       text: "Celui-ci choisit le modèle pour vous, donc votre code n'a jamais à en connaître un."
       duration: 5.5
     - start: 10.5
-      text: "Le nom que vous avez tapé était vrai sur un portable, un après-midi. Il survit aux deux. Rien ne redécide quand le matériel change, puis rien ne vous dit qu'il a cessé d'être la bonne réponse."
+      text: "Le nom que vous avez tapé était vrai sur un portable, un après-midi. Il survit aux deux. Rien ne redécide quand le matériel change. Rien ne vous dit qu'il a cessé d'être la bonne réponse."
       duration: 8.5
     - start: 19.0
       text: "Décrivez plutôt le travail. L'outil lit la machine devant lui, ne classe que ce qui tient vraiment, puis écrit la réponse dans un fichier que votre code lit au moment de l'appel."
       duration: 8.0
     - start: 27.0
-      text: "Voici la part non évidente. Il mesure la vitesse au lieu de la supposer. Une estimation de vingt-huit virgule trois jetons par seconde passe largement le plancher de confort de quinze. La mesure, quinze virgule deux, ne fait que le franchir de justesse. Cet écart, c'est toute la différence entre une recommandation qui semble confortable puis une qui l'est."
+      text: "Voici la part non évidente. Il mesure la vitesse au lieu de la supposer. Une estimation de vingt-huit virgule trois jetons par seconde passe largement le plancher de confort de quinze. La mesure, quinze virgule deux, ne fait que le franchir de justesse. Cet écart, c'est toute la différence entre une recommandation qui semble confortable et une qui l'est."
       duration: 9.0
     - start: 36.0
-      text: "N'importe quel SDK OpenAI, sans rien changer : demandez model égale best puis le bon répond."
+      text: "N'importe quel SDK OpenAI, sans rien changer. Demandez model égale best : le bon modèle répond."
       duration: 7.0
     - start: 43.0
-      text: "Rendez-vous sur deraison point a i slash a i tiret helpers, puis laissez une étoile sur GitHub. Si ça vous a fait gagner un après-midi."
+      text: "Rendez-vous sur deraison point a i slash a i tiret helpers. Laissez une étoile sur GitHub s'il vous a fait gagner un après-midi."
       duration: 5.0
     - start: 48.0
       text: "Nommez le travail, jamais le modèle."

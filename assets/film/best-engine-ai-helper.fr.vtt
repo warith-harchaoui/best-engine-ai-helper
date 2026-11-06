@@ -15,23 +15,23 @@ donc votre code n'a jamais
 00:00:09.277 --> 00:00:10.500
 à en connaître un.
 
-00:00:10.500 --> 00:00:11.909
+00:00:10.500 --> 00:00:11.947
 Le nom que vous avez tapé était
 
-00:00:11.909 --> 00:00:12.863
+00:00:11.947 --> 00:00:12.928
 vrai sur un portable,
 
-00:00:12.863 --> 00:00:14.409
+00:00:12.928 --> 00:00:14.516
 un après-midi. Il survit aux deux.
 
-00:00:14.409 --> 00:00:16.318
-Rien ne redécide quand le matériel change,
+00:00:14.516 --> 00:00:16.478
+Rien ne redécide quand le matériel change.
 
-00:00:16.318 --> 00:00:17.636
-puis rien ne vous dit qu'il a
+00:00:16.478 --> 00:00:17.879
+Rien ne vous dit qu'il a cessé
 
-00:00:17.636 --> 00:00:19.000
-cessé d'être la bonne réponse.
+00:00:17.879 --> 00:00:19.000
+d'être la bonne réponse.
 
 00:00:19.000 --> 00:00:20.241
 Décrivez plutôt le travail.
@@ -48,71 +48,71 @@ puis écrit la réponse dans un fichier que
 00:00:25.344 --> 00:00:27.000
 votre code lit au moment de l'appel.
 
-00:00:27.000 --> 00:00:27.704
+00:00:27.000 --> 00:00:27.708
 Voici la part non évidente.
 
-00:00:27.704 --> 00:00:28.304
+00:00:27.708 --> 00:00:28.311
 Il mesure la vitesse au
 
-00:00:28.304 --> 00:00:28.826
+00:00:28.311 --> 00:00:28.836
 lieu de la supposer.
 
-00:00:28.826 --> 00:00:29.765
+00:00:28.836 --> 00:00:29.781
 Une estimation de vingt-huit virgule
 
-00:00:29.765 --> 00:00:30.391
+00:00:29.781 --> 00:00:30.411
 trois jetons par seconde
 
-00:00:30.391 --> 00:00:31.095
+00:00:30.411 --> 00:00:31.119
 passe largement le plancher
 
-00:00:31.095 --> 00:00:31.643
+00:00:31.119 --> 00:00:31.670
 de confort de quinze.
 
-00:00:31.643 --> 00:00:32.452
+00:00:31.670 --> 00:00:32.483
 La mesure, quinze virgule deux,
 
-00:00:32.452 --> 00:00:33.052
+00:00:32.483 --> 00:00:33.087
 ne fait que le franchir
 
-00:00:33.052 --> 00:00:33.652
+00:00:33.087 --> 00:00:33.690
 de justesse. Cet écart,
 
-00:00:33.652 --> 00:00:34.304
+00:00:33.690 --> 00:00:34.346
 c'est toute la différence
 
-00:00:34.304 --> 00:00:34.930
+00:00:34.346 --> 00:00:34.976
 entre une recommandation
 
-00:00:34.930 --> 00:00:35.504
+00:00:34.976 --> 00:00:35.553
 qui semble confortable
 
-00:00:35.504 --> 00:00:36.000
-puis une qui l'est.
+00:00:35.553 --> 00:00:36.000
+et une qui l'est.
 
-00:00:36.000 --> 00:00:38.044
+00:00:36.000 --> 00:00:37.978
 N'importe quel SDK OpenAI,
 
-00:00:38.044 --> 00:00:39.539
-sans rien changer :
+00:00:37.978 --> 00:00:39.347
+sans rien changer.
 
-00:00:39.539 --> 00:00:41.505
-demandez model égale best
+00:00:39.347 --> 00:00:41.402
+Demandez model égale best :
 
-00:00:41.505 --> 00:00:43.000
-puis le bon répond.
+00:00:41.402 --> 00:00:43.000
+le bon modèle répond.
 
-00:00:43.000 --> 00:00:44.136
+00:00:43.000 --> 00:00:44.200
 Rendez-vous sur deraison point
 
-00:00:44.136 --> 00:00:45.196
-a i slash a i tiret helpers,
+00:00:44.200 --> 00:00:45.320
+a i slash a i tiret helpers.
 
-00:00:45.196 --> 00:00:46.522
-puis laissez une étoile sur GitHub.
+00:00:45.320 --> 00:00:46.680
+Laissez une étoile sur GitHub s'il
 
-00:00:46.522 --> 00:00:48.000
-Si ça vous a fait gagner un après-midi.
+00:00:46.680 --> 00:00:48.000
+vous a fait gagner un après-midi.
 
 00:00:48.000 --> 00:00:52.000
 Nommez le travail, jamais le modèle.
