@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "best-engine-ai-helper"
 version = "1.11.4"
 description = "Pick and pull the best local LLM/VLM for the current hardware."
-authors = [{name = "Warith Harchaoui", email = "warithmetics@deraison.ai"}]
+authors = [{name = "Warith HARCHAOUI", email = "warithmetics@deraison.ai"}]
 license = {text = "BSD-3-Clause"}
 readme = "README.md"
 requires-python = ">=3.10"
@@ -123,6 +123,10 @@ filtered = [
     "onnxruntime>=1.17",
     "Pillow>=9.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/warith-harchaoui/best-engine-ai-helper"
+Issues = "https://github.com/warith-harchaoui/best-engine-ai-helper/issues"
 
 [project.scripts]
 # One command line, built with click. The argparse twin that used to ship
