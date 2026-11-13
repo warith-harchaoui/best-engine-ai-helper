@@ -1341,6 +1341,47 @@ family = resolve_family("F1")  # one model for the whole constrained-generation 
 
 best-engine writes the retained models into the gitignored `llm.engine*.yaml` for this machine (the extension of the `env.sh` it already emits); the app reads that file and re-resolution re-decides if the hardware changes. Adding a profile is a few lines in `usages.yaml`; a user overlay at `~/.best-engine-ai-helper/usages_cache.yaml` overrides by name.
 
+## In a web page: the browser target
+
+A page that runs its model in the visitor's browser (transformers.js on WebGPU) puts best-engine before a machine it cannot probe: the visitor's, known only at the first question, through what the browser chooses to expose. So the browser target does not pick one model. It plans in advance, here, an **ordered ladder** of candidates for a usage profile, each with its requirements; the page walks it down at run time and takes the first rung the machine and the line can bear.
+
+The criteria are new, because a page pays for what a server never does:
+
+| Criterion | Read in the page from | Effect |
+|-----------|-----------------------|--------|
+| **Download time** | the bandwidth observed on a Range request to the model's own files | a rung longer than `max_download_s` (180 s by default) to fetch is skipped; an unmeasured line is assumed at 20 Mbit/s |
+| **Cache** | the browser's cache of model files | a cached rung costs no download, whatever its size |
+| **shader-f16** | the WebGPU adapter's features | q4f16 weights where it exists, q4 otherwise |
+| **Device memory** | `navigator.deviceMemory` (a rounded figure) | rungs above the model's floor are skipped |
+| **Storage** | `navigator.storage.estimate()` | the free quota must hold the download, plus 10 % |
+| **Mobile, data saver** | `userAgentData.mobile`, `connection.saveData`, `effectiveType` | no download at all |
+
+A signal the browser does not expose (Safari has no `deviceMemory`) is never held against the machine. The catalog, `data/browser_models.yaml`, holds the exact ONNX files and sizes of each variant; `browser refresh` re-reads them from the Hugging Face Hub.
+
+```sh
+best-engine-ai-helper browser list                          # models, dtypes, download sizes
+best-engine-ai-helper browser plan --usage rag-answer --out writer-plan.json
+best-engine-ai-helper browser choose --mbps 40              # simulate a device and a line
+best-engine-ai-helper browser refresh                       # re-read sizes from the Hub
+```
+
+```python
+from best_engine_ai_helper import browser
+
+ladder = browser.plan("rag-answer", languages=["fr", "en"])
+rung = browser.choose(ladder, {"webgpu": True, "f16": True, "bandwidth_Bps": 5e6})
+```
+
+`browser.choose` is the reference the page's JavaScript is tested against. The ladder ranks models by their score MEASURED on the usage in a real browser (`measured` in the catalog; the curator's prior breaks ties and stands in where nothing was measured), and leaves out a model measured below `--min-score` (0.5): downloading it would mostly buy answers the page sets aside. For `rag-answer`, measured on a book's own questions in Chrome on WebGPU, an answer counts when it is grounded in the excerpts it cites and written in the question's language:
+
+| Model | `rag-answer` | English | French | In the ladder |
+|-------|--------------|---------|--------|---------------|
+| Gemma 4 E4B | 0.722 | 0.75 | 0.70 | yes |
+| Gemma 4 E2B | 0.667 | 0.625 | 0.70 | yes |
+| LFM2 1.2B | 0.167 | 0.00 | 0.30 | no: most answers cite nothing |
+
+Qwen3 1.7B is not in the catalog: its weights sit inside one 1.4 GB ONNX graph, which onnxruntime-web cannot allocate (`std::bad_alloc`, in a fresh page). A model must ship external weight shards to load in a browser.
+
 ## Use it as an agent skill
 
 `skills/best-engine-ai-helper/` packages best-engine-ai-helper as a **Claude Skill** *and* an **OpenCode

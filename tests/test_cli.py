@@ -38,6 +38,10 @@ EXPECTED_COMMANDS = {
     "usages list",
     "usages show",
     "usages resolve",
+    "browser list",
+    "browser refresh",
+    "browser plan",
+    "browser choose",
     "catalog show",
     "catalog update",
     "hardware show",
@@ -85,7 +89,7 @@ def test_the_command_inventory_and_every_help_screen(runner: CliRunner) -> None:
 
     # A --help that raises is invisible from every other test in this file,
     # since none of them asks for one.
-    groups = {"catalog", "hardware", "usages", "lightweight", "imagine"}
+    groups = {"catalog", "hardware", "usages", "lightweight", "imagine", "browser"}
     for path in sorted(EXPECTED_COMMANDS | groups):
         res = runner.invoke(cli, [*path.split(), "--help"])
         assert res.exit_code == 0, f"{path} --help -> {res.exit_code}\n{res.output}"

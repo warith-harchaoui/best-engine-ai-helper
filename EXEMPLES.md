@@ -631,6 +631,50 @@ engine = beah.resolve_usage("text2sql")  # best-engine choisit le modèle ici
 family = beah.resolve_family("F1")  # un seul modèle pour tout le groupe F1
 ```
 
+### Pour une page web : la cible navigateur
+
+Une page qui fait tourner son modèle dans le navigateur du visiteur ne peut pas
+être sondée à l'avance. `browser plan` écrit l'échelle ordonnée que la page
+descend à la première question ; `browser choose` simule un appareil et une
+ligne, avec les règles mêmes que la page applique : durée du téléchargement
+au débit observé, shader-f16, mémoire de l'appareil, stockage, mobile,
+économie de données, cache.
+
+```sh
+best-engine-ai-helper browser list
+```
+
+```
+model                               dtype  download  f16  params  rag-answer  license
+----------------------------------  -----  --------  ---  ------  ----------  ----------
+onnx-community/gemma-4-E4B-it-ONNX  q4f16  4.91 GB   yes  4B      0.722       apache-2.0
+onnx-community/gemma-4-E4B-it-ONNX  q4     5.62 GB   no   4B      0.722       apache-2.0
+onnx-community/gemma-4-E2B-it-ONNX  q4f16  3.11 GB   yes  2B      0.667       apache-2.0
+onnx-community/gemma-4-E2B-it-ONNX  q4     3.63 GB   no   2B      0.667       apache-2.0
+onnx-community/LFM2-1.2B-ONNX       q4f16  0.76 GB   yes  1.2B    0.167       lfm1.0
+onnx-community/LFM2-1.2B-ONNX       q4     0.85 GB   no   1.2B    0.167       lfm1.0
+```
+
+```sh
+best-engine-ai-helper browser refresh
+best-engine-ai-helper browser plan --usage rag-answer --out writer-plan.json
+best-engine-ai-helper browser choose --mbps 400
+best-engine-ai-helper browser choose --mbps 160
+best-engine-ai-helper browser choose --mbps 40
+best-engine-ai-helper browser choose --no-f16 --memory-gb 8 --mbps 400
+best-engine-ai-helper browser choose --mobile
+```
+
+```
+4 candidates -> writer-plan.json
+  left out: onnx-community/LFM2-1.2B-ONNX (measured 0.167 < 0.5)
+onnx-community/gemma-4-E4B-it-ONNX [q4f16], 4.91 GB, ~98 s to download
+onnx-community/gemma-4-E2B-it-ONNX [q4f16], 3.11 GB, ~156 s to download
+no model: download
+onnx-community/gemma-4-E4B-it-ONNX [q4], 5.62 GB, ~112 s to download
+no model: mobile
+```
+
 ## 6. Planifier la capacité disponible
 
 Les questions ci-dessus portent chacune sur un modèle. `storage` pose celle qui

@@ -39,6 +39,7 @@ a model, fine-tune, or pick a vector index.
 | Which image model runs here | `imagine plan` | `imagine_rank`, `imagine_pick`, `image_footprint_gb` | `GET /v1/models` |
 | Generate an image | `imagine generate` | `imagine_generate` | `POST /v1/images/generations` |
 | Speak OpenAI to it | `serve` | — | `/v1/chat/completions`, `/v1/embeddings`, `/v1/images/generations` |
+| Which model a web page can run in the visitor's browser | `browser plan`, `browser choose`, `browser list`, `browser refresh` | `browser.plan`, `browser.choose`, `load_browser_catalog` | n/a |
 
 There is exactly one command line, `best-engine-ai-helper …`, built with
 click — a core dependency here, not an optional extra, so nothing has to be
@@ -47,6 +48,7 @@ do.
 
 ## Natural-language phrasings that should fire
 
+- **In the browser**: "which LLM can run in the visitor's browser", "WebGPU model for my page", "transformers.js model that fits", "depends on the visitor's bandwidth", "quel modèle dans le navigateur du client".
 - **Fit the machine**: "which model can this machine run", "what LLM fits in
   my RAM", "will a 14B fit on this Mac", "how much VRAM do I have for a
   model", "is 8 GB enough", "biggest model I can run locally", "what can my

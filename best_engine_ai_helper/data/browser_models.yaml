@@ -1,0 +1,141 @@
+# Bundled catalog of models that run IN A WEB BROWSER (transformers.js 4 on
+# WebGPU). Hand-curated; `best-engine-ai-helper browser refresh` re-reads the
+# download sizes and file lists from the Hugging Face Hub into
+# ~/.best-engine-ai-helper/browser_cache.yaml without touching this file.
+#
+# A browser is a machine best-engine cannot probe in advance: it learns about
+# it only at the visitor's first question, through what the browser chooses to
+# expose. So the browser target does not pick ONE model; `browser plan` writes
+# an ordered ladder of candidates with their requirements, and the page walks
+# it down at run time (see browser.py), on criteria the server-side picker
+# never needed:
+#   - the DOWNLOAD, not the RAM: a 3 GB model is fine on a fibre line and
+#     absurd on a train; it is judged against the bandwidth OBSERVED in the
+#     page, and costs nothing once cached;
+#   - shader-f16, which decides between q4f16 and q4 weights;
+#   - deviceMemory (a rounded figure) as a proxy for a GPU nobody can query;
+#   - mobile and data-saver, which rule out a multi-gigabyte download outright;
+#   - the storage quota left for the cache.
+#
+# Fields
+#   id          Hugging Face repository (ONNX export for transformers.js).
+#   family      For the chat template quirks below.
+#   params_b    Effective parameter count, in billions (Gemma 4 E2B = 2).
+#   languages   Languages the model's makers state it serves (model card, or the
+#               family's release notes when the card has no `language` field).
+#               Only fr and en are listed: they are what the usages here need,
+#               and the ones checked.
+#   license     As declared on the model card.
+#   loader      processor | tokenizer: where the chat template lives.
+#               Gemma 4 keeps it in the processor; text-only models in the
+#               tokenizer.
+#   chat_kwargs Extra apply_chat_template arguments (thinking off, etc.).
+#   tasks       Usages this model is a candidate for, with a prior rank (1 =
+#               best) used until a task measurement exists. The prior is the
+#               curator's judgement, not a benchmark: effective size first,
+#               then bilingual instruction following.
+#   variants    dtype -> { bytes (text-only download), needs_f16, files }.
+#               `files` are the ONNX files actually fetched, relative to the
+#               repository; they serve the cache check and the bandwidth probe.
+#   min_device_memory_gb  Floor on navigator.deviceMemory, when reported.
+#   measured    usage -> score in [0, 1], measured on the task in a real browser
+#               (web-search-helper's scripts/eval_writer.py: the share of
+#               answers grounded in the excerpts they cite and written in the
+#               question's language). Outranks the prior; the prior breaks ties.
+#   measured_on usage -> where and how: date, corpus, questions, browser, dtype.
+#
+# Left out, and why (so nobody adds them back without re-testing):
+#   - onnx-community/Qwen3-1.7B-ONNX: its weights sit inside one 1.4 GB ONNX
+#     graph, which onnxruntime-web cannot allocate in one piece: "Can't create
+#     a session ... std::bad_alloc" in Chrome on an Apple M-series GPU with
+#     32 GB, in a fresh page (2026-11-13). A model must ship its weights as
+#     external data shards (`*.onnx_data`) to load in a browser.
+
+- id: onnx-community/gemma-4-E4B-it-ONNX
+  family: gemma4
+  params_b: 4
+  languages: [fr, en]
+  license: apache-2.0
+  loader: processor
+  chat_kwargs: {enable_thinking: false}
+  min_device_memory_gb: 8
+  tasks: {rag-answer: 1}
+  measured: {rag-answer: 0.722}
+  measured_on:
+    rag-answer: "2026-11-13, a book's companion site (FR 10 + EN 8 questions it answers), Chrome on Apple M-series WebGPU, q4f16, web-search-helper scripts/eval_writer.py; en 0.75, fr 0.70"
+  variants:
+    q4f16:
+      bytes: 4905482405
+      needs_f16: true
+      files:
+        - onnx/decoder_model_merged_q4f16.onnx
+        - onnx/decoder_model_merged_q4f16.onnx_data
+        - onnx/decoder_model_merged_q4f16.onnx_data_1
+        - onnx/embed_tokens_q4f16.onnx
+        - onnx/embed_tokens_q4f16.onnx_data
+    q4:
+      bytes: 5616292603
+      needs_f16: false
+      files:
+        - onnx/decoder_model_merged_q4.onnx
+        - onnx/decoder_model_merged_q4.onnx_data
+        - onnx/decoder_model_merged_q4.onnx_data_1
+        - onnx/embed_tokens_q4.onnx
+        - onnx/embed_tokens_q4.onnx_data
+        - onnx/embed_tokens_q4.onnx_data_1
+
+- id: onnx-community/gemma-4-E2B-it-ONNX
+  family: gemma4
+  params_b: 2
+  languages: [fr, en]
+  license: apache-2.0
+  loader: processor
+  chat_kwargs: {enable_thinking: false}
+  min_device_memory_gb: 8
+  tasks: {rag-answer: 2}
+  measured: {rag-answer: 0.667}
+  measured_on:
+    rag-answer: "2026-11-13, a book's companion site (FR 10 + EN 8 questions it answers), Chrome on Apple M-series WebGPU, q4f16, web-search-helper scripts/eval_writer.py; en 0.625, fr 0.70"
+  variants:
+    q4f16:
+      bytes: 3111069636
+      needs_f16: true
+      files:
+        - onnx/decoder_model_merged_q4f16.onnx
+        - onnx/decoder_model_merged_q4f16.onnx_data
+        - onnx/embed_tokens_q4f16.onnx
+        - onnx/embed_tokens_q4f16.onnx_data
+    q4:
+      bytes: 3627411909
+      needs_f16: false
+      files:
+        - onnx/decoder_model_merged_q4.onnx
+        - onnx/decoder_model_merged_q4.onnx_data
+        - onnx/embed_tokens_q4.onnx
+        - onnx/embed_tokens_q4.onnx_data
+
+- id: onnx-community/LFM2-1.2B-ONNX
+  family: lfm2
+  params_b: 1.2
+  languages: [fr, en]
+  license: lfm1.0
+  loader: tokenizer
+  chat_kwargs: {}
+  min_device_memory_gb: 4
+  tasks: {rag-answer: 3}
+  measured: {rag-answer: 0.167}
+  measured_on:
+    rag-answer: "2026-11-13, a book's companion site (FR 10 + EN 8 questions it answers), Chrome on Apple M-series WebGPU, q4f16, web-search-helper scripts/eval_writer.py; en 0.00, fr 0.30; most answers cite nothing or say what the excerpts do not"
+  variants:
+    q4f16:
+      bytes: 760462148
+      needs_f16: true
+      files:
+        - onnx/model_q4f16.onnx
+        - onnx/model_q4f16.onnx_data
+    q4:
+      bytes: 850242940
+      needs_f16: false
+      files:
+        - onnx/model_q4.onnx
+        - onnx/model_q4.onnx_data

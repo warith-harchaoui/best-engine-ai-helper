@@ -13,6 +13,10 @@ Commands:
   resolve         Turn a usage brief into a machine-specific engine file.
   report          Recommend engine(s) for a task, as Markdown or JSON.
   usages          Browse and resolve the sev7n usage catalog.
+  browser list    Models that run in a web page (transformers.js, WebGPU).
+  browser refresh Re-read their sizes and files from the Hugging Face Hub.
+  browser plan    The ordered ladder of browser candidates for a usage, as JSON.
+  browser choose  Which rung a given device and line would take (simulation).
   catalog show    Print the merged model catalog as a table.
   catalog update  Refresh the catalog cache; --arena adds Arena ratings.
   hardware show   Print the merged hardware chip table.
@@ -874,6 +878,161 @@ def usages_resolve(
         click.echo(f"resolve failed: {exc}", err=True)
         sys.exit(1)
     _echo_resolved(descriptor, out)
+
+
+# ---------------------------------------------------------------------------
+# browser subgroup
+# ---------------------------------------------------------------------------
+
+
+@cli.group("browser")
+def browser_group() -> None:
+    """Models for a web page: planned here, chosen in the visitor's browser."""
+
+
+@browser_group.command("list")
+def browser_list() -> None:
+    """List the browser catalog: models, dtypes, download sizes."""
+    from . import browser as _browser
+
+    rows = []
+    for e in _browser.load_browser_catalog():
+        for dtype, v in e["variants"].items():
+            rows.append(
+                {
+                    "model": e["id"],
+                    "dtype": dtype,
+                    "download": f"{v['bytes'] / 1e9:.2f} GB",
+                    "f16": "yes" if v.get("needs_f16") else "no",
+                    "params": f"{e.get('params_b')}B",
+                    "rag-answer": str((e.get("measured") or {}).get("rag-answer", "-")),
+                    "license": e.get("license", "-"),
+                }
+            )
+    click.echo(
+        _fmt_table(rows, ["model", "dtype", "download", "f16", "params", "rag-answer", "license"])
+    )
+
+
+@browser_group.command("refresh")
+def browser_refresh() -> None:
+    """Re-read sizes and file lists from the Hugging Face Hub into the user cache."""
+    from . import browser as _browser
+
+    out = _browser.refresh(cache=_browser._CACHE_PATH)
+    for e in out:
+        sizes = ", ".join(f"{d} {v['bytes'] / 1e9:.2f} GB" for d, v in e["variants"].items())
+        click.echo(f"{e['id']}: {sizes}")
+    click.echo(f"-> {_browser._CACHE_PATH}")
+
+
+@browser_group.command("plan")
+@click.option("--usage", default="rag-answer", show_default=True, help="Usage profile to plan for.")
+@click.option(
+    "--lang",
+    "languages",
+    multiple=True,
+    help="Language the model must serve (repeatable; default fr, en).",
+)
+@click.option(
+    "--max-download-s", type=float, default=None, help="Longest first download offered, in seconds."
+)
+@click.option(
+    "--min-score",
+    type=float,
+    default=None,
+    help="Leave out models measured below this on the usage (default 0.5).",
+)
+@click.option("--out", type=click.Path(), default=None, help="Write the plan to this JSON file.")
+def browser_plan(
+    usage: str,
+    languages: tuple[str, ...],
+    max_download_s: float | None,
+    min_score: float | None,
+    out: str | None,
+) -> None:
+    """The ordered ladder of candidates a page walks down for USAGE."""
+    from . import browser as _browser
+
+    policy = {"max_download_s": max_download_s} if max_download_s else None
+    floor = _browser.DEFAULT_MIN_SCORE if min_score is None else min_score
+    try:
+        p = _browser.plan(usage, languages=list(languages) or None, policy=policy, min_score=floor)
+    except KeyError as exc:
+        click.echo(str(exc), err=True)
+        sys.exit(1)
+    text = json.dumps(p, indent=2, ensure_ascii=False)
+    if out:
+        with open(out, "w", encoding="utf-8") as fh:
+            fh.write(text + "\n")
+        click.echo(f"{len(p['candidates'])} candidates -> {out}")
+        for x in p["excluded"]:
+            click.echo(f"  left out: {x['model']} ({x['reason']})")
+    else:
+        click.echo(text)
+
+
+@browser_group.command("choose")
+@click.option("--usage", default="rag-answer", show_default=True)
+@click.option(
+    "--plan",
+    "plan_path",
+    type=click.Path(exists=True),
+    default=None,
+    help="A plan file (default: plan the usage now).",
+)
+@click.option("--no-webgpu", is_flag=True, help="The browser has no WebGPU adapter.")
+@click.option("--no-f16", is_flag=True, help="The GPU lacks shader-f16.")
+@click.option("--mobile", is_flag=True)
+@click.option("--save-data", is_flag=True)
+@click.option(
+    "--memory-gb",
+    type=float,
+    default=None,
+    help="navigator.deviceMemory, in GB (rounded by the browser).",
+)
+@click.option("--storage-free-gb", type=float, default=None)
+@click.option(
+    "--mbps", type=float, default=None, help="Observed bandwidth, in megabits per second."
+)
+@click.option("--cached", multiple=True, help="A rung already in the cache, as MODEL|DTYPE.")
+def browser_choose(
+    usage: str,
+    plan_path: str | None,
+    no_webgpu: bool,
+    no_f16: bool,
+    mobile: bool,
+    save_data: bool,
+    memory_gb: float | None,
+    storage_free_gb: float | None,
+    mbps: float | None,
+    cached: tuple[str, ...],
+) -> None:
+    """Simulate a device: which rung would the page take, and why."""
+    from . import browser as _browser
+
+    if plan_path:
+        with open(plan_path, encoding="utf-8") as fh:
+            p = json.load(fh)
+    else:
+        p = _browser.plan(usage)
+    device = {
+        "webgpu": not no_webgpu,
+        "f16": not no_f16,
+        "mobile": mobile,
+        "save_data": save_data,
+        "device_memory_gb": memory_gb,
+        "storage_free_bytes": storage_free_gb * 1e9 if storage_free_gb is not None else None,
+        "bandwidth_Bps": mbps * 1e6 / 8 if mbps else None,
+        "cached": list(cached),
+    }
+    r = _browser.choose(p, device)
+    c = r["candidate"]
+    if c is None:
+        click.echo(f"no model: {r['reason']}")
+        sys.exit(1)
+    when = "already cached" if r["reason"] == "cached" else f"~{r['seconds']:.0f} s to download"
+    click.echo(f"{c['model']} [{c['dtype']}], {c['bytes'] / 1e9:.2f} GB, {when}")
 
 
 # ---------------------------------------------------------------------------

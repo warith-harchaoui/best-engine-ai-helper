@@ -4,6 +4,27 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **A browser target.** A page that runs its model in the visitor's browser
+  (transformers.js on WebGPU) cannot be probed in advance, so best-engine
+  plans instead of picking: `browser plan` writes an ordered ladder of
+  candidates for a usage profile, each with its exact ONNX files, download
+  size, `shader-f16` need and device-memory floor; the page walks it down at
+  run time. New criteria the server-side picker never had: download time
+  against the bandwidth observed in the page, the browser cache, shader-f16,
+  `deviceMemory`, storage quota, mobile and data saver. `browser.choose` is
+  the Python reference of that walk (`browser choose` simulates a device).
+  Catalog in `data/browser_models.yaml` (Gemma 4 E4B and E2B, LFM2 1.2B,
+  q4f16 and q4), refreshed from the Hugging Face Hub by `browser refresh`.
+  Models are ranked by a score MEASURED on the usage in a real browser
+  (`measured`, with `measured_on`): for `rag-answer`, Gemma 4 E4B 0.722,
+  E2B 0.667, LFM2 0.167. A model measured below `--min-score` (0.5) leaves
+  the ladder and the plan says why (`excluded`). Qwen3 1.7B was tried and
+  left out: its single 1.4 GB ONNX graph does not load in onnxruntime-web.
+  First consumer: web-search-helper's written answer for the `rag-answer`
+  usage.
+
 ## [1.11.4] - 2026-11-05
 
 ### Fixed

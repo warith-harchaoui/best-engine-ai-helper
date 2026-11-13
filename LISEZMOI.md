@@ -1442,6 +1442,63 @@ nouvelle résolution re-décide si le matériel change. Ajouter un profil = quel
 `usages.yaml` ; un *overlay* utilisateur dans `~/.best-engine-ai-helper/usages_cache.yaml`
 surcharge par nom.
 
+## Dans une page web : la cible navigateur
+
+Une page qui fait tourner son modèle dans le navigateur du visiteur (transformers.js sur
+WebGPU) place best-engine devant une machine qu'il ne peut pas sonder : celle du visiteur,
+connue seulement à la première question, par ce que le navigateur veut bien en dire. La cible
+navigateur ne choisit donc pas un modèle. Elle prépare à l'avance, ici, une **échelle ordonnée**
+de candidats pour un profil d'usage, chacun avec ses exigences ; la page la descend au moment
+de la question et prend le premier échelon que la machine et la ligne supportent.
+
+Les critères sont nouveaux, parce qu'une page paie ce qu'un serveur ne paie jamais :
+
+| Critère | Lu dans la page depuis | Effet |
+|---------|------------------------|-------|
+| **Durée du téléchargement** | le débit observé sur une requête partielle (*Range*) vers les fichiers du modèle | un échelon plus long que `max_download_s` (180 s par défaut) à télécharger est sauté ; une ligne non mesurée est supposée à 20 Mbit/s |
+| **Cache** | le cache du navigateur pour les fichiers du modèle | un échelon déjà en cache ne coûte aucun téléchargement, quelle que soit sa taille |
+| **shader-f16** | les capacités de l'adaptateur WebGPU | poids q4f16 s'il existe, q4 sinon |
+| **Mémoire de l'appareil** | `navigator.deviceMemory` (un chiffre arrondi) | les échelons au-dessus du plancher du modèle sont sautés |
+| **Stockage** | `navigator.storage.estimate()` | le quota libre doit tenir le téléchargement, plus 10 % |
+| **Mobile, économie de données** | `userAgentData.mobile`, `connection.saveData`, `effectiveType` | aucun téléchargement |
+
+Un signal que le navigateur n'expose pas (Safari n'a pas `deviceMemory`) n'est jamais retenu
+contre la machine. Le catalogue, `data/browser_models.yaml`, porte les fichiers ONNX exacts et
+la taille de chaque variante ; `browser refresh` les relit sur le Hub de Hugging Face.
+
+```sh
+best-engine-ai-helper browser list                          # modèles, dtypes, poids
+best-engine-ai-helper browser plan --usage rag-answer --out writer-plan.json
+best-engine-ai-helper browser choose --mbps 40              # simuler un appareil et une ligne
+best-engine-ai-helper browser refresh                       # relire les poids sur le Hub
+```
+
+```python
+from best_engine_ai_helper import browser
+
+ladder = browser.plan("rag-answer", languages=["fr", "en"])
+rung = browser.choose(ladder, {"webgpu": True, "f16": True, "bandwidth_Bps": 5e6})
+```
+
+`browser.choose` est la référence contre laquelle le JavaScript de la page est testé.
+L'échelle classe les modèles selon leur score MESURÉ sur l'usage dans un vrai navigateur
+(`measured` dans le catalogue ; l'*a priori* du conservateur du catalogue départage les
+égalités et tient lieu de mesure quand il n'y en a pas), et écarte un modèle mesuré sous
+`--min-score` (0,5) : le télécharger achèterait surtout des réponses que la page écarte. Pour
+`rag-answer`, mesuré sur les questions d'un livre dans Chrome sur WebGPU, une réponse compte
+quand elle s'appuie sur les extraits qu'elle cite et qu'elle est écrite dans la langue de la
+question :
+
+| Modèle | `rag-answer` | Anglais | Français | Dans l'échelle |
+|--------|--------------|---------|----------|----------------|
+| Gemma 4 E4B | 0.722 | 0.75 | 0.70 | oui |
+| Gemma 4 E2B | 0.667 | 0.625 | 0.70 | oui |
+| LFM2 1.2B | 0.167 | 0.00 | 0.30 | non : la plupart des réponses ne citent rien |
+
+Qwen3 1.7B n'est pas au catalogue : ses poids tiennent dans un seul graphe ONNX de 1,4 Go,
+que onnxruntime-web ne parvient pas à allouer (`std::bad_alloc`, dans une page neuve). Un
+modèle doit livrer ses poids en fragments externes pour se charger dans un navigateur.
+
 ## En tant que skill d'agent
 
 `skills/best-engine-ai-helper/` empaquette best-engine-ai-helper comme **skill Claude** *et* skill
