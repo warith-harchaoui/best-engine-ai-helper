@@ -4,8 +4,9 @@ A thin adapter that exposes the FastAPI app from :mod:`best_engine_ai_helper.api
 as MCP tools, so any MCP-aware host (an agent runtime, an IDE integration, a
 custom shell) can call ``/api/system`` (this machine's hardware snapshot),
 ``/api/recommend`` (the best local LLM/VLM engine for a free-text task, and the
-best paid cloud model for it alongside) and ``/api/providers`` (which paid
-providers hold a usable key) as first-class tools — the same
+best paid cloud model for it alongside), ``/api/providers`` (which paid
+providers hold a usable key) and ``/api/browser/plan`` / ``/api/browser/choose``
+(which model a web page can run in the visitor's browser) as first-class tools — the same
 detect-then-recommend workflow the CLI's ``detect``/``recommend``/``report``
 commands expose. Uses `fastapi-mcp`
 (https://github.com/tadata-org/fastapi_mcp): one wrapper publishes the whole
@@ -77,7 +78,10 @@ mcp = FastApiMCP(
         "local LLM/VLM engine(s) for a free-text task, and — in the same "
         "answer — rank the best PAID cloud model for it against a bundled "
         "price-and-benchmark catalogue, plus report which cloud providers hold "
-        "a usable API key right now. Every one of those runs on the local "
+        "a usable API key right now, and plan which model a web page can "
+        "run in the visitor's browser (the ladder of candidates for a usage, "
+        "and which rung a given device and bandwidth would take). Every one "
+        "of those runs on the local "
         "machine and makes no model call and no provider call: hardware "
         "detection, catalogue ranking, and reading whether a key resolves. "
         "Inference itself is reachable on the same port through the "

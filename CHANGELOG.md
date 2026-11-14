@@ -4,6 +4,8 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-11-14
+
 ### Added
 
 - **A browser target.** A page that runs its model in the visitor's browser
@@ -24,6 +26,9 @@ All notable changes to best-engine-ai-helper are documented here.
   left out: its single 1.4 GB ONNX graph does not load in onnxruntime-web.
   First consumer: web-search-helper's written answer for the `rag-answer`
   usage.
+- **The browser target over HTTP and MCP.** `GET /api/browser/plan` and
+  `POST /api/browser/choose` answer what `browser plan` and `browser choose`
+  answer; the MCP server publishes them as tools, and its description says so.
 
 ## [1.11.4] - 2026-11-05
 

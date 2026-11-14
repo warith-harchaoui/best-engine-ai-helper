@@ -1480,6 +1480,9 @@ ladder = browser.plan("rag-answer", languages=["fr", "en"])
 rung = browser.choose(ladder, {"webgpu": True, "f16": True, "bandwidth_Bps": 5e6})
 ```
 
+En HTTP, `GET /api/browser/plan` et `POST /api/browser/choose` répondent aux mêmes deux
+questions, et le serveur MCP les publie comme outils.
+
 `browser.choose` est la référence contre laquelle le JavaScript de la page est testé.
 L'échelle classe les modèles selon leur score MESURÉ sur l'usage dans un vrai navigateur
 (`measured` dans le catalogue ; l'*a priori* du conservateur du catalogue départage les

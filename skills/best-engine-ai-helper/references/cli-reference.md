@@ -109,6 +109,28 @@ Relevant library calls: `lightweight_decide`, `lightweight_plan`, `lightweight_r
 `lightweight_seconds_per_pass`, `lightweight_compare`, `streaming_budget_gb`,
 `disk_profile`, `lightweight_load`, `lightweight_generate`.
 
+## In a web page — the browser target
+
+```bash
+best-engine-ai-helper browser list
+best-engine-ai-helper browser refresh
+best-engine-ai-helper browser plan [--usage rag-answer] [--lang fr --lang en] [--max-download-s S] [--min-score X] [--out writer-plan.json]
+best-engine-ai-helper browser choose [--plan FILE] [--usage U] [--no-webgpu] [--no-f16] [--mobile] [--save-data] [--memory-gb G] [--storage-free-gb G] [--mbps M] [--cached MODEL|DTYPE]
+```
+
+A page that runs its model in the visitor's browser (transformers.js on WebGPU)
+cannot be probed in advance, so `plan` writes an ordered ladder of candidates
+for a usage, each with exact ONNX files, download size, `shader-f16` need and
+device-memory floor; the page walks it down at run time. Models are ranked by a
+score measured on the usage in a real browser, and one measured below
+`--min-score` (0.5) leaves the ladder (`excluded` says why). `choose` simulates
+a device and a line with the page's rules: download time against the observed
+bandwidth (180 s), cache, shader-f16, device memory, storage, mobile, data
+saver. `choose` exits 1 when no rung fits.
+
+Relevant library calls: `browser.plan`, `browser.choose`, `browser.refresh`,
+`browser.load_browser_catalog`.
+
 ## Text-to-image — the third kind
 
 ```bash

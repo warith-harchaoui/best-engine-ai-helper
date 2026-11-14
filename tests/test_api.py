@@ -223,3 +223,21 @@ def test_the_airllm_endpoint_answers_the_status_and_plan_questions_at_once(
     assert called == []
     assert client.get("/api/lightweight?measure=true").status_code == 200
     assert called == [True]
+
+
+def test_browser_plan_and_choose(client: TestClient) -> None:
+    """The browser target over HTTP: the ladder, and the walk for one device."""
+    plan = client.get("/api/browser/plan").json()
+    assert plan["usage"] == "rag-answer" and plan["candidates"]
+    assert all(c["files"] for c in plan["candidates"])
+    assert any("LFM2" in x["model"] for x in plan["excluded"])
+    assert client.get("/api/browser/plan?lang=fr&lang=tlh").json()["candidates"] == []
+    assert client.get("/api/browser/plan?usage=no-such-usage").status_code == 404
+
+    fast = {"webgpu": True, "f16": True, "bandwidth_Bps": 5e7}
+    r = client.post("/api/browser/choose", json={"device": fast}).json()
+    assert r["reason"] == "ok" and "gemma-4-E4B" in r["candidate"]["model"]
+    r = client.post(
+        "/api/browser/choose", json={"plan": plan, "device": {"webgpu": True, "mobile": True}}
+    )
+    assert r.json() == {"candidate": None, "reason": "mobile", "seconds": None}

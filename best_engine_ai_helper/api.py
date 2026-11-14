@@ -44,7 +44,7 @@ from pathlib import Path
 from typing import Any
 
 import os_helper as osh
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -298,6 +298,62 @@ def lightweight(
         "plans": plans,
         "comparison": comparison,
     }
+
+
+class BrowserChooseRequest(BaseModel):
+    """Body of ``POST /api/browser/choose``: a device, and the ladder to walk.
+
+    ``plan`` is a ladder as ``GET /api/browser/plan`` returns it; absent, the
+    ladder for ``usage`` is planned on the spot. ``device`` keys are those of
+    :func:`best_engine_ai_helper.browser.choose`, all optional.
+    """
+
+    usage: str = "rag-answer"
+    plan: dict[str, Any] | None = None
+    device: dict[str, Any] = {}
+
+
+@app.get("/api/browser/plan")
+def browser_plan(
+    usage: str = "rag-answer",
+    lang: list[str] | None = Query(default=None),
+    min_score: float | None = None,
+) -> dict[str, Any]:
+    """
+    The ladder of models a web page walks down in the visitor's browser.
+
+    The read-only twin of ``browser plan``: candidates for ``usage`` that run
+    in a browser (transformers.js on WebGPU), best first, each with its exact
+    files, download size, ``shader-f16`` need and device-memory floor. Models
+    measured below ``min_score`` (0.5) on the usage are listed under
+    ``excluded`` with the reason. Nothing is downloaded and no model is run.
+    """
+    from . import browser as _browser
+
+    floor = _browser.DEFAULT_MIN_SCORE if min_score is None else min_score
+    try:
+        return _browser.plan(usage, languages=lang or None, min_score=floor)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/browser/choose")
+def browser_choose(body: BrowserChooseRequest) -> dict[str, Any]:
+    """
+    Which rung a given device and line would take, and why.
+
+    The reference of the walk a page performs: ``webgpu``, ``f16``,
+    ``mobile``, ``save_data``, ``effective_type``, ``device_memory_gb``,
+    ``storage_free_bytes``, ``bandwidth_Bps`` and ``cached`` decide it. Returns
+    ``candidate`` (or null), ``reason`` and ``seconds`` of download.
+    """
+    from . import browser as _browser
+
+    try:
+        ladder = body.plan if body.plan is not None else _browser.plan(body.usage)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _browser.choose(ladder, body.device)
 
 
 @app.get("/api/activity")

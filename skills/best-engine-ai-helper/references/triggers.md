@@ -39,7 +39,7 @@ a model, fine-tune, or pick a vector index.
 | Which image model runs here | `imagine plan` | `imagine_rank`, `imagine_pick`, `image_footprint_gb` | `GET /v1/models` |
 | Generate an image | `imagine generate` | `imagine_generate` | `POST /v1/images/generations` |
 | Speak OpenAI to it | `serve` | — | `/v1/chat/completions`, `/v1/embeddings`, `/v1/images/generations` |
-| Which model a web page can run in the visitor's browser | `browser plan`, `browser choose`, `browser list`, `browser refresh` | `browser.plan`, `browser.choose`, `load_browser_catalog` | n/a |
+| Which model a web page can run in the visitor's browser | `browser plan`, `browser choose`, `browser list`, `browser refresh` | `browser.plan`, `browser.choose`, `load_browser_catalog` | `GET /api/browser/plan`, `POST /api/browser/choose` |
 
 There is exactly one command line, `best-engine-ai-helper …`, built with
 click — a core dependency here, not an optional extra, so nothing has to be

@@ -1372,6 +1372,8 @@ ladder = browser.plan("rag-answer", languages=["fr", "en"])
 rung = browser.choose(ladder, {"webgpu": True, "f16": True, "bandwidth_Bps": 5e6})
 ```
 
+Over HTTP, `GET /api/browser/plan` and `POST /api/browser/choose` answer the same two questions, and the MCP server publishes them as tools.
+
 `browser.choose` is the reference the page's JavaScript is tested against. The ladder ranks models by their score MEASURED on the usage in a real browser (`measured` in the catalog; the curator's prior breaks ties and stands in where nothing was measured), and leaves out a model measured below `--min-score` (0.5): downloading it would mostly buy answers the page sets aside. For `rag-answer`, measured on a book's own questions in Chrome on WebGPU, an answer counts when it is grounded in the excerpts it cites and written in the question's language:
 
 | Model | `rag-answer` | English | French | In the ladder |

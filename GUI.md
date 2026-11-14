@@ -178,6 +178,8 @@ another tool, or `curl`):
 | `POST` | `/api/preferences` | any of `quality_vs_cost`, `headroom`, `min_tps`, `local_only`, `live_load` | the full set as now saved, to `~/.best-engine-ai-helper/preferences.yaml` — never `settings.yaml`, which holds keys |
 | `GET`  | `/api/providers` | (none) | one row per cloud provider: `provider`, `key_env`, `available`, `reason`, `models`. Never a key value |
 | `GET`  | `/api/activity` | (none) | ledger summary: `total_calls`, `total_cost_usd`, `error_rate`, `by_user`, `by_model`, `recent_errors` |
+| `GET`  | `/api/browser/plan` | query: `usage` (default `rag-answer`), `lang` (repeatable, default fr and en), `min_score` (float, default 0.5) | the ordered ladder of models a web page walks down in the visitor's browser: `candidates` (model, dtype, bytes, `needs_f16`, `min_device_memory_gb`, `files`, `measured`), `policy`, `excluded` |
+| `POST` | `/api/browser/choose` | `{"usage": str, "plan": object \| null, "device": {"webgpu", "f16", "mobile", "save_data", "effective_type", "device_memory_gb", "storage_free_bytes", "bandwidth_Bps", "cached"}}` | `candidate` (a rung or null), `reason` (`ok`, `cached`, `webgpu`, `mobile`, `network`, `device`, `download`), `seconds` of download |
 | `GET`  | `/api/lightweight` | query: `measure` (bool, default false), `kind` (`llm`/`vlm`), `answer_tokens` (int, default 300), `batch` (int, default 1) | layer streaming: `decision` (activate / trigger / reason / blockers), `disk` (class, read GB/s, basis, free GB), `memory_budget_gb`, `chosen`, ranked `plans`, and `comparison` — native model vs streamed model priced in seconds for the same answer |
 
 ```sh

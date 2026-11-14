@@ -62,6 +62,8 @@ best-engine-ai-helper gui           # serves the app, GUI included
 | GET | `/api/providers` | which cloud providers are usable (never a key) |
 | POST | `/api/recommend` | task description → ranked engines |
 | GET | `/api/lightweight` | layer-streaming decision, plans and comparison |
+| GET | `/api/browser/plan` | the ladder of models a web page can run in the visitor's browser |
+| POST | `/api/browser/choose` | which rung a given device and bandwidth would take |
 | GET | `/api/activity` | the call and cost ledger summary |
 | … | `/v1/*` | the OpenAI-compatible inference routes (see `cli-reference.md`, `serve`) |
 
