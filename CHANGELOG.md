@@ -4,6 +4,14 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **`probe_bytes` is per weight shard.** The page probes every shard of the
+  lightest rung at once, timed from the first byte, as the model will load.
+  Measured on livre-elephant: one shard timed over the whole request read
+  5.4 MB/s on a line that then fetched the 3.1 GB model at 18 MB/s, and
+  withheld a rung the line could bear.
+
 ## [1.12.0] - 2026-11-14
 
 ### Added

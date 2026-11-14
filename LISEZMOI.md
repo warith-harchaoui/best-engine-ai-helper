@@ -1455,7 +1455,7 @@ Les critères sont nouveaux, parce qu'une page paie ce qu'un serveur ne paie jam
 
 | Critère | Lu dans la page depuis | Effet |
 |---------|------------------------|-------|
-| **Durée du téléchargement** | le débit observé sur une requête partielle (*Range*) vers les fichiers du modèle | un échelon plus long que `max_download_s` (180 s par défaut) à télécharger est sauté ; une ligne non mesurée est supposée à 20 Mbit/s |
+| **Durée du téléchargement** | le débit observé sur des requêtes partielles (*Range*) vers les fichiers de poids du modèle, toutes à la fois et chronométrées dès le premier octet, comme le modèle se chargera | un échelon plus long que `max_download_s` (180 s par défaut) à télécharger est sauté ; une ligne non mesurée est supposée à 20 Mbit/s |
 | **Cache** | le cache du navigateur pour les fichiers du modèle | un échelon déjà en cache ne coûte aucun téléchargement, quelle que soit sa taille |
 | **shader-f16** | les capacités de l'adaptateur WebGPU | poids q4f16 s'il existe, q4 sinon |
 | **Mémoire de l'appareil** | `navigator.deviceMemory` (un chiffre arrondi) | les échelons au-dessus du plancher du modèle sont sautés |

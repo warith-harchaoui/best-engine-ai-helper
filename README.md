@@ -1349,7 +1349,7 @@ The criteria are new, because a page pays for what a server never does:
 
 | Criterion | Read in the page from | Effect |
 |-----------|-----------------------|--------|
-| **Download time** | the bandwidth observed on a Range request to the model's own files | a rung longer than `max_download_s` (180 s by default) to fetch is skipped; an unmeasured line is assumed at 20 Mbit/s |
+| **Download time** | the bandwidth observed on Range requests to the model's own weight shards, all at once and timed from the first byte, as the model will load | a rung longer than `max_download_s` (180 s by default) to fetch is skipped; an unmeasured line is assumed at 20 Mbit/s |
 | **Cache** | the browser's cache of model files | a cached rung costs no download, whatever its size |
 | **shader-f16** | the WebGPU adapter's features | q4f16 weights where it exists, q4 otherwise |
 | **Device memory** | `navigator.deviceMemory` (a rounded figure) | rungs above the model's floor are skipped |

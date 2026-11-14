@@ -59,7 +59,9 @@ DEFAULT_POLICY = {
     "max_download_s": 180,
     # Assumed bandwidth when the page could not measure one: 20 Mbit/s.
     "unknown_bandwidth_Bps": 2_500_000,
-    # Bytes fetched to measure the bandwidth (a Range request on a model file).
+    # Bytes fetched PER WEIGHT SHARD to measure the bandwidth: one Range
+    # request per shard, all at once, timed from the first byte, the way the
+    # model will load (a CDN caps each connection).
     "probe_bytes": 4_000_000,
     # Free storage needed, as a multiple of the download.
     "storage_margin": 1.1,
