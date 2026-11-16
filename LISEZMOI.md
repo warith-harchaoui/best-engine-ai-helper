@@ -1481,12 +1481,12 @@ rung = browser.choose(ladder, {"webgpu": True, "f16": True, "bandwidth_Bps": 5e6
 ```
 
 En HTTP, `GET /api/browser/plan` et `POST /api/browser/choose` répondent aux mêmes deux
-questions, et le serveur MCP les publie comme outils.
+questions ; le serveur MCP les publie comme outils.
 
 `browser.choose` est la référence contre laquelle le JavaScript de la page est testé.
 L'échelle classe les modèles selon leur score MESURÉ sur l'usage dans un vrai navigateur
 (`measured` dans le catalogue ; l'*a priori* du conservateur du catalogue départage les
-égalités et tient lieu de mesure quand il n'y en a pas), et écarte un modèle mesuré sous
+égalités et tient lieu de mesure quand il n'y en a pas) ; elle écarte un modèle mesuré sous
 `--min-score` (0,5) : le télécharger achèterait surtout des réponses que la page écarte. Pour
 `rag-answer`, mesuré sur les questions d'un livre dans Chrome sur WebGPU, une réponse compte
 quand elle s'appuie sur les extraits qu'elle cite et qu'elle est écrite dans la langue de la
