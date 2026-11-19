@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1474 432" width="1474" height="432" role="img" aria-labelledby="beh-title beh-desc" font-family="Roboto, 'Helvetica Neue', Arial, sans-serif">
   <title id="beh-title">Comment best-engine-ai-helper fonctionne : cette machine en entrée, le plus gros modèle qui tienne vraiment en sortie</title>
-  <desc id="beh-desc">Une plaque de gauche à droite. Entrée : la machine sur laquelle vous êtes, quelle qu'elle soit. Le travail, en trois étapes numérotées : la mémoire disponible est détectée, réservoir unifié d'Apple Silicon, VRAM NVIDIA ou RAM ordinaire, puis la part que le pilote ne cédera pas est soustraite en même temps qu'une marge pour le système et un cache qui grossit ; le catalogue embarqué est classé dans ce qui reste, donc un modèle qui ne tient pas n'est jamais proposé ; le gagnant est tiré par Ollama puis passé à une garde de qualité avant d'être déclaré utilisable. Sortie : le modèle retenu, un fichier d'environnement que les projets en aval lisent, plus un point d'accès compatible OpenAI.</desc>
+  <desc id="beh-desc">Une plaque de gauche à droite. Entrée : la machine sur laquelle vous êtes, quelle qu'elle soit. Le travail, en trois étapes numérotées : la mémoire disponible est détectée, réservoir unifié d'Apple Silicon, VRAM NVIDIA ou RAM ordinaire, puis la part que le pilote ne cédera pas est soustraite en même temps qu'une marge pour le système et un cache qui grossit ; le catalogue embarqué est classé dans ce qui reste, donc un modèle qui ne tient pas n'est jamais proposé ; le gagnant est tiré par Ollama puis passé à une garde de qualité avant d'être déclaré utilisable. Sortie : le modèle retenu, un fichier d'environnement que les projets en aval lisent, plus un point d'accès compatible OpenAI. Pour une page qui fait tourner son modèle dans le navigateur du visiteur, impossible à sonder d'avance, il planifie plutôt : une échelle ordonnée de candidats que la page descend à l'exécution.</desc>
   <style>
     .panel      { fill: #ffffff; stroke: #d6d6d6; stroke-width: 1.5; }
     .panel-label{ fill: #6b6b6b; font-size: 13px; font-weight: 600; letter-spacing: .08em; }
@@ -78,5 +78,5 @@
   <path class="tie" d="M1001 314 V332"/>
   <rect class="surface" x="926" y="332" width="150" height="46" rx="9"/>
   <text class="surf-label" x="1001" y="360" text-anchor="middle">skill d'agent</text>
-  <text class="caption" x="737" y="412" text-anchor="middle">Tout membre qui a besoin d'un modèle de langue ou de vision demande à celui-ci plutôt que de coder en dur un nom qui vieillit mal.</text>
+  <text class="caption" x="737" y="412" text-anchor="middle">Tout membre qui a besoin d'un modèle de langue ou de vision demande à celui-ci. Pour un modèle qui tourne dans le navigateur, il planifie une échelle de candidats.</text>
 </svg>

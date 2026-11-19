@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1357 432" width="1357" height="432" role="img" aria-labelledby="beh-title beh-desc" font-family="Roboto, 'Helvetica Neue', Arial, sans-serif">
   <title id="beh-title">How best-engine-ai-helper works: this machine in, the largest model that actually fits out</title>
-  <desc id="beh-desc">A left-to-right plate. In: the machine you are on, whatever it is. The work, in three numbered stages: the available memory is detected, the Apple Silicon unified pool, NVIDIA VRAM or plain RAM, and the part the driver will not hand out is subtracted along with headroom for the operating system and a growing cache; the bundled catalogue is ranked inside what is left, so a model that cannot fit is never proposed; and the winner is pulled through Ollama and gated on quality before it is declared usable. Out: the chosen model, an environment file downstream projects read, and an OpenAI-compatible endpoint where the model named auto resolves per request.</desc>
+  <desc id="beh-desc">A left-to-right plate. In: the machine you are on, whatever it is. The work, in three numbered stages: the available memory is detected, the Apple Silicon unified pool, NVIDIA VRAM or plain RAM, and the part the driver will not hand out is subtracted along with headroom for the operating system and a growing cache; the bundled catalogue is ranked inside what is left, so a model that cannot fit is never proposed; and the winner is pulled through Ollama and gated on quality before it is declared usable. Out: the chosen model, an environment file downstream projects read, and an OpenAI-compatible endpoint where the model named auto resolves per request. For a page that runs its model in the visitor's browser, which cannot be probed in advance, it plans instead: an ordered ladder of candidates the page walks down at run time.</desc>
   <style>
     .panel      { fill: #ffffff; stroke: #d6d6d6; stroke-width: 1.5; }
     .panel-label{ fill: #6b6b6b; font-size: 13px; font-weight: 600; letter-spacing: .08em; }
@@ -78,5 +78,5 @@
   <path class="tie" d="M942 314 V332"/>
   <rect class="surface" x="867" y="332" width="150" height="46" rx="9"/>
   <text class="surf-label" x="942" y="360" text-anchor="middle">agent skill</text>
-  <text class="caption" x="678" y="412" text-anchor="middle">Every other member that needs a language or vision model asks this one rather than hard-coding a name that ages badly.</text>
+  <text class="caption" x="678" y="412" text-anchor="middle">Every member that needs a language or vision model asks this one. For a model run in the visitor's browser, it plans a ladder instead.</text>
 </svg>
