@@ -4,6 +4,8 @@ All notable changes to best-engine-ai-helper are documented here.
 
 ## [Unreleased]
 
+## [1.12.1] - 2026-11-19
+
 ### Changed
 
 - **`probe_bytes` is per weight shard.** The page probes every shard of the
